@@ -1,0 +1,37 @@
+name = "wedding-computer"
+main = "src/index.tsx"
+compatibility_date = "2025-05-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "wedding-computer-db"
+database_id = "local"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "placeholder-kv-id"
+
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "wedding-computer-storage"
+
+[[queues.producers]]
+binding = "EMAIL_QUEUE"
+queue = "wedding-computer-emails"
+
+[[queues.consumers]]
+queue = "wedding-computer-emails"
+max_batch_size = 10
+max_retries = 3
+
+[vars]
+APP_URL = "https://wedding.computer"
+TURNSTILE_SITE_KEY = "placeholder"
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+[triggers]
+crons = ["0 20 * * *"]
