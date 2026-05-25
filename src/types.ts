@@ -1,7 +1,7 @@
 export type Bindings = {
   DB: D1Database
   KV: KVNamespace
-  STORAGE: R2Bucket
+  STORAGE?: R2Bucket
   EMAIL_QUEUE: Queue
   SESSION_SECRET: string
   RESEND_API_KEY: string
