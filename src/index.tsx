@@ -11,12 +11,22 @@ import weddings from './routes/vendor/weddings'
 import formEditor from './routes/vendor/form'
 import calendarRoute from './routes/vendor/calendar'
 import invoices from './routes/vendor/invoices'
+import emailRoutes from './routes/vendor/emails'
+import coupleRoute from './routes/couple'
+import bookRoute from './routes/book'
+import bookingFormRoute from './routes/vendor/booking-form'
+import contractRoute from './routes/vendor/contracts'
 import feed from './routes/feed'
+import carddav from './routes/carddav'
+import caldav from './routes/caldav'
 import stripe from './routes/stripe'
+import { authenticateVendor, CARDDAV_HEADERS, CALDAV_HEADERS, xmlResponse, escXml } from './lib/dav'
 import { AuthLayout } from './views/layouts/auth'
 import { getVendorWithEmail } from './db/vendors'
 import { getContact } from './db/contacts'
-import { sendEmail, newLeadEmail } from './services/email'
+import { sendEmailMessage, newLeadEmail } from './services/email'
+import { handleInboundEmail } from './services/inbound-email'
+import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, dailyDigest } from './services/notifications'
 
 const app = new Hono<Env>()
 
@@ -45,6 +55,7 @@ app.route('/', marketing)
 app.route('/', auth)
 app.route('/', onboarding)
 app.route('/', enquire)
+app.route('/', bookRoute)
 app.route('/', feed)
 app.route('/', stripe)
 
@@ -56,6 +67,103 @@ app.route('/', weddings)
 app.route('/', formEditor)
 app.route('/', calendarRoute)
 app.route('/', invoices)
+app.route('/', emailRoutes)
+app.route('/', bookingFormRoute)
+app.route('/', contractRoute)
+app.route('/', coupleRoute)
+
+// ─── CardDAV + CalDAV ───
+
+function cardDavDiscoveryXml(href: string, authHeader: string | undefined, db: D1Database) {
+  return (async () => {
+    const vendor = await authenticateVendor(db, authHeader)
+    if (!vendor || !vendor.ical_token) {
+      return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
+  <D:response>
+    <D:href>${escXml(href)}</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:current-user-principal><D:href>/carddav/principals/user/</D:href></D:current-user-principal>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>`, 207, CARDDAV_HEADERS)
+    }
+    const token = vendor.ical_token
+    return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
+  <D:response>
+    <D:href>${escXml(href)}</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:current-user-principal><D:href>/carddav/principals/${escXml(token)}/</D:href></D:current-user-principal>
+        <C:addressbook-home-set><D:href>/carddav/addressbooks/${escXml(token)}/</D:href></C:addressbook-home-set>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>`, 207, CARDDAV_HEADERS)
+  })()
+}
+
+function calDavDiscoveryXml(href: string, authHeader: string | undefined, db: D1Database) {
+  return (async () => {
+    const vendor = await authenticateVendor(db, authHeader)
+    if (!vendor || !vendor.ical_token) {
+      return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:response>
+    <D:href>${escXml(href)}</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:current-user-principal><D:href>/caldav/principals/user/</D:href></D:current-user-principal>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>`, 207, CALDAV_HEADERS)
+    }
+    const token = vendor.ical_token
+    return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:response>
+    <D:href>${escXml(href)}</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:current-user-principal><D:href>/caldav/principals/${escXml(token)}/</D:href></D:current-user-principal>
+        <C:calendar-home-set><D:href>/caldav/calendars/${escXml(token)}/</D:href></C:calendar-home-set>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>`, 207, CALDAV_HEADERS)
+  })()
+}
+
+// CardDAV well-known discovery (unauthenticated initial probe, authenticated follow-up)
+app.on('PROPFIND', '/.well-known/carddav', (c) =>
+  cardDavDiscoveryXml('/.well-known/carddav', c.req.raw.headers.get('Authorization') ?? undefined, c.env.DB))
+app.get('/.well-known/carddav', (c) => c.redirect('/carddav/', 301))
+
+// CalDAV well-known discovery
+app.on('PROPFIND', '/.well-known/caldav', (c) =>
+  calDavDiscoveryXml('/.well-known/caldav', c.req.raw.headers.get('Authorization') ?? undefined, c.env.DB))
+app.get('/.well-known/caldav', (c) => c.redirect('/caldav/', 301))
+
+// Root PROPFIND probe — check body to determine if CardDAV or CalDAV
+app.on('PROPFIND', '/', async (c) => {
+  const body = await c.req.text()
+  if (body.includes('urn:ietf:params:xml:ns:caldav') || body.includes('calendar-home-set')) {
+    return calDavDiscoveryXml('/', c.req.raw.headers.get('Authorization') ?? undefined, c.env.DB)
+  }
+  return cardDavDiscoveryXml('/', c.req.raw.headers.get('Authorization') ?? undefined, c.env.DB)
+})
+
+// Mount DAV sub-routers
+app.route('/carddav', carddav)
+app.route('/caldav', caldav)
 
 app.notFound((c) =>
   c.html(
@@ -112,15 +220,73 @@ export default {
             contactId: contact.id,
           })
 
-          await sendEmail({
+          await sendEmailMessage({
+            db: env.DB,
+            resendApiKey: env.RESEND_API_KEY,
+            vendorId: body.vendorId,
             to: vendor.user_email,
             toName: vendor.user_name,
             subject: `New enquiry from ${contact.first_name} ${contact.last_name}`,
             html,
-            apiKey: env.RESEND_API_KEY,
           })
 
           console.log('[QUEUE] new_lead email sent to', vendor.user_email)
+        } else if (body.type === 'notify_invoice_sent') {
+          await notifyInvoiceSent(
+            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            JSON.parse(body.payload)
+          )
+          console.log('[QUEUE] notify_invoice_sent processed')
+
+        } else if (body.type === 'notify_vendor_added') {
+          await notifyVendorAdded(
+            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            JSON.parse(body.payload)
+          )
+          console.log('[QUEUE] notify_vendor_added processed')
+
+        } else if (body.type === 'notify_couple_joined') {
+          await notifyCoupleJoined(
+            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            JSON.parse(body.payload)
+          )
+          console.log('[QUEUE] notify_couple_joined processed')
+
+        } else if (body.type === 'notify_visibility_changed') {
+          await notifyVisibilityChanged(
+            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            JSON.parse(body.payload)
+          )
+          console.log('[QUEUE] notify_visibility_changed processed')
+
+        } else if (body.type === 'notify_booking_confirmed') {
+          await notifyBookingConfirmed(
+            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            JSON.parse(body.payload)
+          )
+          console.log('[QUEUE] notify_booking_confirmed processed')
+
+        } else if (body.type === 'notify_vendor_removed') {
+          await notifyVendorRemoved(
+            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            JSON.parse(body.payload)
+          )
+          console.log('[QUEUE] notify_vendor_removed processed')
+
+        } else if (body.type === 'notify_vendor_booked') {
+          await notifyVendorBooked(
+            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            JSON.parse(body.payload)
+          )
+          console.log('[QUEUE] notify_vendor_booked processed')
+
+        } else if (body.type === 'notify_wedding_details_updated') {
+          await notifyWeddingDetailsUpdated(
+            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            JSON.parse(body.payload)
+          )
+          console.log('[QUEUE] notify_wedding_details_updated processed')
+
         } else {
           console.log('[QUEUE] unknown message type', body.type)
         }
@@ -133,7 +299,16 @@ export default {
     }
   },
 
+  async email(message: ForwardableEmailMessage, env: Env['Bindings'], ctx: ExecutionContext): Promise<void> {
+    await handleInboundEmail(message, env)
+  },
+
   async scheduled(event: ScheduledEvent, env: Env['Bindings'], ctx: ExecutionContext): Promise<void> {
     console.log('[CRON] triggered', event.cron)
+    try {
+      await dailyDigest({ db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL })
+    } catch (e: any) {
+      console.error('[CRON] daily digest failed', e.message)
+    }
   },
 }

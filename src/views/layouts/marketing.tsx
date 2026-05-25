@@ -1,5 +1,6 @@
 import type { FC, PropsWithChildren } from 'hono/jsx'
 import { SharedHead } from '../head'
+import { Logo } from '../logo'
 
 type Props = PropsWithChildren<{ title?: string }>
 
@@ -11,7 +12,8 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => (
     <body class="bg-papaya-50 text-gray-900 antialiased font-sans">
       <nav class="bg-grapefruit-700 sticky top-0 z-50">
         <div class="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
-          <a href="/" class="text-lg sm:text-xl font-bold tracking-tight text-papaya">
+          <a href="/" class="flex items-center gap-2 text-lg sm:text-xl font-bold tracking-tight text-papaya">
+            <Logo class="w-6 h-6 sm:w-7 sm:h-7" />
             Wedding Computer
           </a>
           <div class="flex items-center gap-2 sm:gap-6">

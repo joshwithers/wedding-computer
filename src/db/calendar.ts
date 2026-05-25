@@ -181,6 +181,17 @@ export async function deleteOverride(
     .run()
 }
 
+export async function deleteBlockedEventByDate(
+  db: D1Database,
+  vendorId: string,
+  date: string
+): Promise<void> {
+  await db
+    .prepare("DELETE FROM calendar_events WHERE vendor_id = ? AND date = ? AND type = 'blocked'")
+    .bind(vendorId, date)
+    .run()
+}
+
 export async function getBookedDates(
   db: D1Database,
   vendorId: string,

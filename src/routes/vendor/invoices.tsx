@@ -18,6 +18,7 @@ import {
   generatePaymentSchedule,
   recalculateInvoiceStatus,
 } from '../../db/invoices'
+import { getContractTemplate, createContractForInvoice, getContractByInvoice } from '../../db/contracts'
 import { requireString, trimOrNull } from '../../lib/validation'
 import { formatDate } from '../../lib/date'
 import { auditLog } from '../../middleware/audit'
@@ -272,7 +273,7 @@ invoices.post('/app/invoices/new', async (c) => {
     const totalCents = lineItems.reduce((sum, li) => sum + li.amount_cents * li.quantity, 0)
     const feeType = (body.booking_fee_type === 'percentage' ? 'percentage' : 'fixed') as 'fixed' | 'percentage'
     const feeRaw = parseInt(String(body.booking_fee_value || '0'))
-    const feeValue = feeType === 'fixed' ? feeRaw * 100 : feeRaw * 100
+    const feeValue = feeType === 'fixed' ? feeRaw * 100 : feeRaw
 
     const invoice = await createInvoice(c.env.DB, vendor.id, {
       contact_id: contactId,
@@ -298,6 +299,18 @@ invoices.post('/app/invoices/new', async (c) => {
       })
     }
 
+    // Auto-attach contract template if vendor has one
+    const contractTemplate = await getContractTemplate(c.env.DB, vendor.id)
+    if (contractTemplate) {
+      await createContractForInvoice(
+        c.env.DB,
+        vendor.id,
+        invoice.id,
+        invoice.wedding_id,
+        { title: contractTemplate.title, body: contractTemplate.body }
+      )
+    }
+
     return c.redirect(`/app/invoices/${invoice.id}`)
   } catch (e: any) {
     return c.redirect(`/app/invoices/new?error=${encodeURIComponent(e.message)}`)
@@ -314,6 +327,7 @@ invoices.get('/app/invoices/:id', async (c) => {
 
   const payments = await listPayments(c.env.DB, invoice.id)
   const items: LineItem[] = invoice.line_items ? JSON.parse(invoice.line_items) : []
+  const contract = await getContractByInvoice(c.env.DB, invoice.id)
 
   const contact = invoice.contact_id
     ? await c.env.DB
@@ -446,6 +460,63 @@ invoices.get('/app/invoices/:id', async (c) => {
           </div>
         )}
 
+        {/* Booking link */}
+        {invoice.public_token && invoice.status !== 'draft' && (
+          <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 mb-4">
+            <h3 class="text-sm font-bold mb-2">Booking link</h3>
+            <p class="text-xs text-gray-500 mb-3">Share this link with your client so they can view their booking details.</p>
+            <div class="flex items-center gap-2 mb-3">
+              <input
+                type="text"
+                readonly
+                value={`${c.env.APP_URL}/book/${invoice.public_token}`}
+                class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 bg-gray-50"
+                id="booking-link"
+              />
+              <button
+                type="button"
+                onclick="navigator.clipboard.writeText(document.getElementById('booking-link').value);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)"
+                class="border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold hover:bg-papaya-50 transition-colors whitespace-nowrap"
+              >
+                Copy
+              </button>
+            </div>
+            <details class="text-xs">
+              <summary class="text-gray-500 cursor-pointer hover:text-gray-700">Embed code</summary>
+              <textarea
+                readonly
+                rows={3}
+                class="mt-2 w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-gray-50 font-mono"
+                onclick="this.select()"
+              >{`<iframe src="${c.env.APP_URL}/book/${invoice.public_token}?embed=1" width="100%" height="600" frameborder="0"></iframe>`}</textarea>
+            </details>
+          </div>
+        )}
+
+        {/* Contract status */}
+        {contract && (
+          <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 mt-6">
+            <h3 class="text-sm font-bold text-gray-500 mb-3">Service contract</h3>
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-bold text-gray-900">{contract.title}</p>
+                <p class="text-xs text-gray-500 mt-0.5">
+                  {contract.body.slice(0, 100)}{contract.body.length > 100 ? '...' : ''}
+                </p>
+              </div>
+              {contract.signed_at ? (
+                <div class="text-right shrink-0 ml-4">
+                  <span class="text-xs font-bold text-horizon-700 bg-horizon-50 px-2.5 py-1 rounded-full">Signed</span>
+                  <p class="text-xs text-gray-400 mt-1">by {contract.signed_by_name}</p>
+                  <p class="text-xs text-gray-400">{contract.signed_at.split('T')[0]}</p>
+                </div>
+              ) : (
+                <span class="text-xs font-bold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full shrink-0">Awaiting signature</span>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Delete (draft only) */}
         {invoice.status === 'draft' && (
           <form method="post" action={`/app/invoices/${invoice.id}/delete`} class="mt-4">
@@ -512,6 +583,32 @@ invoices.post('/app/invoices/:id/send', async (c) => {
 
   await updateInvoice(c.env.DB, vendor.id, invoice.id, { status: 'sent' })
   await auditLog(c, 'invoice_sent', 'invoice', invoice.id, { amount_cents: invoice.amount_cents }).catch(() => {})
+
+  if (invoice.wedding_id && invoice.contact_id) {
+    const contact = await c.env.DB
+      .prepare('SELECT first_name, email, partner_email FROM contacts WHERE id = ? AND vendor_id = ?')
+      .bind(invoice.contact_id, vendor.id)
+      .first<{ first_name: string; email: string | null; partner_email: string | null }>()
+    if (contact) {
+      const emails = [contact.email, contact.partner_email].filter(Boolean) as string[]
+      for (const email of emails) {
+        c.env.EMAIL_QUEUE.send({
+          type: 'notify_invoice_sent',
+          payload: JSON.stringify({
+            weddingId: invoice.wedding_id,
+            vendorId: vendor.id,
+            invoiceTitle: invoice.title,
+            amountCents: invoice.amount_cents,
+            currency: invoice.currency,
+            dueDate: invoice.due_date,
+            coupleEmail: email,
+            coupleName: contact.first_name,
+          }),
+        }).catch((e) => console.error('[NOTIFY] queue send failed', e))
+      }
+    }
+  }
+
   return c.redirect(`/app/invoices/${invoice.id}`)
 })
 

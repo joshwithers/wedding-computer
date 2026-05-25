@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
   email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
+  phone TEXT,
   avatar_url TEXT,
   email_verified INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -28,7 +29,11 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   availability_default TEXT,
   is_organiser INTEGER NOT NULL DEFAULT 0,
   enquiry_form TEXT,
+  booking_form TEXT,
+  ceremony_types TEXT,
   ical_token TEXT,
+  anthropic_api_key TEXT,
+  email_handle TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -44,6 +49,16 @@ CREATE TABLE IF NOT EXISTS weddings (
   location_lng REAL,
   status TEXT NOT NULL DEFAULT 'planning'
     CHECK (status IN ('planning','confirmed','completed','cancelled')),
+  ceremony_type TEXT DEFAULT 'wedding',
+  vendor_visibility TEXT NOT NULL DEFAULT 'private'
+    CHECK (vendor_visibility IN ('private', 'visible')),
+  reception_location TEXT,
+  reception_time TEXT,
+  getting_ready_location TEXT,
+  getting_ready_time TEXT,
+  timeline_notes TEXT,
+  dress_code TEXT,
+  guest_count INTEGER,
   notes TEXT,
   created_by_user_id TEXT NOT NULL REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -123,7 +138,9 @@ CREATE TABLE IF NOT EXISTS invoices (
   line_items TEXT,
   booking_fee_type TEXT DEFAULT 'fixed' CHECK (booking_fee_type IN ('fixed', 'percentage')),
   booking_fee_value INTEGER DEFAULT 0,
+  public_token TEXT UNIQUE,
   notes TEXT,
+  booking_form_data TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -190,6 +207,42 @@ CREATE TABLE IF NOT EXISTS documents (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Couple vendor planning entries
+CREATE TABLE IF NOT EXISTS couple_vendors (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  wedding_id TEXT NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  category TEXT,
+  email TEXT,
+  phone TEXT,
+  website TEXT,
+  instagram TEXT,
+  notes TEXT,
+  expected_price_cents INTEGER,
+  vendor_profile_id TEXT REFERENCES vendor_profiles(id),
+  status TEXT NOT NULL DEFAULT 'considering'
+    CHECK (status IN ('considering', 'contacted', 'booked', 'removed')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Service contracts
+CREATE TABLE IF NOT EXISTS service_contracts (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT 'Service Agreement',
+  body TEXT NOT NULL,
+  is_template INTEGER NOT NULL DEFAULT 1,
+  wedding_id TEXT REFERENCES weddings(id),
+  invoice_id TEXT REFERENCES invoices(id),
+  signed_at TEXT,
+  signed_by_name TEXT,
+  signed_by_email TEXT,
+  signed_ip TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Sessions
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
@@ -228,6 +281,31 @@ CREATE TABLE IF NOT EXISTS email_queue (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Emails
+CREATE TABLE IF NOT EXISTS emails (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  vendor_id TEXT REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  contact_id TEXT REFERENCES contacts(id) ON DELETE SET NULL,
+  direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+  from_email TEXT NOT NULL,
+  from_name TEXT,
+  to_email TEXT NOT NULL,
+  to_name TEXT,
+  reply_to TEXT,
+  subject TEXT NOT NULL,
+  body_text TEXT,
+  body_html TEXT,
+  message_id TEXT UNIQUE,
+  in_reply_to TEXT,
+  thread_id TEXT,
+  status TEXT NOT NULL DEFAULT 'sent'
+    CHECK (status IN ('draft', 'queued', 'sent', 'failed', 'received')),
+  is_read INTEGER NOT NULL DEFAULT 0,
+  is_system INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_vendor_profiles_user_id ON vendor_profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_vendor_profiles_category ON vendor_profiles(category);
@@ -255,3 +333,15 @@ CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice ON invoice_payments(invo
 CREATE INDEX IF NOT EXISTS idx_invoice_payments_vendor ON invoice_payments(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_invoice_payments_status ON invoice_payments(status, due_date);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_vendor_profiles_ical_token ON vendor_profiles(ical_token);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vendor_email_handle ON vendor_profiles(email_handle);
+CREATE INDEX IF NOT EXISTS idx_emails_vendor ON emails(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_emails_contact ON emails(contact_id);
+CREATE INDEX IF NOT EXISTS idx_emails_direction ON emails(vendor_id, direction, created_at);
+CREATE INDEX IF NOT EXISTS idx_emails_thread ON emails(thread_id);
+CREATE INDEX IF NOT EXISTS idx_emails_message_id ON emails(message_id);
+CREATE INDEX IF NOT EXISTS idx_couple_vendors_wedding ON couple_vendors(wedding_id);
+CREATE INDEX IF NOT EXISTS idx_couple_vendors_vendor_profile ON couple_vendors(vendor_profile_id);
+CREATE INDEX IF NOT EXISTS idx_couple_vendors_status ON couple_vendors(status);
+CREATE INDEX IF NOT EXISTS idx_service_contracts_vendor ON service_contracts(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_service_contracts_invoice ON service_contracts(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_service_contracts_wedding ON service_contracts(wedding_id);

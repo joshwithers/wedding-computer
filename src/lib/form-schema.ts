@@ -102,6 +102,56 @@ export function defaultFormConfig(): FormConfig {
   }
 }
 
+export function defaultBookingFormConfig(): FormConfig {
+  return {
+    version: 1,
+    title: 'Confirm your booking',
+    submitLabel: 'Confirm booking',
+    fields: [
+      { id: 'heading_details', type: 'heading', label: 'Booking details' },
+      { id: 'ceremony_style', type: 'select', label: 'Ceremony style', options: ['Traditional', 'Modern', 'Non-traditional', 'Not sure yet'], width: 'half' },
+      { id: 'guest_count', type: 'select', label: 'Expected guests', options: ['Just us', 'Under 20', '20–50', '50–100', '100–200', '200+'], width: 'half' },
+      { id: 'special_requests', type: 'textarea', label: 'Special requests or notes', placeholder: 'Anything we should know?' },
+      { id: 'heading_terms', type: 'heading', label: 'Terms' },
+      { id: 'terms', type: 'checkbox', label: 'I agree to the terms and conditions', required: true },
+    ],
+    actions: {
+      notifyVendor: true,
+      confirmationEmail: { enabled: false, mode: 'ai' },
+    },
+  }
+}
+
+export function parseBookingFormConfig(json: string | null): FormConfig {
+  if (!json) return defaultBookingFormConfig()
+  try {
+    const parsed = JSON.parse(json) as FormConfig
+    if (parsed.version !== 1 || !Array.isArray(parsed.fields)) return defaultBookingFormConfig()
+    return parsed
+  } catch {
+    return defaultBookingFormConfig()
+  }
+}
+
+export function validateBookingFormConfig(config: FormConfig): string | null {
+  if (!config.title?.trim()) return 'Form title is required'
+  if (!config.submitLabel?.trim()) return 'Submit button label is required'
+  if (!config.fields || config.fields.length === 0) return 'Form must have at least one field'
+
+  const ids = new Set<string>()
+  for (const field of config.fields) {
+    if (!field.id?.trim()) return 'Every field must have an ID'
+    if (ids.has(field.id)) return `Duplicate field ID: ${field.id}`
+    ids.add(field.id)
+    if (!field.label?.trim()) return `Field "${field.id}" must have a label`
+    if ((field.type === 'select' || field.type === 'radio') && (!field.options || field.options.length === 0)) {
+      return `Field "${field.label}" needs at least one option`
+    }
+  }
+
+  return null
+}
+
 export function parseFormConfig(json: string | null): FormConfig {
   if (!json) return defaultFormConfig()
   try {

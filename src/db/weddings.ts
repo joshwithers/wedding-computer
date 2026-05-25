@@ -40,13 +40,14 @@ export async function createWedding(
     time?: string | null
     location?: string | null
     notes?: string | null
+    ceremony_type?: string | null
     created_by_user_id: string
   }
 ): Promise<Wedding> {
   const result = await db
     .prepare(
-      `INSERT INTO weddings (title, date, time, location, notes, created_by_user_id)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO weddings (title, date, time, location, notes, ceremony_type, created_by_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
@@ -55,6 +56,7 @@ export async function createWedding(
       data.time ?? null,
       data.location ?? null,
       data.notes ?? null,
+      data.ceremony_type ?? 'wedding',
       data.created_by_user_id
     )
     .first<Wedding>()
@@ -64,7 +66,7 @@ export async function createWedding(
 export async function updateWedding(
   db: D1Database,
   weddingId: string,
-  data: Partial<Pick<Wedding, 'title' | 'date' | 'time' | 'location' | 'status' | 'notes'>>
+  data: Partial<Pick<Wedding, 'title' | 'date' | 'time' | 'location' | 'status' | 'notes' | 'ceremony_type' | 'vendor_visibility' | 'reception_location' | 'reception_time' | 'getting_ready_location' | 'getting_ready_time' | 'timeline_notes' | 'dress_code' | 'guest_count'>>
 ): Promise<void> {
   const sets: string[] = []
   const values: unknown[] = []
@@ -126,6 +128,20 @@ export async function getWeddingMembers(
     .bind(weddingId)
     .all<WeddingMember & { user_name: string; user_email: string; business_name: string | null }>()
     .then((r) => r.results)
+}
+
+export async function getFirstCoupleWedding(
+  db: D1Database,
+  userId: string
+): Promise<{ wedding_id: string } | null> {
+  return db
+    .prepare(
+      `SELECT wedding_id FROM wedding_members
+       WHERE user_id = ? AND role = 'couple' AND status = 'active'
+       ORDER BY created_at DESC LIMIT 1`
+    )
+    .bind(userId)
+    .first<{ wedding_id: string }>()
 }
 
 export async function getMembership(

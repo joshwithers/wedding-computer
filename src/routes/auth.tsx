@@ -4,6 +4,8 @@ import type { Env } from '../types'
 import { AuthLayout } from '../views/layouts/auth'
 import { isValidEmail } from '../lib/validation'
 import { sendMagicLink, verifyMagicLink, findOrCreateUser, createUserSession, destroySession } from '../services/auth'
+import { getVendorByUserId } from '../db/vendors'
+import { getFirstCoupleWedding } from '../db/weddings'
 import { rateLimit } from '../middleware/rate-limit'
 import { auditLog } from '../middleware/audit'
 
@@ -57,7 +59,7 @@ auth.post('/login', rateLimit(5, 60), async (c) => {
   }
 
   try {
-    await sendMagicLink(c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, email)
+    await sendMagicLink(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, email)
   } catch (e) {
     console.error('[AUTH] magic link send failed', e)
   }
@@ -90,7 +92,12 @@ auth.get('/login/verify', async (c) => {
   })
 
   await auditLog(c, 'login', 'user', user.id, { method: 'magic_link' }).catch(() => {})
-  return c.redirect('/app')
+
+  const vendor = await getVendorByUserId(c.env.DB, user.id)
+  if (vendor) return c.redirect('/app')
+  const coupleWedding = await getFirstCoupleWedding(c.env.DB, user.id)
+  if (coupleWedding) return c.redirect(`/wedding/${coupleWedding.wedding_id}`)
+  return c.redirect('/onboarding')
 })
 
 auth.post('/logout', async (c) => {
@@ -105,8 +112,8 @@ auth.post('/logout', async (c) => {
 
 // Dev-only: bypass magic link for local testing
 auth.get('/dev/login/:email', async (c) => {
-  const host = new URL(c.req.url).hostname
-  if (host !== 'localhost' && host !== '127.0.0.1') {
+  const isLocal = !c.req.header('cf-ray')
+  if (!isLocal) {
     return c.text('Not available in production', 404)
   }
   const email = c.req.param('email')
@@ -118,7 +125,11 @@ auth.get('/dev/login/:email', async (c) => {
     sameSite: 'Lax',
     maxAge: 60 * 60 * 24 * 30,
   })
-  return c.redirect('/app')
+  const vendor = await getVendorByUserId(c.env.DB, user.id)
+  if (vendor) return c.redirect('/app')
+  const coupleWedding = await getFirstCoupleWedding(c.env.DB, user.id)
+  if (coupleWedding) return c.redirect(`/wedding/${coupleWedding.wedding_id}`)
+  return c.redirect('/onboarding')
 })
 
 export default auth

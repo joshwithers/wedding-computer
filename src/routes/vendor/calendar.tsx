@@ -14,6 +14,7 @@ import {
   getOverridesForMonth,
   setOverride,
   deleteOverride,
+  deleteBlockedEventByDate,
 } from '../../db/calendar'
 import type { AvailabilityOverride } from '../../db/calendar'
 import { requireString, trimOrNull } from '../../lib/validation'
@@ -381,6 +382,7 @@ calendar.post('/app/calendar/unblock/:date', async (c) => {
   const date = c.req.param('date')
 
   await deleteOverride(c.env.DB, vendor.id, date)
+  await deleteBlockedEventByDate(c.env.DB, vendor.id, date)
 
   const [y, m] = date.split('-').map(Number)
   return c.redirect(`/app/calendar?year=${y}&month=${m}`)

@@ -1,6 +1,7 @@
 import type { FC, PropsWithChildren } from 'hono/jsx'
 import type { User, VendorProfile } from '../../types'
 import { SharedHead } from '../head'
+import { Logo } from '../logo'
 
 type Props = PropsWithChildren<{
   title?: string
@@ -20,7 +21,8 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
       {/* Mobile header + nav */}
       <div class="md:hidden sticky top-0 z-50">
         <header class="bg-grapefruit-700 px-4 py-3 flex items-center justify-between">
-          <a href="/app" class="text-lg font-bold tracking-tight text-papaya">
+          <a href="/app" class="flex items-center gap-2 text-lg font-bold tracking-tight text-papaya">
+            <Logo class="w-6 h-6" />
             Wedding Computer
           </a>
           <div class="flex items-center gap-2">
@@ -46,7 +48,10 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <MobileNavLink href="/app/weddings" label="Weddings" />
             <MobileNavLink href="/app/calendar" label="Calendar" />
             <MobileNavLink href="/app/invoices" label="Invoices" />
+            <MobileNavLink href="/app/emails" label="Emails" />
             <MobileNavLink href="/app/form" label="Enquiry Form" />
+            <MobileNavLink href="/app/booking-form" label="Booking Form" />
+            <MobileNavLink href="/app/contract" label="Contract" />
             <div class="border-t border-papaya-300/30 mt-2 pt-2">
               <MobileNavLink href="/app/settings" label="Settings" />
               <form method="post" action="/logout">
@@ -64,7 +69,8 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
         {/* Desktop sidebar */}
         <aside class="hidden md:flex md:flex-col w-56 bg-grapefruit-700 shrink-0">
           <div class="px-5 py-5 border-b border-white/10">
-            <a href="/app" class="text-lg font-bold tracking-tight text-papaya">
+            <a href="/app" class="flex items-center gap-2 text-lg font-bold tracking-tight text-papaya">
+              <Logo class="w-6 h-6" />
               Wedding Computer
             </a>
           </div>
@@ -74,13 +80,16 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <SidebarLink href="/app/weddings" label="Weddings" />
             <SidebarLink href="/app/calendar" label="Calendar" />
             <SidebarLink href="/app/invoices" label="Invoices" />
+            <SidebarLink href="/app/emails" label="Emails" />
             <SidebarLink href="/app/form" label="Enquiry Form" />
+            <SidebarLink href="/app/booking-form" label="Booking Form" />
+            <SidebarLink href="/app/contract" label="Contract" />
           </nav>
           <div class="px-3 py-4 border-t border-white/10 space-y-1">
             <SidebarLink href="/app/settings" label="Settings" />
-            <form method="post" action="/logout">
+            <form method="post" action="/logout" class="block">
               <input type="hidden" name="_csrf" value={csrfToken} />
-              <button type="submit" class="w-full text-left px-3 py-2 text-sm font-medium text-papaya-300 hover:bg-white/10 hover:text-white rounded-xl">
+              <button type="submit" class="block w-full text-left px-3 py-2 text-sm font-medium text-papaya-200 hover:bg-white/10 hover:text-white rounded-xl transition-colors">
                 Sign out
               </button>
             </form>

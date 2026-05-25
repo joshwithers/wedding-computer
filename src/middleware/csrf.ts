@@ -4,8 +4,10 @@ import { generateToken, hmacSign, hmacVerify } from '../lib/crypto'
 import { getCookie } from 'hono/cookie'
 
 export const csrf = createMiddleware<Env>(async (c, next) => {
+  const secret = c.env.SESSION_SECRET
+  if (!secret) throw new Error('SESSION_SECRET is not configured')
   const sessionId = getCookie(c, 'wc_session') ?? 'anon'
-  const token = await hmacSign(c.env.SESSION_SECRET, `csrf:${sessionId}`)
+  const token = await hmacSign(secret, `csrf:${sessionId}`)
   c.set('csrfToken', token)
 
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(c.req.method)) {

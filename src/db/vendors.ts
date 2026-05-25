@@ -77,9 +77,13 @@ export async function updateVendor(
       | 'location'
       | 'timezone'
       | 'enquiry_form'
+      | 'booking_form'
       | 'ical_token'
       | 'stripe_account_id'
       | 'stripe_onboarding_complete'
+      | 'anthropic_api_key'
+      | 'email_handle'
+      | 'ceremony_types'
     >
   >
 ): Promise<void> {

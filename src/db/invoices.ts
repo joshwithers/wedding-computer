@@ -43,10 +43,12 @@ export async function createInvoice(
     notes?: string | null
   }
 ): Promise<Invoice> {
+  const token = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+    .map((b) => b.toString(16).padStart(2, '0')).join('')
   const result = await db
     .prepare(
-      `INSERT INTO invoices (vendor_id, contact_id, wedding_id, title, description, amount_cents, currency, line_items, booking_fee_type, booking_fee_value, notes)
-       VALUES (?, ?, ?, ?, ?, ?, 'aud', ?, ?, ?, ?)
+      `INSERT INTO invoices (vendor_id, contact_id, wedding_id, title, description, amount_cents, currency, line_items, booking_fee_type, booking_fee_value, public_token, notes)
+       VALUES (?, ?, ?, ?, ?, ?, 'aud', ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
@@ -59,17 +61,35 @@ export async function createInvoice(
       JSON.stringify(data.line_items),
       data.booking_fee_type,
       data.booking_fee_value,
+      token,
       data.notes ?? null
     )
     .first<Invoice>()
   return result!
 }
 
+export async function getInvoiceByToken(
+  db: D1Database,
+  token: string
+): Promise<(Invoice & { vendor_name: string; vendor_category: string; contact_name: string | null }) | null> {
+  return db
+    .prepare(
+      `SELECT i.*, vp.business_name AS vendor_name, vp.category AS vendor_category,
+              (c.first_name || ' ' || c.last_name) AS contact_name
+       FROM invoices i
+       JOIN vendor_profiles vp ON vp.id = i.vendor_id
+       LEFT JOIN contacts c ON c.id = i.contact_id
+       WHERE i.public_token = ?`
+    )
+    .bind(token)
+    .first<Invoice & { vendor_name: string; vendor_category: string; contact_name: string | null }>()
+}
+
 export async function updateInvoice(
   db: D1Database,
   vendorId: string,
   invoiceId: string,
-  data: Partial<Pick<Invoice, 'title' | 'description' | 'amount_cents' | 'line_items' | 'booking_fee_type' | 'booking_fee_value' | 'status' | 'notes' | 'due_date' | 'paid_at'>>
+  data: Partial<Pick<Invoice, 'title' | 'description' | 'amount_cents' | 'line_items' | 'booking_fee_type' | 'booking_fee_value' | 'status' | 'notes' | 'due_date' | 'paid_at' | 'booking_form_data'>>
 ): Promise<void> {
   const sets: string[] = []
   const values: unknown[] = []
@@ -181,7 +201,7 @@ export function generatePaymentSchedule(
 ): { label: string; amount_cents: number; due_date: string | null }[] {
   let bookingFeeCents: number
   if (bookingFeeType === 'percentage') {
-    bookingFeeCents = Math.round((totalCents * bookingFeeValue) / 10000)
+    bookingFeeCents = Math.round((totalCents * bookingFeeValue) / 100)
   } else {
     bookingFeeCents = bookingFeeValue
   }

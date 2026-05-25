@@ -15,7 +15,8 @@ import {
 } from '../../db/weddings'
 import { getContact, updateContact } from '../../db/contacts'
 import { createActivity } from '../../db/activities'
-import { requireString, trimOrNull } from '../../lib/validation'
+import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
+import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, daysUntil } from '../../lib/date'
 import { createEvent } from '../../db/calendar'
 
@@ -87,6 +88,7 @@ weddings.get('/app/weddings/new', (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
   const contactId = c.req.query('contact')
+  const types: string[] = vendor.ceremony_types ? JSON.parse(vendor.ceremony_types) : []
 
   return c.html(
     <AppLayout title="New wedding" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
@@ -95,6 +97,7 @@ weddings.get('/app/weddings/new', (c) => {
           action="/app/weddings/new"
           csrfToken={c.get('csrfToken')}
           contactId={contactId}
+          ceremonyTypes={types}
         />
       </div>
     </AppLayout>
@@ -114,6 +117,7 @@ weddings.post('/app/weddings/new', async (c) => {
       time: trimOrNull(body.time),
       location: trimOrNull(body.location),
       notes: trimOrNull(body.notes),
+      ceremony_type: trimOrNull(body.ceremony_type) ?? 'wedding',
       created_by_user_id: user.id,
     })
 
@@ -138,20 +142,83 @@ weddings.post('/app/weddings/new', async (c) => {
       })
     }
 
-    // Link contact if provided
+    // Link contact and auto-invite couple
     const contactId = trimOrNull(body.contact_id)
     if (contactId) {
-      await updateContact(c.env.DB, vendor.id, contactId, {
-        wedding_id: wedding.id,
-        status: 'booked',
-      })
-      await createActivity(c.env.DB, contactId, 'status_change', `Promoted to wedding: ${title}`)
+      const contact = await getContact(c.env.DB, vendor.id, contactId)
+      if (contact) {
+        await updateContact(c.env.DB, vendor.id, contactId, {
+          wedding_id: wedding.id,
+          status: 'booked',
+        })
+        await createActivity(c.env.DB, contactId, 'status_change', `Promoted to wedding: ${title}`)
+
+        const inviteData = {
+          vendorName: vendor.business_name,
+          weddingTitle: title,
+          weddingDate: trimOrNull(body.date) ? formatDate(String(body.date)) : null,
+        }
+
+        if (contact.email) {
+          const name = `${contact.first_name} ${contact.last_name}`
+          const coupleUser = await findOrCreateUser(c.env.DB, contact.email, name)
+          await addWeddingMember(c.env.DB, { wedding_id: wedding.id, user_id: coupleUser.id, role: 'couple' })
+          sendCoupleInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
+            email: contact.email, coupleName: contact.first_name, ...inviteData,
+          }).catch((e) => console.error('[INVITE]', e.message))
+        }
+
+        if (contact.partner_email) {
+          const partnerName = [contact.partner_first_name, contact.partner_last_name].filter(Boolean).join(' ') || contact.partner_email.split('@')[0]
+          const partnerUser = await findOrCreateUser(c.env.DB, contact.partner_email, partnerName)
+          await addWeddingMember(c.env.DB, { wedding_id: wedding.id, user_id: partnerUser.id, role: 'couple' })
+          sendCoupleInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
+            email: contact.partner_email, coupleName: contact.partner_first_name ?? partnerName, ...inviteData,
+          }).catch((e) => console.error('[INVITE]', e.message))
+        }
+      }
     }
 
     return c.redirect(`/app/weddings/${wedding.id}`)
   } catch (e: any) {
     return c.redirect(`/app/weddings/new?error=${encodeURIComponent(e.message)}`)
   }
+})
+
+// ─── Invite couple ───
+weddings.post('/app/weddings/:id/invite', async (c) => {
+  const user = c.get('user')
+  const vendor = c.get('vendor')!
+  const weddingId = c.req.param('id')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership || membership.role !== 'owner') return c.text('Not found', 404)
+
+  const body = await c.req.parseBody()
+  const email = String(body.email).trim().toLowerCase()
+  const name = String(body.name).trim()
+
+  if (!isValidEmail(email) || !name) {
+    return c.redirect(`/app/weddings/${weddingId}?error=Valid+email+and+name+required`)
+  }
+
+  const coupleUser = await findOrCreateUser(c.env.DB, email, name)
+  await addWeddingMember(c.env.DB, {
+    wedding_id: weddingId,
+    user_id: coupleUser.id,
+    role: 'couple',
+  })
+
+  const wedding = await getWedding(c.env.DB, weddingId)
+  sendCoupleInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
+    email,
+    coupleName: name.split(' ')[0],
+    vendorName: vendor.business_name,
+    weddingTitle: wedding?.title ?? 'Your wedding',
+    weddingDate: wedding?.date ? formatDate(wedding.date) : null,
+  }).catch((e) => console.error('[INVITE]', e.message))
+
+  return c.redirect(`/app/weddings/${weddingId}?invited=1`)
 })
 
 // ─── Wedding detail ───
@@ -166,8 +233,15 @@ weddings.get('/app/weddings/:id', async (c) => {
   const wedding = await getWedding(c.env.DB, weddingId)
   if (!wedding) return c.text('Wedding not found', 404)
 
-  const members = await getWeddingMembers(c.env.DB, weddingId)
+  const allMembers = await getWeddingMembers(c.env.DB, weddingId)
   const days = wedding.date ? daysUntil(wedding.date) : null
+  const hasCoupleOrGuest = allMembers.some((m) => m.role === 'couple' || m.role === 'guest')
+  const invited = c.req.query('invited')
+
+  const isOwner = membership.role === 'owner'
+  const members = isOwner || wedding.vendor_visibility === 'visible'
+    ? allMembers
+    : allMembers.filter((m) => m.user_id === user.id || m.role === 'couple' || m.role === 'guest')
 
   return c.html(
     <AppLayout
@@ -183,6 +257,11 @@ weddings.get('/app/weddings/:id', async (c) => {
               <a href="/app/weddings" class="hover:text-gray-900">Weddings</a> /
             </p>
             <h2 class="text-xl font-bold">{wedding.title}</h2>
+            {wedding.ceremony_type && wedding.ceremony_type !== 'wedding' && (
+              <span class="inline-block mt-1 px-2.5 py-0.5 bg-papaya-200 text-gray-700 text-xs font-medium rounded-full">
+                {wedding.ceremony_type.charAt(0).toUpperCase() + wedding.ceremony_type.slice(1)}
+              </span>
+            )}
             {wedding.date && (
               <p class="text-sm text-gray-600 mt-1">
                 {formatDate(wedding.date)}
@@ -235,6 +314,46 @@ weddings.get('/app/weddings/:id', async (c) => {
                   </div>
                 ))}
               </div>
+              {membership.role === 'owner' && !hasCoupleOrGuest && (
+                <div class="mt-4 pt-4 border-t border-gray-100">
+                  {invited ? (
+                    <p class="text-sm text-horizon-700 font-medium">Couple invited successfully</p>
+                  ) : (
+                    <form
+                      method="post"
+                      action={`/app/weddings/${wedding.id}/invite`}
+                      class="flex gap-2 items-end"
+                    >
+                      <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                      <div class="flex-1">
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Invite couple</label>
+                        <input
+                          type="email"
+                          name="email"
+                          required
+                          placeholder="couple@email.com"
+                          class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          name="name"
+                          required
+                          placeholder="Their name"
+                          class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        class="bg-horizon-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
+                      >
+                        Invite
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Notes */}
@@ -274,6 +393,8 @@ weddings.get('/app/weddings/:id/edit', async (c) => {
   const wedding = await getWedding(c.env.DB, weddingId)
   if (!wedding) return c.text('Not found', 404)
 
+  const types: string[] = vendor.ceremony_types ? JSON.parse(vendor.ceremony_types) : []
+
   return c.html(
     <AppLayout title={`Edit ${wedding.title}`} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-xl">
@@ -284,6 +405,7 @@ weddings.get('/app/weddings/:id/edit', async (c) => {
           action={`/app/weddings/${wedding.id}/edit`}
           csrfToken={c.get('csrfToken')}
           wedding={wedding}
+          ceremonyTypes={types}
         />
       </div>
     </AppLayout>
@@ -300,14 +422,25 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
   const body = await c.req.parseBody()
   try {
     const title = requireString(body.title, 'Title')
+    const oldWedding = await getWedding(c.env.DB, weddingId)
+    const newStatus = (body.status as Wedding['status']) || undefined
     await updateWedding(c.env.DB, weddingId, {
       title,
       date: trimOrNull(body.date),
       time: trimOrNull(body.time),
       location: trimOrNull(body.location),
-      status: (body.status as Wedding['status']) || undefined,
+      status: newStatus,
+      ceremony_type: trimOrNull(body.ceremony_type),
       notes: trimOrNull(body.notes),
     })
+
+    if (newStatus === 'confirmed' && oldWedding?.status !== 'confirmed') {
+      await c.env.EMAIL_QUEUE.send({
+        type: 'notify_booking_confirmed',
+        payload: JSON.stringify({ weddingId }),
+      })
+    }
+
     return c.redirect(`/app/weddings/${weddingId}`)
   } catch (e: any) {
     return c.redirect(`/app/weddings/${weddingId}/edit?error=${encodeURIComponent(e.message)}`)
@@ -325,6 +458,8 @@ weddings.get('/app/contacts/:id/promote', async (c) => {
     ? `${contact.first_name} & ${contact.partner_first_name}`
     : `${contact.first_name} ${contact.last_name}`
 
+  const types: string[] = vendor.ceremony_types ? JSON.parse(vendor.ceremony_types) : []
+
   return c.html(
     <AppLayout title="Create wedding" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-xl">
@@ -338,6 +473,7 @@ weddings.get('/app/contacts/:id/promote', async (c) => {
           action="/app/weddings/new"
           csrfToken={c.get('csrfToken')}
           contactId={contact.id}
+          ceremonyTypes={types}
           defaults={{
             title: defaultTitle,
             date: contact.wedding_date,
@@ -367,7 +503,12 @@ function WeddingGrid({ weddings }: { weddings: WeddingWithRole[] }) {
             class="bg-white border border-papaya-300/30 rounded-2xl p-4 hover:border-horizon-600/30 hover:bg-papaya-50 transition-colors"
           >
             <div class="flex items-start justify-between mb-2">
-              <h3 class="font-medium text-gray-900">{w.title}</h3>
+              <div>
+                <h3 class="font-medium text-gray-900">{w.title}</h3>
+                {w.ceremony_type && w.ceremony_type !== 'wedding' && (
+                  <span class="inline-block mt-0.5 text-xs text-gray-500">{w.ceremony_type.charAt(0).toUpperCase() + w.ceremony_type.slice(1)}</span>
+                )}
+              </div>
               <WeddingStatusBadge status={w.status} />
             </div>
             {w.date && (
@@ -415,13 +556,16 @@ function WeddingForm({
   wedding,
   contactId,
   defaults,
+  ceremonyTypes,
 }: {
   action: string
   csrfToken: string
   wedding?: Wedding
   contactId?: string | null
   defaults?: { title?: string; date?: string | null; location?: string | null }
+  ceremonyTypes?: string[]
 }) {
+  const types = ceremonyTypes && ceremonyTypes.length > 0 ? ceremonyTypes : ['wedding', 'elopement']
   return (
     <form method="post" action={action} class="space-y-4">
       <input type="hidden" name="_csrf" value={csrfToken} />
@@ -438,6 +582,21 @@ function WeddingForm({
           placeholder="e.g. Sarah & James"
           class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
         />
+      </div>
+
+      <div>
+        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="ceremony_type">Type</label>
+        <select
+          id="ceremony_type"
+          name="ceremony_type"
+          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+        >
+          {types.map((t) => (
+            <option value={t} selected={t === (wedding?.ceremony_type ?? types[0])}>
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

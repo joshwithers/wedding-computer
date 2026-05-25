@@ -86,6 +86,52 @@ settings.get('/app/settings', (c) => {
         </form>
 
         <section class="mt-10 pt-8 border-t border-gray-200">
+          <h2 class="text-base font-bold mb-2">Ceremony types</h2>
+          <p class="text-sm text-gray-500 mb-4">
+            Define the types of ceremonies you offer. These appear as options when creating a new booking.
+          </p>
+          <form method="post" action="/app/settings/ceremony-types">
+            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+            <div class="space-y-2 mb-4" id="ceremony-types">
+              {(() => {
+                const types: string[] = vendor.ceremony_types
+                  ? JSON.parse(vendor.ceremony_types)
+                  : ['wedding', 'elopement']
+                return types.map((t, i) => (
+                  <div class="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      name="ceremony_type"
+                      value={t}
+                      class="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                      placeholder="e.g. wedding, elopement, micro wedding"
+                    />
+                  </div>
+                ))
+              })()}
+              <div class="flex gap-2 items-center">
+                <input
+                  type="text"
+                  name="ceremony_type"
+                  value=""
+                  class="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                  placeholder="Add another type..."
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
+            >
+              Save ceremony types
+            </button>
+          </form>
+          <p class="text-xs text-gray-400 mt-2">
+            Leave a field blank to remove it. The first type is the default for new bookings.
+          </p>
+        </section>
+
+        <section class="mt-10 pt-8 border-t border-gray-200">
           <h2 class="text-base font-bold mb-2">Payments</h2>
           <p class="text-sm text-gray-500 mb-4">
             Connect your Stripe account to accept online payments from clients.
@@ -132,6 +178,126 @@ settings.get('/app/settings', (c) => {
           <p class="text-xs text-gray-400 mt-2">
             You can always record cash, direct debit, and PayID payments manually without Stripe.
           </p>
+        </section>
+
+        <section class="mt-10 pt-8 border-t border-gray-200">
+          <h2 class="text-base font-bold mb-2">Email</h2>
+          <p class="text-sm text-gray-500 mb-4">
+            Set your email handle to send and receive emails as <strong>handle@wedding.computer</strong>.
+          </p>
+          <form method="post" action="/app/settings/email-handle">
+            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+            <div class="max-w-md">
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="email_handle">
+                Email handle
+              </label>
+              <div class="flex items-center gap-0">
+                <input
+                  type="text"
+                  id="email_handle"
+                  name="email_handle"
+                  value={vendor.email_handle ?? ''}
+                  placeholder="yourname"
+                  pattern="[a-z0-9\-]+"
+                  class="flex-1 border border-gray-200 rounded-l-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                />
+                <span class="border border-l-0 border-gray-200 rounded-r-xl px-4 py-3 text-sm text-gray-500 bg-gray-50">
+                  @wedding.computer
+                </span>
+              </div>
+            </div>
+            <button
+              type="submit"
+              class="mt-3 bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
+            >
+              Save
+            </button>
+          </form>
+          {vendor.email_handle && (
+            <p class="text-xs text-horizon-600 mt-2 font-medium">
+              Your email: {vendor.email_handle}@wedding.computer
+            </p>
+          )}
+        </section>
+
+        <section class="mt-10 pt-8 border-t border-gray-200">
+          <h2 class="text-base font-bold mb-2">AI</h2>
+          <p class="text-sm text-gray-500 mb-4">
+            Email drafting uses Cloudflare AI by default. Add your own Anthropic API key for higher quality drafts powered by Claude.
+          </p>
+          <form method="post" action="/app/settings/ai">
+            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+            <div class="max-w-md">
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="anthropic_api_key">
+                Anthropic API key <span class="font-normal text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="password"
+                id="anthropic_api_key"
+                name="anthropic_api_key"
+                value={vendor.anthropic_api_key ?? ''}
+                placeholder="sk-ant-..."
+                class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+              />
+            </div>
+            <button
+              type="submit"
+              class="mt-3 bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
+            >
+              Save
+            </button>
+          </form>
+          {vendor.anthropic_api_key ? (
+            <p class="text-xs text-horizon-600 mt-2 font-medium">Using your Anthropic API key (Claude)</p>
+          ) : (
+            <p class="text-xs text-gray-400 mt-2">Using Cloudflare AI (Llama)</p>
+          )}
+        </section>
+
+        <section class="mt-10 pt-8 border-t border-gray-200">
+          <h2 class="text-base font-bold mb-2">Device sync</h2>
+          <p class="text-sm text-gray-500 mb-4">
+            Sync your contacts and calendar to your phone and computer. Works with Apple Contacts, Apple Calendar, and any CardDAV/CalDAV client.
+          </p>
+          {vendor.ical_token ? (
+            <div class="space-y-4">
+              <FeedUrl
+                label="CardDAV (contacts)"
+                url={`${c.env.APP_URL}/carddav`}
+                description="Add as a CardDAV account. Username and password are both your sync token."
+              />
+              <FeedUrl
+                label="CalDAV (calendar)"
+                url={`${c.env.APP_URL}/caldav`}
+                description="Add as a CalDAV account. Username and password are both your sync token."
+              />
+              <FeedUrl
+                label="iCal feed (read-only)"
+                url={`${c.env.APP_URL}/cal/${vendor.ical_token}`}
+                description="Subscribe to this URL in any calendar app for a read-only feed."
+              />
+              <div class="bg-gray-50 rounded-xl p-4">
+                <p class="text-xs font-bold text-gray-700 mb-1">Your sync token</p>
+                <code class="text-xs text-gray-600 break-all select-all">{vendor.ical_token}</code>
+                <p class="text-xs text-gray-400 mt-2">
+                  Use this as both the username and password when adding a CardDAV or CalDAV account.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <form method="post" action="/app/settings/generate-sync-token">
+              <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+              <button
+                type="submit"
+                class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
+              >
+                Generate sync token
+              </button>
+              <p class="text-xs text-gray-400 mt-2">
+                This creates a unique token for syncing your contacts and calendar to personal devices.
+              </p>
+            </form>
+          )}
         </section>
 
         <section class="mt-10 pt-8 border-t border-gray-200">
@@ -188,6 +354,76 @@ settings.post('/app/settings', async (c) => {
   } catch (e: any) {
     return c.redirect(`/app/settings?error=${encodeURIComponent(e.message)}`)
   }
+})
+
+// ─── Ceremony types ───
+
+settings.post('/app/settings/ceremony-types', async (c) => {
+  const vendor = c.get('vendor')!
+  const body = await c.req.parseBody({ all: true })
+  const raw = body.ceremony_type
+  const types = (Array.isArray(raw) ? raw : [raw])
+    .map((v) => (typeof v === 'string' ? v.trim().toLowerCase() : ''))
+    .filter(Boolean)
+    .filter((v, i, a) => a.indexOf(v) === i)
+
+  await updateVendor(c.env.DB, vendor.id, {
+    ceremony_types: types.length > 0 ? JSON.stringify(types) : null,
+  })
+
+  return c.redirect('/app/settings?saved=1')
+})
+
+// ─── Email handle ───
+
+settings.post('/app/settings/email-handle', async (c) => {
+  const vendor = c.get('vendor')!
+  const body = await c.req.parseBody()
+  const raw = typeof body.email_handle === 'string' ? body.email_handle.trim().toLowerCase() : ''
+  const handle = raw.replace(/[^a-z0-9\-]/g, '') || null
+
+  if (handle && handle.length < 3) {
+    return c.redirect('/app/settings?error=Handle+must+be+at+least+3+characters')
+  }
+
+  if (handle) {
+    const existing = await c.env.DB
+      .prepare('SELECT id FROM vendor_profiles WHERE email_handle = ? AND id != ?')
+      .bind(handle, vendor.id)
+      .first()
+    if (existing) {
+      return c.redirect('/app/settings?error=That+email+handle+is+already+taken')
+    }
+  }
+
+  await updateVendor(c.env.DB, vendor.id, { email_handle: handle })
+
+  return c.redirect('/app/settings?saved=1')
+})
+
+// ─── AI settings ───
+
+settings.post('/app/settings/ai', async (c) => {
+  const vendor = c.get('vendor')!
+  const body = await c.req.parseBody()
+  const key = typeof body.anthropic_api_key === 'string' ? body.anthropic_api_key.trim() || null : null
+
+  await updateVendor(c.env.DB, vendor.id, { anthropic_api_key: key })
+  return c.redirect('/app/settings?saved=1')
+})
+
+// ─── Sync token ───
+
+settings.post('/app/settings/generate-sync-token', async (c) => {
+  const vendor = c.get('vendor')!
+  if (vendor.ical_token) return c.redirect('/app/settings')
+
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  const token = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+
+  await updateVendor(c.env.DB, vendor.id, { ical_token: token })
+  return c.redirect('/app/settings?saved=1')
 })
 
 // ─── Stripe Connect ───
@@ -290,6 +526,23 @@ settings.post('/app/settings/delete-account', async (c) => {
 })
 
 export default settings
+
+function FeedUrl({ label, url, description }: { label: string; url: string; description: string }) {
+  return (
+    <div>
+      <p class="text-xs font-bold text-gray-700 mb-1">{label}</p>
+      <div class="flex items-center gap-2">
+        <input
+          type="text"
+          readonly
+          value={url}
+          class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-gray-50 select-all"
+        />
+      </div>
+      <p class="text-xs text-gray-400 mt-1">{description}</p>
+    </div>
+  )
+}
 
 function Field({
   label,

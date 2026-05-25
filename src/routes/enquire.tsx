@@ -14,9 +14,10 @@ const enquire = new Hono<Env>()
 
 enquire.get('/enquire/:vendorId', async (c) => {
   const vendor = await getVendorById(c.env.DB, c.req.param('vendorId'))
+  const embed = c.req.query('embed') === '1'
   if (!vendor) {
     return c.html(
-      <EnquiryShell>
+      <EnquiryShell embed={embed}>
         <p class="text-gray-600">This enquiry form is no longer available.</p>
       </EnquiryShell>,
       404
@@ -26,7 +27,7 @@ enquire.get('/enquire/:vendorId', async (c) => {
   const config = parseFormConfig(vendor.enquiry_form)
 
   return c.html(
-    <EnquiryShell>
+    <EnquiryShell embed={embed}>
       <EnquiryForm
         vendor={vendor}
         config={config}
@@ -43,10 +44,11 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
 
   const config = parseFormConfig(vendor.enquiry_form)
   const body = await c.req.parseBody()
+  const embed = c.req.query('embed') === '1'
 
   if (body.website_url) {
     return c.html(
-      <EnquiryShell>
+      <EnquiryShell embed={embed}>
         <ThankYou businessName={vendor.business_name} />
       </EnquiryShell>
     )
@@ -65,7 +67,7 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
 
   if (!turnstileOk) {
     return c.html(
-      <EnquiryShell>
+      <EnquiryShell embed={embed}>
         <EnquiryForm
           vendor={vendor}
           config={config}
@@ -95,13 +97,13 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
     })
 
     return c.html(
-      <EnquiryShell>
+      <EnquiryShell embed={embed}>
         <ThankYou businessName={vendor.business_name} />
       </EnquiryShell>
     )
   } catch (e: any) {
     return c.html(
-      <EnquiryShell>
+      <EnquiryShell embed={embed}>
         <EnquiryForm
           vendor={vendor}
           config={config}
@@ -187,15 +189,15 @@ function processSubmission(
 
 // ─── Components ───
 
-function EnquiryShell({ children }: { children: any }) {
+function EnquiryShell({ embed, children }: { embed?: boolean; children: any }) {
   return (
     <html lang="en">
       <head>
         <SharedHead title="Enquiry" />
         <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
       </head>
-      <body class="bg-papaya-50 text-gray-900 antialiased font-sans min-h-screen flex items-center justify-center">
-        <div class="w-full max-w-lg mx-auto px-4 py-8 sm:py-12">
+      <body class={`text-gray-900 antialiased font-sans ${embed ? 'bg-transparent' : 'bg-papaya-50 min-h-screen flex items-center justify-center'}`}>
+        <div class={`w-full max-w-lg mx-auto ${embed ? 'p-0' : 'px-4 py-8 sm:py-12'}`}>
           {children}
         </div>
       </body>

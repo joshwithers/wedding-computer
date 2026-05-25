@@ -8,11 +8,14 @@ import { formatDate, daysUntil } from '../../lib/date'
 
 const dashboard = new Hono<Env>()
 
+dashboard.use('/app', requireAuth, csrf, requireVendor)
 dashboard.use('/app/*', requireAuth, csrf, requireVendor)
 
 dashboard.get('/app', async (c) => {
   const user = c.get('user')
-  const vendor = c.get('vendor')!
+  if (!user) return c.redirect('/login')
+  const vendor = c.get('vendor')
+  if (!vendor) return c.redirect('/onboarding')
   const db = c.env.DB
 
   const today = new Date().toISOString().slice(0, 10)
@@ -35,7 +38,7 @@ dashboard.get('/app', async (c) => {
         .prepare(
           `SELECT id, first_name, last_name, status, created_at
            FROM contacts WHERE vendor_id = ?
-           ORDER BY created_at DESC LIMIT 5`
+           ORDER BY CASE WHEN status = 'new' THEN 0 ELSE 1 END, created_at DESC LIMIT 5`
         )
         .bind(vendor.id)
         .all<{ id: string; first_name: string; last_name: string; status: string; created_at: string }>()
@@ -66,8 +69,8 @@ dashboard.get('/app', async (c) => {
         .prepare(
           `SELECT
              COUNT(*) AS total,
-             SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) AS new_leads,
-             SUM(CASE WHEN status = 'booked' THEN 1 ELSE 0 END) AS booked
+             COALESCE(SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END), 0) AS new_leads,
+             COALESCE(SUM(CASE WHEN status = 'booked' THEN 1 ELSE 0 END), 0) AS booked
            FROM contacts WHERE vendor_id = ?`
         )
         .bind(vendor.id)
@@ -164,7 +167,7 @@ dashboard.get('/app', async (c) => {
                 ) : (
                   <div class="space-y-2">
                     {upcomingEvents.map((ev) => (
-                      <div class="flex items-center gap-2 px-2 py-1.5 -mx-2">
+                      <a href={`/app/calendar?month=${ev.date.slice(0, 7)}`} class="flex items-center gap-2 px-2 py-1.5 -mx-2 hover:bg-papaya-50 rounded-lg">
                         <div class={`w-2 h-2 rounded-full flex-shrink-0 ${
                           ev.type === 'booking' ? 'bg-horizon-600' :
                           ev.type === 'blocked' ? 'bg-grapefruit-400' : 'bg-gray-300'
@@ -173,7 +176,7 @@ dashboard.get('/app', async (c) => {
                           <p class="text-sm font-medium text-gray-900">{ev.title}</p>
                           <p class="text-xs text-gray-500">{formatDate(ev.date)}</p>
                         </div>
-                      </div>
+                      </a>
                     ))}
                   </div>
                 )}

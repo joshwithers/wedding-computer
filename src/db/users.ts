@@ -35,13 +35,17 @@ export async function createUser(
 export async function updateUser(
   db: D1Database,
   id: string,
-  updates: { name?: string; avatar_url?: string | null }
+  updates: { name?: string; phone?: string | null; avatar_url?: string | null }
 ): Promise<void> {
   const sets: string[] = []
   const values: unknown[] = []
   if (updates.name !== undefined) {
     sets.push('name = ?')
     values.push(updates.name)
+  }
+  if (updates.phone !== undefined) {
+    sets.push('phone = ?')
+    values.push(updates.phone)
   }
   if (updates.avatar_url !== undefined) {
     sets.push('avatar_url = ?')

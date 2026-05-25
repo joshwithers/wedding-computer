@@ -2,14 +2,15 @@ import { generateToken } from '../lib/crypto'
 import type { User, Session } from '../types'
 import { getUserByEmail, createUser } from '../db/users'
 import { createSession } from '../db/sessions'
-import { sendEmail, magicLinkEmail } from './email'
+import { sendEmailMessage, magicLinkEmail, coupleInviteEmail } from './email'
 
 const MAGIC_LINK_TTL = 60 * 15 // 15 minutes
 const SESSION_TTL = 60 * 60 * 24 * 30 // 30 days
 
 export async function sendMagicLink(
+  db: D1Database,
   kv: KVNamespace,
-  apiKey: string,
+  resendApiKey: string,
   appUrl: string,
   email: string
 ): Promise<void> {
@@ -20,11 +21,14 @@ export async function sendMagicLink(
     { expirationTtl: MAGIC_LINK_TTL }
   )
   const url = `${appUrl}/login/verify?token=${token}`
-  await sendEmail({
+  await sendEmailMessage({
+    db,
+    resendApiKey,
+    vendorId: null,
     to: email,
     subject: 'Sign in to Wedding Computer',
     html: magicLinkEmail(url),
-    apiKey,
+    isSystem: true,
   })
 }
 
@@ -90,6 +94,44 @@ export async function destroySession(
   await kv.delete(`session:${sessionId}`)
   const { deleteSession } = await import('../db/sessions')
   await deleteSession(db, sessionId)
+}
+
+export async function sendCoupleInvite(
+  db: D1Database,
+  kv: KVNamespace,
+  resendApiKey: string,
+  appUrl: string,
+  data: {
+    email: string
+    coupleName: string
+    vendorName: string
+    weddingTitle: string
+    weddingDate: string | null
+  }
+): Promise<void> {
+  const token = await generateToken(32)
+  await kv.put(
+    `magic:${token}`,
+    JSON.stringify({ email: data.email.toLowerCase() }),
+    { expirationTtl: MAGIC_LINK_TTL }
+  )
+  const loginUrl = `${appUrl}/login/verify?token=${token}`
+  await sendEmailMessage({
+    db,
+    resendApiKey,
+    vendorId: null,
+    to: data.email,
+    toName: data.coupleName,
+    subject: `Your wedding with ${data.vendorName}`,
+    html: coupleInviteEmail({
+      coupleName: data.coupleName,
+      vendorName: data.vendorName,
+      weddingTitle: data.weddingTitle,
+      weddingDate: data.weddingDate,
+      loginUrl,
+    }),
+    isSystem: true,
+  })
 }
 
 export async function findOrCreateUser(

@@ -4,6 +4,15 @@ compatibility_date = "2025-05-01"
 account_id = "56eb0a25e23b5ed8e20b17842ccc14df"
 workers_dev = true
 
+[assets]
+directory = "./public"
+
+[ai]
+binding = "AI"
+
+[[send_email]]
+name = "SEND_EMAIL"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "wedding-computer-db"
@@ -24,7 +33,7 @@ max_retries = 3
 
 [vars]
 APP_URL = "https://wedding.computer"
-TURNSTILE_SITE_KEY = "placeholder"
+TURNSTILE_SITE_KEY = "0x4AAAAAADVwaAJyPYy65UAp"
 
 [observability.logs]
 enabled = true
@@ -32,3 +41,11 @@ invocation_logs = true
 
 [triggers]
 crons = ["0 20 * * *"]
+
+[[routes]]
+pattern = "wedding.computer"
+custom_domain = true
+
+[[routes]]
+pattern = "www.wedding.computer"
+custom_domain = true

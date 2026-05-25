@@ -17,7 +17,7 @@ import { listActivities, createActivity } from '../../db/activities'
 import { requireString, trimOrNull, sanitize } from '../../lib/validation'
 import { formatDate } from '../../lib/date'
 import { draftEmail } from '../../services/ai'
-import { sendEmail } from '../../services/email'
+import { sendEmailMessage } from '../../services/email'
 import { auditLog } from '../../middleware/audit'
 
 const STATUSES = [
@@ -157,6 +157,11 @@ contacts.get('/app/contacts/:id', async (c) => {
   const contact = await getContact(c.env.DB, vendor.id, c.req.param('id'))
   if (!contact) return c.text('Contact not found', 404)
   const activities = await listActivities(c.env.DB, contact.id)
+  const bookingFormRows = await c.env.DB
+    .prepare('SELECT title, booking_form_data FROM invoices WHERE vendor_id = ? AND contact_id = ? AND booking_form_data IS NOT NULL')
+    .bind(vendor.id, contact.id)
+    .all<{ title: string; booking_form_data: string }>()
+    .then((r) => r.results)
 
   return c.html(
     <AppLayout title={`${contact.first_name} ${contact.last_name}`} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
@@ -281,6 +286,10 @@ contacts.get('/app/contacts/:id', async (c) => {
             <DetailCard label="Wedding location" value={contact.wedding_location} />
             <DetailCard label="Source" value={contact.source} />
             <DetailCard label="Added" value={formatDate(contact.created_at)} />
+            <FormDataSection label="Enquiry form" data={contact.form_data} />
+            {bookingFormRows.map((row) => (
+              <FormDataSection label={`Booking form — ${row.title}`} data={row.booking_form_data} />
+            ))}
           </div>
         </div>
       </div>
@@ -492,7 +501,7 @@ contacts.get('/app/contacts/:id/email', async (c) => {
               <div>
                 <label class="block text-xs font-bold text-gray-700 mb-1">Subject</label>
                 <input type="text" name="subject" required
-                  value={`From ${vendor.business_name}`}
+                  value={`Your enquiry with ${vendor.business_name}`}
                   class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
               </div>
               <div>
@@ -527,17 +536,21 @@ contacts.post('/app/contacts/:id/email/draft', async (c) => {
   const purpose = String(body.purpose || 'Follow up on their enquiry')
 
   try {
-    const draft = await draftEmail(c.env.ANTHROPIC_API_KEY, {
-      vendorName: vendor.business_name,
-      vendorCategory: vendor.category,
-      contactName: `${contact.first_name} ${contact.last_name}`,
-      contactEmail: contact.email,
-      weddingDate: contact.wedding_date,
-      weddingLocation: contact.wedding_location,
-      status: contact.status,
-      notes: contact.notes,
-      purpose,
-    })
+    const draft = await draftEmail(
+      c.env.AI,
+      {
+        vendorName: vendor.business_name,
+        vendorCategory: vendor.category,
+        contactName: `${contact.first_name} ${contact.last_name}`,
+        contactEmail: contact.email,
+        weddingDate: contact.wedding_date,
+        weddingLocation: contact.wedding_location,
+        status: contact.status,
+        notes: contact.notes,
+        purpose,
+      },
+      vendor.anthropic_api_key,
+    )
 
     return c.redirect(
       `/app/contacts/${contact.id}/email?draft=${encodeURIComponent(draft)}`
@@ -573,14 +586,18 @@ contacts.post('/app/contacts/:id/email/send', async (c) => {
       </p>
     </div>`
 
-    await sendEmail({
+    await sendEmailMessage({
+      db: c.env.DB,
+      resendApiKey: c.env.RESEND_API_KEY,
+      vendorId: vendor.id,
+      contactId: contact.id,
       to: contact.email,
       toName: `${contact.first_name} ${contact.last_name}`,
       subject,
       html,
-      apiKey: c.env.RESEND_API_KEY,
-      from: `${vendor.business_name} <noreply@wedding.computer>`,
-      replyTo: user.email,
+      from: vendor.email_handle ? `${vendor.email_handle}@wedding.computer` : undefined,
+      fromName: vendor.business_name,
+      replyTo: vendor.email_handle ? `${vendor.email_handle}@wedding.computer` : user.email,
     })
 
     await createActivity(c.env.DB, contact.id, 'email_sent', `Sent: ${subject}`)
@@ -592,12 +609,6 @@ contacts.post('/app/contacts/:id/email/send', async (c) => {
       `/app/contacts/${contact.id}/email?error=${encodeURIComponent(e.message)}`
     )
   }
-})
-
-// ─── Promote to wedding ───
-
-contacts.get('/app/contacts/:id/promote', async (c) => {
-  return c.redirect(`/app/contacts/${c.req.param('id')}`)
 })
 
 export default contacts
@@ -722,6 +733,32 @@ function DetailCard({
       ) : (
         <p class="text-sm text-gray-900">{value}</p>
       )}
+    </div>
+  )
+}
+
+function FormDataSection({ label, data }: { label: string; data: string | null }) {
+  if (!data) return null
+  let parsed: Record<string, string>
+  try {
+    parsed = JSON.parse(data)
+  } catch {
+    return null
+  }
+  const entries = Object.entries(parsed)
+  if (entries.length === 0) return null
+
+  return (
+    <div class="bg-white border border-papaya-300/30 rounded-2xl px-4 py-3">
+      <p class="text-xs text-gray-500 font-bold mb-2">{label}</p>
+      <div class="space-y-1.5">
+        {entries.map(([key, val]) => (
+          <div>
+            <p class="text-xs text-gray-400">{key}</p>
+            <p class="text-sm text-gray-900">{val}</p>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

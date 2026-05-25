@@ -30,7 +30,7 @@ form.get('/app/form', (c) => {
 
   return c.html(
     <AppLayout title="Enquiry Form" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
-      <FormEditor config={config} vendorId={vendor.id} csrfToken={c.get('csrfToken')} saved={!!saved} error={error} />
+      <FormEditor config={config} vendorId={vendor.id} appUrl={c.env.APP_URL} csrfToken={c.get('csrfToken')} saved={!!saved} error={error} />
     </AppLayout>
   )
 })
@@ -248,17 +248,20 @@ function buildConfigFromBody(body: Record<string, string>): FormConfig {
 function FormEditor({
   config,
   vendorId,
+  appUrl,
   csrfToken,
   saved,
   error,
 }: {
   config: FormConfig
   vendorId: string
+  appUrl: string
   csrfToken: string
   saved: boolean
   error?: string | null
 }) {
   const formUrl = `/enquire/${vendorId}`
+  const fullFormUrl = `${appUrl}/enquire/${vendorId}`
 
   return (
     <div class="max-w-2xl">
@@ -329,6 +332,37 @@ function FormEditor({
             Import
           </button>
         </form>
+      </div>
+
+      {/* Share & Embed */}
+      <div class="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+        <h2 class="text-base font-bold mb-1">Share your form</h2>
+        <p class="text-xs text-gray-500 mb-3">Share this link or embed the form on your website.</p>
+        <div class="flex items-center gap-2 mb-3">
+          <input
+            type="text"
+            readonly
+            value={fullFormUrl}
+            class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 bg-gray-50"
+            id="enquiry-link"
+          />
+          <button
+            type="button"
+            onclick="navigator.clipboard.writeText(document.getElementById('enquiry-link').value);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)"
+            class="border border-gray-200 px-3 py-2 rounded-xl text-sm font-bold hover:bg-papaya-50 transition-colors whitespace-nowrap"
+          >
+            Copy
+          </button>
+        </div>
+        <details class="text-xs">
+          <summary class="text-gray-500 cursor-pointer hover:text-gray-700">Embed code</summary>
+          <textarea
+            readonly
+            rows={3}
+            class="mt-2 w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-gray-50 font-mono"
+            onclick="this.select()"
+          >{`<iframe src="${fullFormUrl}?embed=1" width="100%" height="700" frameborder="0"></iframe>`}</textarea>
+        </details>
       </div>
 
       {/* Main form editor */}
