@@ -6,11 +6,16 @@ export async function listInvoices(
 ): Promise<(Invoice & { contact_name: string | null })[]> {
   return db
     .prepare(
-      `SELECT i.*, (c.first_name || ' ' || c.last_name) AS contact_name
+      `SELECT i.id, i.vendor_id, i.contact_id, i.wedding_id, i.title, i.description,
+              i.amount_cents, i.currency, i.status, i.due_date, i.paid_at,
+              i.booking_fee_type, i.booking_fee_value, i.public_token,
+              i.created_at, i.updated_at,
+              (c.first_name || ' ' || c.last_name) AS contact_name
        FROM invoices i
        LEFT JOIN contacts c ON c.id = i.contact_id
        WHERE i.vendor_id = ?
-       ORDER BY i.created_at DESC`
+       ORDER BY i.created_at DESC
+       LIMIT 500`
     )
     .bind(vendorId)
     .all<Invoice & { contact_name: string | null }>()
@@ -162,6 +167,24 @@ export async function createPayment(
     .bind(invoiceId, vendorId, data.label, data.amount_cents, data.due_date ?? null)
     .first<InvoicePayment>()
   return result!
+}
+
+export async function createPaymentsBatch(
+  db: D1Database,
+  vendorId: string,
+  invoiceId: string,
+  payments: { label: string; amount_cents: number; due_date: string | null }[]
+): Promise<void> {
+  if (payments.length === 0) return
+  const stmts = payments.map((p) =>
+    db
+      .prepare(
+        `INSERT INTO invoice_payments (invoice_id, vendor_id, label, amount_cents, due_date)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .bind(invoiceId, vendorId, p.label, p.amount_cents, p.due_date)
+  )
+  await db.batch(stmts)
 }
 
 export async function recordPayment(

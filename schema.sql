@@ -422,3 +422,8 @@ CREATE INDEX IF NOT EXISTS idx_analytics_events_vendor_type ON analytics_events(
 CREATE INDEX IF NOT EXISTS idx_business_goals_vendor ON business_goals(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_vendor ON subscriptions(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe ON subscriptions(stripe_subscription_id);
+
+-- Performance composite indexes
+CREATE INDEX IF NOT EXISTS idx_contacts_vendor_status ON contacts(vendor_id, status);
+CREATE INDEX IF NOT EXISTS idx_invoices_vendor_status ON invoices(vendor_id, status);
+CREATE INDEX IF NOT EXISTS idx_emails_vendor_unread ON emails(vendor_id, direction, is_read, is_system);

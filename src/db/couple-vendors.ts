@@ -150,17 +150,17 @@ export async function syncPlatformVendors(
     .all<{ vendor_profile_id: string }>()
     .then((r) => new Set(r.results.map((e) => e.vendor_profile_id)))
 
-  let created = 0
-  for (const v of platformVendors) {
-    if (existing.has(v.vendor_profile_id)) continue
-    await db
+  const toInsert = platformVendors.filter((v) => !existing.has(v.vendor_profile_id))
+  if (toInsert.length === 0) return 0
+
+  const stmts = toInsert.map((v) =>
+    db
       .prepare(
         `INSERT INTO couple_vendors (wedding_id, name, category, phone, website, instagram, vendor_profile_id, status)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'booked')`
       )
       .bind(weddingId, v.business_name, v.category, v.phone, v.website, v.instagram, v.vendor_profile_id)
-      .run()
-    created++
-  }
-  return created
+  )
+  await db.batch(stmts)
+  return toInsert.length
 }

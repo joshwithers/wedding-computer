@@ -10,7 +10,11 @@ export async function listContacts(
   vendorId: string,
   filters?: ContactFilters
 ): Promise<Contact[]> {
-  let query = 'SELECT * FROM contacts WHERE vendor_id = ?'
+  let query = `SELECT id, vendor_id, first_name, last_name, email, phone,
+    partner_first_name, partner_last_name, partner_email, partner_phone,
+    source, status, wedding_id, wedding_date, wedding_location,
+    last_contacted_at, created_at, updated_at
+    FROM contacts WHERE vendor_id = ?`
   const params: unknown[] = [vendorId]
 
   if (filters?.status) {
@@ -24,7 +28,7 @@ export async function listContacts(
     params.push(term, term, term, term, term)
   }
 
-  query += ' ORDER BY created_at DESC'
+  query += ' ORDER BY created_at DESC LIMIT 500'
 
   return db
     .prepare(query)

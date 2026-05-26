@@ -4,6 +4,14 @@ import { MarketingLayout } from '../views/layouts/marketing'
 
 const marketing = new Hono<Env>()
 
+// Cache marketing pages at the edge — content rarely changes
+marketing.use('*', async (c, next) => {
+  await next()
+  if (c.res.status === 200 && c.req.method === 'GET') {
+    c.res.headers.set('Cache-Control', 'public, max-age=300, s-maxage=3600')
+  }
+})
+
 marketing.get('/', (c) => {
   return c.html(
     <MarketingLayout>

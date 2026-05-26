@@ -14,7 +14,7 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
   <html lang="en">
     <head>
       <SharedHead title={title} />
-      <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+      <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
       <meta name="csrf-token" content={csrfToken} />
     </head>
     <body class="bg-papaya-50 text-gray-900 antialiased font-sans" hx-headers={`{"X-CSRF-Token": "${csrfToken}"}`}>

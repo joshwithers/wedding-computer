@@ -42,8 +42,10 @@ contacts.get('/app/contacts', async (c) => {
   const vendor = c.get('vendor')!
   const status = c.req.query('status') ?? undefined
   const search = c.req.query('search') ?? undefined
-  const items = await listContacts(c.env.DB, vendor.id, { status, search })
-  const counts = await countContactsByStatus(c.env.DB, vendor.id)
+  const [items, counts] = await Promise.all([
+    listContacts(c.env.DB, vendor.id, { status, search }),
+    countContactsByStatus(c.env.DB, vendor.id),
+  ])
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
 
   if (c.req.header('hx-request')) {

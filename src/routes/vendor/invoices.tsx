@@ -12,6 +12,7 @@ import {
   deleteInvoice,
   listPayments,
   createPayment,
+  createPaymentsBatch,
   getPayment,
   recordPayment,
   deletePayment,
@@ -290,9 +291,7 @@ invoices.post('/app/invoices/new', async (c) => {
     const weddingDate = trimOrNull(body.wedding_date)
     const schedule = generatePaymentSchedule(totalCents, feeType, feeValue, installments, weddingDate)
 
-    for (const payment of schedule) {
-      await createPayment(c.env.DB, vendor.id, invoice.id, payment)
-    }
+    await createPaymentsBatch(c.env.DB, vendor.id, invoice.id, schedule)
 
     if (schedule.length > 0) {
       await updateInvoice(c.env.DB, vendor.id, invoice.id, {
