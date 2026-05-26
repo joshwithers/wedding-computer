@@ -1518,8 +1518,8 @@ const CoupleLayout: FC<LayoutProps> = ({ title, user, wedding, csrfToken, childr
     <body class="bg-papaya-50 text-gray-900 antialiased font-sans">
       <header class="bg-grapefruit-700 px-4 sm:px-8 py-4">
         <div class="max-w-3xl mx-auto flex items-center justify-between">
-          <a href={`/wedding/${wedding.id}`} class="flex items-center gap-2 text-lg font-bold tracking-tight text-papaya">
-            <Logo class="w-6 h-6" />
+          <a href={`/wedding/${wedding.id}`} class="flex items-center gap-2 text-sm sm:text-base font-bold tracking-tight text-papaya whitespace-nowrap">
+            <Logo class="w-5 h-5 shrink-0" />
             Wedding Computer
           </a>
           <div class="flex items-center gap-3">

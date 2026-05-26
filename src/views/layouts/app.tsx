@@ -21,12 +21,12 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
       {/* Mobile header + nav */}
       <div class="md:hidden sticky top-0 z-50">
         <header class="bg-grapefruit-700 px-4 py-3 flex items-center justify-between">
-          <a href="/app" class="flex items-center gap-2 text-lg font-bold tracking-tight text-papaya">
-            <Logo class="w-6 h-6" />
+          <a href="/app" class="flex items-center gap-2 text-sm font-bold tracking-tight text-papaya whitespace-nowrap">
+            <Logo class="w-5 h-5 shrink-0" />
             Wedding Computer
           </a>
           <div class="flex items-center gap-2">
-            <div class="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-xs font-bold text-white">
+            <div class="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0">
               {user.name.charAt(0).toUpperCase()}
             </div>
             <button
@@ -70,8 +70,8 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
         {/* Desktop sidebar */}
         <aside class="hidden md:flex md:flex-col w-56 bg-grapefruit-700 shrink-0">
           <div class="px-5 py-5 border-b border-white/10">
-            <a href="/app" class="flex items-center gap-2 text-lg font-bold tracking-tight text-papaya">
-              <Logo class="w-6 h-6" />
+            <a href="/app" class="flex items-center gap-2 text-base font-bold tracking-tight text-papaya whitespace-nowrap">
+              <Logo class="w-5 h-5 shrink-0" />
               Wedding Computer
             </a>
           </div>

@@ -17,8 +17,8 @@ auth.get('/login', (c) => {
   return c.html(
     <AuthLayout title="Sign in">
       <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">
-        <h2 class="text-2xl font-bold mb-1">Welcome back</h2>
-        <p class="text-sm text-gray-500 mb-6">We'll email you a magic link to sign in.</p>
+        <h2 class="text-2xl font-bold mb-1">Sign in</h2>
+        <p class="text-sm text-gray-500 mb-6">Enter your email and we'll send you a magic link.</p>
         {error && <p class="text-sm text-grapefruit-700 font-medium mb-4">{error}</p>}
         {sent && (
           <div class="bg-horizon-50 text-horizon-700 text-sm font-medium rounded-xl p-4 mb-4">
