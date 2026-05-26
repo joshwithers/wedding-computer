@@ -11,7 +11,7 @@ marketing.get('/', (c) => {
         {/* Hero */}
         <section class="py-12 sm:py-16 lg:py-24 text-center">
           <div class="inline-block bg-horizon-50 text-horizon-700 font-semibold text-sm px-4 py-1.5 rounded-full mb-4 sm:mb-6">
-            Free forever
+            Free
           </div>
           <h1 class="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] mb-4 sm:mb-6">
             Run your wedding<br />
@@ -42,7 +42,7 @@ marketing.get('/', (c) => {
         <section class="py-8 sm:py-16">
           <h2 class="text-xl sm:text-2xl font-bold text-center mb-3">Everything you need to run your wedding business</h2>
           <p class="text-center text-gray-500 text-sm mb-8 sm:mb-12 max-w-lg mx-auto">For vendors, couples, and everyone in between.</p>
-          <div class="grid sm:grid-cols-3 gap-6">
+          <div class="grid sm:grid-cols-3 gap-4 sm:gap-6">
             <FeatureCard
               color="horizon"
               icon="crm"
@@ -61,11 +61,6 @@ marketing.get('/', (c) => {
               title="Calendar & device sync"
               desc="Monthly calendar with availability settings. Sync to Apple Calendar via CalDAV, or share a read-only iCal feed with any app."
             />
-          </div>
-        </section>
-
-        <section class="py-8 sm:py-16">
-          <div class="grid sm:grid-cols-3 gap-6">
             <FeatureCard
               color="grapefruit"
               icon="invoice"
@@ -84,11 +79,6 @@ marketing.get('/', (c) => {
               title="AI email drafting"
               desc="One-click personalised drafts for follow-ups, quotes, and confirmations. Powered by Cloudflare AI, or bring your own Anthropic key."
             />
-          </div>
-        </section>
-
-        <section class="py-8 sm:py-16">
-          <div class="grid sm:grid-cols-3 gap-6">
             <FeatureCard
               color="horizon"
               icon="workspace"
@@ -107,11 +97,6 @@ marketing.get('/', (c) => {
               title="CardDAV contact sync"
               desc="Sync your CRM contacts to your phone's native contacts app. Leads show up as real contacts with phone numbers, emails, and wedding notes."
             />
-          </div>
-        </section>
-
-        <section class="py-8 sm:py-16">
-          <div class="grid sm:grid-cols-3 gap-6">
             <FeatureCard
               color="grapefruit"
               icon="data"
@@ -172,7 +157,7 @@ marketing.get('/about', (c) => {
             sides share a workspace so nothing falls through the cracks.
           </p>
           <p>
-            It's free, it's open source, and it's built by people who work in weddings.
+            It's free to use, it's open source, and it's built by people who work in weddings.
           </p>
         </div>
 
@@ -338,7 +323,7 @@ marketing.get('/about', (c) => {
         <div class="bg-horizon-600 rounded-2xl p-6 sm:p-10 text-center text-white">
           <h2 class="text-xl sm:text-2xl font-bold mb-3">Ready to try it?</h2>
           <p class="text-horizon-100 mb-6 max-w-md mx-auto text-sm">
-            Free forever. No credit card. Set up in under a minute.
+            Free to use. No credit card. Set up in under a minute.
           </p>
           <a
             href="/login"
@@ -356,13 +341,13 @@ marketing.get('/pricing', (c) => {
   return c.html(
     <MarketingLayout title="Pricing">
       <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-16 text-center">
-        <h1 class="text-2xl sm:text-4xl font-bold mb-4">Free, forever</h1>
+        <h1 class="text-2xl sm:text-4xl font-bold mb-4">Free to use</h1>
         <p class="text-gray-600 mb-12">
-          Everyone deserves a great CRM. Optional add-ons available down the road.
+          Everything you need to run your wedding business, at no cost.
         </p>
         <div class="bg-white rounded-2xl sm:rounded-3xl border-2 border-horizon-600/20 p-6 sm:p-10 max-w-sm mx-auto shadow-lg shadow-horizon/5">
           <p class="text-4xl sm:text-5xl font-bold mb-2">$0</p>
-          <p class="text-sm text-gray-500 font-medium mb-1">per month, forever</p>
+          <p class="text-sm text-gray-500 font-medium mb-1">per month</p>
           <p class="text-sm text-gray-600 mb-8">
             CRM, calendar, invoicing, and collaboration. No credit card, no catch.
           </p>
