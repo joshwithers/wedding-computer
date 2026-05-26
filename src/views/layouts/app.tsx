@@ -52,9 +52,12 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <MobileNavLink href="/app/form" label="Enquiry Form" />
             <MobileNavLink href="/app/booking-form" label="Booking Form" />
             <MobileNavLink href="/app/contract" label="Contract" />
+            <MobileNavLink href="/app/analytics" label="Analytics" />
+            <MobileNavLink href="/app/subscription" label="Subscription" />
             <div class="border-t border-papaya-300/30 mt-2 pt-2">
               <MobileNavLink href="/account" label="Your Profile" />
               <MobileNavLink href="/app/settings" label="Settings" />
+              {user.is_admin === 1 && <MobileNavLink href="/admin" label="Admin" />}
               <form method="post" action="/logout">
                 <input type="hidden" name="_csrf" value={csrfToken} />
                 <button type="submit" class="w-full text-left px-3 py-2.5 text-sm font-medium text-gray-500 hover:bg-papaya-100 rounded-xl">
@@ -85,6 +88,7 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <SidebarLink href="/app/form" label="Enquiry Form" />
             <SidebarLink href="/app/booking-form" label="Booking Form" />
             <SidebarLink href="/app/contract" label="Contract" />
+            <SidebarLink href="/app/analytics" label="Analytics" />
           </nav>
           <div class="px-3 py-4 border-t border-white/10 space-y-1">
             <SidebarLink href="/account" label="Your Profile" />

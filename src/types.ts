@@ -48,6 +48,7 @@ export type User = {
   avatar_url: string | null
   avatar_r2_key: string | null
   email_verified: number
+  is_admin: number
   created_at: string
   updated_at: string
 }
@@ -302,3 +303,70 @@ export const VENDOR_CATEGORIES = [
 ] as const
 
 export type VendorCategory = (typeof VENDOR_CATEGORIES)[number]
+
+export type PasskeyCredential = {
+  id: string
+  user_id: string
+  credential_id: string
+  public_key: string
+  counter: number
+  device_name: string | null
+  transports: string | null
+  backed_up: number
+  created_at: string
+  last_used_at: string | null
+}
+
+export type AnalyticsEvent = {
+  id: string
+  vendor_id: string
+  event_type: string
+  contact_id: string | null
+  wedding_id: string | null
+  invoice_id: string | null
+  metadata: string | null
+  created_at: string
+}
+
+export const ANALYTICS_EVENT_TYPES = [
+  'enquiry_received',
+  'contact_created',
+  'status_change',
+  'booking_confirmed',
+  'invoice_created',
+  'invoice_sent',
+  'payment_received',
+  'wedding_created',
+  'couple_invited',
+  'couple_joined',
+] as const
+
+export type AnalyticsEventType = (typeof ANALYTICS_EVENT_TYPES)[number]
+
+export type BusinessGoal = {
+  id: string
+  vendor_id: string
+  period_type: 'year' | 'season' | 'month'
+  period_value: string
+  goal_type: 'enquiries' | 'bookings' | 'revenue'
+  target: number
+  created_at: string
+  updated_at: string
+}
+
+export type Subscription = {
+  id: string
+  vendor_id: string
+  stripe_customer_id: string | null
+  stripe_subscription_id: string | null
+  plan: 'free' | 'pro'
+  status: 'active' | 'past_due' | 'cancelled' | 'trialing'
+  current_period_start: string | null
+  current_period_end: string | null
+  cancel_at_period_end: number
+  created_at: string
+  updated_at: string
+}
+
+export const SEASONS = ['summer', 'autumn', 'winter', 'spring'] as const
+export type Season = (typeof SEASONS)[number]
