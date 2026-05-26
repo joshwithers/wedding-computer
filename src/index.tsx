@@ -16,6 +16,7 @@ import coupleRoute from './routes/couple'
 import bookRoute from './routes/book'
 import bookingFormRoute from './routes/vendor/booking-form'
 import contractRoute from './routes/vendor/contracts'
+import accountRoute from './routes/account'
 import feed from './routes/feed'
 import carddav from './routes/carddav'
 import caldav from './routes/caldav'
@@ -70,6 +71,7 @@ app.route('/', invoices)
 app.route('/', emailRoutes)
 app.route('/', bookingFormRoute)
 app.route('/', contractRoute)
+app.route('/', accountRoute)
 app.route('/', coupleRoute)
 
 // ─── CardDAV + CalDAV ───

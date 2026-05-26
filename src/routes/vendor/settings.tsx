@@ -5,7 +5,7 @@ import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
 import { updateVendor } from '../../db/vendors'
-import { updateUser, deleteUser } from '../../db/users'
+import { deleteUser } from '../../db/users'
 import { VENDOR_CATEGORIES } from '../../types'
 import { trimOrNull, requireString } from '../../lib/validation'
 import { auditLog } from '../../middleware/audit'
@@ -34,11 +34,18 @@ settings.get('/app/settings', (c) => {
         <form method="post" action="/app/settings" class="space-y-6">
           <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
 
-          <section>
-            <h2 class="text-base font-bold mb-4">Personal details</h2>
-            <div class="space-y-4">
-              <Field label="Name" name="name" value={user.name} required />
-              <Field label="Email" name="email" value={user.email} disabled />
+          <section class="bg-papaya-100 rounded-xl p-4 mb-2">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-bold text-gray-900">{user.name}</p>
+                <p class="text-xs text-gray-500">{user.email}</p>
+              </div>
+              <a
+                href="/account"
+                class="text-sm font-bold text-horizon-600 hover:text-horizon-700 transition-colors"
+              >
+                Edit profile
+              </a>
             </div>
           </section>
 
@@ -334,11 +341,9 @@ settings.post('/app/settings', async (c) => {
   const body = await c.req.parseBody()
 
   try {
-    const name = requireString(body.name, 'Name')
     const businessName = requireString(body.business_name, 'Business name')
     const category = requireString(body.category, 'Category')
 
-    await updateUser(c.env.DB, user.id, { name })
     await updateVendor(c.env.DB, vendor.id, {
       business_name: businessName,
       category,

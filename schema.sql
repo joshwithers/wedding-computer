@@ -1,12 +1,25 @@
 -- Wedding Computer — Full Schema
 
--- Users (identified by email, can be vendor or couple or both)
+-- Users (central identity — can be vendor, couple, or both)
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
   email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   phone TEXT,
+  date_of_birth TEXT,
+  address_line_1 TEXT,
+  address_line_2 TEXT,
+  city TEXT,
+  state TEXT,
+  postcode TEXT,
+  country TEXT,
+  instagram TEXT,
+  facebook TEXT,
+  tiktok TEXT,
+  linkedin TEXT,
+  website TEXT,
   avatar_url TEXT,
+  avatar_r2_key TEXT,
   email_verified INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))

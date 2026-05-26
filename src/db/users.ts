@@ -32,31 +32,64 @@ export async function createUser(
   return result!
 }
 
+export type UserUpdates = {
+  name?: string
+  phone?: string | null
+  date_of_birth?: string | null
+  address_line_1?: string | null
+  address_line_2?: string | null
+  city?: string | null
+  state?: string | null
+  postcode?: string | null
+  country?: string | null
+  instagram?: string | null
+  facebook?: string | null
+  tiktok?: string | null
+  linkedin?: string | null
+  website?: string | null
+  avatar_url?: string | null
+  avatar_r2_key?: string | null
+}
+
+const UPDATABLE_FIELDS = [
+  'name', 'phone', 'date_of_birth',
+  'address_line_1', 'address_line_2', 'city', 'state', 'postcode', 'country',
+  'instagram', 'facebook', 'tiktok', 'linkedin', 'website',
+  'avatar_url', 'avatar_r2_key',
+] as const
+
 export async function updateUser(
   db: D1Database,
   id: string,
-  updates: { name?: string; phone?: string | null; avatar_url?: string | null }
+  updates: UserUpdates
 ): Promise<void> {
   const sets: string[] = []
   const values: unknown[] = []
-  if (updates.name !== undefined) {
-    sets.push('name = ?')
-    values.push(updates.name)
+
+  for (const field of UPDATABLE_FIELDS) {
+    if (updates[field] !== undefined) {
+      sets.push(`${field} = ?`)
+      values.push(updates[field])
+    }
   }
-  if (updates.phone !== undefined) {
-    sets.push('phone = ?')
-    values.push(updates.phone)
-  }
-  if (updates.avatar_url !== undefined) {
-    sets.push('avatar_url = ?')
-    values.push(updates.avatar_url)
-  }
+
   if (sets.length === 0) return
   sets.push("updated_at = datetime('now')")
   values.push(id)
   await db
     .prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`)
     .bind(...values)
+    .run()
+}
+
+export async function updateUserEmail(
+  db: D1Database,
+  id: string,
+  newEmail: string
+): Promise<void> {
+  await db
+    .prepare(`UPDATE users SET email = ?, updated_at = datetime('now') WHERE id = ?`)
+    .bind(newEmail.toLowerCase(), id)
     .run()
 }
 

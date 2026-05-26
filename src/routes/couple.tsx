@@ -1523,7 +1523,9 @@ const CoupleLayout: FC<LayoutProps> = ({ title, user, wedding, csrfToken, childr
             Wedding Computer
           </a>
           <div class="flex items-center gap-3">
-            <span class="text-sm font-medium text-papaya-200">{user.name}</span>
+            <a href="/account" class="text-sm font-medium text-papaya-200 hover:text-white transition-colors">
+              {user.name}
+            </a>
             <form method="post" action="/logout" class="flex items-center m-0">
               <input type="hidden" name="_csrf" value={csrfToken} />
               <button type="submit" class="text-sm font-medium text-papaya-200 hover:text-white transition-colors p-0 bg-transparent border-0 cursor-pointer">

@@ -53,6 +53,7 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <MobileNavLink href="/app/booking-form" label="Booking Form" />
             <MobileNavLink href="/app/contract" label="Contract" />
             <div class="border-t border-papaya-300/30 mt-2 pt-2">
+              <MobileNavLink href="/account" label="Your Profile" />
               <MobileNavLink href="/app/settings" label="Settings" />
               <form method="post" action="/logout">
                 <input type="hidden" name="_csrf" value={csrfToken} />
@@ -86,6 +87,7 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <SidebarLink href="/app/contract" label="Contract" />
           </nav>
           <div class="px-3 py-4 border-t border-white/10 space-y-1">
+            <SidebarLink href="/account" label="Your Profile" />
             <SidebarLink href="/app/settings" label="Settings" />
             <form method="post" action="/logout" class="block">
               <input type="hidden" name="_csrf" value={csrfToken} />
@@ -99,12 +101,16 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
         <div class="flex-1 flex flex-col min-w-0">
           <header class="hidden md:flex bg-white border-b border-gray-200 px-8 py-4 items-center justify-between">
             <div class="text-lg font-bold text-gray-900">{title ?? 'Dashboard'}</div>
-            <div class="flex items-center gap-3">
+            <a href="/account" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <span class="text-sm font-medium text-gray-600">{vendor?.business_name ?? user.name}</span>
-              <div class="w-8 h-8 bg-grapefruit-100 rounded-full flex items-center justify-center text-xs font-bold text-grapefruit-700">
-                {user.name.charAt(0).toUpperCase()}
-              </div>
-            </div>
+              {user.avatar_r2_key ? (
+                <img src={`/avatar/${user.id}`} alt={user.name} class="w-8 h-8 rounded-full object-cover" />
+              ) : (
+                <div class="w-8 h-8 bg-grapefruit-100 rounded-full flex items-center justify-center text-xs font-bold text-grapefruit-700">
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+            </a>
           </header>
           <main class="flex-1 px-4 py-4 sm:px-6 sm:py-5 md:px-8 md:py-6">{children}</main>
         </div>

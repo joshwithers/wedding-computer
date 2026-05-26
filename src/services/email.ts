@@ -424,3 +424,30 @@ export function dailyDigestEmail(data: {
     </div>
   `, { preheader: `Your daily summary for ${data.vendorName}` })
 }
+
+export function emailChangeVerifyEmail(verifyUrl: string, name: string): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Verify your new email</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      Hi ${name}, click the link below to confirm this as your new email address on Wedding Computer.
+    </p>
+    <div style="margin:24px 0;">
+      <a href="${verifyUrl}" style="display:inline-block;background:#0066E6;color:#fff;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:700;font-size:14px;">Verify email address</a>
+    </div>
+    <p style="font-size:13px;color:#999;margin:16px 0 0;">
+      This link expires in 15 minutes. If you didn't request this change, you can ignore this email.
+    </p>
+  `, { preheader: 'Verify your new email address' })
+}
+
+export function emailChangeNotifyEmail(newEmail: string): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Email address changed</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 8px;">
+      Your Wedding Computer email address has been changed to <strong>${newEmail}</strong>.
+    </p>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0;">
+      If you didn't make this change, please contact us immediately.
+    </p>
+  `, { preheader: 'Your email address was changed' })
+}

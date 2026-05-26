@@ -33,7 +33,20 @@ export type User = {
   email: string
   name: string
   phone: string | null
+  date_of_birth: string | null
+  address_line_1: string | null
+  address_line_2: string | null
+  city: string | null
+  state: string | null
+  postcode: string | null
+  country: string | null
+  instagram: string | null
+  facebook: string | null
+  tiktok: string | null
+  linkedin: string | null
+  website: string | null
   avatar_url: string | null
+  avatar_r2_key: string | null
   email_verified: number
   created_at: string
   updated_at: string
