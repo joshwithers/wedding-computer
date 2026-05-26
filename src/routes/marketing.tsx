@@ -39,10 +39,10 @@ marketing.get('/', (c) => {
         </section>
 
         {/* Features */}
-        <section class="py-8 sm:py-16">
+        <section class="py-10 sm:py-16">
           <h2 class="text-xl sm:text-2xl font-bold text-center mb-3">Everything you need to run your wedding business</h2>
           <p class="text-center text-gray-500 text-sm mb-8 sm:mb-12 max-w-lg mx-auto">For vendors, couples, and everyone in between.</p>
-          <div class="grid sm:grid-cols-3 gap-4 sm:gap-6">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
             <FeatureCard
               color="horizon"
               icon="crm"
@@ -376,11 +376,14 @@ function AboutFeature({ title, desc }: { title: string; desc: string }) {
 
 function FeatureCard({ color, icon, title, desc }: { color: 'horizon' | 'grapefruit'; icon: string; title: string; desc: string }) {
   const bg = color === 'horizon' ? 'bg-horizon-50' : 'bg-grapefruit-50'
+  const iconBg = color === 'horizon' ? 'bg-horizon-100' : 'bg-grapefruit-100'
   const iconColor = color === 'horizon' ? 'text-horizon-600' : 'text-grapefruit-600'
   return (
-    <div class={`${bg} rounded-2xl p-6`}>
-      <div class={`w-10 h-10 mb-4 ${iconColor}`} dangerouslySetInnerHTML={{ __html: featureIcons[icon] }} />
-      <h3 class="font-bold text-gray-900 mb-2">{title}</h3>
+    <div class={`${bg} rounded-2xl p-5 sm:p-6`}>
+      <div class={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${iconBg} flex items-center justify-center mb-3 sm:mb-4`}>
+        <div class={`w-5 h-5 ${iconColor}`} dangerouslySetInnerHTML={{ __html: featureIcons[icon] }} />
+      </div>
+      <h3 class="font-bold text-gray-900 mb-1.5">{title}</h3>
       <p class="text-sm text-gray-600 leading-relaxed">{desc}</p>
     </div>
   )
