@@ -24,12 +24,12 @@ export async function createSubscription(
   db: D1Database,
   data: {
     vendor_id: string
-    stripe_customer_id: string
-    stripe_subscription_id: string
+    stripe_customer_id: string | null
+    stripe_subscription_id: string | null
     plan: string
     status: string
-    current_period_start: string
-    current_period_end: string
+    current_period_start?: string | null
+    current_period_end?: string | null
   }
 ): Promise<Subscription> {
   const result = await db
@@ -44,8 +44,8 @@ export async function createSubscription(
       data.stripe_subscription_id,
       data.plan,
       data.status,
-      data.current_period_start,
-      data.current_period_end
+      data.current_period_start ?? null,
+      data.current_period_end ?? null
     )
     .first<Subscription>()
   return result!

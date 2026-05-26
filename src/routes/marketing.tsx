@@ -157,7 +157,9 @@ marketing.get('/about', (c) => {
             sides share a workspace so nothing falls through the cracks.
           </p>
           <p>
-            It's free to use, it's open source, and it's built by people who work in weddings.
+            It's free to start, open source, and built by people who work in weddings.
+            Couples use it free forever. Vendors get a generous free tier with all the core tools,
+            and can unlock analytics, benchmarking, and AI features with a Pro plan for $14/month.
           </p>
         </div>
 
@@ -200,6 +202,18 @@ marketing.get('/about', (c) => {
           <AboutFeature
             title="Email notifications"
             desc="Get notified by email when things happen: new enquiries, couple accepts an invite, vendor joins a wedding, booking confirmations, invoice activity. Professional branded HTML emails, not plain text."
+          />
+          <AboutFeature
+            title="Business analytics (Pro)"
+            desc="Track enquiries, bookings, revenue, and conversion rates over time. See your conversion funnel from new lead to booked client. Measure enquiry sources, wedding locations, and average spend. Set goals for the year, season, or month and track your progress. Compare yourself against industry benchmarks from anonymised platform data."
+          />
+          <AboutFeature
+            title="Business goals (Pro)"
+            desc="Set targets for enquiries, bookings, or revenue — by year, season, or month. Track your progress with visual progress bars and year-over-year comparisons. See if you're ahead of pace or need to adjust your marketing."
+          />
+          <AboutFeature
+            title="Service contracts"
+            desc="Write a default service agreement template. When you create an invoice, a copy of the contract is attached automatically. Couples sign digitally on the booking page — their name, email, IP address, and timestamp are recorded."
           />
         </div>
 
@@ -275,8 +289,8 @@ marketing.get('/about', (c) => {
             desc="Full DAV servers built from scratch, not a library. CardDAV serves your contacts as vCard 3.0 with proper line folding (byte-level, not character-level) and UTF-8 support. CalDAV serves calendar events as iCalendar with timezone-aware DTSTART/DTEND properties. Both support PROPFIND discovery, REPORT multiget, and individual resource GET. ETags from row timestamps, CTags from SHA-256 of count + max(updated_at). Read-only by design — write operations return 403."
           />
           <AboutFeature
-            title="Authentication without passwords"
-            desc="Magic links via email and Google/Apple OAuth. No passwords means no credential stuffing, no password reuse, no bcrypt CPU cost, no password reset flows. Session tokens are 32-byte random values stored in Cloudflare KV with 30-day rolling TTL. CSRF protection on every state-changing request. New session ID on every login to prevent fixation."
+            title="Passwordless auth with passkeys"
+            desc="Magic links via email, Google/Apple OAuth, and WebAuthn passkeys (Touch ID, Face ID, Windows Hello, security keys). No passwords means no credential stuffing, no password reuse, no bcrypt CPU cost. Passkey registration and verification built from scratch using Web Crypto API on Cloudflare Workers — no external dependencies. Session tokens are 32-byte random values stored in KV with 30-day rolling TTL. CSRF protection on every state-changing request."
           />
           <AboutFeature
             title="Stripe Connect Standard"
@@ -340,23 +354,68 @@ marketing.get('/about', (c) => {
 marketing.get('/pricing', (c) => {
   return c.html(
     <MarketingLayout title="Pricing">
-      <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-16 text-center">
-        <h1 class="text-2xl sm:text-4xl font-bold mb-4">Free to use</h1>
-        <p class="text-gray-600 mb-12">
-          Everything you need to run your wedding business, at no cost.
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
+        <h1 class="text-2xl sm:text-4xl font-bold mb-4 text-center">Simple pricing</h1>
+        <p class="text-gray-600 mb-10 sm:mb-12 text-center max-w-lg mx-auto">
+          Free for couples. Free core tools for vendors. Unlock analytics and AI with Pro.
         </p>
-        <div class="bg-white rounded-2xl sm:rounded-3xl border-2 border-horizon-600/20 p-6 sm:p-10 max-w-sm mx-auto shadow-lg shadow-horizon/5">
-          <p class="text-4xl sm:text-5xl font-bold mb-2">$0</p>
-          <p class="text-sm text-gray-500 font-medium mb-1">per month</p>
-          <p class="text-sm text-gray-600 mb-8">
-            CRM, calendar, invoicing, and collaboration. No credit card, no catch.
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 max-w-2xl mx-auto">
+          {/* Free plan */}
+          <div class="bg-white rounded-2xl border border-gray-200 p-6 sm:p-8">
+            <p class="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">Free</p>
+            <p class="text-4xl font-bold mb-1">$0</p>
+            <p class="text-sm text-gray-500 mb-6">per month, forever</p>
+            <ul class="space-y-2.5 text-sm text-gray-700 mb-8">
+              <PricingFeature text="CRM with eight-stage pipeline" />
+              <PricingFeature text="Custom enquiry forms" />
+              <PricingFeature text="Calendar with CalDAV/iCal sync" />
+              <PricingFeature text="Invoicing with Stripe Connect" />
+              <PricingFeature text="Built-in email" />
+              <PricingFeature text="Wedding workspaces" />
+              <PricingFeature text="Couple planner dashboard" />
+              <PricingFeature text="CardDAV contact sync" />
+              <PricingFeature text="Passkey sign-in" />
+            </ul>
+            <a
+              href="/login"
+              class="block text-center bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
+            >
+              Get started free
+            </a>
+          </div>
+
+          {/* Pro plan */}
+          <div class="bg-white rounded-2xl border-2 border-horizon-600 p-6 sm:p-8 relative">
+            <div class="absolute -top-3 left-6 bg-horizon-600 text-white text-xs font-bold px-3 py-1 rounded-full">
+              Recommended
+            </div>
+            <p class="text-sm font-bold text-horizon-700 uppercase tracking-wide mb-3">Pro</p>
+            <p class="text-4xl font-bold mb-1">$14</p>
+            <p class="text-sm text-gray-500 mb-6">per month</p>
+            <ul class="space-y-2.5 text-sm text-gray-700 mb-8">
+              <PricingFeature text="Everything in Free" bold />
+              <PricingFeature text="Business analytics dashboard" />
+              <PricingFeature text="Conversion funnel tracking" />
+              <PricingFeature text="Revenue and source insights" />
+              <PricingFeature text="Industry benchmarks" />
+              <PricingFeature text="Business goals and targets" />
+              <PricingFeature text="AI email drafting" />
+              <PricingFeature text="AI-powered recommendations" />
+            </ul>
+            <a
+              href="/login"
+              class="block text-center bg-horizon-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors shadow-lg shadow-horizon/20"
+            >
+              Start with Pro
+            </a>
+          </div>
+        </div>
+
+        <div class="text-center mt-8 sm:mt-12">
+          <p class="text-sm text-gray-500">
+            Couples always free. No credit card required to start. Cancel Pro anytime.
           </p>
-          <a
-            href="/login"
-            class="block bg-horizon-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
-          >
-            Get started
-          </a>
         </div>
       </div>
     </MarketingLayout>
@@ -364,6 +423,15 @@ marketing.get('/pricing', (c) => {
 })
 
 export default marketing
+
+function PricingFeature({ text, bold }: { text: string; bold?: boolean }) {
+  return (
+    <li class="flex items-start gap-2">
+      <svg class="w-4 h-4 text-horizon-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+      <span class={bold ? 'font-bold' : ''}>{text}</span>
+    </li>
+  )
+}
 
 function AboutFeature({ title, desc }: { title: string; desc: string }) {
   return (

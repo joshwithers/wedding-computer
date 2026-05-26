@@ -19,6 +19,7 @@ import { formatDate } from '../../lib/date'
 import { draftEmail } from '../../services/ai'
 import { sendEmailMessage } from '../../services/email'
 import { auditLog } from '../../middleware/audit'
+import { track } from '../../services/analytics'
 
 const STATUSES = [
   { value: 'new', label: 'New' },
@@ -144,6 +145,7 @@ contacts.post('/app/contacts/new', async (c) => {
       notes: trimOrNull(body.notes),
     })
     await createActivity(c.env.DB, contact.id, 'note', 'Contact created')
+    track(c.env.DB, vendor.id, 'contact_created', { contactId: contact.id })
     return c.redirect(`/app/contacts/${contact.id}`)
   } catch (e: any) {
     return c.redirect(`/app/contacts/new?error=${encodeURIComponent(e.message)}`)
@@ -375,6 +377,13 @@ contacts.post('/app/contacts/:id/status', async (c) => {
     'status_change',
     `Status changed from ${oldContact.status} to ${status}`
   )
+  track(c.env.DB, vendor.id, 'status_change', {
+    contactId,
+    metadata: { from: oldContact.status, to: status },
+  })
+  if (status === 'booked') {
+    track(c.env.DB, vendor.id, 'booking_confirmed', { contactId })
+  }
 
   const contact = await getContact(c.env.DB, vendor.id, contactId)
   return c.html(

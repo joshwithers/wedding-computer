@@ -19,6 +19,7 @@ import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, daysUntil } from '../../lib/date'
 import { createEvent } from '../../db/calendar'
+import { track } from '../../services/analytics'
 
 const WEDDING_STATUSES = [
   { value: 'planning', label: 'Planning' },
@@ -142,6 +143,11 @@ weddings.post('/app/weddings/new', async (c) => {
       })
     }
 
+    track(c.env.DB, vendor.id, 'wedding_created', {
+      weddingId: wedding.id,
+      metadata: { ceremony_type: trimOrNull(body.ceremony_type) ?? 'wedding' },
+    })
+
     // Link contact and auto-invite couple
     const contactId = trimOrNull(body.contact_id)
     if (contactId) {
@@ -217,6 +223,8 @@ weddings.post('/app/weddings/:id/invite', async (c) => {
     weddingTitle: wedding?.title ?? 'Your wedding',
     weddingDate: wedding?.date ? formatDate(wedding.date) : null,
   }).catch((e) => console.error('[INVITE]', e.message))
+
+  track(c.env.DB, vendor.id, 'couple_invited', { weddingId })
 
   return c.redirect(`/app/weddings/${weddingId}?invited=1`)
 })
@@ -435,6 +443,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     })
 
     if (newStatus === 'confirmed' && oldWedding?.status !== 'confirmed') {
+      track(c.env.DB, c.get('vendor')!.id, 'booking_confirmed', { weddingId })
       await c.env.EMAIL_QUEUE.send({
         type: 'notify_booking_confirmed',
         payload: JSON.stringify({ weddingId }),

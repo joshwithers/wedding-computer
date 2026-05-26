@@ -6,8 +6,16 @@ import { isValidEmail } from '../lib/validation'
 import { sendMagicLink, verifyMagicLink, findOrCreateUser, createUserSession, destroySession } from '../services/auth'
 import { getVendorByUserId } from '../db/vendors'
 import { getFirstCoupleWedding } from '../db/weddings'
+import { getUserById } from '../db/users'
+import { hasPasskeys } from '../db/passkeys'
 import { rateLimit } from '../middleware/rate-limit'
 import { auditLog } from '../middleware/audit'
+import {
+  generateRegistrationOptions,
+  verifyRegistration,
+  generateAuthenticationOptions,
+  verifyAuthentication,
+} from '../services/webauthn'
 
 const auth = new Hono<Env>()
 
@@ -45,6 +53,22 @@ auth.get('/login', (c) => {
             Send magic link
           </button>
         </form>
+        <div class="mt-4 text-center">
+          <div class="relative mb-4">
+            <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-200"></div></div>
+            <div class="relative flex justify-center"><span class="bg-white px-3 text-xs text-gray-400">or</span></div>
+          </div>
+          <button
+            id="passkey-login-btn"
+            type="button"
+            class="w-full border border-gray-200 py-3 px-4 rounded-xl text-sm font-bold text-gray-700 hover:bg-papaya-50 transition-colors flex items-center justify-center gap-2"
+          >
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+            Sign in with passkey
+          </button>
+          <p id="passkey-error" class="text-sm text-grapefruit-700 font-medium mt-2 hidden"></p>
+        </div>
+        {PasskeyLoginScript()}
       </div>
     </AuthLayout>
   )
@@ -131,5 +155,180 @@ auth.get('/dev/login/:email', async (c) => {
   if (coupleWedding) return c.redirect(`/wedding/${coupleWedding.wedding_id}`)
   return c.redirect('/onboarding')
 })
+
+// ─── Passkey API routes ───
+
+// Registration: step 1 — get options (requires active session)
+auth.post('/auth/passkey/register/options', async (c) => {
+  const sessionId = getCookie(c, 'wc_session')
+  if (!sessionId) return c.json({ error: 'Not authenticated' }, 401)
+  const sessionData = await c.env.KV.get(`session:${sessionId}`)
+  if (!sessionData) return c.json({ error: 'Session expired' }, 401)
+  const { userId } = JSON.parse(sessionData)
+  const user = await getUserById(c.env.DB, userId)
+  if (!user) return c.json({ error: 'User not found' }, 404)
+
+  const options = await generateRegistrationOptions(
+    c.env.KV, c.env.DB,
+    { id: user.id, email: user.email, name: user.name },
+    c.env.APP_URL
+  )
+  return c.json(options)
+})
+
+// Registration: step 2 — verify
+auth.post('/auth/passkey/register/verify', async (c) => {
+  const sessionId = getCookie(c, 'wc_session')
+  if (!sessionId) return c.json({ error: 'Not authenticated' }, 401)
+  const sessionData = await c.env.KV.get(`session:${sessionId}`)
+  if (!sessionData) return c.json({ error: 'Session expired' }, 401)
+  const { userId } = JSON.parse(sessionData)
+
+  const body = await c.req.json()
+  const result = await verifyRegistration(
+    c.env.KV, c.env.DB, userId, body.credential, c.env.APP_URL, body.deviceName
+  )
+
+  if (!result.verified) {
+    return c.json({ error: result.error ?? 'Verification failed' }, 400)
+  }
+
+  return c.json({ verified: true })
+})
+
+// Authentication: step 1 — get options (no session required)
+auth.post('/auth/passkey/login/options', rateLimit(10, 60), async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : undefined
+
+  const options = await generateAuthenticationOptions(
+    c.env.KV, c.env.DB, c.env.APP_URL, email
+  )
+  return c.json(options)
+})
+
+// Authentication: step 2 — verify and create session
+auth.post('/auth/passkey/login/verify', rateLimit(10, 60), async (c) => {
+  const body = await c.req.json()
+  const result = await verifyAuthentication(
+    c.env.KV, c.env.DB, body.credential, c.env.APP_URL
+  )
+
+  if (!result.verified || !result.userId) {
+    return c.json({ error: result.error ?? 'Verification failed' }, 400)
+  }
+
+  const user = await getUserById(c.env.DB, result.userId)
+  if (!user) return c.json({ error: 'User not found' }, 404)
+
+  const ip = c.req.header('cf-connecting-ip') ?? null
+  const ua = c.req.header('user-agent') ?? null
+  const sid = await createUserSession(c.env.DB, c.env.KV, user, ip, ua)
+
+  setCookie(c, 'wc_session', sid, {
+    path: '/',
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Lax',
+    maxAge: 60 * 60 * 24 * 30,
+  })
+
+  await auditLog(c, 'login', 'user', user.id, { method: 'passkey' }).catch(() => {})
+
+  const vendor = await getVendorByUserId(c.env.DB, user.id)
+  if (vendor) return c.json({ redirect: '/app' })
+  const coupleWedding = await getFirstCoupleWedding(c.env.DB, user.id)
+  if (coupleWedding) return c.json({ redirect: `/wedding/${coupleWedding.wedding_id}` })
+  return c.json({ redirect: '/onboarding' })
+})
+
+// ─── Passkey login script ───
+
+function PasskeyLoginScript() {
+  return (
+    <script dangerouslySetInnerHTML={{ __html: `
+(function() {
+  var btn = document.getElementById('passkey-login-btn');
+  var errEl = document.getElementById('passkey-error');
+  if (!btn || !window.PublicKeyCredential) {
+    if (btn) btn.style.display = 'none';
+    return;
+  }
+
+  function b64urlToArr(b64) {
+    var s = b64.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    var bin = atob(s);
+    var arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return arr;
+  }
+  function arrToB64url(arr) {
+    var bin = '';
+    for (var i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
+    return btoa(bin).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+  }
+
+  btn.addEventListener('click', async function() {
+    errEl.classList.add('hidden');
+    try {
+      var optRes = await fetch('/auth/passkey/login/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      if (!optRes.ok) throw new Error('Failed to get options');
+      var opts = await optRes.json();
+
+      var publicKey = {
+        challenge: b64urlToArr(opts.challenge),
+        timeout: opts.timeout,
+        rpId: opts.rpId,
+        userVerification: opts.userVerification
+      };
+      if (opts.allowCredentials && opts.allowCredentials.length > 0) {
+        publicKey.allowCredentials = opts.allowCredentials.map(function(c) {
+          var o = { id: b64urlToArr(c.id), type: c.type };
+          if (c.transports) o.transports = c.transports;
+          return o;
+        });
+      }
+
+      var cred = await navigator.credentials.get({ publicKey: publicKey });
+      var verRes = await fetch('/auth/passkey/login/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          credential: {
+            id: cred.id,
+            rawId: arrToB64url(new Uint8Array(cred.rawId)),
+            type: cred.type,
+            response: {
+              clientDataJSON: arrToB64url(new Uint8Array(cred.response.clientDataJSON)),
+              authenticatorData: arrToB64url(new Uint8Array(cred.response.authenticatorData)),
+              signature: arrToB64url(new Uint8Array(cred.response.signature)),
+              userHandle: cred.response.userHandle ? arrToB64url(new Uint8Array(cred.response.userHandle)) : undefined
+            }
+          }
+        })
+      });
+      var result = await verRes.json();
+      if (result.redirect) {
+        window.location.href = result.redirect;
+      } else if (result.error) {
+        errEl.textContent = result.error;
+        errEl.classList.remove('hidden');
+      }
+    } catch(e) {
+      if (e.name !== 'NotAllowedError') {
+        errEl.textContent = 'Passkey sign-in failed. Try magic link instead.';
+        errEl.classList.remove('hidden');
+      }
+    }
+  });
+})();
+`}} />
+  )
+}
 
 export default auth

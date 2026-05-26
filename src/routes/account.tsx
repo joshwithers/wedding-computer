@@ -14,6 +14,8 @@ import { sendEmailMessage, emailChangeVerifyEmail, emailChangeNotifyEmail } from
 import { auditLog } from '../middleware/audit'
 import { destroySession } from '../services/auth'
 import { deleteCookie, getCookie } from 'hono/cookie'
+import { listPasskeys, deletePasskey } from '../db/passkeys'
+import type { PasskeyCredential } from '../types'
 
 const account = new Hono<Env>()
 
@@ -245,6 +247,9 @@ account.get('/account', async (c) => {
           </button>
         </form>
       </section>
+
+      {/* ─── Passkeys ─── */}
+      <PasskeySection passkeys={await listPasskeys(c.env.DB, user.id)} csrfToken={c.get('csrfToken')} />
 
       {/* ─── Data management ─── */}
       <section class="mt-10 pt-8 border-t border-gray-200">
@@ -542,5 +547,156 @@ account.get('/avatar/:userId', async (c) => {
 
   return new Response(object.body, { headers })
 })
+
+// ─── Passkey delete ───
+
+account.post('/account/passkeys/:id/delete', async (c) => {
+  const user = c.get('user')
+  const passkeyId = c.req.param('id')
+
+  await deletePasskey(c.env.DB, passkeyId, user.id)
+  return c.redirect('/account?saved=1')
+})
+
+// ─── Passkey section component ───
+
+function PasskeySection({ passkeys, csrfToken }: { passkeys: PasskeyCredential[]; csrfToken: string }) {
+  return (
+    <section class="mt-10 pt-8 border-t border-gray-200">
+      <h2 class="text-base font-bold mb-2">Passkeys</h2>
+      <p class="text-sm text-gray-500 mb-4">
+        Use a passkey to sign in without email. Works with Touch ID, Face ID, Windows Hello, or a security key.
+      </p>
+
+      {passkeys.length > 0 && (
+        <div class="space-y-2 mb-4">
+          {passkeys.map((pk) => (
+            <div class="flex items-center justify-between bg-white border border-gray-200 rounded-xl p-3">
+              <div>
+                <p class="text-sm font-bold text-gray-900">
+                  {pk.device_name ?? 'Passkey'}
+                  {pk.backed_up ? <span class="text-xs text-gray-400 ml-2">Synced</span> : null}
+                </p>
+                <p class="text-xs text-gray-500">
+                  Added {new Date(pk.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {pk.last_used_at ? ` · Last used ${new Date(pk.last_used_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}` : ''}
+                </p>
+              </div>
+              <form method="post" action={`/account/passkeys/${pk.id}/delete`} onsubmit="return confirm('Remove this passkey?')">
+                <input type="hidden" name="_csrf" value={csrfToken} />
+                <button type="submit" class="text-xs text-gray-400 hover:text-grapefruit-600 transition-colors">
+                  Remove
+                </button>
+              </form>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button
+        id="add-passkey-btn"
+        type="button"
+        class="bg-white border border-gray-200 text-gray-700 py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
+      >
+        Add a passkey
+      </button>
+      <p id="passkey-msg" class="text-sm mt-2 hidden"></p>
+
+      <script dangerouslySetInnerHTML={{ __html: `
+(function() {
+  var btn = document.getElementById('add-passkey-btn');
+  var msgEl = document.getElementById('passkey-msg');
+  if (!btn || !window.PublicKeyCredential) {
+    if (btn) btn.style.display = 'none';
+    return;
+  }
+
+  function b64urlToArr(b64) {
+    var s = b64.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    var bin = atob(s);
+    var arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return arr;
+  }
+  function arrToB64url(arr) {
+    var bin = '';
+    for (var i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
+    return btoa(bin).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+  }
+
+  btn.addEventListener('click', async function() {
+    msgEl.classList.add('hidden');
+    try {
+      var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+      var headers = { 'Content-Type': 'application/json' };
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+      var optRes = await fetch('/auth/passkey/register/options', {
+        method: 'POST', headers: headers
+      });
+      if (!optRes.ok) throw new Error('Failed to get options');
+      var opts = await optRes.json();
+
+      var publicKey = {
+        challenge: b64urlToArr(opts.challenge),
+        rp: opts.rp,
+        user: {
+          id: b64urlToArr(opts.user.id),
+          name: opts.user.name,
+          displayName: opts.user.displayName
+        },
+        pubKeyCredParams: opts.pubKeyCredParams,
+        timeout: opts.timeout,
+        attestation: opts.attestation,
+        authenticatorSelection: opts.authenticatorSelection
+      };
+      if (opts.excludeCredentials) {
+        publicKey.excludeCredentials = opts.excludeCredentials.map(function(c) {
+          return { id: b64urlToArr(c.id), type: c.type };
+        });
+      }
+
+      var cred = await navigator.credentials.create({ publicKey: publicKey });
+      var deviceName = prompt('Name this passkey (optional):', '') || null;
+
+      var verRes = await fetch('/auth/passkey/register/verify', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+          deviceName: deviceName,
+          credential: {
+            id: cred.id,
+            rawId: arrToB64url(new Uint8Array(cred.rawId)),
+            type: cred.type,
+            response: {
+              clientDataJSON: arrToB64url(new Uint8Array(cred.response.clientDataJSON)),
+              attestationObject: arrToB64url(new Uint8Array(cred.response.attestationObject))
+            },
+            authenticatorAttachment: cred.authenticatorAttachment || undefined
+          }
+        })
+      });
+      var result = await verRes.json();
+      if (result.verified) {
+        window.location.reload();
+      } else {
+        msgEl.textContent = result.error || 'Registration failed';
+        msgEl.className = 'text-sm text-grapefruit-700 mt-2';
+        msgEl.classList.remove('hidden');
+      }
+    } catch(e) {
+      if (e.name !== 'NotAllowedError') {
+        msgEl.textContent = 'Passkey registration failed. Your browser may not support this feature.';
+        msgEl.className = 'text-sm text-grapefruit-700 mt-2';
+        msgEl.classList.remove('hidden');
+      }
+    }
+  });
+})();
+`}} />
+    </section>
+  )
+}
 
 export default account

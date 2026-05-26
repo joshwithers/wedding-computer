@@ -5,6 +5,7 @@ import { getVendorById } from '../db/vendors'
 import { createContact } from '../db/contacts'
 import { createActivity } from '../db/activities'
 import { verifyTurnstile } from '../services/turnstile'
+import { track } from '../services/analytics'
 import { rateLimit } from '../middleware/rate-limit'
 import { sanitize, isValidEmail } from '../lib/validation'
 import { parseFormConfig } from '../lib/form-schema'
@@ -89,6 +90,11 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
     })
 
     await createActivity(c.env.DB, contact.id, 'lead', 'Enquiry submitted via website form')
+
+    track(c.env.DB, vendorId, 'enquiry_received', {
+      contactId: contact.id,
+      metadata: { source: 'website' },
+    })
 
     await c.env.EMAIL_QUEUE.send({
       type: 'new_lead',

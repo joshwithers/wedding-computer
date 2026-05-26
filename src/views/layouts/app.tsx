@@ -89,10 +89,12 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <SidebarLink href="/app/booking-form" label="Booking Form" />
             <SidebarLink href="/app/contract" label="Contract" />
             <SidebarLink href="/app/analytics" label="Analytics" />
+            <SidebarLink href="/app/subscription" label="Subscription" />
           </nav>
           <div class="px-3 py-4 border-t border-white/10 space-y-1">
             <SidebarLink href="/account" label="Your Profile" />
             <SidebarLink href="/app/settings" label="Settings" />
+            {user.is_admin === 1 && <SidebarLink href="/admin" label="Admin" />}
             <form method="post" action="/logout" class="block">
               <input type="hidden" name="_csrf" value={csrfToken} />
               <button type="submit" class="block w-full text-left px-3 py-2 text-sm font-medium text-papaya-200 hover:bg-white/10 hover:text-white rounded-xl transition-colors">

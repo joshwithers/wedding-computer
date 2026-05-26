@@ -22,6 +22,7 @@ import { getContractTemplate, createContractForInvoice, getContractByInvoice } f
 import { requireString, trimOrNull } from '../../lib/validation'
 import { formatDate } from '../../lib/date'
 import { auditLog } from '../../middleware/audit'
+import { track } from '../../services/analytics'
 
 const invoices = new Hono<Env>()
 
@@ -298,6 +299,12 @@ invoices.post('/app/invoices/new', async (c) => {
         due_date: schedule[0].due_date,
       })
     }
+
+    track(c.env.DB, vendor.id, 'invoice_created', {
+      contactId: contactId ?? undefined,
+      invoiceId: invoice.id,
+      metadata: { amount_cents: totalCents },
+    })
 
     // Auto-attach contract template if vendor has one
     const contractTemplate = await getContractTemplate(c.env.DB, vendor.id)
@@ -583,6 +590,12 @@ invoices.post('/app/invoices/:id/send', async (c) => {
 
   await updateInvoice(c.env.DB, vendor.id, invoice.id, { status: 'sent' })
   await auditLog(c, 'invoice_sent', 'invoice', invoice.id, { amount_cents: invoice.amount_cents }).catch(() => {})
+  track(c.env.DB, vendor.id, 'invoice_sent', {
+    invoiceId: invoice.id,
+    contactId: invoice.contact_id ?? undefined,
+    weddingId: invoice.wedding_id ?? undefined,
+    metadata: { amount_cents: invoice.amount_cents },
+  })
 
   if (invoice.wedding_id && invoice.contact_id) {
     const contact = await c.env.DB
@@ -626,6 +639,12 @@ invoices.post('/app/invoices/:id/payments/:paymentId/record', async (c) => {
   await recordPayment(c.env.DB, vendor.id, c.req.param('paymentId'), method, notes)
   await recalculateInvoiceStatus(c.env.DB, vendor.id, invoice.id)
   await auditLog(c, 'payment_recorded', 'invoice', invoice.id, { payment_id: c.req.param('paymentId'), method }).catch(() => {})
+  track(c.env.DB, vendor.id, 'payment_received', {
+    invoiceId: invoice.id,
+    contactId: invoice.contact_id ?? undefined,
+    weddingId: invoice.wedding_id ?? undefined,
+    metadata: { method },
+  })
 
   return c.redirect(`/app/invoices/${invoice.id}`)
 })
