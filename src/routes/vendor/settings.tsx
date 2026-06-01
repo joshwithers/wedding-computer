@@ -747,43 +747,60 @@ settings.post('/app/settings/stripe/connect', async (c) => {
   const vendor = c.get('vendor')!
   const user = c.get('user')
 
-  let accountId = vendor.stripe_account_id
-  if (!accountId) {
-    const res = await fetch('https://api.stripe.com/v1/accounts', {
+  if (!c.env.STRIPE_SECRET_KEY) {
+    return c.redirect('/app/settings?error=Stripe+is+not+configured+yet.+The+platform+needs+a+Stripe+secret+key.')
+  }
+
+  try {
+    let accountId = vendor.stripe_account_id
+    if (!accountId) {
+      const res = await fetch('https://api.stripe.com/v1/accounts', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${c.env.STRIPE_SECRET_KEY}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          type: 'standard',
+          'metadata[vendor_id]': vendor.id,
+          email: user.email,
+        }),
+      })
+      const account = (await res.json()) as { id: string; error?: { message: string } }
+      if (!account.id || account.error) {
+        console.error('[stripe] create account failed:', account)
+        return c.redirect(`/app/settings?error=${encodeURIComponent(account.error?.message || 'Failed to create Stripe account')}`)
+      }
+      accountId = account.id
+
+      const { updateVendor: update } = await import('../../db/vendors')
+      await update(c.env.DB, vendor.id, { stripe_account_id: accountId } as any)
+    }
+
+    const res = await fetch('https://api.stripe.com/v1/account_links', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${c.env.STRIPE_SECRET_KEY}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        type: 'standard',
-        'metadata[vendor_id]': vendor.id,
-        email: user.email,
+        account: accountId,
+        type: 'account_onboarding',
+        refresh_url: `${c.env.APP_URL}/app/settings?stripe=refresh`,
+        return_url: `${c.env.APP_URL}/app/settings?stripe=complete`,
       }),
     })
-    const account = (await res.json()) as { id: string }
-    accountId = account.id
+    const link = (await res.json()) as { url: string; error?: { message: string } }
+    if (!link.url || link.error) {
+      console.error('[stripe] account_links failed:', link)
+      return c.redirect(`/app/settings?error=${encodeURIComponent(link.error?.message || 'Failed to create Stripe onboarding link')}`)
+    }
 
-    const { updateVendor: update } = await import('../../db/vendors')
-    await update(c.env.DB, vendor.id, { stripe_account_id: accountId } as any)
+    return c.redirect(link.url)
+  } catch (err: any) {
+    console.error('[stripe] connect error:', err)
+    return c.redirect(`/app/settings?error=${encodeURIComponent('Stripe connection failed: ' + (err.message || 'unknown error'))}`)
   }
-
-  const res = await fetch('https://api.stripe.com/v1/account_links', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${c.env.STRIPE_SECRET_KEY}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      account: accountId,
-      type: 'account_onboarding',
-      refresh_url: `${c.env.APP_URL}/app/settings?stripe=refresh`,
-      return_url: `${c.env.APP_URL}/app/settings?stripe=complete`,
-    }),
-  })
-  const link = (await res.json()) as { url: string }
-
-  return c.redirect(link.url)
 })
 
 settings.get('/app/settings/stripe/callback', async (c) => {
