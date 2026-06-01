@@ -25,6 +25,7 @@ type WeddingFrontmatter = {
   title: string
   date?: string | null
   time?: string | null
+  duration_hours?: number | null
   location?: string | null
   location_lat?: number | null
   location_lng?: number | null
@@ -60,6 +61,7 @@ export function weddingToMarkdown(wedding: Wedding): MarkdownDocument<WeddingFro
     title: wedding.title,
     date: wedding.date,
     time: wedding.time,
+    duration_hours: wedding.duration_hours,
     location: wedding.location,
     location_lat: wedding.location_lat,
     location_lng: wedding.location_lng,
@@ -106,6 +108,7 @@ export function markdownToWedding(
     title: fm.title ?? '',
     date: fm.date ?? null,
     time: fm.time ?? null,
+    duration_hours: fm.duration_hours ?? null,
     location: fm.location ?? null,
     location_lat: fm.location_lat ?? null,
     location_lng: fm.location_lng ?? null,

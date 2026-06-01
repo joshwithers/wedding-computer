@@ -108,6 +108,7 @@ export type Wedding = {
   title: string
   date: string | null
   time: string | null
+  duration_hours: number | null
   location: string | null
   location_lat: number | null
   location_lng: number | null

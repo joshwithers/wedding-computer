@@ -94,4 +94,18 @@ export function formatTime(time: string): string {
   return m === 0 ? `${hour}${period}` : `${hour}:${String(m).padStart(2, '0')}${period}`
 }
 
+/**
+ * Add hours to a time string. Returns "HH:MM" format.
+ * Handles overflow past midnight by capping at 23:59.
+ *   addHoursToTime("14:00", 2)   → "16:00"
+ *   addHoursToTime("14:00", 1.5) → "15:30"
+ */
+export function addHoursToTime(startTime: string, hours: number): string {
+  const [h, m] = startTime.split(':').map(Number)
+  const totalMinutes = h * 60 + m + Math.round(hours * 60)
+  const endH = Math.min(Math.floor(totalMinutes / 60), 23)
+  const endM = totalMinutes >= 24 * 60 ? 59 : totalMinutes % 60
+  return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`
+}
+
 export const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const

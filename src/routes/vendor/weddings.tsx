@@ -20,7 +20,7 @@ import { createActivity } from '../../db/activities'
 import type { Bindings, VendorProfile } from '../../types'
 import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
-import { formatDate, daysUntil } from '../../lib/date'
+import { formatDate, formatTime, daysUntil, addHoursToTime } from '../../lib/date'
 import { createEvent } from '../../db/calendar'
 import { track } from '../../services/analytics'
 
@@ -133,10 +133,13 @@ weddings.post('/app/weddings/new', async (c) => {
 
   try {
     const title = requireString(body.title, 'Title')
+    const durationRaw = trimOrNull(body.duration_hours)
+    const durationHours = durationRaw ? parseFloat(durationRaw) : null
     const wedding = await createWedding(c.env.DB, {
       title,
       date: trimOrNull(body.date),
       time: trimOrNull(body.time),
+      duration_hours: durationHours && !isNaN(durationHours) ? durationHours : null,
       location: trimOrNull(body.location),
       notes: trimOrNull(body.notes),
       ceremony_type: trimOrNull(body.ceremony_type) ?? 'wedding',
@@ -153,14 +156,17 @@ weddings.post('/app/weddings/new', async (c) => {
 
     // Auto-create calendar event if wedding has a date
     const weddingDate = trimOrNull(body.date)
+    const startTime = trimOrNull(body.time)
     if (weddingDate) {
+      const endTime = startTime && durationHours ? addHoursToTime(startTime, durationHours) : null
       await createEvent(c.env.DB, vendor.id, {
         title,
         date: weddingDate,
-        start_time: trimOrNull(body.time),
+        start_time: startTime,
+        end_time: endTime,
         type: 'booking',
         wedding_id: wedding.id,
-        all_day: !trimOrNull(body.time),
+        all_day: !startTime,
       })
     }
 
@@ -404,7 +410,17 @@ weddings.get('/app/weddings/:id', async (c) => {
             {wedding.date && (
               <InfoCard label="Date" value={formatDate(wedding.date)} />
             )}
-            {wedding.time && <InfoCard label="Time" value={wedding.time} />}
+            {wedding.time && (
+              <InfoCard
+                label="Time"
+                value={
+                  formatTime(wedding.time) +
+                  (wedding.duration_hours
+                    ? ` (${wedding.duration_hours % 1 === 0 ? wedding.duration_hours + 'h' : Math.floor(wedding.duration_hours) + 'h 30m'})`
+                    : '')
+                }
+              />
+            )}
             {wedding.location && <InfoCard label="Location" value={wedding.location} />}
             <InfoCard label="Your role" value={membership.role === 'owner' ? 'Owner' : vendor.category} />
             <InfoCard label="Created" value={formatDate(wedding.created_at)} />
@@ -458,18 +474,48 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     const title = requireString(body.title, 'Title')
     const oldWedding = await getWedding(c.env.DB, weddingId)
     const newStatus = (body.status as Wedding['status']) || undefined
+    const durationRaw = trimOrNull(body.duration_hours)
+    const durationHours = durationRaw ? parseFloat(durationRaw) : null
+    const startTime = trimOrNull(body.time)
+
     await updateWedding(c.env.DB, weddingId, {
       title,
       date: trimOrNull(body.date),
-      time: trimOrNull(body.time),
+      time: startTime,
+      duration_hours: durationHours && !isNaN(durationHours) ? durationHours : null,
       location: trimOrNull(body.location),
       status: newStatus,
       ceremony_type: trimOrNull(body.ceremony_type),
       notes: trimOrNull(body.notes),
     })
 
-    // Push updated wedding to storage (GitHub/R2)
+    // Update the linked calendar event's times if one exists
     const vendor = c.get('vendor')!
+    try {
+      const weddingDate = trimOrNull(body.date)
+      if (weddingDate) {
+        const endTime = startTime && durationHours ? addHoursToTime(startTime, durationHours) : null
+        const { updateEvent } = await import('../../db/calendar')
+        // Find the booking event for this wedding
+        const eventRow = await c.env.DB
+          .prepare("SELECT id FROM calendar_events WHERE wedding_id = ? AND vendor_id = ? AND type = 'booking' LIMIT 1")
+          .bind(weddingId, vendor.id)
+          .first<{ id: string }>()
+        if (eventRow) {
+          await updateEvent(c.env.DB, vendor.id, eventRow.id, {
+            title,
+            date: weddingDate,
+            start_time: startTime,
+            end_time: endTime,
+            all_day: startTime ? 0 : 1,
+          })
+        }
+      }
+    } catch (calErr) {
+      console.error('[weddings] Failed to update calendar event:', calErr)
+    }
+
+    // Push updated wedding to storage (GitHub/R2)
     pushWeddingToStorage(c.env, vendor, weddingId).catch(() => {})
 
     if (newStatus === 'confirmed' && oldWedding?.status !== 'confirmed') {
@@ -652,7 +698,7 @@ function WeddingForm({
           />
         </div>
         <div>
-          <label class="block text-sm font-bold text-gray-700 mb-1.5" for="time">Time</label>
+          <label class="block text-sm font-bold text-gray-700 mb-1.5" for="time">Start time</label>
           <input
             type="time"
             id="time"
@@ -660,6 +706,21 @@ function WeddingForm({
             value={wedding?.time ?? ''}
             class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
           />
+        </div>
+        <div>
+          <label class="block text-sm font-bold text-gray-700 mb-1.5" for="duration_hours">Duration (hours)</label>
+          <select
+            id="duration_hours"
+            name="duration_hours"
+            class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+          >
+            <option value="">—</option>
+            {[0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8, 10, 12].map((h) => (
+              <option value={String(h)} selected={wedding?.duration_hours === h}>
+                {h === 0.5 ? '30 min' : h % 1 === 0 ? `${h}h` : `${Math.floor(h)}h 30m`}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

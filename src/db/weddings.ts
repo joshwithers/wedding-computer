@@ -38,6 +38,7 @@ export async function createWedding(
     title: string
     date?: string | null
     time?: string | null
+    duration_hours?: number | null
     location?: string | null
     notes?: string | null
     ceremony_type?: string | null
@@ -46,14 +47,15 @@ export async function createWedding(
 ): Promise<Wedding> {
   const result = await db
     .prepare(
-      `INSERT INTO weddings (title, date, time, location, notes, ceremony_type, created_by_user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO weddings (title, date, time, duration_hours, location, notes, ceremony_type, created_by_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
       data.title,
       data.date ?? null,
       data.time ?? null,
+      data.duration_hours ?? null,
       data.location ?? null,
       data.notes ?? null,
       data.ceremony_type ?? 'wedding',
@@ -66,7 +68,7 @@ export async function createWedding(
 export async function updateWedding(
   db: D1Database,
   weddingId: string,
-  data: Partial<Pick<Wedding, 'title' | 'date' | 'time' | 'location' | 'status' | 'notes' | 'ceremony_type' | 'vendor_visibility' | 'reception_location' | 'reception_time' | 'getting_ready_location' | 'getting_ready_time' | 'timeline_notes' | 'dress_code' | 'guest_count'>>
+  data: Partial<Pick<Wedding, 'title' | 'date' | 'time' | 'duration_hours' | 'location' | 'status' | 'notes' | 'ceremony_type' | 'vendor_visibility' | 'reception_location' | 'reception_time' | 'getting_ready_location' | 'getting_ready_time' | 'timeline_notes' | 'dress_code' | 'guest_count'>>
 ): Promise<void> {
   const sets: string[] = []
   const values: unknown[] = []

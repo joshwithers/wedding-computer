@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS weddings (
   title TEXT NOT NULL,
   date TEXT,
   time TEXT,
+  duration_hours REAL,
   location TEXT,
   location_lat REAL,
   location_lng REAL,
