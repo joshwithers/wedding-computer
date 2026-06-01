@@ -2,7 +2,10 @@
 
 A multi-party wedding collaboration platform for the wedding industry. Vendors manage leads, contacts, calendars, and invoicing. Couples track vendors, budgets, and wedding details. Everyone coordinates on a shared wedding entity.
 
+Your data is stored as **plain text markdown files** — not trapped in a proprietary database. Read the [open standard](https://wedding.computer/standard).
+
 **Live:** [wedding.computer](https://wedding.computer)
+**Source:** [github.com/joshwithers/wedding-computer](https://github.com/joshwithers/wedding-computer)
 **License:** AGPL-3.0
 
 ## Tech Stack
@@ -11,17 +14,23 @@ A multi-party wedding collaboration platform for the wedding industry. Vendors m
 |---|---|
 | Runtime | Cloudflare Workers |
 | Framework | Hono (TypeScript, JSX) |
-| Database | Cloudflare D1 (SQLite) |
-| Storage | Cloudflare R2 |
+| Database | Cloudflare D1 (SQLite) — queryable index |
+| Storage | Cloudflare R2 — markdown files (source of truth) |
 | KV | Cloudflare KV (sessions, cache) |
 | Jobs | Cloudflare Queues |
-| Auth | Magic links + OAuth |
+| Auth | Magic links + OAuth + Passkeys |
 | Payments | Stripe Connect |
 | Email | Resend + Cloudflare Email Routing |
 | AI | Anthropic Claude + Cloudflare Workers AI |
 | Frontend | Server-rendered JSX + htmx |
 | CSS | Tailwind CSS (CDN) |
 | Protocols | CardDAV, CalDAV, iCal feeds |
+
+## Data Philosophy
+
+Wedding Computer stores contacts and weddings as plain text markdown files with YAML frontmatter. The D1 database is a queryable index — a cache that can always be rebuilt from the files. If the app disappears, your data still makes perfect sense in any text editor.
+
+We published the file format as an [open standard](https://wedding.computer/standard) (CC0 / public domain) so other tools can read and write the same files. See [how to access your files](https://wedding.computer/docs/plain-text) for detailed instructions on using rclone, Obsidian, the AWS CLI, or any text editor with your data.
 
 ## Getting Started
 
@@ -34,13 +43,15 @@ A multi-party wedding collaboration platform for the wedding industry. Vendors m
 ### Install and Run
 
 ```bash
+git clone https://github.com/joshwithers/wedding-computer.git
+cd wedding-computer
 npm install
 npm run db:migrate:local    # Create local D1 tables
 npm run db:seed:local       # Seed demo data
 npm run dev                 # http://localhost:8787
 ```
 
-Use `/dev/login/josh@withers.co` to bypass auth in local development.
+In local development, use `/dev/login/<email>` (with the seeded email from `seed.sql`) to bypass auth.
 
 ### Environment Secrets
 
@@ -68,6 +79,13 @@ npm run db:migrate:remote   # Migrate production D1
 wrangler deploy             # Deploy to Cloudflare Workers
 ```
 
+### Tests
+
+```bash
+npm test                    # Run all tests (149 across 7 suites)
+npm run test:watch          # Watch mode
+```
+
 ## Directory Overview
 
 ```
@@ -75,8 +93,8 @@ src/
   index.tsx              Entry point, route mounting, cron/queue handlers
   types.ts               All TypeScript interfaces
   routes/
-    marketing.tsx        Public website
-    auth.ts              Login, magic links, OAuth
+    marketing.tsx        Public website, /standard, /docs/plain-text
+    auth.ts              Login, magic links, OAuth, passkeys
     book.tsx             Public booking page (contracts, payments)
     vendor/              Vendor dashboard, CRM, calendar, invoicing
     couple.tsx           Couple dashboard, vendor tracking, wedding editing
@@ -84,8 +102,17 @@ src/
     carddav.ts           CardDAV contact sync
     caldav.ts            CalDAV calendar sync
     feed.ts              iCal feed
-  middleware/             Auth, CSRF, rate limiting
+  middleware/             Auth, CSRF, rate limiting, audit
   db/                    Data access layer (all queries scoped by tenant)
+  storage/               Markdown file storage layer
+    markdown.ts          YAML frontmatter parser/serializer
+    contacts.ts          Contact ↔ markdown + CRUD
+    weddings.ts          Wedding ↔ markdown + file ops
+    slug.ts              Human-readable filename generation
+    r2.ts                R2 StorageBackend implementation
+    sync.ts              Scan-and-index engine (ETag-based)
+    migrate.ts           Lazy D1→markdown migration
+    __tests__/           149 tests covering all storage modules
   services/              Email, notifications, AI, Stripe Connect
   views/                 Layouts, shared components
   lib/                   Utilities (dates, validation, crypto)
@@ -102,20 +129,21 @@ migrations/              Numbered migration files
 - **Booking forms**: Custom form builder, service contracts, e-signatures
 - **Email**: Inbound/outbound email with AI-assisted drafting
 - **Weddings**: Multi-vendor collaboration on shared wedding entities
+- **Plain text data**: All contacts/weddings stored as markdown files you can access anywhere
 
 ### For Couples
 - **Wedding dashboard**: Budget tracking, vendor management, payment overview
 - **Wedding details**: Edit ceremony, reception, getting-ready logistics
 - **Vendor tracking**: Add any vendor (on or off platform), set budgets
 - **Privacy controls**: Toggle vendor-to-vendor visibility
-- **Safety**: Remove vendors silently with admin notification
 
 ### Platform
 - **Zero-JS frontend**: Server-rendered HTML with htmx for interactivity
 - **Global edge**: Sub-50ms responses via Cloudflare Workers
 - **Protocol support**: CardDAV, CalDAV, iCal for native app integration
-- **Daily digest**: Automated vendor summary emails
+- **Open data format**: [Wedding CRM Markdown Standard](https://wedding.computer/standard) (CC0)
 - **Multi-ceremony**: Weddings, elopements, vow renewals, commitments
+- **Open source**: AGPL-3.0 — audit the code, self-host, or contribute
 
 ## License
 

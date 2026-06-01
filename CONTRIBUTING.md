@@ -5,7 +5,7 @@ Thanks for your interest in contributing. This guide covers the workflow and con
 ## Development Setup
 
 ```bash
-git clone https://github.com/weddingcomputer/wedding-computer.git
+git clone https://github.com/joshwithers/wedding-computer.git
 cd wedding-computer
 npm install
 npm run db:migrate:local
@@ -13,7 +13,7 @@ npm run db:seed:local
 npm run dev
 ```
 
-Visit `http://localhost:8787`. Use `/dev/login/josh@withers.co` to bypass auth locally.
+Visit `http://localhost:8787`. Use `/dev/login/<email>` with the seeded email from `seed.sql` to bypass auth locally.
 
 ## Pull Request Workflow
 

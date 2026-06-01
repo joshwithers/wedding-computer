@@ -1,6 +1,6 @@
 # Subscribable Contacts on a Cloudflare Worker (CardDAV)
 
-This document explains how the `forms-backend` worker (`tardis.withers.co`) exposes
+This document explains how the `forms-backend` worker (`your-worker.example.com`) exposes
 its contacts so they can be **subscribed to** from the iOS / macOS Contacts app and
 kept in sync automatically. It is written so another Cloudflare Worker project can
 copy the approach.
@@ -24,14 +24,14 @@ A vCard is just text. Serve it with the right content type and a
 
 ```ts
 // src/assets/contact-vcf.ts
-export const JOSH_VCF = `BEGIN:VCARD
+export const SAMPLE_VCF = `BEGIN:VCARD
 VERSION:3.0
-N:Withers;Josh;;;
-FN:Josh Withers
-ORG:Josh Withers Weddings;
-EMAIL;type=INTERNET;type=pref:josh@withers.co
-TEL;type=pref:+61 411 849 404
-URL:https://marriedbyjosh.com
+N:Doe;Jane;;;
+FN:Jane Doe
+ORG:Jane Doe Weddings;
+EMAIL;type=INTERNET;type=pref:jane@example.com
+TEL;type=pref:+61 400 123 456
+URL:https://example.com
 END:VCARD`
 ```
 
@@ -43,7 +43,7 @@ app.get('/contact.vcf', (c) => {
   return new Response(JOSH_VCF, {
     headers: {
       'Content-Type': 'text/vcard',
-      'Content-Disposition': 'attachment; filename="Josh Withers.vcf"',
+      'Content-Disposition': 'attachment; filename="Jane Doe.vcf"',
       'Cache-Control': 'public, max-age=86400',
     },
   })
@@ -455,7 +455,7 @@ database_name = "forms-db"
 database_id = "..."
 
 [[routes]]
-pattern = "tardis.withers.co"
+pattern = "your-worker.example.com"
 custom_domain = true
 ```
 
@@ -466,7 +466,7 @@ A `*.workers.dev` host works too, but a custom domain is tidier for `/.well-know
 ## 11. How the user actually subscribes
 
 **iOS:** Settings → Apps → Contacts → Contacts Accounts → Add Account → Other →
-**Add CardDAV Account**. Server: `tardis.withers.co` (just the host; iOS finds
+**Add CardDAV Account**. Server: `your-worker.example.com` (just the host; iOS finds
 `/.well-known/carddav`). Username/Password = your `CARDDAV_USER`/`CARDDAV_PASS`.
 
 **macOS:** Contacts → Settings → Accounts → **+** → Other Contacts Account →

@@ -398,7 +398,7 @@ marketing.get('/about', (c) => {
             the community can help make it better.
           </p>
           <p>
-            <a href="https://github.com/weddingcomputer/wedding-computer" class="text-horizon-700 font-bold hover:underline">View the source on GitHub</a>
+            <a href="https://github.com/joshwithers/wedding-computer" class="text-horizon-700 font-bold hover:underline">View the source on GitHub</a>
           </p>
         </div>
 
@@ -872,7 +872,7 @@ Backup plan: The Calyx indoor space.
           </p>
           <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
             <a
-              href="https://github.com/weddingcomputer/wedding-computer"
+              href="https://github.com/joshwithers/wedding-computer"
               class="inline-block bg-white text-horizon-700 font-bold px-6 py-3 rounded-xl hover:bg-horizon-50 transition-colors text-sm"
             >
               View on GitHub

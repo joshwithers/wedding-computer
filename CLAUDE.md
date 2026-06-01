@@ -8,7 +8,7 @@ Wedding Computer is a SaaS platform for the wedding industry. It starts as a ven
 
 **Live URL:** `weddingcomputer.com`
 **License:** AGPL-3.0
-**Repo:** `github.com/weddingcomputer/wedding-computer`
+**Repo:** `github.com/joshwithers/wedding-computer`
 
 ---
 

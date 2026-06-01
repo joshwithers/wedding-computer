@@ -1,13 +1,13 @@
 -- Seed data for local development
 
 INSERT OR IGNORE INTO users (id, email, name, email_verified)
-VALUES ('a1b2c3d4e5f6a1b2c3d4e5f6', 'josh@withers.co', 'Josh Withers', 1);
+VALUES ('a1b2c3d4e5f6a1b2c3d4e5f6', 'demo@wedding.computer', 'Demo Vendor', 1);
 
 INSERT OR IGNORE INTO vendor_profiles (id, user_id, business_name, category, location, bio, ceremony_types)
 VALUES (
   'v1a2b3c4d5e6v1a2b3c4d5e6',
   'a1b2c3d4e5f6a1b2c3d4e5f6',
-  'Josh Withers Celebrant',
+  'Demo Celebrant Co',
   'celebrant',
   'Australia',
   'Marriage celebrant making weddings awesome since 2009.',
