@@ -1,7 +1,34 @@
+/**
+ * Parse a date string from D1 into a Date object.
+ * Handles:
+ *   - Date-only: "2026-07-12" → parse as local date (no timezone shift)
+ *   - Datetime: "2026-07-12 15:00:00" → treat as UTC
+ *   - ISO datetime: "2026-07-12T15:00:00Z" → standard parse
+ *   - Already has timezone: "2026-07-12T15:00:00+10:00" → standard parse
+ */
+function parseDate(str: string): Date {
+  if (!str) return new Date(NaN)
+  const trimmed = str.trim()
+
+  // Date-only (YYYY-MM-DD): parse components directly to avoid timezone issues
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [y, m, d] = trimmed.split('-').map(Number)
+    return new Date(y, m - 1, d)
+  }
+
+  // D1 datetime format "YYYY-MM-DD HH:MM:SS" — treat as UTC
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+    return new Date(trimmed.replace(' ', 'T') + 'Z')
+  }
+
+  // Everything else: let the native parser try
+  return new Date(trimmed)
+}
+
 export function formatDate(iso: string): string {
-  const d = new Date(iso + 'Z')
+  const d = parseDate(iso)
+  if (isNaN(d.getTime())) return iso || '—'
   return d.toLocaleDateString('en-AU', {
-    timeZone: 'Australia/Sydney',
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -9,7 +36,8 @@ export function formatDate(iso: string): string {
 }
 
 export function formatDateTime(iso: string): string {
-  const d = new Date(iso + 'Z')
+  const d = parseDate(iso)
+  if (isNaN(d.getTime())) return iso || '—'
   return d.toLocaleString('en-AU', {
     timeZone: 'Australia/Sydney',
     day: 'numeric',
