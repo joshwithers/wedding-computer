@@ -238,17 +238,17 @@ dashboard.get('/app', async (c) => {
               </p>
             </div>
           </div>
-          <div class="grid sm:grid-cols-2 gap-3 mt-4">
+          <div class="grid sm:grid-cols-3 gap-3 mt-4">
             <a
-              href="/app/settings/export"
-              class="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-3 hover:bg-papaya-50 transition-colors"
+              href="/app/settings#data"
+              class="flex items-center gap-3 border border-horizon-600/20 bg-horizon-50 rounded-xl px-4 py-3 hover:bg-horizon-100 transition-colors"
             >
-              <svg class="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              <svg class="w-5 h-5 text-horizon-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
               <div>
-                <p class="text-sm font-bold text-gray-900">Download your data</p>
-                <p class="text-xs text-gray-500">Export everything as a JSON file</p>
+                <p class="text-sm font-bold text-horizon-700">Sync with GitHub</p>
+                <p class="text-xs text-gray-600">Auto-sync to a private repo, open in Obsidian or VS Code</p>
               </div>
             </a>
             <a
@@ -259,8 +259,20 @@ dashboard.get('/app', async (c) => {
                 <path stroke-linecap="round" stroke-linejoin="round" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
               </svg>
               <div>
-                <p class="text-sm font-bold text-gray-900">Download Markdown files</p>
-                <p class="text-xs text-gray-500">Your contacts and weddings as .md files</p>
+                <p class="text-sm font-bold text-gray-900">Download Markdown</p>
+                <p class="text-xs text-gray-500">Contacts and weddings as .md files</p>
+              </div>
+            </a>
+            <a
+              href="/app/settings/export"
+              class="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-3 hover:bg-papaya-50 transition-colors"
+            >
+              <svg class="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <div>
+                <p class="text-sm font-bold text-gray-900">Download JSON</p>
+                <p class="text-xs text-gray-500">Full export for backups</p>
               </div>
             </a>
           </div>
@@ -309,11 +321,11 @@ function GettingStarted({ userName, businessName }: { userName: string; business
           </div>
           <div class="flex items-start gap-2">
             <span class="text-horizon-600 mt-0.5 font-bold">3.</span>
-            <span>Download your data anytime from Settings or right here on the dashboard</span>
+            <span>Connect GitHub in <a href="/app/settings#data" class="text-horizon-600 font-bold hover:underline">Settings</a> to auto-sync files to a private repo</span>
           </div>
           <div class="flex items-start gap-2">
             <span class="text-horizon-600 mt-0.5 font-bold">4.</span>
-            <span>Open your files in Obsidian, VS Code, or any Markdown editor</span>
+            <span>Clone the repo and open your files in Obsidian, VS Code, or any text editor</span>
           </div>
         </div>
         <div class="mt-3 pt-3 border-t border-horizon-600/10">

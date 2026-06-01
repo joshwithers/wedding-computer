@@ -30,7 +30,9 @@ Your data is stored as **plain text markdown files** — not trapped in a propri
 
 Wedding Computer stores contacts and weddings as plain text markdown files with YAML frontmatter. The D1 database is a queryable index — a cache that can always be rebuilt from the files. If the app disappears, your data still makes perfect sense in any text editor.
 
-We published the file format as an [open standard](https://wedding.computer/standard) (CC0 / public domain) so other tools can read and write the same files. See [how to access your files](https://wedding.computer/docs/plain-text) for detailed instructions on using rclone, Obsidian, the AWS CLI, or any text editor with your data.
+**GitHub sync** lets you connect a private GitHub repository. Your contacts and weddings are pushed to the repo automatically — clone it to your computer and open the files in Obsidian, VS Code, or any text editor. Changes made in the app sync to GitHub in real time.
+
+We published the file format as an [open standard](https://wedding.computer/standard) (CC0 / public domain) so other tools can read and write the same files. See [how to access your files](https://wedding.computer/docs/plain-text) for detailed instructions on using GitHub sync, rclone, Obsidian, the AWS CLI, or any text editor with your data.
 
 ## Getting Started
 
@@ -110,6 +112,7 @@ src/
     weddings.ts          Wedding ↔ markdown + file ops
     slug.ts              Human-readable filename generation
     r2.ts                R2 StorageBackend implementation
+    github.ts            GitHub StorageBackend (Contents API)
     sync.ts              Scan-and-index engine (ETag-based)
     migrate.ts           Lazy D1→markdown migration
     __tests__/           149 tests covering all storage modules
@@ -130,6 +133,7 @@ migrations/              Numbered migration files
 - **Email**: Inbound/outbound email with AI-assisted drafting
 - **Weddings**: Multi-vendor collaboration on shared wedding entities
 - **Plain text data**: All contacts/weddings stored as markdown files you can access anywhere
+- **GitHub sync**: Connect a private repo and your data syncs automatically — open in Obsidian or VS Code
 
 ### For Couples
 - **Wedding dashboard**: Budget tracking, vendor management, payment overview
@@ -141,6 +145,7 @@ migrations/              Numbered migration files
 - **Zero-JS frontend**: Server-rendered HTML with htmx for interactivity
 - **Global edge**: Sub-50ms responses via Cloudflare Workers
 - **Protocol support**: CardDAV, CalDAV, iCal for native app integration
+- **GitHub sync**: Auto-push markdown files to a private repo for local access
 - **Open data format**: [Wedding CRM Markdown Standard](https://wedding.computer/standard) (CC0)
 - **Multi-ceremony**: Weddings, elopements, vow renewals, commitments
 - **Open source**: AGPL-3.0 — audit the code, self-host, or contribute
