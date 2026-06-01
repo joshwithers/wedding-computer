@@ -36,15 +36,43 @@ import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibil
 const app = new Hono<Env>()
 
 app.onError((err, c) => {
-  console.error(`[ERROR] ${c.req.method} ${c.req.path}`, err.message)
+  const url = c.req.url
+  const method = c.req.method
+  const path = c.req.path
+  const userAgent = c.req.header('user-agent') ?? 'unknown'
+  const isHtmx = c.req.header('hx-request') === 'true'
+
+  // Log full error details for debugging
+  console.error(JSON.stringify({
+    level: 'error',
+    handler: 'onError',
+    method,
+    path,
+    url,
+    error: err.message,
+    stack: err.stack?.split('\n').slice(0, 5).join(' | '),
+    userAgent: userAgent.slice(0, 100),
+    isHtmx,
+  }))
+
+  // For htmx partial requests, return a small error fragment
+  if (isHtmx) {
+    return c.html(
+      <div class="bg-grapefruit-50 border border-grapefruit-200 text-grapefruit-700 text-sm rounded-xl p-3">
+        Something went wrong. Please reload the page and try again.
+      </div>,
+      500
+    )
+  }
+
   return c.html(
     <AuthLayout title="Error">
       <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8 text-center">
         <div class="text-4xl mb-4">500</div>
         <h2 class="text-xl font-bold mb-2">Something went wrong</h2>
         <p class="text-sm text-gray-500 mb-6">We hit an unexpected error. Please try again.</p>
-        <a href="/" class="inline-block bg-horizon-600 text-white py-2.5 px-6 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
-          Go home
+        <a href="/app" class="inline-block bg-horizon-600 text-white py-2.5 px-6 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
+          Back to dashboard
         </a>
       </div>
     </AuthLayout>,
