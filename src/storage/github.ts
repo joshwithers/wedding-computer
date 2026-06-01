@@ -33,6 +33,32 @@ type GitHubFileResponse = {
   type: 'file' | 'dir' | 'symlink' | 'submodule'
 }
 
+// Files to ignore when listing/syncing — created by Obsidian, GitHub, or editors.
+// Matched against the filename (not the full path).
+const IGNORED_FILES = new Set([
+  'Welcome.md',       // Obsidian default vault note
+  'README.md',        // GitHub auto-init
+  '.gitignore',
+  '.gitkeep',
+])
+
+// Directory prefixes to ignore entirely
+const IGNORED_DIRS = [
+  '.obsidian/',       // Obsidian config/plugins
+  '.trash/',          // Obsidian trash
+  '.git/',
+]
+
+export function isIgnoredPath(path: string): boolean {
+  const filename = path.split('/').pop() ?? ''
+  if (IGNORED_FILES.has(filename)) return true
+  if (filename.startsWith('.')) return true  // dotfiles
+  for (const dir of IGNORED_DIRS) {
+    if (path.includes(dir)) return true
+  }
+  return false
+}
+
 export class GitHubStorageBackend implements StorageBackend {
   private config: GitHubConfig
   private baseUrl: string
@@ -169,7 +195,7 @@ export class GitHubStorageBackend implements StorageBackend {
     if (!Array.isArray(items)) return { files: [] }
 
     const files: FileMeta[] = items
-      .filter((item) => item.type === 'file' && item.name.endsWith('.md'))
+      .filter((item) => item.type === 'file' && item.name.endsWith('.md') && !isIgnoredPath(item.path))
       .map((item) => ({
         path: this.config.path
           ? item.path.slice(this.config.path.length + 1)

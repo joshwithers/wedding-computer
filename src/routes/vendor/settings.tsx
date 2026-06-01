@@ -671,6 +671,17 @@ async function initialGitHubSync(
 
   const github = new GitHubStorageBackend({ token, repo, branch: 'main', path: '' })
 
+  // Clean up boilerplate files (Obsidian Welcome.md, GitHub README.md)
+  for (const junkFile of ['Welcome.md', 'README.md']) {
+    try {
+      const exists = await github.head(junkFile)
+      if (exists) {
+        await github.delete(junkFile)
+        console.log(`[github-sync] Deleted ${junkFile} from repo`)
+      }
+    } catch { /* ignore — file might not exist or delete might fail */ }
+  }
+
   // Get all contacts from D1
   const contacts = await db
     .prepare('SELECT * FROM contacts WHERE vendor_id = ? ORDER BY created_at ASC')

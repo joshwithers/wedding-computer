@@ -20,6 +20,7 @@ import type { StorageBackend, FileMeta } from './types'
 import { parseMarkdown, ParseError } from './markdown'
 import { markdownToContact, contactCachedData } from './contacts'
 import { markdownToWedding, weddingCachedData } from './weddings'
+import { isIgnoredPath } from './github'
 
 export type SyncResult = {
   indexed: number    // new files found and indexed
@@ -106,8 +107,12 @@ async function syncEntityType(
     storageFiles.map((f) => [f.path, f])
   )
 
-  // Process files that exist in storage
+  // Process files that exist in storage (skip non-data files)
   for (const [path, fileMeta] of storageByPath) {
+    if (isIgnoredPath(path)) {
+      result.skipped++
+      continue
+    }
     const indexEntry = indexByPath.get(path)
 
     if (indexEntry && indexEntry.etag === fileMeta.etag) {
