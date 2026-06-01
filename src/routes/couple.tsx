@@ -134,7 +134,7 @@ couple.get('/wedding/:id', async (c) => {
 
   // Members for collaboration toggle
   const members = await getWeddingMembers(c.env.DB, weddingId)
-  const platformVendorCount = members.filter((m) => m.role === 'owner' || m.role === 'vendor').length
+  const platformVendorCount = members.filter((m) => m.role === 'vendor').length
 
   return c.html(
     <CoupleLayout title={wedding.title} user={user} wedding={wedding} csrfToken={c.get('csrfToken')}>

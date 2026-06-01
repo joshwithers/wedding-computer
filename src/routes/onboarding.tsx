@@ -338,7 +338,7 @@ onboarding.post('/onboarding/wedding', async (c) => {
       created_by_user_id: user.id,
     })
 
-    // Add user as couple member (owner)
+    // Add user as couple member
     await addWeddingMember(c.env.DB, {
       wedding_id: wedding.id,
       user_id: user.id,

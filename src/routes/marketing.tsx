@@ -275,11 +275,11 @@ marketing.get('/about', (c) => {
         <p class="text-gray-500 text-sm mb-6">The thing that ties it all together.</p>
         <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
           <p>
-            When a vendor books a lead, a shared wedding workspace is created. The vendor is the owner. They invite
+            When a vendor books a lead, a shared wedding workspace is created. They invite
             the couple (who get the couple dashboard) and other vendors (who get scoped access to the wedding).
           </p>
           <p>
-            Roles control who sees what. Owners have full control. Vendors see details relevant to their service.
+            Roles control who sees what. Managers (vendors, planners, or couples with the manage permission) have full control. Vendors see details relevant to their service.
             Couples see their vendors, budget, and timeline. Nobody sees more than they should.
           </p>
           <p>

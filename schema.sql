@@ -87,9 +87,10 @@ CREATE TABLE IF NOT EXISTS wedding_members (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
   wedding_id TEXT NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role TEXT NOT NULL CHECK (role IN ('owner','vendor','couple','guest')),
+  role TEXT NOT NULL CHECK (role IN ('vendor','couple','guest')),
   vendor_profile_id TEXT REFERENCES vendor_profiles(id),
   vendor_role TEXT,
+  can_manage INTEGER NOT NULL DEFAULT 0,
   is_financial_party INTEGER NOT NULL DEFAULT 0,
   permissions TEXT NOT NULL DEFAULT '{}',
   status TEXT NOT NULL DEFAULT 'active'

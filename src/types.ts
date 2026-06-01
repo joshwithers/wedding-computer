@@ -148,9 +148,10 @@ export type WeddingMember = {
   id: string
   wedding_id: string
   user_id: string
-  role: 'owner' | 'vendor' | 'couple' | 'guest'
+  role: 'vendor' | 'couple' | 'guest'
   vendor_profile_id: string | null
   vendor_role: string | null
+  can_manage: number
   is_financial_party: number
   permissions: string
   status: 'invited' | 'active' | 'removed'

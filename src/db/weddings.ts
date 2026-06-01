@@ -95,21 +95,27 @@ export async function addWeddingMember(
     role: string
     vendor_profile_id?: string | null
     vendor_role?: string | null
+    can_manage?: boolean
+    is_financial_party?: boolean
   }
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO wedding_members (wedding_id, user_id, role, vendor_profile_id, vendor_role, status, accepted_at)
-       VALUES (?, ?, ?, ?, ?, 'active', datetime('now'))
+      `INSERT INTO wedding_members (wedding_id, user_id, role, vendor_profile_id, vendor_role, can_manage, is_financial_party, status, accepted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', datetime('now'))
        ON CONFLICT(wedding_id, user_id) DO UPDATE SET
-         role = excluded.role, status = 'active', accepted_at = datetime('now')`
+         role = excluded.role, can_manage = excluded.can_manage,
+         is_financial_party = excluded.is_financial_party,
+         status = 'active', accepted_at = datetime('now')`
     )
     .bind(
       data.wedding_id,
       data.user_id,
       data.role,
       data.vendor_profile_id ?? null,
-      data.vendor_role ?? null
+      data.vendor_role ?? null,
+      data.can_manage ? 1 : 0,
+      data.is_financial_party ? 1 : 0,
     )
     .run()
 }

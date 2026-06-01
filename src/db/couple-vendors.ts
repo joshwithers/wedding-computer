@@ -125,7 +125,7 @@ export async function syncPlatformVendors(
        FROM wedding_members wm
        JOIN vendor_profiles vp ON vp.id = wm.vendor_profile_id
        WHERE wm.wedding_id = ? AND wm.status = 'active'
-         AND wm.role IN ('owner', 'vendor')
+         AND wm.role = 'vendor'
          AND wm.vendor_profile_id IS NOT NULL`
     )
     .bind(weddingId)

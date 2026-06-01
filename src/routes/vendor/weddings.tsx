@@ -149,9 +149,10 @@ weddings.post('/app/weddings/new', async (c) => {
     await addWeddingMember(c.env.DB, {
       wedding_id: wedding.id,
       user_id: user.id,
-      role: 'owner',
+      role: 'vendor',
       vendor_profile_id: vendor.id,
       vendor_role: vendor.category,
+      can_manage: true,
     })
 
     // Auto-create calendar event if wedding has a date
@@ -224,13 +225,14 @@ weddings.post('/app/weddings/new', async (c) => {
 })
 
 // ─── Invite couple ───
+// ─── Invite couple to wedding ───
 weddings.post('/app/weddings/:id/invite', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
   const weddingId = c.req.param('id')
 
   const membership = await getMembership(c.env.DB, weddingId, user.id)
-  if (!membership || membership.role !== 'owner') return c.text('Not found', 404)
+  if (!membership || !membership.can_manage) return c.text('Not found', 404)
 
   const body = await c.req.parseBody()
   const email = String(body.email).trim().toLowerCase()
@@ -245,6 +247,7 @@ weddings.post('/app/weddings/:id/invite', async (c) => {
     wedding_id: weddingId,
     user_id: coupleUser.id,
     role: 'couple',
+    can_manage: true,
   })
 
   const wedding = await getWedding(c.env.DB, weddingId)
@@ -257,6 +260,61 @@ weddings.post('/app/weddings/:id/invite', async (c) => {
   }).catch((e) => console.error('[INVITE]', e.message))
 
   track(c.env.DB, vendor.id, 'couple_invited', { weddingId })
+
+  return c.redirect(`/app/weddings/${weddingId}?invited=1`)
+})
+
+// ─── Add vendor to wedding ───
+weddings.post('/app/weddings/:id/add-vendor', async (c) => {
+  const user = c.get('user')
+  const vendor = c.get('vendor')!
+  const weddingId = c.req.param('id')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership || !membership.can_manage) return c.text('Not found', 404)
+
+  const body = await c.req.parseBody()
+  const email = String(body.email).trim().toLowerCase()
+  const name = String(body.name).trim()
+  const vendorRole = String(body.vendor_role || '').trim() || null
+  const canManage = body.can_manage === '1' || body.can_manage === 'on'
+  const isFinancialParty = body.is_financial_party === '1' || body.is_financial_party === 'on'
+
+  if (!isValidEmail(email) || !name) {
+    return c.redirect(`/app/weddings/${weddingId}?error=Valid+email+and+name+required`)
+  }
+
+  // Find or create the vendor user
+  const vendorUser = await findOrCreateUser(c.env.DB, email, name)
+
+  // Check if they have a vendor profile
+  const { getVendorByUserId } = await import('../../db/vendors')
+  const vendorProfile = await getVendorByUserId(c.env.DB, vendorUser.id)
+
+  await addWeddingMember(c.env.DB, {
+    wedding_id: weddingId,
+    user_id: vendorUser.id,
+    role: 'vendor',
+    vendor_profile_id: vendorProfile?.id ?? null,
+    vendor_role: vendorRole ?? vendorProfile?.category ?? null,
+    can_manage: canManage,
+    is_financial_party: isFinancialParty,
+  })
+
+  // Notify the vendor they've been added
+  try {
+    await c.env.EMAIL_QUEUE.send({
+      type: 'notify_vendor_added_to_wedding',
+      payload: JSON.stringify({
+        weddingId,
+        vendorEmail: email,
+        vendorName: name,
+        addedBy: vendor.business_name,
+      }),
+    })
+  } catch { /* best-effort */ }
+
+  track(c.env.DB, vendor.id, 'vendor_added', { weddingId, metadata: { vendorEmail: email } })
 
   return c.redirect(`/app/weddings/${weddingId}?invited=1`)
 })
@@ -278,8 +336,8 @@ weddings.get('/app/weddings/:id', async (c) => {
   const hasCoupleOrGuest = allMembers.some((m) => m.role === 'couple' || m.role === 'guest')
   const invited = c.req.query('invited')
 
-  const isOwner = membership.role === 'owner'
-  const members = isOwner || wedding.vendor_visibility === 'visible'
+  const canManage = !!membership.can_manage
+  const members = canManage || wedding.vendor_visibility === 'visible'
     ? allMembers
     : allMembers.filter((m) => m.user_id === user.id || m.role === 'couple' || m.role === 'guest')
 
@@ -311,7 +369,7 @@ weddings.get('/app/weddings/:id', async (c) => {
               </p>
             )}
           </div>
-          {membership.role === 'owner' && (
+          {canManage && (
             <a
               href={`/app/weddings/${wedding.id}/edit`}
               class="border border-gray-200 px-3 py-1.5 rounded-xl text-sm hover:bg-papaya-50"
@@ -346,52 +404,98 @@ weddings.get('/app/weddings/:id', async (c) => {
                       </p>
                       <p class="text-xs text-gray-500">{m.user_email}</p>
                     </div>
-                    <div class="text-right">
+                    <div class="text-right flex items-center gap-1.5">
                       <span class="text-xs text-gray-500">
-                        {m.role === 'owner' ? 'Owner' : m.vendor_role ?? m.role}
+                        {m.vendor_role ? m.vendor_role.charAt(0).toUpperCase() + m.vendor_role.slice(1) : m.role.charAt(0).toUpperCase() + m.role.slice(1)}
                       </span>
+                      {!!m.can_manage && (
+                        <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">Manager</span>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
-              {membership.role === 'owner' && !hasCoupleOrGuest && (
-                <div class="mt-4 pt-4 border-t border-gray-100">
-                  {invited ? (
-                    <p class="text-sm text-horizon-700 font-medium">Couple invited successfully</p>
-                  ) : (
-                    <form
-                      method="post"
-                      action={`/app/weddings/${wedding.id}/invite`}
-                      class="flex gap-2 items-end"
-                    >
-                      <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                      <div class="flex-1">
-                        <label class="block text-xs font-bold text-gray-700 mb-1">Invite couple</label>
-                        <input
-                          type="email"
-                          name="email"
-                          required
-                          placeholder="couple@email.com"
-                          class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-                        />
-                      </div>
-                      <div>
-                        <input
-                          type="text"
-                          name="name"
-                          required
-                          placeholder="Their name"
-                          class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-                        />
-                      </div>
-                      <button
-                        type="submit"
-                        class="bg-horizon-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
-                      >
-                        Invite
-                      </button>
-                    </form>
+              {canManage && (
+                <div class="mt-4 pt-4 border-t border-gray-100 space-y-4">
+                  {invited && (
+                    <p class="text-sm text-horizon-700 font-medium">Invited successfully</p>
                   )}
+
+                  {/* Invite couple */}
+                  <form
+                    method="post"
+                    action={`/app/weddings/${wedding.id}/invite`}
+                    class="flex gap-2 items-end"
+                  >
+                    <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                    <div class="flex-1">
+                      <label class="block text-xs font-bold text-gray-700 mb-1">Invite couple</label>
+                      <input
+                        type="email"
+                        name="email"
+                        required
+                        placeholder="couple@email.com"
+                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        name="name"
+                        required
+                        placeholder="Their name"
+                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      class="bg-horizon-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
+                    >
+                      Invite
+                    </button>
+                  </form>
+
+                  {/* Add vendor */}
+                  <form
+                    method="post"
+                    action={`/app/weddings/${wedding.id}/add-vendor`}
+                    class="flex gap-2 items-end flex-wrap"
+                  >
+                    <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                    <div class="flex-1 min-w-[140px]">
+                      <label class="block text-xs font-bold text-gray-700 mb-1">Add vendor</label>
+                      <input
+                        type="email"
+                        name="email"
+                        required
+                        placeholder="vendor@email.com"
+                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                      />
+                    </div>
+                    <div class="min-w-[120px]">
+                      <input
+                        type="text"
+                        name="name"
+                        required
+                        placeholder="Business name"
+                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                      />
+                    </div>
+                    <div class="min-w-[100px]">
+                      <input
+                        type="text"
+                        name="vendor_role"
+                        placeholder="Role (e.g. photographer)"
+                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      class="bg-horizon-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
+                    >
+                      Add
+                    </button>
+                  </form>
                 </div>
               )}
             </div>
@@ -422,7 +526,7 @@ weddings.get('/app/weddings/:id', async (c) => {
               />
             )}
             {wedding.location && <InfoCard label="Location" value={wedding.location} />}
-            <InfoCard label="Your role" value={membership.role === 'owner' ? 'Owner' : vendor.category} />
+            <InfoCard label="Your role" value={`${vendor.category.charAt(0).toUpperCase() + vendor.category.slice(1)}${membership.can_manage ? ' (manager)' : ''}`} />
             <InfoCard label="Created" value={formatDate(wedding.created_at)} />
           </div>
         </div>
@@ -438,7 +542,7 @@ weddings.get('/app/weddings/:id/edit', async (c) => {
   const weddingId = c.req.param('id')
 
   const membership = await getMembership(c.env.DB, weddingId, user.id)
-  if (!membership || membership.role !== 'owner') return c.text('Not found', 404)
+  if (!membership || !membership.can_manage) return c.text('Not found', 404)
 
   const wedding = await getWedding(c.env.DB, weddingId)
   if (!wedding) return c.text('Not found', 404)
@@ -467,7 +571,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
   const weddingId = c.req.param('id')
 
   const membership = await getMembership(c.env.DB, weddingId, user.id)
-  if (!membership || membership.role !== 'owner') return c.text('Not found', 404)
+  if (!membership || !membership.can_manage) return c.text('Not found', 404)
 
   const body = await c.req.parseBody()
   try {

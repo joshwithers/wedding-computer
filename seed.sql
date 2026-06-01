@@ -29,10 +29,10 @@ VALUES
   ('w001000000000000w0010000', 'Olivia & Ethan', '2026-07-12', '15:00', 'Melbourne', 'confirmed', 'wedding', 'private', 'a1b2c3d4e5f6a1b2c3d4e5f6'),
   ('w002000000000000w0020000', 'Ava & Partner', '2025-12-01', '14:00', 'Brisbane', 'completed', 'elopement', 'private', 'a1b2c3d4e5f6a1b2c3d4e5f6');
 
-INSERT OR IGNORE INTO wedding_members (id, wedding_id, user_id, role, vendor_profile_id, vendor_role, status, accepted_at)
+INSERT OR IGNORE INTO wedding_members (id, wedding_id, user_id, role, vendor_profile_id, vendor_role, can_manage, status, accepted_at)
 VALUES
-  ('wm01000000000000wm010000', 'w001000000000000w0010000', 'a1b2c3d4e5f6a1b2c3d4e5f6', 'owner', 'v1a2b3c4d5e6v1a2b3c4d5e6', 'celebrant', 'active', datetime('now')),
-  ('wm02000000000000wm020000', 'w002000000000000w0020000', 'a1b2c3d4e5f6a1b2c3d4e5f6', 'owner', 'v1a2b3c4d5e6v1a2b3c4d5e6', 'celebrant', 'active', datetime('now'));
+  ('wm01000000000000wm010000', 'w001000000000000w0010000', 'a1b2c3d4e5f6a1b2c3d4e5f6', 'vendor', 'v1a2b3c4d5e6v1a2b3c4d5e6', 'celebrant', 1, 'active', datetime('now')),
+  ('wm02000000000000wm020000', 'w002000000000000w0020000', 'a1b2c3d4e5f6a1b2c3d4e5f6', 'vendor', 'v1a2b3c4d5e6v1a2b3c4d5e6', 'celebrant', 1, 'active', datetime('now'));
 
 -- Couple users
 INSERT OR IGNORE INTO users (id, email, name, email_verified)

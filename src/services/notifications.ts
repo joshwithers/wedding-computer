@@ -90,7 +90,7 @@ export async function notifyCoupleJoined(env: NotifyEnv, data: {
   if (!wedding) return
 
   const members = await getWeddingMembers(env.db, data.weddingId)
-  const vendors = members.filter((m) => m.role === 'owner' || m.role === 'vendor')
+  const vendors = members.filter((m) => m.role === 'vendor')
 
   for (const vendor of vendors) {
     if (!vendor.vendor_profile_id) continue
@@ -126,7 +126,7 @@ export async function notifyVisibilityChanged(env: NotifyEnv, data: {
   if (!wedding) return
 
   const members = await getWeddingMembers(env.db, data.weddingId)
-  const vendors = members.filter((m) => m.role === 'owner' || m.role === 'vendor')
+  const vendors = members.filter((m) => m.role === 'vendor')
 
   for (const vendor of vendors) {
     if (!vendor.vendor_profile_id) continue
@@ -245,7 +245,7 @@ export async function notifyVendorBooked(env: NotifyEnv, data: {
   if (!bookedVendor) return
 
   const members = await getWeddingMembers(env.db, data.weddingId)
-  const vendors = members.filter((m) => (m.role === 'owner' || m.role === 'vendor') && m.vendor_profile_id !== data.bookedVendorId)
+  const vendors = members.filter((m) => (m.role === 'vendor') && m.vendor_profile_id !== data.bookedVendorId)
 
   for (const vendor of vendors) {
     if (!vendor.vendor_profile_id) continue
@@ -283,7 +283,7 @@ export async function notifyWeddingDetailsUpdated(env: NotifyEnv, data: {
   if (!wedding) return
 
   const members = await getWeddingMembers(env.db, data.weddingId)
-  const vendors = members.filter((m) => m.role === 'owner' || m.role === 'vendor')
+  const vendors = members.filter((m) => m.role === 'vendor')
 
   for (const vendor of vendors) {
     if (!vendor.vendor_profile_id) continue
