@@ -119,10 +119,33 @@ marketing.get('/', (c) => {
             />
             <FeatureCard
               color="grapefruit"
-              icon="notifications"
-              title="Smart notifications"
-              desc="Email notifications for new enquiries, booking confirmations, couple joins, vendor updates. Professional branded HTML — not plain text."
+              icon="plaintext"
+              title="Plain text files"
+              desc="Your contacts and weddings are stored as plain text markdown files with YAML frontmatter. Open them in any text editor, sync with Obsidian, or build your own tools. Your data outlives any app."
             />
+          </div>
+        </section>
+
+        {/* Data philosophy */}
+        <section class="py-10 sm:py-16">
+          <div class="bg-white border border-papaya-300/30 rounded-2xl sm:rounded-3xl p-6 sm:p-10 lg:p-12">
+            <div class="max-w-2xl mx-auto text-center">
+              <div class="w-12 h-12 rounded-2xl bg-horizon-50 flex items-center justify-center mx-auto mb-4">
+                <div class="w-6 h-6 text-horizon-600" dangerouslySetInnerHTML={{ __html: featureIcons.plaintext }} />
+              </div>
+              <h2 class="text-xl sm:text-2xl font-bold mb-3">Your data should outlive any app</h2>
+              <p class="text-gray-600 leading-relaxed mb-4">
+                Wedding Computer stores your contacts and weddings as plain text markdown files — the same
+                format used by Wikipedia, GitHub, and millions of writers worldwide. No proprietary database
+                lock-in. No export button that gives you a useless ZIP file. Your data is always readable,
+                always yours, and will still make sense in 50 years.
+              </p>
+              <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <a href="/standard" class="text-horizon-700 font-bold text-sm hover:underline">Read the open format spec →</a>
+                <span class="hidden sm:inline text-gray-300">|</span>
+                <a href="/docs/plain-text" class="text-horizon-700 font-bold text-sm hover:underline">How to access your files →</a>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -265,6 +288,44 @@ marketing.get('/about', (c) => {
           </p>
         </div>
 
+        {/* Data Philosophy */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-2">Your data, in plain text</h2>
+        <p class="text-gray-500 text-sm mb-6">Built to outlast the app itself.</p>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-6">
+          <p>
+            Most SaaS tools store your data in a proprietary database. If the company shuts down, raises
+            prices, or decides to pivot — your data goes with it. The best you get is a CSV export that
+            loses half the context.
+          </p>
+          <p>
+            Wedding Computer is different. Every contact and wedding is stored as a plain text
+            markdown file with YAML frontmatter — the same open format used by static site generators,
+            note-taking apps like Obsidian, and millions of developers worldwide. These files are human-readable,
+            human-editable, and will still make perfect sense in 50 years on any computer.
+          </p>
+          <p>
+            We think your client relationships are too important to trap inside a database you
+            can't see. So we published the format as an{' '}
+            <a href="/standard" class="text-horizon-700 font-bold hover:underline">open specification</a>{' '}
+            that anyone can use. Other apps can read and write the same files. You can open them
+            in a text editor, sync them with Obsidian, back them up to Git, or build your own tools on top.
+          </p>
+        </div>
+        <div class="space-y-3 mb-12">
+          <AboutFeature
+            title="Markdown files with YAML frontmatter"
+            desc="Each contact is a .md file with structured data (name, email, phone, status, tags) in the YAML header and free-form notes in the body. Each wedding is the same. The format is documented in our open standard — read it at /standard."
+          />
+          <AboutFeature
+            title="No vendor lock-in"
+            desc="Your files aren't trapped in our system. Access them through our app, through the Cloudflare R2 API, through Obsidian, or through any S3-compatible tool. If you leave Wedding Computer, you take everything — not an export, the actual files."
+          />
+          <AboutFeature
+            title="An open standard for the wedding industry"
+            desc="We published the Wedding CRM Markdown Standard so other developers and apps can use the same format. A contact created in Wedding Computer can be read by any tool that understands YAML frontmatter. We believe the wedding industry deserves interoperable data."
+          />
+        </div>
+
         {/* What's Coming */}
         <h2 class="text-xl sm:text-2xl font-bold mb-2">What's coming next</h2>
         <p class="text-gray-500 text-sm mb-6">On the roadmap, not yet shipped.</p>
@@ -289,8 +350,8 @@ marketing.get('/about', (c) => {
             desc="Built with Hono (a lightweight TypeScript web framework designed for edge runtimes) using JSX for server-side HTML rendering. Interactive elements use htmx for partial page updates without a client-side JavaScript framework. Zero JS bundle shipped to the browser — just htmx (10KB) and Tailwind CSS via CDN."
           />
           <AboutFeature
-            title="D1 (SQLite at the edge)"
-            desc="All data lives in Cloudflare D1 — a globally-replicated SQLite database. Fast reads everywhere, consistent writes, and full SQL support. The schema uses 24-character hex IDs, ISO 8601 timestamps, and explicit tenant-scoping on every query. No unscoped database access exists in the codebase."
+            title="Plain text files + D1 index"
+            desc="Contacts and weddings are stored as markdown files on Cloudflare R2. A D1 (SQLite) index caches key fields for fast queries — but it's just a cache. The files are the source of truth. If the index is lost, it rebuilds from the files. If the app disappears, the files still make sense. 24-character hex IDs, ISO 8601 timestamps, and explicit tenant-scoping on every query."
           />
           <AboutFeature
             title="CardDAV and CalDAV servers (RFC 6352 / RFC 4791)"
@@ -430,6 +491,804 @@ marketing.get('/pricing', (c) => {
   )
 })
 
+// ─── Open Standard ───
+
+marketing.get('/standard', (c) => {
+  return c.html(
+    <MarketingLayout title="Wedding CRM Markdown Standard">
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
+        <div class="inline-block bg-horizon-50 text-horizon-700 font-semibold text-sm px-4 py-1.5 rounded-full mb-4">
+          Open Standard v1.0
+        </div>
+        <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6">Wedding CRM Markdown Standard</h1>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
+          <p>
+            An open file format for storing wedding industry CRM data as plain text markdown files
+            with YAML frontmatter. Designed to be human-readable, human-editable, and interoperable
+            across any tool that understands text files.
+          </p>
+          <p>
+            This specification is published by <a href="/" class="text-horizon-700 font-bold hover:underline">Wedding Computer</a> and
+            is free for anyone to implement. We encourage other wedding software, CRM tools, and
+            planning apps to adopt this format so that wedding professionals can move their data freely
+            between tools.
+          </p>
+        </div>
+
+        {/* Why this exists */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Why an open format?</h2>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
+          <p>
+            Wedding professionals build their business on relationships — client details, wedding timelines,
+            notes from consultations, follow-up history. This data is the lifeblood of their business, but
+            it's usually trapped inside a proprietary database owned by a SaaS vendor.
+          </p>
+          <p>
+            Plain text files solve this. A markdown file created today will be readable on any computer
+            in 2050, 2075, or 2100. YAML frontmatter is a widely-adopted standard for structured metadata
+            in text files. Together, they give you structured data that's also human-friendly.
+          </p>
+          <p>
+            By publishing this as an open standard, we're making a bet: that the best way to serve wedding
+            professionals is to ensure their data is never locked in.
+          </p>
+        </div>
+
+        {/* Format overview */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Format overview</h2>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
+          <p>
+            Each entity (contact, wedding) is stored as a single <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">.md</code> file.
+            Structured data lives in YAML frontmatter between <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">---</code> fences
+            at the top of the file. Free-form notes are the markdown body below.
+          </p>
+        </div>
+        <div class="bg-gray-900 rounded-xl p-4 sm:p-6 mb-12 overflow-x-auto">
+          <pre class="text-sm text-gray-100 leading-relaxed"><code>{`---
+id: a1b2c3d4e5f6a1b2c3d4e5f6
+first_name: Sarah
+last_name: Smith
+email: sarah@example.com
+phone: "0400 123 456"
+partner_first_name: James
+partner_last_name: Wilson
+status: quoted
+wedding_date: 2026-12-15
+wedding_location: Sydney
+tags:
+  - vip
+  - referral
+created_at: 2025-06-01T00:00:00.000Z
+updated_at: 2025-06-01T00:00:00.000Z
+---
+
+Met at the Bridal Expo in March 2025.
+
+- Interested in elopement ceremony
+- Budget: $3,000 - $5,000
+- Preferred dates: Dec 2026 or Jan 2027
+
+## Follow-up notes
+
+Called on March 15, very enthusiastic.
+Sending quote this week.`}</code></pre>
+        </div>
+
+        {/* Contact spec */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Contact file specification</h2>
+        <p class="text-gray-600 leading-relaxed mb-6">
+          Contact files represent a lead, client, or business relationship. They live in a <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">contacts/</code> directory.
+        </p>
+
+        <h3 class="text-lg font-bold mb-3">Required fields</h3>
+        <div class="bg-white border border-papaya-300/30 rounded-xl overflow-hidden mb-6">
+          <table class="w-full text-sm">
+            <thead class="bg-papaya-50/50">
+              <tr>
+                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Field</th>
+                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Type</th>
+                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-papaya-300/20">
+              <SpecRow field="id" type="string" desc="Unique identifier. 24-character hex string recommended. Must be globally unique." />
+              <SpecRow field="first_name" type="string" desc="Contact's first (given) name." />
+              <SpecRow field="last_name" type="string" desc="Contact's last (family) name." />
+              <SpecRow field="status" type="enum" desc="Pipeline stage. One of: new, contacted, meeting, quoted, booked, completed, lost, archived." />
+              <SpecRow field="created_at" type="ISO 8601" desc="When the contact was first created. Example: 2025-06-01T00:00:00.000Z" />
+              <SpecRow field="updated_at" type="ISO 8601" desc="When the contact was last modified." />
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="text-lg font-bold mb-3">Optional fields</h3>
+        <div class="bg-white border border-papaya-300/30 rounded-xl overflow-hidden mb-6">
+          <table class="w-full text-sm">
+            <thead class="bg-papaya-50/50">
+              <tr>
+                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Field</th>
+                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Type</th>
+                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-papaya-300/20">
+              <SpecRow field="email" type="string" desc="Primary email address." />
+              <SpecRow field="phone" type="string" desc='Phone number. Always quote in YAML to prevent numeric parsing. Example: "0400 123 456"' />
+              <SpecRow field="partner_first_name" type="string" desc="Partner's first name (for couples)." />
+              <SpecRow field="partner_last_name" type="string" desc="Partner's last name." />
+              <SpecRow field="partner_email" type="string" desc="Partner's email address." />
+              <SpecRow field="partner_phone" type="string" desc='Partner phone number. Always quote.' />
+              <SpecRow field="source" type="string" desc="Where the lead came from. Examples: website, instagram, referral, bridal-expo." />
+              <SpecRow field="wedding_id" type="string" desc="ID of a linked wedding entity, if one exists." />
+              <SpecRow field="wedding_date" type="string" desc="Expected wedding date. Format: YYYY-MM-DD." />
+              <SpecRow field="wedding_location" type="string" desc="Expected wedding location. Free text." />
+              <SpecRow field="tags" type="string[]" desc="YAML array of tags. Example: [vip, referral, 2026]" />
+              <SpecRow field="form_data" type="object" desc="Structured data from enquiry/booking forms. YAML object with arbitrary keys." />
+              <SpecRow field="last_contacted_at" type="ISO 8601" desc="When you last reached out to this contact." />
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="text-lg font-bold mb-3">Body (notes)</h3>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
+          <p>
+            Everything below the closing <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">---</code> fence is
+            free-form markdown. This is where you write notes, follow-up history, meeting summaries, or anything
+            else. Use headings, lists, links — any valid markdown.
+          </p>
+          <p>
+            In Wedding Computer, this maps to the "notes" field in the contact record. If the body is empty,
+            notes are null.
+          </p>
+        </div>
+
+        {/* Wedding spec */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Wedding file specification</h2>
+        <p class="text-gray-600 leading-relaxed mb-6">
+          Wedding files represent a wedding event. They live in a <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">weddings/</code> directory.
+        </p>
+
+        <div class="bg-gray-900 rounded-xl p-4 sm:p-6 mb-8 overflow-x-auto">
+          <pre class="text-sm text-gray-100 leading-relaxed"><code>{`---
+id: f8e7d6c5b4a3f8e7d6c5b4a3
+title: Sarah & James
+date: 2026-12-15
+time: "15:00"
+location: Royal Botanic Garden Sydney
+location_lat: -33.8642
+location_lng: 151.2166
+status: confirmed
+ceremony_type: legal
+vendor_visibility: private
+reception_location: The Calyx
+reception_time: "17:30"
+guest_count: 85
+dress_code: Semi-formal
+created_by_user_id: u1a2b3c4d5e6
+created_at: 2025-06-01T00:00:00.000Z
+updated_at: 2025-07-15T10:30:00.000Z
+---
+
+Outdoor ceremony in the rose garden, weather permitting.
+Backup plan: The Calyx indoor space.
+
+## Timeline
+
+- 13:00 — Getting ready at hotel
+- 14:30 — First look photos
+- 15:00 — Ceremony
+- 15:30 — Family photos
+- 16:00 — Canapes and drinks
+- 17:30 — Reception begins`}</code></pre>
+        </div>
+
+        <h3 class="text-lg font-bold mb-3">Required fields</h3>
+        <div class="bg-white border border-papaya-300/30 rounded-xl overflow-hidden mb-6">
+          <table class="w-full text-sm">
+            <thead class="bg-papaya-50/50">
+              <tr>
+                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Field</th>
+                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Type</th>
+                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-papaya-300/20">
+              <SpecRow field="id" type="string" desc="Unique identifier. 24-character hex string recommended." />
+              <SpecRow field="title" type="string" desc={"Wedding title. Typically the couple's names: \"Sarah & James\"."} />
+              <SpecRow field="status" type="enum" desc="One of: planning, confirmed, completed, cancelled." />
+              <SpecRow field="created_by_user_id" type="string" desc="ID of the user who created this wedding." />
+              <SpecRow field="created_at" type="ISO 8601" desc="When the wedding record was created." />
+              <SpecRow field="updated_at" type="ISO 8601" desc="When the wedding record was last modified." />
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="text-lg font-bold mb-3">Optional fields</h3>
+        <div class="bg-white border border-papaya-300/30 rounded-xl overflow-hidden mb-6">
+          <table class="w-full text-sm">
+            <thead class="bg-papaya-50/50">
+              <tr>
+                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Field</th>
+                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Type</th>
+                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-papaya-300/20">
+              <SpecRow field="date" type="string" desc="Wedding date. Format: YYYY-MM-DD." />
+              <SpecRow field="time" type="string" desc='Ceremony start time. Format: HH:MM (24-hour). Always quote in YAML.' />
+              <SpecRow field="location" type="string" desc="Ceremony venue name and/or address." />
+              <SpecRow field="location_lat" type="number" desc="Latitude of the ceremony location. Decimal degrees." />
+              <SpecRow field="location_lng" type="number" desc="Longitude of the ceremony location. Decimal degrees." />
+              <SpecRow field="ceremony_type" type="string" desc="Type of ceremony. Examples: legal, commitment, renewal, elopement." />
+              <SpecRow field="vendor_visibility" type="enum" desc="Whether vendors on this wedding can see each other. One of: private, visible." />
+              <SpecRow field="reception_location" type="string" desc="Reception venue name and/or address." />
+              <SpecRow field="reception_time" type="string" desc='Reception start time. Format: HH:MM. Always quote.' />
+              <SpecRow field="getting_ready_location" type="string" desc="Where the couple is getting ready (hotel, home, etc.)." />
+              <SpecRow field="getting_ready_time" type="string" desc='Getting ready start time. Always quote.' />
+              <SpecRow field="dress_code" type="string" desc="Dress code for guests. Free text." />
+              <SpecRow field="guest_count" type="integer" desc="Expected number of guests." />
+              <SpecRow field="timeline_notes" type="string" desc="Additional notes about the day's timeline." />
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="text-lg font-bold mb-3">Body (notes)</h3>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
+          <p>
+            The markdown body holds free-form notes about the wedding — logistics, backup plans,
+            run sheet details, vendor coordination notes, or anything else. Use headings to organise
+            sections. This maps to the "notes" field on the wedding record.
+          </p>
+        </div>
+
+        {/* File naming */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">File naming conventions</h2>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
+          <p>
+            Filenames should be human-readable slugs. This makes them easy to browse in a file explorer
+            or Obsidian's sidebar.
+          </p>
+        </div>
+
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6">
+          <h3 class="font-bold text-sm mb-3">Contacts</h3>
+          <div class="space-y-2 text-sm text-gray-600">
+            <p><code class="bg-gray-100 px-1.5 py-0.5 rounded">sarah-smith.md</code> — Single contact</p>
+            <p><code class="bg-gray-100 px-1.5 py-0.5 rounded">sarah-james-smith.md</code> — Couple with same surname</p>
+            <p><code class="bg-gray-100 px-1.5 py-0.5 rounded">sarah-smith-james-wilson.md</code> — Couple with different surnames</p>
+            <p><code class="bg-gray-100 px-1.5 py-0.5 rounded">john-doe-2.md</code> — Deduplicated (second John Doe)</p>
+          </div>
+        </div>
+
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6">
+          <h3 class="font-bold text-sm mb-3">Weddings</h3>
+          <div class="space-y-2 text-sm text-gray-600">
+            <p><code class="bg-gray-100 px-1.5 py-0.5 rounded">sarah-james-2026-12-15.md</code> — Wedding with date</p>
+            <p><code class="bg-gray-100 px-1.5 py-0.5 rounded">smith-jones-wedding.md</code> — Wedding without date</p>
+          </div>
+        </div>
+
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-12">
+          <h3 class="font-bold text-sm mb-3">Slugification rules</h3>
+          <div class="space-y-2 text-sm text-gray-600">
+            <p>1. Decompose Unicode (NFKD normalisation), strip combining marks</p>
+            <p>2. Lowercase everything</p>
+            <p>3. Strip apostrophes and quotes — O'Brien becomes obrien</p>
+            <p>4. Replace <code class="bg-gray-100 px-1.5 py-0.5 rounded">&amp;</code> with a hyphen</p>
+            <p>5. Replace all non-alphanumeric characters with hyphens</p>
+            <p>6. Collapse multiple hyphens, trim leading/trailing hyphens</p>
+            <p>7. If the result is empty, use <code class="bg-gray-100 px-1.5 py-0.5 rounded">untitled</code></p>
+          </div>
+        </div>
+
+        {/* Directory structure */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Directory structure</h2>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
+          <p>
+            Files are organised by vendor, then by entity type:
+          </p>
+        </div>
+        <div class="bg-gray-900 rounded-xl p-4 sm:p-6 mb-12 overflow-x-auto">
+          <pre class="text-sm text-gray-100 leading-relaxed"><code>{`vendors/
+  {vendor_id}/
+    contacts/
+      sarah-smith.md
+      john-james-doe.md
+      jane-wilson-2.md
+    weddings/
+      sarah-james-2026-12-15.md
+      smith-wilson-wedding.md`}</code></pre>
+        </div>
+
+        {/* YAML tips */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">YAML authoring tips</h2>
+        <div class="space-y-3 mb-12">
+          <AboutFeature
+            title='Always quote phone numbers'
+            desc='YAML parses unquoted numbers like 0400123456 as the integer 400123456, losing the leading zero. Always wrap phone numbers in quotes: phone: "0400 123 456".'
+          />
+          <AboutFeature
+            title="Always quote times"
+            desc='YAML may parse HH:MM as a sexagesimal number. Write time: "15:00" not time: 15:00.'
+          />
+          <AboutFeature
+            title="Dates can be unquoted"
+            desc="YAML 1.2 handles ISO dates well. wedding_date: 2026-12-15 and created_at: 2025-06-01T00:00:00.000Z both work without quotes."
+          />
+          <AboutFeature
+            title="Use YAML arrays for tags"
+            desc='Write tags as a YAML array — either inline [vip, referral] or block style with - vip on each line. Not a JSON string.'
+          />
+          <AboutFeature
+            title="Colons and special characters in values"
+            desc='If a value contains a colon, hash, or other YAML-special character, quote it: location: "Ceremony: 3pm at The Grand Ballroom".'
+          />
+          <AboutFeature
+            title="Null vs absent"
+            desc="Omitting a field and setting it to null are equivalent. Wedding Computer treats both as null. If you're hand-editing, just leave optional fields out."
+          />
+        </div>
+
+        {/* Interop */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Interoperability</h2>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
+          <p>
+            Files conforming to this standard can be read by:
+          </p>
+          <ul class="list-disc list-inside space-y-1.5">
+            <li><strong>Any text editor</strong> — VS Code, Sublime Text, Notepad, vim</li>
+            <li><strong>Obsidian</strong> — reads YAML frontmatter natively, renders the markdown body</li>
+            <li><strong>Static site generators</strong> — Hugo, Jekyll, Eleventy, Astro all read YAML frontmatter</li>
+            <li><strong>Scripting languages</strong> — Python (PyYAML), JavaScript (yaml), Ruby, Go all have YAML parsers</li>
+            <li><strong>Any YAML-aware tool</strong> — the frontmatter is standard YAML 1.2</li>
+          </ul>
+          <p>
+            Wedding Computer uses the <a href="https://eemeli.org/yaml/" class="text-horizon-700 font-bold hover:underline">yaml</a> npm
+            package (YAML 1.2 compliant) for parsing and serialisation. We recommend other implementations
+            use a YAML 1.2 parser for maximum compatibility.
+          </p>
+        </div>
+
+        {/* License */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">License</h2>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
+          <p>
+            This specification is published under{' '}
+            <a href="https://creativecommons.org/publicdomain/zero/1.0/" class="text-horizon-700 font-bold hover:underline">CC0 1.0 Universal (Public Domain)</a>.
+            You are free to implement, modify, and redistribute it without restriction.
+            No attribution required, though we'd appreciate a link back.
+          </p>
+          <p>
+            The Wedding Computer application that implements this standard is licensed under AGPL-3.0.
+            The specification itself carries no such requirement — you can implement it in proprietary software.
+          </p>
+        </div>
+
+        {/* CTA */}
+        <div class="bg-horizon-600 rounded-2xl p-6 sm:p-10 text-center text-white">
+          <h2 class="text-xl sm:text-2xl font-bold mb-3">Build on this standard</h2>
+          <p class="text-horizon-100 mb-6 max-w-md mx-auto text-sm">
+            If you're building wedding software, adopt this format. Your users will thank you.
+          </p>
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <a
+              href="https://github.com/weddingcomputer/wedding-computer"
+              class="inline-block bg-white text-horizon-700 font-bold px-6 py-3 rounded-xl hover:bg-horizon-50 transition-colors text-sm"
+            >
+              View on GitHub
+            </a>
+            <a
+              href="/docs/plain-text"
+              class="inline-block bg-horizon-500 text-white font-bold px-6 py-3 rounded-xl hover:bg-horizon-400 transition-colors text-sm"
+            >
+              Access your files
+            </a>
+          </div>
+        </div>
+      </div>
+    </MarketingLayout>
+  )
+})
+
+// ─── Plain Text Docs ───
+
+marketing.get('/docs/plain-text', (c) => {
+  return c.html(
+    <MarketingLayout title="Accessing Your Plain Text Files">
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
+        <div class="inline-block bg-horizon-50 text-horizon-700 font-semibold text-sm px-4 py-1.5 rounded-full mb-4">
+          Documentation
+        </div>
+        <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6">Accessing your plain text files</h1>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
+          <p>
+            Every contact and wedding in Wedding Computer is stored as a plain text markdown file. These
+            aren't exports or copies — they're the real, canonical data. The app reads and writes these
+            files directly.
+          </p>
+          <p>
+            This page explains every way you can access, read, edit, and back up your files outside of
+            Wedding Computer. You don't need our permission, and you don't need to ask.
+          </p>
+        </div>
+
+        {/* Overview */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Where your files live</h2>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
+          <p>
+            Your files are stored on <a href="https://developers.cloudflare.com/r2/" class="text-horizon-700 font-bold hover:underline">Cloudflare R2</a>,
+            which is an S3-compatible object storage service. Each vendor has their own directory:
+          </p>
+        </div>
+        <div class="bg-gray-900 rounded-xl p-4 sm:p-6 mb-8 overflow-x-auto">
+          <pre class="text-sm text-gray-100 leading-relaxed"><code>{`vendors/
+  your-vendor-id/
+    contacts/
+      sarah-smith.md
+      john-doe.md
+      jane-wilson-james-brown.md
+    weddings/
+      sarah-james-2026-12-15.md
+      doe-wedding.md`}</code></pre>
+        </div>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
+          <p>
+            Each file follows the{' '}
+            <a href="/standard" class="text-horizon-700 font-bold hover:underline">Wedding CRM Markdown Standard</a> —
+            YAML frontmatter for structured data, markdown body for notes.
+          </p>
+        </div>
+
+        {/* Method 1: Data Export */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Method 1: Data export from the app</h2>
+        <p class="text-gray-500 text-sm mb-6">The simplest way. No technical knowledge required.</p>
+        <div class="space-y-3 mb-12">
+          <AboutFeature
+            title="Export all your data"
+            desc={"Go to Settings, scroll to Data Export, and click Export All Data. You'll receive a JSON file containing every contact and wedding, plus the raw markdown source for each. This is a complete backup of everything in your account."}
+          />
+          <AboutFeature
+            title="What you get"
+            desc="The export contains contacts (with all fields, notes, tags, form data), weddings (with all details and timeline notes), and your vendor profile settings. It's a standard JSON file that any programming language can read."
+          />
+          <AboutFeature
+            title="How often to export"
+            desc="Export whenever you want a backup. There are no limits. We recommend exporting before making bulk changes, and keeping a regular backup (monthly, quarterly — whatever suits you)."
+          />
+        </div>
+
+        {/* Method 2: Cloudflare R2 API */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Method 2: Cloudflare R2 API (S3-compatible)</h2>
+        <p class="text-gray-500 text-sm mb-6">For developers and power users. Full programmatic access.</p>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
+          <p>
+            Cloudflare R2 is S3-compatible, which means any tool that works with Amazon S3 also works with R2.
+            This includes the AWS CLI, Cyberduck, rclone, s3cmd, and every S3 SDK in every programming language.
+          </p>
+          <p>
+            To access your files directly, you'll need R2 API credentials. If you're self-hosting Wedding Computer,
+            you already have these. If you're using the hosted version, contact us and we'll provision
+            read-only credentials scoped to your vendor directory.
+          </p>
+        </div>
+
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6">
+          <h3 class="font-bold text-sm mb-3">Using rclone (recommended for non-developers)</h3>
+          <p class="text-sm text-gray-600 mb-4">
+            <a href="https://rclone.org/" class="text-horizon-700 font-bold hover:underline">rclone</a> is a free,
+            open-source tool for syncing files to and from cloud storage. It works on macOS, Windows, and Linux.
+          </p>
+          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <pre class="text-sm text-gray-100"><code>{`# Install rclone
+brew install rclone    # macOS
+# or visit rclone.org/downloads for Windows/Linux
+
+# Configure your R2 remote (one-time setup)
+rclone config
+# Choose: New remote → name it "wc" → type "s3"
+# Provider: Cloudflare → enter your R2 credentials
+
+# List your contacts
+rclone ls wc:wedding-computer-storage/vendors/YOUR_ID/contacts/
+
+# Download all your files to a local folder
+rclone sync wc:wedding-computer-storage/vendors/YOUR_ID/ ./my-wedding-data/
+
+# Set up automatic daily sync
+# (add to crontab or Windows Task Scheduler)
+rclone sync wc:wedding-computer-storage/vendors/YOUR_ID/ ~/wedding-backup/`}</code></pre>
+          </div>
+        </div>
+
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6">
+          <h3 class="font-bold text-sm mb-3">Using the AWS CLI</h3>
+          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <pre class="text-sm text-gray-100"><code>{`# Configure for R2
+aws configure --profile wc
+# Enter your R2 Access Key ID and Secret Access Key
+# Region: auto
+# Output: json
+
+# List contacts
+aws s3 ls s3://wedding-computer-storage/vendors/YOUR_ID/contacts/ \\
+  --endpoint-url https://YOUR_ACCOUNT.r2.cloudflarestorage.com \\
+  --profile wc
+
+# Download a single contact
+aws s3 cp s3://wedding-computer-storage/vendors/YOUR_ID/contacts/sarah-smith.md . \\
+  --endpoint-url https://YOUR_ACCOUNT.r2.cloudflarestorage.com \\
+  --profile wc
+
+# Sync everything locally
+aws s3 sync s3://wedding-computer-storage/vendors/YOUR_ID/ ./backup/ \\
+  --endpoint-url https://YOUR_ACCOUNT.r2.cloudflarestorage.com \\
+  --profile wc`}</code></pre>
+          </div>
+        </div>
+
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-12">
+          <h3 class="font-bold text-sm mb-3">Using Cyberduck (graphical, macOS/Windows)</h3>
+          <p class="text-sm text-gray-600 mb-3">
+            <a href="https://cyberduck.io/" class="text-horizon-700 font-bold hover:underline">Cyberduck</a> is
+            a free file browser for cloud storage. Drag and drop, just like Finder.
+          </p>
+          <div class="text-sm text-gray-600 space-y-2">
+            <p>1. Download Cyberduck from cyberduck.io</p>
+            <p>2. Click "Open Connection" → choose "Amazon S3"</p>
+            <p>3. Server: <code class="bg-gray-100 px-1.5 py-0.5 rounded">YOUR_ACCOUNT.r2.cloudflarestorage.com</code></p>
+            <p>4. Enter your R2 Access Key ID and Secret Access Key</p>
+            <p>5. Navigate to <code class="bg-gray-100 px-1.5 py-0.5 rounded">wedding-computer-storage/vendors/YOUR_ID/</code></p>
+            <p>6. Browse, download, or drag files to your desktop</p>
+          </div>
+        </div>
+
+        {/* Method 3: Obsidian */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Method 3: Obsidian</h2>
+        <p class="text-gray-500 text-sm mb-6">For people who love plain text notes.</p>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
+          <p>
+            <a href="https://obsidian.md/" class="text-horizon-700 font-bold hover:underline">Obsidian</a> is
+            a free note-taking app that works with local markdown files. Since Wedding Computer stores
+            data as markdown with YAML frontmatter, Obsidian reads it natively.
+          </p>
+        </div>
+        <div class="space-y-3 mb-12">
+          <AboutFeature
+            title="Step 1: Sync files locally"
+            desc="Use rclone (described above) to sync your Wedding Computer files to a local folder. Set it to run automatically — every hour, every day, whatever suits you."
+          />
+          <AboutFeature
+            title="Step 2: Open as an Obsidian vault"
+            desc='Open Obsidian → "Open folder as vault" → select the folder where your files sync to. Obsidian will show your contacts and weddings in the sidebar, with YAML frontmatter rendered as properties.'
+          />
+          <AboutFeature
+            title="Step 3: Browse and search"
+            desc="Use Obsidian's search to find contacts by name, email, or any field. Use Dataview plugin to build custom views — e.g. 'show all contacts with status: quoted' or 'weddings in the next 3 months'."
+          />
+          <AboutFeature
+            title="A note on editing"
+            desc="If you edit files in Obsidian and sync them back to R2, Wedding Computer will pick up the changes on next sync. The app uses ETags to detect file changes. However, be careful with concurrent edits — if you and the app edit the same file at the same time, the last write wins."
+          />
+        </div>
+
+        {/* Method 4: Any text editor */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Method 4: Any text editor</h2>
+        <p class="text-gray-500 text-sm mb-6">It's just text. Open it in anything.</p>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
+          <p>
+            Once you've synced your files locally (via rclone, the AWS CLI, Cyberduck, or the data
+            export), you can open them in literally any text editor:
+          </p>
+          <ul class="list-disc list-inside space-y-1.5">
+            <li><strong>VS Code</strong> — excellent markdown preview, YAML syntax highlighting</li>
+            <li><strong>Sublime Text</strong> — fast, lightweight, handles thousands of files</li>
+            <li><strong>Notepad</strong> (Windows) / <strong>TextEdit</strong> (macOS) — they're just text files</li>
+            <li><strong>vim / nano</strong> — if you're into that</li>
+            <li><strong>iA Writer</strong> — beautiful markdown editor with YAML support</li>
+          </ul>
+          <p>
+            There's no special software required. No plugin, no viewer, no converter. The files
+            are UTF-8 text with a <code class="bg-gray-100 px-1.5 py-0.5 rounded">.md</code> extension.
+          </p>
+        </div>
+
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-12">
+          <h3 class="font-bold text-sm mb-3">What a contact looks like in a text editor</h3>
+          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <pre class="text-sm text-gray-100"><code>{`---
+id: a1b2c3d4e5f6a1b2c3d4e5f6
+first_name: Sarah
+last_name: Smith
+email: sarah@example.com
+phone: "0400 123 456"
+status: quoted
+wedding_date: 2026-12-15
+tags:
+  - vip
+  - referral
+created_at: 2025-06-01T00:00:00.000Z
+updated_at: 2025-06-01T00:00:00.000Z
+---
+
+Met at the Bridal Expo. Very enthusiastic about
+an elopement ceremony at the Royal Botanic Garden.
+
+Budget: $3,000 - $5,000`}</code></pre>
+          </div>
+          <p class="text-sm text-gray-500 mt-3">
+            That's it. No binary format, no encoding, no special reader required. Just text.
+          </p>
+        </div>
+
+        {/* Method 5: Build your own tools */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Method 5: Build your own tools</h2>
+        <p class="text-gray-500 text-sm mb-6">For developers who want to build on top of their data.</p>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
+          <p>
+            Because the files follow an <a href="/standard" class="text-horizon-700 font-bold hover:underline">open standard</a>,
+            you can write scripts and applications that read, query, and transform your data.
+          </p>
+        </div>
+
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6">
+          <h3 class="font-bold text-sm mb-3">Python example: list all quoted contacts</h3>
+          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <pre class="text-sm text-gray-100"><code>{`import yaml
+from pathlib import Path
+
+contacts_dir = Path("./my-wedding-data/contacts")
+
+for file in contacts_dir.glob("*.md"):
+    text = file.read_text()
+    # Split frontmatter from body
+    parts = text.split("---", 2)
+    if len(parts) >= 3:
+        frontmatter = yaml.safe_load(parts[1])
+        if frontmatter.get("status") == "quoted":
+            name = f"{frontmatter['first_name']} {frontmatter['last_name']}"
+            email = frontmatter.get("email", "no email")
+            print(f"{name} ({email})")`}</code></pre>
+          </div>
+        </div>
+
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6">
+          <h3 class="font-bold text-sm mb-3">JavaScript/Node example: upcoming weddings</h3>
+          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <pre class="text-sm text-gray-100"><code>{`import { readdir, readFile } from 'fs/promises'
+import { parse } from 'yaml'
+
+const files = await readdir('./my-wedding-data/weddings')
+
+for (const file of files.filter(f => f.endsWith('.md'))) {
+  const text = await readFile(\`./my-wedding-data/weddings/\${file}\`, 'utf8')
+  const [, frontmatter] = text.split('---')
+  const data = parse(frontmatter)
+
+  if (data.date && new Date(data.date) > new Date()) {
+    console.log(\`\${data.title} — \${data.date} at \${data.location}\`)
+  }
+}`}</code></pre>
+          </div>
+        </div>
+
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-12">
+          <h3 class="font-bold text-sm mb-3">Shell example: count contacts by status</h3>
+          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <pre class="text-sm text-gray-100"><code>{`# Count contacts by pipeline stage
+grep -l "status: new" contacts/*.md | wc -l
+grep -l "status: quoted" contacts/*.md | wc -l
+grep -l "status: booked" contacts/*.md | wc -l
+
+# Find all contacts with a specific tag
+grep -l "- vip" contacts/*.md
+
+# Find all weddings in December 2026
+grep -l "date: 2026-12" weddings/*.md`}</code></pre>
+          </div>
+        </div>
+
+        {/* Method 6: Git */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Method 6: Version control with Git</h2>
+        <p class="text-gray-500 text-sm mb-6">Track every change, forever.</p>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
+          <p>
+            Because the files are plain text, they work beautifully with Git. Every change is a
+            meaningful diff — you can see exactly what changed, when, and (with commit messages) why.
+          </p>
+        </div>
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-12">
+          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+            <pre class="text-sm text-gray-100"><code>{`# Initialise a repo in your synced folder
+cd my-wedding-data
+git init
+git add .
+git commit -m "Initial backup of wedding data"
+
+# After each sync, commit changes
+rclone sync wc:wedding-computer-storage/vendors/YOUR_ID/ .
+git add .
+git commit -m "Sync $(date +%Y-%m-%d)"
+
+# Now you have full version history
+git log --oneline contacts/sarah-smith.md
+# See exactly what changed in a contact
+git diff HEAD~1 contacts/sarah-smith.md`}</code></pre>
+          </div>
+          <p class="text-sm text-gray-500 mt-3">
+            Push to a private GitHub or GitLab repo for off-site backup. Your entire CRM history
+            in version control.
+          </p>
+        </div>
+
+        {/* Method 7: CardDAV and CalDAV */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Bonus: CardDAV and CalDAV sync</h2>
+        <p class="text-gray-500 text-sm mb-6">Your data also speaks standard protocols.</p>
+        <div class="space-y-3 mb-12">
+          <AboutFeature
+            title="CardDAV: contacts on your phone"
+            desc='Wedding Computer includes a CardDAV server (RFC 6352). Add it as a contacts account in Apple Contacts, and your CRM contacts appear as native phone contacts — with names, phone numbers, emails, and wedding notes. Go to Settings → CardDAV to get your server URL.'
+          />
+          <AboutFeature
+            title="CalDAV / iCal: calendar events everywhere"
+            desc="Your calendar events are available via iCal feed (read-only) for any calendar app, and CalDAV for two-way sync with Apple Calendar, Fantastical, or any CalDAV client. Go to Settings → Calendar to get your feed URL."
+          />
+          <AboutFeature
+            title="Why this matters"
+            desc="CardDAV and iCal are open standards from the 2000s. They'll work with any app that supports contacts or calendars — not just ours. Your data is accessible through multiple independent paths, using open protocols, stored in open formats."
+          />
+        </div>
+
+        {/* Philosophy */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Why we built it this way</h2>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
+          <p>
+            We believe your client relationships are too important to be trapped in someone else's
+            database. Wedding vendors build their businesses over years — every lead, every note, every
+            follow-up is part of that story. That data should belong to you, in a format you can read
+            without our help.
+          </p>
+          <p>
+            Plain text is the most durable file format ever created. A text file from 1970 is still
+            perfectly readable today. We can't say the same about any proprietary database format,
+            any SaaS export, or any binary file. By choosing markdown and YAML, we're choosing
+            longevity over convenience.
+          </p>
+          <p>
+            And by publishing the <a href="/standard" class="text-horizon-700 font-bold hover:underline">format as an open standard</a>,
+            we're inviting the rest of the wedding industry to join us. If every wedding CRM spoke the same
+            file format, switching tools would be as easy as pointing a new app at the same folder.
+          </p>
+          <p>
+            That's the future we're building toward.
+          </p>
+        </div>
+
+        {/* CTA */}
+        <div class="bg-horizon-600 rounded-2xl p-6 sm:p-10 text-center text-white">
+          <h2 class="text-xl sm:text-2xl font-bold mb-3">Your data, your way</h2>
+          <p class="text-horizon-100 mb-6 max-w-md mx-auto text-sm">
+            Start using Wedding Computer and your data is always yours — in plain text, accessible anywhere.
+          </p>
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <a
+              href="/login"
+              class="inline-block bg-white text-horizon-700 font-bold px-6 py-3 rounded-xl hover:bg-horizon-50 transition-colors text-sm"
+            >
+              Get started free
+            </a>
+            <a
+              href="/standard"
+              class="inline-block bg-horizon-500 text-white font-bold px-6 py-3 rounded-xl hover:bg-horizon-400 transition-colors text-sm"
+            >
+              Read the open standard
+            </a>
+          </div>
+        </div>
+      </div>
+    </MarketingLayout>
+  )
+})
+
 export default marketing
 
 function PricingFeature({ text, bold }: { text: string; bold?: boolean }) {
@@ -438,6 +1297,16 @@ function PricingFeature({ text, bold }: { text: string; bold?: boolean }) {
       <svg class="w-4 h-4 text-horizon-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
       <span class={bold ? 'font-bold' : ''}>{text}</span>
     </li>
+  )
+}
+
+function SpecRow({ field, type, desc }: { field: string; type: string; desc: string }) {
+  return (
+    <tr>
+      <td class="px-4 py-2.5 font-mono text-xs text-horizon-700 whitespace-nowrap">{field}</td>
+      <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">{type}</td>
+      <td class="px-4 py-2.5 text-gray-700">{desc}</td>
+    </tr>
   )
 }
 
@@ -478,4 +1347,5 @@ const featureIcons: Record<string, string> = {
   couple: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
   sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>',
   notifications: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
+  plaintext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>',
 }

@@ -2,15 +2,62 @@ import { Hono } from 'hono'
 import type { Env, Contact, VendorProfile } from '../types'
 import {
   CARDDAV_HEADERS, authenticateVendor, unauthorizedResponse, forbiddenResponse,
-  xmlResponse, escXml, escVCard, foldLine, toVCardRev, makeCTag, makeETag,
+  xmlResponse, escXml, escVCard, foldLine, toVCardRev, makeETag,
   getDepth, parseHrefsFromBody, isMultiget,
 } from '../lib/dav'
 
 const carddav = new Hono<Env>()
 
-const ACTIVE_WHERE = `status NOT IN ('archived', 'lost')`
-const CONTACT_COLS = 'id, first_name, last_name, email, phone, partner_first_name, partner_last_name, partner_email, partner_phone, status, wedding_date, wedding_location, notes, updated_at'
+const ACTIVE_FILTER = `json_extract(cached_data, '$.status') NOT IN ('archived', 'lost')`
 const DB_BATCH = 99
+
+type FileIndexRow = {
+  entity_id: string
+  cached_data: string
+  last_synced_at: string
+}
+
+async function contactsCTag(db: D1Database, vendorId: string): Promise<string> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) as cnt, MAX(last_synced_at) as ts
+       FROM file_index
+       WHERE vendor_id = ? AND entity_type = 'contact' AND ${ACTIVE_FILTER}`
+    )
+    .bind(vendorId)
+    .first<{ cnt: number; ts: string | null }>()
+  const raw = `${row?.cnt ?? 0}:${row?.ts ?? ''}`
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw))
+  return Array.from(new Uint8Array(hash)).slice(0, 8)
+    .map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+function rowToContact(row: FileIndexRow, vendorId: string): Contact {
+  const c = JSON.parse(row.cached_data)
+  return {
+    id: row.entity_id,
+    vendor_id: vendorId,
+    first_name: c.first_name ?? '',
+    last_name: c.last_name ?? '',
+    email: c.email ?? null,
+    phone: c.phone ?? null,
+    partner_first_name: c.partner_first_name ?? null,
+    partner_last_name: c.partner_last_name ?? null,
+    partner_email: c.partner_email ?? null,
+    partner_phone: c.partner_phone ?? null,
+    source: c.source ?? null,
+    status: c.status ?? 'new',
+    wedding_id: c.wedding_id ?? null,
+    wedding_date: c.wedding_date ?? null,
+    wedding_location: c.wedding_location ?? null,
+    notes: null,
+    tags: null,
+    form_data: null,
+    last_contacted_at: c.last_contacted_at ?? null,
+    created_at: c.created_at ?? '',
+    updated_at: c.updated_at ?? '',
+  }
+}
 
 const PRIVILEGE_SET = `<D:current-user-privilege-set>
   <D:privilege><D:read/></D:privilege>
@@ -70,7 +117,7 @@ carddav.on('PROPFIND', '/addressbooks/:token/', async (c) => {
   if (!vendor) return unauth()
   const token = vendor.ical_token!
   const base = `/carddav`
-  const ctag = await makeCTag(c.env.DB, 'contacts', 'vendor_id', vendor.id, ACTIVE_WHERE)
+  const ctag = await contactsCTag(c.env.DB, vendor.id)
 
   return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav" xmlns:CS="http://calendarserver.org/ns/">
@@ -109,7 +156,7 @@ carddav.on('PROPFIND', '/addressbooks/:token/contacts/', async (c) => {
   const token = vendor.ical_token!
   const base = `/carddav`
   const depth = getDepth(c.req.raw)
-  const ctag = await makeCTag(c.env.DB, 'contacts', 'vendor_id', vendor.id, ACTIVE_WHERE)
+  const ctag = await contactsCTag(c.env.DB, vendor.id)
 
   const collectionResponse = `<D:response>
     <D:href>${base}/addressbooks/${escXml(token)}/contacts/</D:href>
@@ -134,15 +181,16 @@ carddav.on('PROPFIND', '/addressbooks/:token/contacts/', async (c) => {
   }
 
   const rows = await c.env.DB
-    .prepare(`SELECT ${CONTACT_COLS} FROM contacts WHERE vendor_id = ? AND ${ACTIVE_WHERE}`)
+    .prepare(`SELECT entity_id, cached_data, last_synced_at FROM file_index WHERE vendor_id = ? AND entity_type = 'contact' AND ${ACTIVE_FILTER}`)
     .bind(vendor.id)
-    .all<Contact>()
+    .all<FileIndexRow>()
     .then(r => r.results)
 
   const cardResponses = rows.map(row => {
-    const etag = makeETag(row.id, row.updated_at)
+    const c = JSON.parse(row.cached_data)
+    const etag = makeETag(row.entity_id, c.updated_at ?? '')
     return `<D:response>
-    <D:href>${base}/addressbooks/${escXml(token)}/contacts/${row.id}.vcf</D:href>
+    <D:href>${base}/addressbooks/${escXml(token)}/contacts/${row.entity_id}.vcf</D:href>
     <D:propstat>
       <D:prop>
         <D:getetag>${escXml(etag)}</D:getetag>
@@ -168,7 +216,7 @@ carddav.on('REPORT', '/addressbooks/:token/contacts/', async (c) => {
   const base = `/carddav`
   const body = await c.req.text()
 
-  let rows: Contact[]
+  let indexRows: FileIndexRow[]
 
   if (isMultiget(body)) {
     const hrefs = parseHrefsFromBody(body)
@@ -177,30 +225,31 @@ carddav.on('REPORT', '/addressbooks/:token/contacts/', async (c) => {
       return match ? match[1] : null
     }).filter((id): id is string => id !== null)
 
-    rows = []
+    indexRows = []
     for (let i = 0; i < ids.length; i += DB_BATCH) {
       const batch = ids.slice(i, i + DB_BATCH)
       const placeholders = batch.map(() => '?').join(',')
       const batchRows = await c.env.DB
-        .prepare(`SELECT ${CONTACT_COLS} FROM contacts WHERE vendor_id = ? AND id IN (${placeholders}) AND ${ACTIVE_WHERE}`)
+        .prepare(`SELECT entity_id, cached_data, last_synced_at FROM file_index WHERE vendor_id = ? AND entity_type = 'contact' AND entity_id IN (${placeholders}) AND ${ACTIVE_FILTER}`)
         .bind(vendor.id, ...batch)
-        .all<Contact>()
+        .all<FileIndexRow>()
         .then(r => r.results)
-      rows.push(...batchRows)
+      indexRows.push(...batchRows)
     }
   } else {
-    rows = await c.env.DB
-      .prepare(`SELECT ${CONTACT_COLS} FROM contacts WHERE vendor_id = ? AND ${ACTIVE_WHERE}`)
+    indexRows = await c.env.DB
+      .prepare(`SELECT entity_id, cached_data, last_synced_at FROM file_index WHERE vendor_id = ? AND entity_type = 'contact' AND ${ACTIVE_FILTER}`)
       .bind(vendor.id)
-      .all<Contact>()
+      .all<FileIndexRow>()
       .then(r => r.results)
   }
 
-  const responses = rows.map(row => {
-    const vcard = buildVCard(row, vendor)
-    const etag = makeETag(row.id, row.updated_at)
+  const responses = indexRows.map(row => {
+    const contact = rowToContact(row, vendor.id)
+    const vcard = buildVCard(contact, vendor)
+    const etag = makeETag(contact.id, contact.updated_at)
     return `<D:response>
-    <D:href>${base}/addressbooks/${escXml(token)}/contacts/${row.id}.vcf</D:href>
+    <D:href>${base}/addressbooks/${escXml(token)}/contacts/${contact.id}.vcf</D:href>
     <D:propstat>
       <D:prop>
         <D:getetag>${escXml(etag)}</D:getetag>
@@ -225,13 +274,14 @@ carddav.get('/addressbooks/:token/contacts/:uid', async (c) => {
   if (uid.endsWith('.vcf')) uid = uid.slice(0, -4)
 
   const row = await c.env.DB
-    .prepare(`SELECT ${CONTACT_COLS} FROM contacts WHERE id = ? AND vendor_id = ? AND ${ACTIVE_WHERE}`)
-    .bind(uid, vendor.id)
-    .first<Contact>()
+    .prepare(`SELECT entity_id, cached_data, last_synced_at FROM file_index WHERE vendor_id = ? AND entity_type = 'contact' AND entity_id = ? AND ${ACTIVE_FILTER}`)
+    .bind(vendor.id, uid)
+    .first<FileIndexRow>()
   if (!row) return c.text('Not found', 404)
 
-  const vcard = buildVCard(row, vendor)
-  const etag = makeETag(row.id, row.updated_at)
+  const contact = rowToContact(row, vendor.id)
+  const vcard = buildVCard(contact, vendor)
+  const etag = makeETag(contact.id, contact.updated_at)
   return new Response(vcard, {
     status: 200,
     headers: {
@@ -246,13 +296,13 @@ carddav.get('/addressbooks/:token/contacts/:uid', async (c) => {
 carddav.get('/debug/:token', async (c) => {
   const vendor = await auth(c)
   if (!vendor) return unauth()
-  const ctag = await makeCTag(c.env.DB, 'contacts', 'vendor_id', vendor.id, ACTIVE_WHERE)
+  const ctag = await contactsCTag(c.env.DB, vendor.id)
   const total = await c.env.DB
-    .prepare('SELECT COUNT(*) as cnt FROM contacts WHERE vendor_id = ?')
+    .prepare(`SELECT COUNT(*) as cnt FROM file_index WHERE vendor_id = ? AND entity_type = 'contact'`)
     .bind(vendor.id)
     .first<{ cnt: number }>()
   const active = await c.env.DB
-    .prepare(`SELECT COUNT(*) as cnt FROM contacts WHERE vendor_id = ? AND ${ACTIVE_WHERE}`)
+    .prepare(`SELECT COUNT(*) as cnt FROM file_index WHERE vendor_id = ? AND entity_type = 'contact' AND ${ACTIVE_FILTER}`)
     .bind(vendor.id)
     .first<{ cnt: number }>()
   return c.json({
@@ -260,7 +310,7 @@ carddav.get('/debug/:token', async (c) => {
     ctag,
     totalContacts: total?.cnt ?? 0,
     activeContacts: active?.cnt ?? 0,
-    activeFilter: ACTIVE_WHERE,
+    activeFilter: ACTIVE_FILTER,
   })
 })
 

@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   ical_token TEXT,
   anthropic_api_key TEXT,
   email_handle TEXT,
+  storage_type TEXT DEFAULT 'r2',
+  storage_config TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -422,6 +424,44 @@ CREATE INDEX IF NOT EXISTS idx_analytics_events_vendor_type ON analytics_events(
 CREATE INDEX IF NOT EXISTS idx_business_goals_vendor ON business_goals(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_vendor ON subscriptions(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe ON subscriptions(stripe_subscription_id);
+
+-- File index: queryable cache of markdown files in R2/Git
+CREATE TABLE IF NOT EXISTS file_index (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding')),
+  entity_id TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  etag TEXT NOT NULL,
+  cached_data TEXT,
+  last_synced_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(vendor_id, file_path)
+);
+
+-- File conflicts detected during sync
+CREATE TABLE IF NOT EXISTS file_conflicts (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding')),
+  entity_id TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  local_content TEXT NOT NULL,
+  remote_content TEXT NOT NULL,
+  local_etag TEXT NOT NULL,
+  remote_etag TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'resolved')),
+  resolved_at TEXT,
+  resolution TEXT CHECK (resolution IN ('keep_remote', 'keep_local', 'merge')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_file_index_vendor ON file_index(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_file_index_vendor_type ON file_index(vendor_id, entity_type);
+CREATE INDEX IF NOT EXISTS idx_file_index_entity ON file_index(vendor_id, entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_file_conflicts_vendor ON file_conflicts(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_file_conflicts_pending ON file_conflicts(vendor_id, status);
 
 -- Performance composite indexes
 CREATE INDEX IF NOT EXISTS idx_contacts_vendor_status ON contacts(vendor_id, status);

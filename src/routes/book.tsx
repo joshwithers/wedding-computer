@@ -4,7 +4,8 @@ import type { LineItem } from '../types'
 import { SharedHead } from '../views/head'
 import { getInvoiceByToken } from '../db/invoices'
 import { listPayments, updateInvoice } from '../db/invoices'
-import { getContact, updateContact } from '../db/contacts'
+import { updateContact } from '../storage/contacts'
+import { getStorage } from '../storage'
 import { createActivity } from '../db/activities'
 import { getVendorById } from '../db/vendors'
 import { getContractByInvoice, signContract } from '../db/contracts'
@@ -262,7 +263,14 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
 
   if (invoice.contact_id) {
     if (Object.keys(contactUpdates).length > 0) {
-      await updateContact(c.env.DB, invoice.vendor_id, invoice.contact_id, contactUpdates)
+      try {
+        const storage = getStorage(c.env, vendor)
+        await updateContact(storage, c.env.DB, invoice.vendor_id, invoice.contact_id, contactUpdates)
+      } catch (err) {
+        // Contact update is non-critical — the booking form submission
+        // and contract signing are the important parts.
+        console.error(`[book] Failed to update contact ${invoice.contact_id}:`, err)
+      }
     }
     await createActivity(c.env.DB, invoice.contact_id, 'note',
       contract ? 'Booking form submitted and contract signed' : 'Booking form submitted'

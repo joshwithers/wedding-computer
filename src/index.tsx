@@ -27,7 +27,8 @@ import stripe from './routes/stripe'
 import { authenticateVendor, CARDDAV_HEADERS, CALDAV_HEADERS, xmlResponse, escXml } from './lib/dav'
 import { AuthLayout } from './views/layouts/auth'
 import { getVendorWithEmail } from './db/vendors'
-import { getContact } from './db/contacts'
+import { getContact } from './storage/contacts'
+import { getStorage } from './storage'
 import { sendEmailMessage, newLeadEmail } from './services/email'
 import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, dailyDigest } from './services/notifications'
@@ -205,12 +206,14 @@ export default {
             continue
           }
 
-          const contact = await getContact(env.DB, body.vendorId, body.contactId)
-          if (!contact) {
+          const storage = getStorage(env, vendor)
+          const contactResult = await getContact(storage, env.DB, body.vendorId, body.contactId)
+          if (!contactResult) {
             console.error('[QUEUE] contact not found', body.contactId)
             msg.ack()
             continue
           }
+          const contact = contactResult.contact
 
           const partnerName = [contact.partner_first_name, contact.partner_last_name]
             .filter(Boolean)

@@ -13,7 +13,8 @@ import {
   getWeddingMembers,
   getMembership,
 } from '../../db/weddings'
-import { getContact, updateContact } from '../../db/contacts'
+import { getContact, updateContact } from '../../storage/contacts'
+import { getStorage } from '../../storage'
 import { createActivity } from '../../db/activities'
 import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
@@ -151,9 +152,11 @@ weddings.post('/app/weddings/new', async (c) => {
     // Link contact and auto-invite couple
     const contactId = trimOrNull(body.contact_id)
     if (contactId) {
-      const contact = await getContact(c.env.DB, vendor.id, contactId)
-      if (contact) {
-        await updateContact(c.env.DB, vendor.id, contactId, {
+      const storage = getStorage(c.env, vendor)
+      const contactResult = await getContact(storage, c.env.DB, vendor.id, contactId)
+      if (contactResult) {
+        const contact = contactResult.contact
+        await updateContact(storage, c.env.DB, vendor.id, contactId, {
           wedding_id: wedding.id,
           status: 'booked',
         })
@@ -460,8 +463,10 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
 weddings.get('/app/contacts/:id/promote', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
-  const contact = await getContact(c.env.DB, vendor.id, c.req.param('id'))
-  if (!contact) return c.text('Contact not found', 404)
+  const storage = getStorage(c.env, vendor)
+  const contactResult = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
+  if (!contactResult) return c.text('Contact not found', 404)
+  const contact = contactResult.contact
 
   const defaultTitle = contact.partner_first_name
     ? `${contact.first_name} & ${contact.partner_first_name}`

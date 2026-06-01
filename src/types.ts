@@ -74,6 +74,8 @@ export type VendorProfile = {
   ical_token: string | null
   anthropic_api_key: string | null
   email_handle: string | null
+  storage_type: string | null
+  storage_config: string | null
   created_at: string
   updated_at: string
 }

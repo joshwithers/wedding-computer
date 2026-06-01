@@ -7,14 +7,18 @@
     "db:migrate:local": "wrangler d1 execute wedding-computer-db --local --file=./schema.sql",
     "db:migrate:remote": "wrangler d1 execute wedding-computer-db --remote --file=./schema.sql",
     "db:seed:local": "wrangler d1 execute wedding-computer-db --local --file=./seed.sql",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "hono": "^4.7.10"
+    "hono": "^4.7.10",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250520.0",
     "typescript": "^5.8.3",
+    "vitest": "^4.1.7",
     "wrangler": "^4.16.0"
   }
 }

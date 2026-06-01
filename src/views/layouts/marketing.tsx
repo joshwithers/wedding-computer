@@ -30,9 +30,11 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => (
         <div class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
             <span class="text-sm text-gray-500 font-medium">&copy; {new Date().getFullYear()} Wedding Computer</span>
-            <div class="flex items-center gap-6">
+            <div class="flex items-center gap-4 sm:gap-6 flex-wrap justify-center">
               <a href="/about" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">About</a>
               <a href="/pricing" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">Pricing</a>
+              <a href="/standard" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">Open Standard</a>
+              <a href="/docs/plain-text" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">Docs</a>
               <a href="/login" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">Sign in</a>
             </div>
           </div>

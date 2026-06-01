@@ -12,7 +12,9 @@ import {
   updateContactStatus,
   deleteContact,
   countContactsByStatus,
-} from '../../db/contacts'
+} from '../../storage/contacts'
+import { getStorage } from '../../storage'
+import { needsMigration, migrateContacts } from '../../storage/migrate'
 import { listActivities, createActivity } from '../../db/activities'
 import { requireString, trimOrNull, sanitize } from '../../lib/validation'
 import { formatDate } from '../../lib/date'
@@ -40,6 +42,21 @@ contacts.use('/app/*', requireAuth, csrf, requireVendor)
 contacts.get('/app/contacts', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
+
+  // Lazy migration: if vendor has D1 contacts but no file index,
+  // export them to markdown files before showing the list.
+  // If migration fails, fall through — the old contacts table
+  // data still exists and the page can still render.
+  try {
+    if (await needsMigration(c.env.DB, vendor.id)) {
+      const storage = getStorage(c.env, vendor)
+      const migrationResult = await migrateContacts(storage, c.env.DB, vendor.id)
+      console.log(`[migrate] Vendor ${vendor.id}: migrated ${migrationResult.migrated}, skipped ${migrationResult.skipped}, errors ${migrationResult.errors}`)
+    }
+  } catch (err) {
+    console.error(`[migrate] Lazy migration failed for vendor ${vendor.id}:`, err)
+  }
+
   const status = c.req.query('status') ?? undefined
   const search = c.req.query('search') ?? undefined
   const [items, counts] = await Promise.all([
@@ -128,11 +145,12 @@ contacts.get('/app/contacts/new', (c) => {
 
 contacts.post('/app/contacts/new', async (c) => {
   const vendor = c.get('vendor')!
+  const storage = getStorage(c.env, vendor)
   const body = await c.req.parseBody()
   try {
     const firstName = requireString(body.first_name, 'First name')
     const lastName = requireString(body.last_name, 'Last name')
-    const contact = await createContact(c.env.DB, vendor.id, {
+    const contact = await createContact(storage, c.env.DB, vendor.id, {
       first_name: firstName,
       last_name: lastName,
       email: trimOrNull(body.email),
@@ -158,8 +176,10 @@ contacts.post('/app/contacts/new', async (c) => {
 contacts.get('/app/contacts/:id', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
-  const contact = await getContact(c.env.DB, vendor.id, c.req.param('id'))
-  if (!contact) return c.text('Contact not found', 404)
+  const storage = getStorage(c.env, vendor)
+  const result = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
+  if (!result) return c.text('Contact not found', 404)
+  const { contact } = result
   const activities = await listActivities(c.env.DB, contact.id)
   const bookingFormRows = await c.env.DB
     .prepare('SELECT title, booking_form_data FROM invoices WHERE vendor_id = ? AND contact_id = ? AND booking_form_data IS NOT NULL')
@@ -305,8 +325,10 @@ contacts.get('/app/contacts/:id', async (c) => {
 contacts.get('/app/contacts/:id/edit', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
-  const contact = await getContact(c.env.DB, vendor.id, c.req.param('id'))
-  if (!contact) return c.text('Contact not found', 404)
+  const storage = getStorage(c.env, vendor)
+  const result = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
+  if (!result) return c.text('Contact not found', 404)
+  const { contact } = result
 
   return c.html(
     <AppLayout title={`Edit ${contact.first_name}`} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
@@ -338,12 +360,13 @@ contacts.get('/app/contacts/:id/edit', async (c) => {
 
 contacts.post('/app/contacts/:id/edit', async (c) => {
   const vendor = c.get('vendor')!
+  const storage = getStorage(c.env, vendor)
   const contactId = c.req.param('id')
   const body = await c.req.parseBody()
   try {
     const firstName = requireString(body.first_name, 'First name')
     const lastName = requireString(body.last_name, 'Last name')
-    await updateContact(c.env.DB, vendor.id, contactId, {
+    await updateContact(storage, c.env.DB, vendor.id, contactId, {
       first_name: firstName,
       last_name: lastName,
       email: trimOrNull(body.email),
@@ -366,28 +389,31 @@ contacts.post('/app/contacts/:id/edit', async (c) => {
 // ─── Status update (htmx) ───
 contacts.post('/app/contacts/:id/status', async (c) => {
   const vendor = c.get('vendor')!
+  const storage = getStorage(c.env, vendor)
   const contactId = c.req.param('id')
   const body = await c.req.parseBody()
   const status = body.status as string
-  const oldContact = await getContact(c.env.DB, vendor.id, contactId)
-  if (!oldContact) return c.text('Not found', 404)
+  const oldResult = await getContact(storage, c.env.DB, vendor.id, contactId)
+  if (!oldResult) return c.text('Not found', 404)
 
-  await updateContactStatus(c.env.DB, vendor.id, contactId, status)
+  await updateContactStatus(storage, c.env.DB, vendor.id, contactId, status)
   await createActivity(
     c.env.DB,
     contactId,
     'status_change',
-    `Status changed from ${oldContact.status} to ${status}`
+    `Status changed from ${oldResult.contact.status} to ${status}`
   )
   track(c.env.DB, vendor.id, 'status_change', {
     contactId,
-    metadata: { from: oldContact.status, to: status },
+    metadata: { from: oldResult.contact.status, to: status },
   })
   if (status === 'booked') {
     track(c.env.DB, vendor.id, 'booking_confirmed', { contactId })
   }
 
-  const contact = await getContact(c.env.DB, vendor.id, contactId)
+  const result = await getContact(storage, c.env.DB, vendor.id, contactId)
+  if (!result) return c.text('Contact not found after status update', 404)
+  const contact = result.contact
   return c.html(
     <div class="flex flex-wrap gap-2" id="status-buttons">
       {STATUSES.map((s) => (
@@ -397,7 +423,7 @@ contacts.post('/app/contacts/:id/status', async (c) => {
           hx-target="#status-buttons"
           hx-swap="outerHTML"
           class={`px-3 py-1 rounded-full text-xs font-medium border ${
-            contact!.status === s.value
+            contact.status === s.value
               ? 'bg-horizon-600 text-white border-horizon-600'
               : 'bg-white text-gray-600 border-gray-200 hover:bg-papaya-50'
           }`}
@@ -412,9 +438,10 @@ contacts.post('/app/contacts/:id/status', async (c) => {
 // ─── Add note (htmx) ───
 contacts.post('/app/contacts/:id/notes', async (c) => {
   const vendor = c.get('vendor')!
+  const storage = getStorage(c.env, vendor)
   const contactId = c.req.param('id')
-  const contact = await getContact(c.env.DB, vendor.id, contactId)
-  if (!contact) return c.text('Not found', 404)
+  const result = await getContact(storage, c.env.DB, vendor.id, contactId)
+  if (!result) return c.text('Not found', 404)
 
   const body = await c.req.parseBody()
   const note = typeof body.note === 'string' ? body.note.trim() : ''
@@ -436,8 +463,9 @@ contacts.post('/app/contacts/:id/notes', async (c) => {
 // ─── Delete contact ───
 contacts.post('/app/contacts/:id/delete', async (c) => {
   const vendor = c.get('vendor')!
+  const storage = getStorage(c.env, vendor)
   await auditLog(c, 'contact_deleted', 'contact', c.req.param('id')).catch(() => {})
-  await deleteContact(c.env.DB, vendor.id, c.req.param('id'))
+  await deleteContact(storage, c.env.DB, vendor.id, c.req.param('id'))
   return c.redirect('/app/contacts')
 })
 
@@ -446,8 +474,10 @@ contacts.post('/app/contacts/:id/delete', async (c) => {
 contacts.get('/app/contacts/:id/email', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
-  const contact = await getContact(c.env.DB, vendor.id, c.req.param('id'))
-  if (!contact) return c.text('Contact not found', 404)
+  const storage = getStorage(c.env, vendor)
+  const result = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
+  if (!result) return c.text('Contact not found', 404)
+  const { contact } = result
   if (!contact.email) return c.redirect(`/app/contacts/${contact.id}`)
 
   const purpose = c.req.query('purpose') ?? 'Follow up on their enquiry'
@@ -540,8 +570,10 @@ contacts.get('/app/contacts/:id/email', async (c) => {
 
 contacts.post('/app/contacts/:id/email/draft', async (c) => {
   const vendor = c.get('vendor')!
-  const contact = await getContact(c.env.DB, vendor.id, c.req.param('id'))
-  if (!contact || !contact.email) return c.text('Not found', 404)
+  const storage = getStorage(c.env, vendor)
+  const result = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
+  if (!result || !result.contact.email) return c.text('Not found', 404)
+  const { contact } = result
 
   const body = await c.req.parseBody()
   const purpose = String(body.purpose || 'Follow up on their enquiry')
@@ -576,8 +608,10 @@ contacts.post('/app/contacts/:id/email/draft', async (c) => {
 contacts.post('/app/contacts/:id/email/send', async (c) => {
   const vendor = c.get('vendor')!
   const user = c.get('user')
-  const contact = await getContact(c.env.DB, vendor.id, c.req.param('id'))
-  if (!contact || !contact.email) return c.text('Not found', 404)
+  const storage = getStorage(c.env, vendor)
+  const result = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
+  if (!result || !result.contact.email) return c.text('Not found', 404)
+  const { contact } = result
 
   const body = await c.req.parseBody()
   const subject = String(body.subject)
@@ -602,7 +636,7 @@ contacts.post('/app/contacts/:id/email/send', async (c) => {
       resendApiKey: c.env.RESEND_API_KEY,
       vendorId: vendor.id,
       contactId: contact.id,
-      to: contact.email,
+      to: contact.email!,
       toName: `${contact.first_name} ${contact.last_name}`,
       subject,
       html,
