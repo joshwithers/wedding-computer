@@ -11,8 +11,9 @@
  */
 
 import type { Bindings, VendorProfile } from '../types'
-import type { StorageBackend } from './types'
+import type { StorageBackend, StorageConfig } from './types'
 import { R2StorageBackend } from './r2'
+import { GitHubStorageBackend } from './github'
 
 /**
  * Get the storage backend for a vendor.
@@ -30,13 +31,27 @@ export function getStorage(env: Bindings, vendor: VendorProfile): StorageBackend
     }
 
     case 'git': {
-      // Git backend will be implemented in a future PR.
-      // For now, fall through to R2 so existing vendors don't break.
-      if (!env.STORAGE) {
-        throw new Error('R2 storage binding (STORAGE) is not configured')
+      // Parse storage config for git settings
+      let config: StorageConfig | null = null
+      if (vendor.storage_config) {
+        try { config = JSON.parse(vendor.storage_config) } catch { /* ignore */ }
       }
-      console.warn(`[storage] Vendor ${vendor.id} has git storage configured but git backend is not yet available. Using R2.`)
-      return new R2StorageBackend(env.STORAGE, vendor.id)
+
+      if (config?.git_repo && config?.git_access_token) {
+        return new GitHubStorageBackend({
+          token: config.git_access_token,
+          repo: config.git_repo,
+          branch: config.git_branch ?? 'main',
+          path: config.git_path ?? '',
+        })
+      }
+
+      // Git configured but missing credentials — fall back to R2
+      if (env.STORAGE) {
+        console.warn(`[storage] Vendor ${vendor.id} has git storage but missing config. Using R2.`)
+        return new R2StorageBackend(env.STORAGE, vendor.id)
+      }
+      throw new Error('Git storage is not fully configured and R2 is unavailable')
     }
 
     default:

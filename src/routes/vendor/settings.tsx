@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import type { Env } from '../../types'
+import type { Env, VendorProfile } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
@@ -13,6 +13,7 @@ import { listContacts } from '../../storage/contacts'
 import { listInvoices } from '../../db/invoices'
 import { deleteCookie } from 'hono/cookie'
 import { destroySession } from '../../services/auth'
+import { verifyGitHubToken, createGitHubRepo } from '../../storage/github'
 
 const settings = new Hono<Env>()
 
@@ -234,6 +235,98 @@ settings.get('/app/settings', (c) => {
         </section>
 
         <section class="mt-10 pt-8 border-t border-gray-200">
+          <h2 class="text-base font-bold mb-2">GitHub sync</h2>
+          <p class="text-sm text-gray-500 mb-4">
+            Sync your contacts and weddings to a private GitHub repository. Open your files in Obsidian, VS Code, or any text editor.
+          </p>
+          {(() => {
+            let gitConfig: { git_repo?: string; git_access_token?: string } | null = null
+            if (vendor.storage_config) {
+              try { gitConfig = JSON.parse(vendor.storage_config) } catch { /* ignore */ }
+            }
+            const isConnected = vendor.storage_type === 'git' && gitConfig?.git_repo && gitConfig?.git_access_token
+
+            if (isConnected) {
+              return (
+                <div class="space-y-4">
+                  <div class="bg-horizon-50 border border-horizon-600/20 rounded-xl p-4">
+                    <div class="flex items-center gap-2 mb-1">
+                      <div class="w-2 h-2 rounded-full bg-green-500" />
+                      <p class="text-sm font-bold text-horizon-700">Connected to GitHub</p>
+                    </div>
+                    <p class="text-xs text-gray-600">
+                      Repository: <a href={`https://github.com/${gitConfig!.git_repo}`} class="font-medium text-horizon-600 hover:underline" target="_blank" rel="noopener">{gitConfig!.git_repo}</a>
+                    </p>
+                    <p class="text-xs text-gray-500 mt-1">
+                      Changes to contacts and weddings are automatically pushed to your repo.
+                    </p>
+                  </div>
+                  <div class="flex gap-3">
+                    <form method="post" action="/app/settings/github/sync">
+                      <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                      <button type="submit" class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
+                        Sync all files now
+                      </button>
+                    </form>
+                    <form method="post" action="/app/settings/github/disconnect">
+                      <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                      <button type="submit" class="border border-gray-200 text-gray-600 py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors">
+                        Disconnect
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )
+            }
+
+            return (
+              <form method="post" action="/app/settings/github/connect" class="space-y-4">
+                <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                <div>
+                  <label class="block text-sm font-bold text-gray-700 mb-1.5" for="github_token">
+                    GitHub Personal Access Token
+                  </label>
+                  <input
+                    type="password"
+                    id="github_token"
+                    name="github_token"
+                    required
+                    placeholder="ghp_..."
+                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                  />
+                  <p class="text-xs text-gray-400 mt-1.5">
+                    Create a token at{' '}
+                    <a href="https://github.com/settings/tokens/new?scopes=repo&description=Wedding+Computer" target="_blank" rel="noopener" class="text-horizon-600 hover:underline">
+                      github.com/settings/tokens
+                    </a>
+                    {' '}with <strong>repo</strong> scope.
+                  </p>
+                </div>
+                <div>
+                  <label class="block text-sm font-bold text-gray-700 mb-1.5" for="github_repo">
+                    Repository name
+                  </label>
+                  <input
+                    type="text"
+                    id="github_repo"
+                    name="github_repo"
+                    required
+                    placeholder="wedding-data"
+                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                  />
+                  <p class="text-xs text-gray-400 mt-1.5">
+                    {"We'll create a private repo with this name if it doesn't exist."}
+                  </p>
+                </div>
+                <button type="submit" class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
+                  Connect GitHub
+                </button>
+              </form>
+            )
+          })()}
+        </section>
+
+        <section class="mt-10 pt-8 border-t border-gray-200">
           <h2 class="text-base font-bold mb-2">AI</h2>
           <p class="text-sm text-gray-500 mb-4">
             Email drafting uses Cloudflare AI by default. Add your own Anthropic API key for higher quality drafts powered by Claude.
@@ -448,6 +541,205 @@ settings.post('/app/settings/generate-sync-token', async (c) => {
   await updateVendor(c.env.DB, vendor.id, { ical_token: token })
   return c.redirect('/app/settings?saved=1')
 })
+
+// ─── GitHub sync ───
+
+settings.post('/app/settings/github/connect', async (c) => {
+  const vendor = c.get('vendor')!
+  const body = await c.req.parseBody()
+  const token = typeof body.github_token === 'string' ? body.github_token.trim() : ''
+  const repoName = typeof body.github_repo === 'string' ? body.github_repo.trim() : ''
+
+  if (!token || !repoName) {
+    return c.redirect('/app/settings?error=Token+and+repository+name+are+required')
+  }
+
+  try {
+    // Verify the token works
+    const user = await verifyGitHubToken(token)
+    if (!user) {
+      return c.redirect('/app/settings?error=Invalid+GitHub+token.+Check+it+has+repo+scope.')
+    }
+
+    // Check if repo exists, create if not
+    const fullRepoName = repoName.includes('/') ? repoName : `${user.login}/${repoName}`
+    const repoCheck = await fetch(`https://api.github.com/repos/${fullRepoName}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github.v3+json',
+        'User-Agent': 'WeddingComputer/1.0',
+      },
+    })
+
+    let repoFullName = fullRepoName
+    if (repoCheck.status === 404) {
+      // Create the repo
+      const simpleName = repoName.includes('/') ? repoName.split('/').pop()! : repoName
+      const created = await createGitHubRepo(
+        token,
+        simpleName,
+        `Wedding Computer data for ${vendor.business_name}`
+      )
+      if (!created) {
+        return c.redirect('/app/settings?error=Failed+to+create+GitHub+repository')
+      }
+      repoFullName = created.full_name
+    } else if (!repoCheck.ok) {
+      return c.redirect('/app/settings?error=Could+not+access+that+repository.+Check+your+token+permissions.')
+    }
+
+    // Save the config
+    const config = JSON.stringify({
+      type: 'git',
+      git_provider: 'github',
+      git_repo: repoFullName,
+      git_branch: 'main',
+      git_path: '',
+      git_access_token: token,
+    })
+
+    await updateVendor(c.env.DB, vendor.id, {
+      storage_type: 'git',
+      storage_config: config,
+    })
+
+    await auditLog(c, 'github_connected', 'vendor', vendor.id, { repo: repoFullName }).catch(() => {})
+
+    // Trigger initial sync — push all existing contacts to GitHub
+    try {
+      await initialGitHubSync(c.env.DB, vendor, token, repoFullName)
+    } catch (syncErr) {
+      console.error('[github] Initial sync failed:', syncErr)
+      // Don't fail the connect — the repo is linked, sync can happen later
+    }
+
+    return c.redirect('/app/settings?saved=1')
+  } catch (err: any) {
+    console.error('[github] connect error:', err)
+    return c.redirect(`/app/settings?error=${encodeURIComponent(err.message || 'Failed to connect GitHub')}`)
+  }
+})
+
+settings.post('/app/settings/github/disconnect', async (c) => {
+  const vendor = c.get('vendor')!
+
+  await updateVendor(c.env.DB, vendor.id, {
+    storage_type: 'r2',
+    storage_config: null,
+  })
+
+  await auditLog(c, 'github_disconnected', 'vendor', vendor.id).catch(() => {})
+  return c.redirect('/app/settings?saved=1')
+})
+
+settings.post('/app/settings/github/sync', async (c) => {
+  const vendor = c.get('vendor')!
+
+  let config: { git_repo?: string; git_access_token?: string } | null = null
+  if (vendor.storage_config) {
+    try { config = JSON.parse(vendor.storage_config) } catch { /* ignore */ }
+  }
+
+  if (!config?.git_repo || !config?.git_access_token) {
+    return c.redirect('/app/settings?error=GitHub+is+not+connected')
+  }
+
+  try {
+    const result = await initialGitHubSync(c.env.DB, vendor, config.git_access_token, config.git_repo)
+    return c.redirect(`/app/settings?saved=1&synced=${result.pushed}`)
+  } catch (err: any) {
+    console.error('[github] sync error:', err)
+    return c.redirect(`/app/settings?error=${encodeURIComponent('Sync failed: ' + (err.message || 'unknown error'))}`)
+  }
+})
+
+/**
+ * Push all existing contacts and weddings from D1 to a GitHub repo.
+ * This is the "initial sync" that runs when a user first connects,
+ * and can be re-run via the "Sync all files now" button.
+ */
+async function initialGitHubSync(
+  db: D1Database,
+  vendor: VendorProfile,
+  token: string,
+  repo: string
+): Promise<{ pushed: number; skipped: number }> {
+  const { GitHubStorageBackend } = await import('../../storage/github')
+  const { contactToMarkdown } = await import('../../storage/contacts')
+  const { serializeMarkdown } = await import('../../storage/markdown')
+  const { contactFilename } = await import('../../storage/slug')
+
+  const github = new GitHubStorageBackend({ token, repo, branch: 'main', path: '' })
+
+  // Get all contacts from D1
+  const contacts = await db
+    .prepare('SELECT * FROM contacts WHERE vendor_id = ? ORDER BY created_at ASC')
+    .bind(vendor.id)
+    .all<any>()
+    .then((r) => r.results)
+
+  let pushed = 0
+  let skipped = 0
+
+  for (const ct of contacts) {
+    try {
+      const filename = contactFilename(
+        ct.first_name || '',
+        ct.last_name || '',
+        ct.partner_first_name,
+        ct.partner_last_name
+      )
+      const doc = contactToMarkdown(ct)
+      const content = serializeMarkdown(doc)
+      await github.write(`contacts/${filename}`, content)
+      pushed++
+    } catch (err) {
+      console.error(`[github-sync] Failed to push contact ${ct.id}:`, err)
+      skipped++
+    }
+  }
+
+  // Get weddings
+  const weddings = await db
+    .prepare(
+      `SELECT w.* FROM weddings w
+       JOIN wedding_members wm ON wm.wedding_id = w.id
+       WHERE wm.vendor_profile_id = ? AND wm.status = 'active'
+       ORDER BY w.created_at ASC`
+    )
+    .bind(vendor.id)
+    .all<any>()
+    .then((r) => r.results)
+
+  for (const w of weddings) {
+    try {
+      const title = (w.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      const content = [
+        '---',
+        `id: "${w.id}"`,
+        `title: "${w.title || ''}"`,
+        w.date ? `date: "${w.date}"` : null,
+        w.time ? `time: "${w.time}"` : null,
+        w.location ? `location: "${w.location}"` : null,
+        `status: "${w.status || 'planning'}"`,
+        w.ceremony_type ? `ceremony_type: "${w.ceremony_type}"` : null,
+        `created_at: "${w.created_at || ''}"`,
+        '---',
+        '',
+        w.notes || '',
+      ].filter((line) => line !== null).join('\n')
+
+      await github.write(`weddings/${title}.md`, content)
+      pushed++
+    } catch (err) {
+      console.error(`[github-sync] Failed to push wedding ${w.id}:`, err)
+      skipped++
+    }
+  }
+
+  console.log(`[github-sync] Vendor ${vendor.id}: pushed ${pushed}, skipped ${skipped}`)
+  return { pushed, skipped }
+}
 
 // ─── Stripe Connect ───
 

@@ -84,6 +84,8 @@ export async function updateVendor(
       | 'anthropic_api_key'
       | 'email_handle'
       | 'ceremony_types'
+      | 'storage_type'
+      | 'storage_config'
     >
   >
 ): Promise<void> {
