@@ -577,13 +577,6 @@ weddings.get('/app/weddings/:id', async (c) => {
               )}
             </div>
 
-            {/* Notes */}
-            {wedding.notes && (
-              <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
-                <h3 class="text-sm font-bold text-gray-500 mb-2">Notes</h3>
-                <p class="text-sm text-gray-700 whitespace-pre-wrap">{wedding.notes}</p>
-              </div>
-            )}
           </div>
 
           {/* Sidebar */}
@@ -607,9 +600,51 @@ weddings.get('/app/weddings/:id', async (c) => {
             <InfoCard label="Created" value={formatDate(wedding.created_at)} />
           </div>
         </div>
+
+        {/* Notes — full-width auto-saving markdown editor */}
+        <WeddingNotes
+          weddingId={wedding.id}
+          notes={wedding.notes ?? ''}
+          canManage={canManage}
+          csrfToken={c.get('csrfToken')}
+        />
       </div>
     </AppLayout>
   )
+})
+
+// ─── Auto-save notes (JSON API for the live editor) ───
+weddings.post('/app/weddings/:id/notes', async (c) => {
+  const user = c.get('user')
+  const weddingId = c.req.param('id')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership || !membership.can_manage) return c.json({ error: 'forbidden' }, 403)
+
+  const body = await c.req.json<{ notes: string }>()
+  const notes = typeof body.notes === 'string' ? body.notes : ''
+
+  await updateWedding(c.env.DB, weddingId, { notes: notes || null })
+
+  return c.json({ saved: true, at: new Date().toISOString() })
+})
+
+// ─── Sync notes to git storage (called after period of inactivity) ───
+weddings.post('/app/weddings/:id/notes/sync', async (c) => {
+  const user = c.get('user')
+  const vendor = c.get('vendor')!
+  const weddingId = c.req.param('id')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership || !membership.can_manage) return c.json({ error: 'forbidden' }, 403)
+
+  try {
+    await pushWeddingToStorage(c.env, vendor, weddingId)
+    return c.json({ synced: true, at: new Date().toISOString() })
+  } catch (err) {
+    console.error('[notes/sync]', err)
+    return c.json({ synced: false, error: 'sync failed' })
+  }
 })
 
 // ─── Edit wedding ───
@@ -814,6 +849,265 @@ function InfoCard({ label, value }: { label: string; value: string }) {
     <div class="bg-white border border-papaya-300/30 rounded-2xl px-4 py-3">
       <p class="text-xs text-gray-500 mb-0.5">{label}</p>
       <p class="text-sm text-gray-900">{value}</p>
+    </div>
+  )
+}
+
+function WeddingNotes({
+  weddingId,
+  notes,
+  canManage,
+  csrfToken,
+}: {
+  weddingId: string
+  notes: string
+  canManage: boolean
+  csrfToken: string
+}) {
+  // Escape notes for safe embedding in JS
+  const escaped = JSON.stringify(notes)
+
+  return (
+    <div class="mt-6" id="wedding-notes-section">
+      <div class="bg-white border border-papaya-300/30 rounded-2xl overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-papaya-300/30">
+          <h3 class="text-sm font-bold text-gray-500">Notes</h3>
+          <div class="flex items-center gap-3">
+            <span id="notes-status" class="text-xs text-gray-400 transition-opacity"></span>
+            {canManage && (
+              <div class="flex border border-gray-200 rounded-lg overflow-hidden text-xs">
+                <button
+                  type="button"
+                  id="btn-edit"
+                  class="px-3 py-1 font-bold bg-horizon-50 text-horizon-700"
+                  onclick="notesEditor.showEdit()"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  id="btn-preview"
+                  class="px-3 py-1 font-bold text-gray-400 hover:text-gray-600"
+                  onclick="notesEditor.showPreview()"
+                >
+                  Preview
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {canManage ? (
+          <>
+            <div id="notes-edit-pane">
+              <textarea
+                id="notes-textarea"
+                class="w-full px-5 py-4 text-sm text-gray-800 font-mono leading-relaxed resize-y focus:outline-none min-h-[320px] bg-transparent"
+                placeholder="Write notes about this wedding... Markdown is supported."
+                spellcheck={true}
+              >{notes}</textarea>
+            </div>
+            <div id="notes-preview-pane" class="hidden">
+              <div
+                id="notes-preview"
+                class="px-5 py-4 md-preview text-sm max-w-none text-gray-800 min-h-[320px]"
+              >
+                {notes ? (
+                  <p class="text-gray-400 italic">Loading preview...</p>
+                ) : (
+                  <p class="text-gray-400 italic">No notes yet</p>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div
+            id="notes-preview"
+            class="px-5 py-4 md-preview text-sm max-w-none text-gray-800 min-h-[120px]"
+          >
+            {notes ? (
+              <p class="text-gray-400 italic">Loading...</p>
+            ) : (
+              <p class="text-gray-400 italic">No notes yet</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Markdown styles + renderer + auto-save logic */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        .md-preview h1 { font-size: 1.5em; font-weight: 700; margin: 1em 0 0.5em; }
+        .md-preview h2 { font-size: 1.25em; font-weight: 700; margin: 1em 0 0.5em; }
+        .md-preview h3 { font-size: 1.1em; font-weight: 700; margin: 0.75em 0 0.4em; }
+        .md-preview p { margin: 0.5em 0; }
+        .md-preview ul, .md-preview ol { margin: 0.5em 0; padding-left: 1.5em; }
+        .md-preview ul { list-style: disc; }
+        .md-preview ol { list-style: decimal; }
+        .md-preview li { margin: 0.25em 0; }
+        .md-preview a { color: #0066E6; text-decoration: underline; }
+        .md-preview strong { font-weight: 700; }
+        .md-preview em { font-style: italic; }
+        .md-preview code { background: #f3f4f6; padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.9em; }
+        .md-preview pre { background: #f3f4f6; padding: 0.75em 1em; border-radius: 8px; overflow-x: auto; margin: 0.75em 0; }
+        .md-preview pre code { background: none; padding: 0; }
+        .md-preview blockquote { border-left: 3px solid #d1d5db; padding-left: 1em; color: #6b7280; margin: 0.75em 0; }
+        .md-preview hr { border: none; border-top: 1px solid #e5e7eb; margin: 1em 0; }
+        .md-preview table { border-collapse: collapse; width: 100%; margin: 0.75em 0; }
+        .md-preview th, .md-preview td { border: 1px solid #e5e7eb; padding: 0.4em 0.75em; text-align: left; }
+        .md-preview th { background: #f9fafb; font-weight: 600; }
+        .md-preview input[type="checkbox"] { margin-right: 0.4em; }
+      ` }} />
+      <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
+      {canManage ? (
+        <script dangerouslySetInnerHTML={{ __html: `
+(function() {
+  var weddingId = "${weddingId}";
+  var csrf = "${csrfToken}";
+  var textarea = document.getElementById("notes-textarea");
+  var preview = document.getElementById("notes-preview");
+  var status = document.getElementById("notes-status");
+  var editPane = document.getElementById("notes-edit-pane");
+  var previewPane = document.getElementById("notes-preview-pane");
+  var btnEdit = document.getElementById("btn-edit");
+  var btnPreview = document.getElementById("btn-preview");
+
+  var saveTimer = null;
+  var syncTimer = null;
+  var lastSaved = ${escaped};
+  var saving = false;
+
+  function setStatus(text, color) {
+    status.textContent = text;
+    status.style.color = color || "#9ca3af";
+  }
+
+  function renderPreview() {
+    if (typeof marked !== "undefined" && marked.parse) {
+      var val = textarea ? textarea.value : ${escaped};
+      preview.innerHTML = val ? marked.parse(val) : '<p class="text-gray-400 italic">No notes yet</p>';
+    }
+  }
+
+  // Save notes to D1
+  function save() {
+    var val = textarea.value;
+    if (val === lastSaved) return;
+    saving = true;
+    setStatus("Saving...", "#6b7280");
+
+    fetch("/app/weddings/" + weddingId + "/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+      body: JSON.stringify({ notes: val })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      saving = false;
+      if (data.saved) {
+        lastSaved = val;
+        setStatus("Saved", "#16a34a");
+        // Schedule git sync after 10s of inactivity
+        clearTimeout(syncTimer);
+        syncTimer = setTimeout(syncToGit, 10000);
+      } else {
+        setStatus("Save failed", "#dc2626");
+      }
+    })
+    .catch(function() {
+      saving = false;
+      setStatus("Save failed — retrying...", "#dc2626");
+      // Retry once after 3s
+      setTimeout(function() { save(); }, 3000);
+    });
+  }
+
+  // Push to git storage
+  function syncToGit() {
+    setStatus("Syncing...", "#6b7280");
+    fetch("/app/weddings/" + weddingId + "/notes/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.synced) {
+        setStatus("Saved & synced", "#16a34a");
+        setTimeout(function() {
+          if (status.textContent === "Saved & synced") setStatus("");
+        }, 4000);
+      } else {
+        setStatus("Saved", "#16a34a");
+      }
+    })
+    .catch(function() {
+      setStatus("Saved (sync pending)", "#ca8a04");
+    });
+  }
+
+  // Debounced save on input
+  textarea.addEventListener("input", function() {
+    clearTimeout(saveTimer);
+    clearTimeout(syncTimer);
+    setStatus("Editing...", "#9ca3af");
+    saveTimer = setTimeout(save, 1500);
+  });
+
+  // Save on blur (switching tabs, etc.)
+  textarea.addEventListener("blur", function() {
+    if (textarea.value !== lastSaved) {
+      clearTimeout(saveTimer);
+      save();
+    }
+  });
+
+  // Save before leaving page
+  window.addEventListener("beforeunload", function(e) {
+    if (textarea.value !== lastSaved) {
+      save();
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
+
+  // Tab/preview toggle
+  window.notesEditor = {
+    showEdit: function() {
+      editPane.classList.remove("hidden");
+      previewPane.classList.add("hidden");
+      btnEdit.className = "px-3 py-1 font-bold bg-horizon-50 text-horizon-700";
+      btnPreview.className = "px-3 py-1 font-bold text-gray-400 hover:text-gray-600";
+      textarea.focus();
+    },
+    showPreview: function() {
+      renderPreview();
+      previewPane.classList.remove("hidden");
+      editPane.classList.add("hidden");
+      btnPreview.className = "px-3 py-1 font-bold bg-horizon-50 text-horizon-700";
+      btnEdit.className = "px-3 py-1 font-bold text-gray-400 hover:text-gray-600";
+    }
+  };
+
+  // Initial render check — render preview on load in case they switch tabs
+  if (typeof marked !== "undefined") renderPreview();
+  else window.addEventListener("load", renderPreview);
+})();
+` }} />
+      ) : (
+        <script dangerouslySetInnerHTML={{ __html: `
+(function() {
+  function render() {
+    var el = document.getElementById("notes-preview");
+    if (!el) return;
+    var src = ${escaped};
+    if (typeof marked !== "undefined" && marked.parse) {
+      el.innerHTML = src ? marked.parse(src) : '<p class="text-gray-400 italic">No notes yet</p>';
+    }
+  }
+  if (typeof marked !== "undefined") render();
+  else window.addEventListener("load", render);
+})();
+` }} />
+      )}
     </div>
   )
 }

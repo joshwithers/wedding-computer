@@ -411,8 +411,41 @@ couple.get('/wedding/:id', async (c) => {
           <section>
             <h2 class="text-sm font-bold text-gray-500 mb-3">Notes from your vendor</h2>
             <div class="bg-white border border-papaya-300/30 rounded-2xl p-5">
-              <p class="text-sm text-gray-700 whitespace-pre-wrap">{wedding.notes}</p>
+              <div id="vendor-notes-preview" class="md-preview text-sm text-gray-700 min-h-[40px]">
+                <p class="text-gray-400 italic">Loading...</p>
+              </div>
             </div>
+            <style dangerouslySetInnerHTML={{ __html: `
+              .md-preview h1 { font-size: 1.5em; font-weight: 700; margin: 1em 0 0.5em; }
+              .md-preview h2 { font-size: 1.25em; font-weight: 700; margin: 1em 0 0.5em; }
+              .md-preview h3 { font-size: 1.1em; font-weight: 700; margin: 0.75em 0 0.4em; }
+              .md-preview p { margin: 0.5em 0; }
+              .md-preview ul, .md-preview ol { margin: 0.5em 0; padding-left: 1.5em; }
+              .md-preview ul { list-style: disc; }
+              .md-preview ol { list-style: decimal; }
+              .md-preview li { margin: 0.25em 0; }
+              .md-preview a { color: #0066E6; text-decoration: underline; }
+              .md-preview strong { font-weight: 700; }
+              .md-preview em { font-style: italic; }
+              .md-preview code { background: #f3f4f6; padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.9em; }
+              .md-preview pre { background: #f3f4f6; padding: 0.75em 1em; border-radius: 8px; overflow-x: auto; margin: 0.75em 0; }
+              .md-preview pre code { background: none; padding: 0; }
+              .md-preview blockquote { border-left: 3px solid #d1d5db; padding-left: 1em; color: #6b7280; margin: 0.75em 0; }
+              .md-preview hr { border: none; border-top: 1px solid #e5e7eb; margin: 1em 0; }
+            ` }} />
+            <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
+            <script dangerouslySetInnerHTML={{ __html: `
+(function() {
+  function render() {
+    var el = document.getElementById("vendor-notes-preview");
+    if (!el || typeof marked === "undefined") return;
+    var src = ${JSON.stringify(wedding.notes)};
+    el.innerHTML = src ? marked.parse(src) : '';
+  }
+  if (typeof marked !== "undefined") render();
+  else window.addEventListener("load", render);
+})();
+            ` }} />
           </section>
         )}
 
