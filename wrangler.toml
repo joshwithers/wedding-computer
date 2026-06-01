@@ -1,7 +1,7 @@
 name = "wedding-computer"
 main = "src/index.tsx"
 compatibility_date = "2025-05-01"
-# account_id — set via `wrangler login` or CLOUDFLARE_ACCOUNT_ID env var
+account_id = "56eb0a25e23b5ed8e20b17842ccc14df"
 workers_dev = true
 
 [assets]
@@ -16,11 +16,11 @@ name = "SEND_EMAIL"
 [[d1_databases]]
 binding = "DB"
 database_name = "wedding-computer-db"
-database_id = "" # create with: wrangler d1 create wedding-computer-db
+database_id = "b20a6a12-b588-4107-9ab1-7eea58fde6d0"
 
 [[kv_namespaces]]
 binding = "KV"
-id = "" # create with: wrangler kv namespace create KV
+id = "c62f7d1f22174f7da3617d1f0257e398"
 
 [[queues.producers]]
 binding = "EMAIL_QUEUE"
