@@ -15,7 +15,9 @@ import {
 } from '../../db/weddings'
 import { getContact, updateContact } from '../../storage/contacts'
 import { getStorage } from '../../storage'
+import { writeWeddingFile } from '../../storage/weddings'
 import { createActivity } from '../../db/activities'
+import type { Bindings, VendorProfile } from '../../types'
 import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, daysUntil } from '../../lib/date'
@@ -32,6 +34,24 @@ const WEDDING_STATUSES = [
 const weddings = new Hono<Env>()
 
 weddings.use('/app/*', requireAuth, csrf, requireVendor)
+
+/** Safe storage getter — returns null if storage unavailable */
+function tryGetStorage(env: Bindings, vendor: VendorProfile) {
+  try { return getStorage(env, vendor) } catch { return null }
+}
+
+/** Push a wedding to storage (GitHub/R2) after a D1 write. Best-effort — never blocks the response. */
+async function pushWeddingToStorage(env: Bindings, vendor: VendorProfile, weddingId: string) {
+  const storage = tryGetStorage(env, vendor)
+  if (!storage) return
+  try {
+    const wedding = await getWedding(env.DB, weddingId)
+    if (!wedding) return
+    await writeWeddingFile(storage, env.DB, vendor.id, wedding)
+  } catch (err) {
+    console.error(`[weddings] Failed to push wedding ${weddingId} to storage:`, err)
+  }
+}
 
 // ─── Wedding list ───
 weddings.get('/app/weddings', async (c) => {
@@ -148,6 +168,9 @@ weddings.post('/app/weddings/new', async (c) => {
       weddingId: wedding.id,
       metadata: { ceremony_type: trimOrNull(body.ceremony_type) ?? 'wedding' },
     })
+
+    // Push wedding file to storage (GitHub/R2) — best-effort, don't block
+    pushWeddingToStorage(c.env, vendor, wedding.id).catch(() => {})
 
     // Link contact and auto-invite couple
     const contactId = trimOrNull(body.contact_id)
@@ -444,6 +467,10 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       ceremony_type: trimOrNull(body.ceremony_type),
       notes: trimOrNull(body.notes),
     })
+
+    // Push updated wedding to storage (GitHub/R2)
+    const vendor = c.get('vendor')!
+    pushWeddingToStorage(c.env, vendor, weddingId).catch(() => {})
 
     if (newStatus === 'confirmed' && oldWedding?.status !== 'confirmed') {
       track(c.env.DB, c.get('vendor')!.id, 'booking_confirmed', { weddingId })

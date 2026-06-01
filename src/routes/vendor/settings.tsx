@@ -666,6 +666,7 @@ async function initialGitHubSync(
 ): Promise<{ pushed: number; skipped: number }> {
   const { GitHubStorageBackend } = await import('../../storage/github')
   const { contactToMarkdown } = await import('../../storage/contacts')
+  const { writeWeddingFile } = await import('../../storage/weddings')
   const { serializeMarkdown } = await import('../../storage/markdown')
   const { contactFilename } = await import('../../storage/slug')
 
@@ -724,23 +725,7 @@ async function initialGitHubSync(
 
   for (const w of weddings) {
     try {
-      const title = (w.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-      const content = [
-        '---',
-        `id: "${w.id}"`,
-        `title: "${w.title || ''}"`,
-        w.date ? `date: "${w.date}"` : null,
-        w.time ? `time: "${w.time}"` : null,
-        w.location ? `location: "${w.location}"` : null,
-        `status: "${w.status || 'planning'}"`,
-        w.ceremony_type ? `ceremony_type: "${w.ceremony_type}"` : null,
-        `created_at: "${w.created_at || ''}"`,
-        '---',
-        '',
-        w.notes || '',
-      ].filter((line) => line !== null).join('\n')
-
-      await github.write(`weddings/${title}.md`, content)
+      await writeWeddingFile(github, db, vendor.id, w)
       pushed++
     } catch (err) {
       console.error(`[github-sync] Failed to push wedding ${w.id}:`, err)
