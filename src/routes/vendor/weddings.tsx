@@ -224,8 +224,7 @@ weddings.post('/app/weddings/new', async (c) => {
   }
 })
 
-// ─── Invite couple ───
-// ─── Invite couple to wedding ───
+// ─── Invite couple (the people getting married) ───
 weddings.post('/app/weddings/:id/invite', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
@@ -260,6 +259,45 @@ weddings.post('/app/weddings/:id/invite', async (c) => {
   }).catch((e) => console.error('[INVITE]', e.message))
 
   track(c.env.DB, vendor.id, 'couple_invited', { weddingId })
+
+  return c.redirect(`/app/weddings/${weddingId}?invited=1`)
+})
+
+// ─── Add guest / other person to wedding ───
+weddings.post('/app/weddings/:id/add-guest', async (c) => {
+  const user = c.get('user')
+  const vendor = c.get('vendor')!
+  const weddingId = c.req.param('id')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership || !membership.can_manage) return c.text('Not found', 404)
+
+  const body = await c.req.parseBody()
+  const email = String(body.email).trim().toLowerCase()
+  const name = String(body.name).trim()
+  const canManageGuest = body.can_manage === '1' || body.can_manage === 'on'
+
+  if (!isValidEmail(email) || !name) {
+    return c.redirect(`/app/weddings/${weddingId}?error=Valid+email+and+name+required`)
+  }
+
+  const guestUser = await findOrCreateUser(c.env.DB, email, name)
+  await addWeddingMember(c.env.DB, {
+    wedding_id: weddingId,
+    user_id: guestUser.id,
+    role: 'guest',
+    can_manage: canManageGuest,
+  })
+
+  // Send them the same invite email so they can access the wedding
+  const wedding = await getWedding(c.env.DB, weddingId)
+  sendCoupleInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
+    email,
+    coupleName: name.split(' ')[0],
+    vendorName: vendor.business_name,
+    weddingTitle: wedding?.title ?? 'Your wedding',
+    weddingDate: wedding?.date ? formatDate(wedding.date) : null,
+  }).catch((e) => console.error('[INVITE]', e.message))
 
   return c.redirect(`/app/weddings/${weddingId}?invited=1`)
 })
@@ -421,7 +459,7 @@ weddings.get('/app/weddings/:id', async (c) => {
                     <p class="text-sm text-horizon-700 font-medium">Invited successfully</p>
                   )}
 
-                  {/* Invite couple */}
+                  {/* Invite one of the people getting married */}
                   <form
                     method="post"
                     action={`/app/weddings/${wedding.id}/invite`}
@@ -429,12 +467,14 @@ weddings.get('/app/weddings/:id', async (c) => {
                   >
                     <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
                     <div class="flex-1">
-                      <label class="block text-xs font-bold text-gray-700 mb-1">Invite couple</label>
+                      <label class="block text-xs font-bold text-gray-700 mb-1">
+                        Invite someone getting married
+                      </label>
                       <input
                         type="email"
                         name="email"
                         required
-                        placeholder="couple@email.com"
+                        placeholder="their@email.com"
                         class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
                       />
                     </div>
@@ -463,7 +503,7 @@ weddings.get('/app/weddings/:id', async (c) => {
                   >
                     <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
                     <div class="flex-1 min-w-[140px]">
-                      <label class="block text-xs font-bold text-gray-700 mb-1">Add vendor</label>
+                      <label class="block text-xs font-bold text-gray-700 mb-1">Add a vendor</label>
                       <input
                         type="email"
                         name="email"
@@ -485,7 +525,44 @@ weddings.get('/app/weddings/:id', async (c) => {
                       <input
                         type="text"
                         name="vendor_role"
-                        placeholder="Role (e.g. photographer)"
+                        placeholder="e.g. photographer"
+                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      class="bg-horizon-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
+                    >
+                      Add
+                    </button>
+                  </form>
+
+                  {/* Add other person (family, coordinator, etc.) */}
+                  <form
+                    method="post"
+                    action={`/app/weddings/${wedding.id}/add-guest`}
+                    class="flex gap-2 items-end"
+                  >
+                    <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                    <div class="flex-1">
+                      <label class="block text-xs font-bold text-gray-700 mb-1">
+                        Add someone else
+                        <span class="font-normal text-gray-400 ml-1">(family, coordinator, etc.)</span>
+                      </label>
+                      <input
+                        type="email"
+                        name="email"
+                        required
+                        placeholder="person@email.com"
+                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        name="name"
+                        required
+                        placeholder="Their name"
                         class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
                       />
                     </div>
