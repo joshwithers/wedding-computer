@@ -64,6 +64,16 @@ export async function createEvent(
     notes?: string | null
   }
 ): Promise<CalendarEvent> {
+  // Validate date is YYYY-MM-DD format to prevent corrupted dates
+  const dateStr = data.date.trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    throw new Error(`Invalid date format: expected YYYY-MM-DD, got "${dateStr}"`)
+  }
+  const [y] = dateStr.split('-').map(Number)
+  if (y < 1900 || y > 2200) {
+    throw new Error(`Invalid year in date: ${y}`)
+  }
+
   const result = await db
     .prepare(
       `INSERT INTO calendar_events (vendor_id, title, date, start_time, end_time, all_day, type, wedding_id, notes)
@@ -73,7 +83,7 @@ export async function createEvent(
     .bind(
       vendorId,
       data.title,
-      data.date,
+      dateStr,
       data.start_time ?? null,
       data.end_time ?? null,
       data.all_day !== false ? 1 : 0,
