@@ -66,8 +66,8 @@ marketing.get('/', (c) => {
             <FeatureCard
               color="horizon"
               icon="calendar"
-              title="Calendar & device sync"
-              desc="Monthly calendar with availability settings. Sync to Apple Calendar via CalDAV, or share a read-only iCal feed with any app."
+              title="Calendar & availability"
+              desc="Monthly calendar with availability settings and event management. Pro users can sync to Apple Calendar via CalDAV, or share a read-only iCal feed with any app."
             />
             <FeatureCard
               color="grapefruit"
@@ -102,8 +102,8 @@ marketing.get('/', (c) => {
             <FeatureCard
               color="horizon"
               icon="sync"
-              title="CardDAV contact sync"
-              desc="Sync your CRM contacts to your phone's native contacts app. Leads show up as real contacts with phone numbers, emails, and wedding notes."
+              title="GitHub sync"
+              desc="Connect your GitHub account and your contacts and weddings sync to a private repo automatically. Browse files on github.com, open them in Obsidian, or clone them anywhere."
             />
             <FeatureCard
               color="grapefruit"
@@ -438,12 +438,12 @@ marketing.get('/pricing', (c) => {
             <ul class="space-y-2.5 text-sm text-gray-700 mb-8">
               <PricingFeature text="CRM with eight-stage pipeline" />
               <PricingFeature text="Custom enquiry forms" />
-              <PricingFeature text="Calendar with CalDAV/iCal sync" />
+              <PricingFeature text="Calendar" />
               <PricingFeature text="Invoicing with Stripe Connect" />
               <PricingFeature text="Built-in email" />
               <PricingFeature text="Wedding workspaces" />
               <PricingFeature text="Couple planner dashboard" />
-              <PricingFeature text="CardDAV contact sync" />
+              <PricingFeature text="Plain text file access" />
               <PricingFeature text="Passkey sign-in" />
             </ul>
             <a
@@ -464,13 +464,13 @@ marketing.get('/pricing', (c) => {
             <p class="text-sm text-gray-500 mb-6">per month</p>
             <ul class="space-y-2.5 text-sm text-gray-700 mb-8">
               <PricingFeature text="Everything in Free" bold />
+              <PricingFeature text="GitHub sync for your data" />
+              <PricingFeature text="CalDAV/iCal calendar sync" />
+              <PricingFeature text="CardDAV contact sync to phone" />
               <PricingFeature text="Business analytics dashboard" />
-              <PricingFeature text="Conversion funnel tracking" />
               <PricingFeature text="Revenue and source insights" />
-              <PricingFeature text="Industry benchmarks" />
               <PricingFeature text="Business goals and targets" />
               <PricingFeature text="AI email drafting" />
-              <PricingFeature text="AI-powered recommendations" />
             </ul>
             <a
               href="/login"
@@ -894,209 +894,30 @@ Backup plan: The Calyx indoor space.
 
 marketing.get('/docs/plain-text', (c) => {
   return c.html(
-    <MarketingLayout title="Accessing Your Plain Text Files">
+    <MarketingLayout title="Your Data, Your Way">
       <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
-        <div class="inline-block bg-horizon-50 text-horizon-700 font-semibold text-sm px-4 py-1.5 rounded-full mb-4">
-          Documentation
-        </div>
-        <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6">Accessing your plain text files</h1>
+        <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6">Your data, your way</h1>
         <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
           <p>
-            Every contact and wedding in Wedding Computer is stored as a plain text markdown file. These
-            aren't exports or copies — they're the real, canonical data. The app reads and writes these
-            files directly.
+            Every contact and wedding in Wedding Computer is stored as a plain text file — not
+            locked in a database you can't see. These files are yours. You can read them, copy them,
+            edit them, and back them up however you like.
           </p>
           <p>
-            This page explains every way you can access, read, edit, and back up your files outside of
-            Wedding Computer. You don't need our permission, and you don't need to ask.
+            This page shows you how. Most people will want to start with GitHub sync — it's the
+            easiest way to keep a copy of everything, and it works with Obsidian too.
           </p>
         </div>
 
-        {/* Overview */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Where your files live</h2>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
+        {/* What the files look like */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">What your files look like</h2>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-6">
           <p>
-            Your files are stored on <a href="https://developers.cloudflare.com/r2/" class="text-horizon-700 font-bold hover:underline">Cloudflare R2</a>,
-            which is an S3-compatible object storage service. Each vendor has their own directory:
+            Each contact is a file. Each wedding is a file. They look like this:
           </p>
         </div>
-        <div class="bg-gray-900 rounded-xl p-4 sm:p-6 mb-8 overflow-x-auto">
-          <pre class="text-sm text-gray-100 leading-relaxed"><code>{`vendors/
-  your-vendor-id/
-    contacts/
-      sarah-smith.md
-      john-doe.md
-      jane-wilson-james-brown.md
-    weddings/
-      sarah-james-2026-12-15.md
-      doe-wedding.md`}</code></pre>
-        </div>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
-          <p>
-            Each file follows the{' '}
-            <a href="/standard" class="text-horizon-700 font-bold hover:underline">Wedding CRM Markdown Standard</a> —
-            YAML frontmatter for structured data, markdown body for notes.
-          </p>
-        </div>
-
-        {/* Method 1: Data Export */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Method 1: Data export from the app</h2>
-        <p class="text-gray-500 text-sm mb-6">The simplest way. No technical knowledge required.</p>
-        <div class="space-y-3 mb-12">
-          <AboutFeature
-            title="Export all your data"
-            desc={"Go to Settings, scroll to Data Export, and click Export All Data. You'll receive a JSON file containing every contact and wedding, plus the raw markdown source for each. This is a complete backup of everything in your account."}
-          />
-          <AboutFeature
-            title="What you get"
-            desc="The export contains contacts (with all fields, notes, tags, form data), weddings (with all details and timeline notes), and your vendor profile settings. It's a standard JSON file that any programming language can read."
-          />
-          <AboutFeature
-            title="How often to export"
-            desc="Export whenever you want a backup. There are no limits. We recommend exporting before making bulk changes, and keeping a regular backup (monthly, quarterly — whatever suits you)."
-          />
-        </div>
-
-        {/* Method 2: Cloudflare R2 API */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Method 2: Cloudflare R2 API (S3-compatible)</h2>
-        <p class="text-gray-500 text-sm mb-6">For developers and power users. Full programmatic access.</p>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
-          <p>
-            Cloudflare R2 is S3-compatible, which means any tool that works with Amazon S3 also works with R2.
-            This includes the AWS CLI, Cyberduck, rclone, s3cmd, and every S3 SDK in every programming language.
-          </p>
-          <p>
-            To access your files directly, you'll need R2 API credentials. If you're self-hosting Wedding Computer,
-            you already have these. If you're using the hosted version, contact us and we'll provision
-            read-only credentials scoped to your vendor directory.
-          </p>
-        </div>
-
-        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6">
-          <h3 class="font-bold text-sm mb-3">Using rclone (recommended for non-developers)</h3>
-          <p class="text-sm text-gray-600 mb-4">
-            <a href="https://rclone.org/" class="text-horizon-700 font-bold hover:underline">rclone</a> is a free,
-            open-source tool for syncing files to and from cloud storage. It works on macOS, Windows, and Linux.
-          </p>
-          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-            <pre class="text-sm text-gray-100"><code>{`# Install rclone
-brew install rclone    # macOS
-# or visit rclone.org/downloads for Windows/Linux
-
-# Configure your R2 remote (one-time setup)
-rclone config
-# Choose: New remote → name it "wc" → type "s3"
-# Provider: Cloudflare → enter your R2 credentials
-
-# List your contacts
-rclone ls wc:wedding-computer-storage/vendors/YOUR_ID/contacts/
-
-# Download all your files to a local folder
-rclone sync wc:wedding-computer-storage/vendors/YOUR_ID/ ./my-wedding-data/
-
-# Set up automatic daily sync
-# (add to crontab or Windows Task Scheduler)
-rclone sync wc:wedding-computer-storage/vendors/YOUR_ID/ ~/wedding-backup/`}</code></pre>
-          </div>
-        </div>
-
-        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6">
-          <h3 class="font-bold text-sm mb-3">Using the AWS CLI</h3>
-          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-            <pre class="text-sm text-gray-100"><code>{`# Configure for R2
-aws configure --profile wc
-# Enter your R2 Access Key ID and Secret Access Key
-# Region: auto
-# Output: json
-
-# List contacts
-aws s3 ls s3://wedding-computer-storage/vendors/YOUR_ID/contacts/ \\
-  --endpoint-url https://YOUR_ACCOUNT.r2.cloudflarestorage.com \\
-  --profile wc
-
-# Download a single contact
-aws s3 cp s3://wedding-computer-storage/vendors/YOUR_ID/contacts/sarah-smith.md . \\
-  --endpoint-url https://YOUR_ACCOUNT.r2.cloudflarestorage.com \\
-  --profile wc
-
-# Sync everything locally
-aws s3 sync s3://wedding-computer-storage/vendors/YOUR_ID/ ./backup/ \\
-  --endpoint-url https://YOUR_ACCOUNT.r2.cloudflarestorage.com \\
-  --profile wc`}</code></pre>
-          </div>
-        </div>
-
-        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-12">
-          <h3 class="font-bold text-sm mb-3">Using Cyberduck (graphical, macOS/Windows)</h3>
-          <p class="text-sm text-gray-600 mb-3">
-            <a href="https://cyberduck.io/" class="text-horizon-700 font-bold hover:underline">Cyberduck</a> is
-            a free file browser for cloud storage. Drag and drop, just like Finder.
-          </p>
-          <div class="text-sm text-gray-600 space-y-2">
-            <p>1. Download Cyberduck from cyberduck.io</p>
-            <p>2. Click "Open Connection" → choose "Amazon S3"</p>
-            <p>3. Server: <code class="bg-gray-100 px-1.5 py-0.5 rounded">YOUR_ACCOUNT.r2.cloudflarestorage.com</code></p>
-            <p>4. Enter your R2 Access Key ID and Secret Access Key</p>
-            <p>5. Navigate to <code class="bg-gray-100 px-1.5 py-0.5 rounded">wedding-computer-storage/vendors/YOUR_ID/</code></p>
-            <p>6. Browse, download, or drag files to your desktop</p>
-          </div>
-        </div>
-
-        {/* Method 3: Obsidian */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Method 3: Obsidian</h2>
-        <p class="text-gray-500 text-sm mb-6">For people who love plain text notes.</p>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
-          <p>
-            <a href="https://obsidian.md/" class="text-horizon-700 font-bold hover:underline">Obsidian</a> is
-            a free note-taking app that works with local markdown files. Since Wedding Computer stores
-            data as markdown with YAML frontmatter, Obsidian reads it natively.
-          </p>
-        </div>
-        <div class="space-y-3 mb-12">
-          <AboutFeature
-            title="Step 1: Sync files locally"
-            desc="Use rclone (described above) to sync your Wedding Computer files to a local folder. Set it to run automatically — every hour, every day, whatever suits you."
-          />
-          <AboutFeature
-            title="Step 2: Open as an Obsidian vault"
-            desc='Open Obsidian → "Open folder as vault" → select the folder where your files sync to. Obsidian will show your contacts and weddings in the sidebar, with YAML frontmatter rendered as properties.'
-          />
-          <AboutFeature
-            title="Step 3: Browse and search"
-            desc="Use Obsidian's search to find contacts by name, email, or any field. Use Dataview plugin to build custom views — e.g. 'show all contacts with status: quoted' or 'weddings in the next 3 months'."
-          />
-          <AboutFeature
-            title="A note on editing"
-            desc="If you edit files in Obsidian and sync them back to R2, Wedding Computer will pick up the changes on next sync. The app uses ETags to detect file changes. However, be careful with concurrent edits — if you and the app edit the same file at the same time, the last write wins."
-          />
-        </div>
-
-        {/* Method 4: Any text editor */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Method 4: Any text editor</h2>
-        <p class="text-gray-500 text-sm mb-6">It's just text. Open it in anything.</p>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
-          <p>
-            Once you've synced your files locally (via rclone, the AWS CLI, Cyberduck, or the data
-            export), you can open them in literally any text editor:
-          </p>
-          <ul class="list-disc list-inside space-y-1.5">
-            <li><strong>VS Code</strong> — excellent markdown preview, YAML syntax highlighting</li>
-            <li><strong>Sublime Text</strong> — fast, lightweight, handles thousands of files</li>
-            <li><strong>Notepad</strong> (Windows) / <strong>TextEdit</strong> (macOS) — they're just text files</li>
-            <li><strong>vim / nano</strong> — if you're into that</li>
-            <li><strong>iA Writer</strong> — beautiful markdown editor with YAML support</li>
-          </ul>
-          <p>
-            There's no special software required. No plugin, no viewer, no converter. The files
-            are UTF-8 text with a <code class="bg-gray-100 px-1.5 py-0.5 rounded">.md</code> extension.
-          </p>
-        </div>
-
-        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-12">
-          <h3 class="font-bold text-sm mb-3">What a contact looks like in a text editor</h3>
-          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-            <pre class="text-sm text-gray-100"><code>{`---
-id: a1b2c3d4e5f6a1b2c3d4e5f6
+        <div class="bg-gray-900 rounded-xl p-4 sm:p-6 mb-4 overflow-x-auto">
+          <pre class="text-sm text-gray-100 leading-relaxed"><code>{`---
 first_name: Sarah
 last_name: Smith
 email: sarah@example.com
@@ -1106,168 +927,229 @@ wedding_date: 2026-12-15
 tags:
   - vip
   - referral
-created_at: 2025-06-01T00:00:00.000Z
-updated_at: 2025-06-01T00:00:00.000Z
 ---
 
 Met at the Bridal Expo. Very enthusiastic about
 an elopement ceremony at the Royal Botanic Garden.
 
 Budget: $3,000 - $5,000`}</code></pre>
+        </div>
+        <p class="text-sm text-gray-500 mb-12">
+          That's a real contact file. The structured data (name, email, status, tags) is at the top.
+          Your notes are below. You can open this in any text editor on any computer, forever.
+        </p>
+
+        {/* Method 1: GitHub */}
+        <div class="bg-horizon-50 rounded-2xl p-6 sm:p-8 mb-12">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 rounded-xl bg-horizon-100 flex items-center justify-center shrink-0">
+              <div class="w-5 h-5 text-horizon-600" dangerouslySetInnerHTML={{ __html: featureIcons.sync }} />
+            </div>
+            <div>
+              <div class="inline-block bg-horizon-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full mb-2">
+                Recommended
+              </div>
+              <h2 class="text-xl sm:text-2xl font-bold mb-2">Connect to GitHub</h2>
+              <p class="text-gray-600 leading-relaxed mb-4">
+                The easiest way to access your files. Connect your GitHub account in Settings, and
+                we automatically sync all your contacts and weddings to a private GitHub repository.
+                Every change you make in Wedding Computer creates a new version in your repo.
+              </p>
+            </div>
           </div>
-          <p class="text-sm text-gray-500 mt-3">
-            That's it. No binary format, no encoding, no special reader required. Just text.
+
+          <div class="space-y-3 mt-4">
+            <AboutFeature
+              title="How to set it up"
+              desc={"Go to Settings and click Connect GitHub. Sign in with your GitHub account and choose a repository (or we'll create one for you). That's it — your data starts syncing immediately."}
+            />
+            <AboutFeature
+              title="What happens next"
+              desc="Every time you add a contact, update a wedding, or write a note, the change syncs to your GitHub repo within minutes. You get a folder of contacts and a folder of weddings — plain text files you can browse right on github.com."
+            />
+            <AboutFeature
+              title="Full version history"
+              desc="GitHub tracks every change automatically. You can see when a contact was created, when their status changed, when you added notes — and roll back to any previous version if you need to."
+            />
+            <AboutFeature
+              title="Works with Obsidian"
+              desc={"Obsidian (a free note-taking app) can open your GitHub repo directly using the Obsidian Git plugin. Your contacts and weddings show up as browsable, searchable notes with all the structured data visible as properties. It's a beautiful way to work with your CRM data."}
+            />
+            <AboutFeature
+              title="Works offline"
+              desc="Clone the repo to your computer and you have a local copy of everything. Works without internet. Make changes in a text editor and push them back when you reconnect."
+            />
+          </div>
+          <p class="text-sm text-gray-500 mt-4">
+            GitHub sync is available on the Pro plan ($14/month).
           </p>
         </div>
 
-        {/* Method 5: Build your own tools */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Method 5: Build your own tools</h2>
-        <p class="text-gray-500 text-sm mb-6">For developers who want to build on top of their data.</p>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
+        {/* Method 2: Download from the app */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Download your data</h2>
+        <p class="text-gray-500 text-sm mb-6">Available on all plans, any time.</p>
+        <div class="space-y-3 mb-12">
+          <AboutFeature
+            title="Export everything"
+            desc={"Go to Settings, scroll down to Data Export, and click the button. You'll get a file containing every contact, every wedding, all your notes — everything. Save it to your computer, a USB drive, Dropbox, wherever you like."}
+          />
+          <AboutFeature
+            title="No limits, no tricks"
+            desc="Export as many times as you want. There are no limits, no waiting periods, and no reduced-quality exports. You get the real data, the same files the app uses."
+          />
+          <AboutFeature
+            title="Regular backups"
+            desc="We recommend exporting a backup once a month (or more if you like). Keep it somewhere safe. If anything ever happens to Wedding Computer — or any software — you have everything."
+          />
+        </div>
+
+        {/* Method 3: Obsidian */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Use with Obsidian</h2>
+        <p class="text-gray-500 text-sm mb-6">A beautiful way to browse your CRM data.</p>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-6">
           <p>
-            Because the files follow an <a href="/standard" class="text-horizon-700 font-bold hover:underline">open standard</a>,
-            you can write scripts and applications that read, query, and transform your data.
+            <a href="https://obsidian.md/" class="text-horizon-700 font-bold hover:underline">Obsidian</a> is
+            a free app for reading and writing markdown files. It runs on Mac, Windows, Linux, iPhone,
+            iPad, and Android. Since your Wedding Computer data is markdown, Obsidian reads it perfectly.
           </p>
         </div>
-
-        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6">
-          <h3 class="font-bold text-sm mb-3">Python example: list all quoted contacts</h3>
-          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-            <pre class="text-sm text-gray-100"><code>{`import yaml
-from pathlib import Path
-
-contacts_dir = Path("./my-wedding-data/contacts")
-
-for file in contacts_dir.glob("*.md"):
-    text = file.read_text()
-    # Split frontmatter from body
-    parts = text.split("---", 2)
-    if len(parts) >= 3:
-        frontmatter = yaml.safe_load(parts[1])
-        if frontmatter.get("status") == "quoted":
-            name = f"{frontmatter['first_name']} {frontmatter['last_name']}"
-            email = frontmatter.get("email", "no email")
-            print(f"{name} ({email})")`}</code></pre>
-          </div>
+        <div class="space-y-3 mb-12">
+          <AboutFeature
+            title="With GitHub sync (easiest)"
+            desc={"If you've connected GitHub, install the free Obsidian Git plugin. Point it at your repo and your CRM data appears as an Obsidian vault. Search contacts, browse weddings, and see all your notes — with live sync in both directions."}
+          />
+          <AboutFeature
+            title="With a downloaded export"
+            desc={"Download your data export, unzip it into a folder, and open that folder as an Obsidian vault. You'll see all your contacts and weddings in the sidebar. Use Obsidian's search to find anyone by name, email, wedding date, or any field."}
+          />
+          <AboutFeature
+            title="What you see in Obsidian"
+            desc="Each contact shows up as a note. The structured data (name, email, phone, status, tags) appears as properties at the top. Your free-form notes are the body. Obsidian renders it all beautifully — headings, lists, links, everything."
+          />
         </div>
 
-        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6">
-          <h3 class="font-bold text-sm mb-3">JavaScript/Node example: upcoming weddings</h3>
-          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-            <pre class="text-sm text-gray-100"><code>{`import { readdir, readFile } from 'fs/promises'
-import { parse } from 'yaml'
-
-const files = await readdir('./my-wedding-data/weddings')
-
-for (const file of files.filter(f => f.endsWith('.md'))) {
-  const text = await readFile(\`./my-wedding-data/weddings/\${file}\`, 'utf8')
-  const [, frontmatter] = text.split('---')
-  const data = parse(frontmatter)
-
-  if (data.date && new Date(data.date) > new Date()) {
-    console.log(\`\${data.title} — \${data.date} at \${data.location}\`)
-  }
-}`}</code></pre>
-          </div>
-        </div>
-
-        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-12">
-          <h3 class="font-bold text-sm mb-3">Shell example: count contacts by status</h3>
-          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-            <pre class="text-sm text-gray-100"><code>{`# Count contacts by pipeline stage
-grep -l "status: new" contacts/*.md | wc -l
-grep -l "status: quoted" contacts/*.md | wc -l
-grep -l "status: booked" contacts/*.md | wc -l
-
-# Find all contacts with a specific tag
-grep -l "- vip" contacts/*.md
-
-# Find all weddings in December 2026
-grep -l "date: 2026-12" weddings/*.md`}</code></pre>
-          </div>
-        </div>
-
-        {/* Method 6: Git */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Method 6: Version control with Git</h2>
-        <p class="text-gray-500 text-sm mb-6">Track every change, forever.</p>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
-          <p>
-            Because the files are plain text, they work beautifully with Git. Every change is a
-            meaningful diff — you can see exactly what changed, when, and (with commit messages) why.
-          </p>
-        </div>
-        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-12">
-          <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-            <pre class="text-sm text-gray-100"><code>{`# Initialise a repo in your synced folder
-cd my-wedding-data
-git init
-git add .
-git commit -m "Initial backup of wedding data"
-
-# After each sync, commit changes
-rclone sync wc:wedding-computer-storage/vendors/YOUR_ID/ .
-git add .
-git commit -m "Sync $(date +%Y-%m-%d)"
-
-# Now you have full version history
-git log --oneline contacts/sarah-smith.md
-# See exactly what changed in a contact
-git diff HEAD~1 contacts/sarah-smith.md`}</code></pre>
-          </div>
-          <p class="text-sm text-gray-500 mt-3">
-            Push to a private GitHub or GitLab repo for off-site backup. Your entire CRM history
-            in version control.
-          </p>
-        </div>
-
-        {/* Method 7: CardDAV and CalDAV */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Bonus: CardDAV and CalDAV sync</h2>
-        <p class="text-gray-500 text-sm mb-6">Your data also speaks standard protocols.</p>
+        {/* Phone sync */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Sync to your phone</h2>
+        <p class="text-gray-500 text-sm mb-6">Your leads as real contacts on your phone. Pro plan.</p>
         <div class="space-y-3 mb-12">
           <AboutFeature
             title="CardDAV: contacts on your phone"
-            desc='Wedding Computer includes a CardDAV server (RFC 6352). Add it as a contacts account in Apple Contacts, and your CRM contacts appear as native phone contacts — with names, phone numbers, emails, and wedding notes. Go to Settings → CardDAV to get your server URL.'
+            desc="Add Wedding Computer as a contacts account on your iPhone or Android. Your CRM contacts appear in your phone's native Contacts app — with names, phone numbers, emails, and wedding notes. When you update a contact in Wedding Computer, it updates on your phone automatically."
           />
           <AboutFeature
-            title="CalDAV / iCal: calendar events everywhere"
-            desc="Your calendar events are available via iCal feed (read-only) for any calendar app, and CalDAV for two-way sync with Apple Calendar, Fantastical, or any CalDAV client. Go to Settings → Calendar to get your feed URL."
+            title="CalDAV / iCal: calendar events on your phone"
+            desc="Subscribe to your Wedding Computer calendar from Apple Calendar, Google Calendar, or any calendar app. Your bookings, blocked dates, and events show up alongside your personal calendar. Changes sync automatically."
           />
           <AboutFeature
-            title="Why this matters"
-            desc="CardDAV and iCal are open standards from the 2000s. They'll work with any app that supports contacts or calendars — not just ours. Your data is accessible through multiple independent paths, using open protocols, stored in open formats."
+            title="How to set it up"
+            desc="Go to Settings and you'll find your CardDAV and CalDAV server details. Add them as accounts on your phone — it takes about 30 seconds. Available on the Pro plan."
           />
         </div>
 
-        {/* Philosophy */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Why we built it this way</h2>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
+        {/* What the files look like in a folder */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">How your files are organised</h2>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-6">
           <p>
-            We believe your client relationships are too important to be trapped in someone else's
-            database. Wedding vendors build their businesses over years — every lead, every note, every
-            follow-up is part of that story. That data should belong to you, in a format you can read
-            without our help.
-          </p>
-          <p>
-            Plain text is the most durable file format ever created. A text file from 1970 is still
-            perfectly readable today. We can't say the same about any proprietary database format,
-            any SaaS export, or any binary file. By choosing markdown and YAML, we're choosing
-            longevity over convenience.
-          </p>
-          <p>
-            And by publishing the <a href="/standard" class="text-horizon-700 font-bold hover:underline">format as an open standard</a>,
-            we're inviting the rest of the wedding industry to join us. If every wedding CRM spoke the same
-            file format, switching tools would be as easy as pointing a new app at the same folder.
-          </p>
-          <p>
-            That's the future we're building toward.
+            Whether you access your files through GitHub, Obsidian, or a data export,
+            the structure is the same:
           </p>
         </div>
+        <div class="bg-gray-900 rounded-xl p-4 sm:p-6 mb-8 overflow-x-auto">
+          <pre class="text-sm text-gray-100 leading-relaxed"><code>{`contacts/
+  sarah-smith.md
+  john-doe.md
+  jane-wilson-james-brown.md
+weddings/
+  sarah-james-2026-12-15.md
+  doe-wedding.md`}</code></pre>
+        </div>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
+          <p>
+            Contact files are named after the person (or couple). Wedding files are named after the
+            couple and date. The files follow the{' '}
+            <a href="/standard" class="text-horizon-700 font-bold hover:underline">Wedding CRM Markdown Standard</a> —
+            an open format anyone can use.
+          </p>
+        </div>
+
+        {/* Why */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">Why we do this</h2>
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
+          <p>
+            Most CRM tools store your data in a proprietary database. If the company shuts down,
+            raises prices, or gets acquired — your data goes with it. The best you usually get is
+            a CSV export that loses half the context.
+          </p>
+          <p>
+            We think your client relationships are worth more than that. A wedding vendor's
+            contact list represents years of relationship building. Notes from consultations,
+            follow-up plans, wedding details — that's the lifeblood of your business.
+          </p>
+          <p>
+            Plain text files are the most durable data format ever created. A text file written in
+            1970 is still perfectly readable today. We chose this format because your data should
+            outlive any app — including ours.
+          </p>
+        </div>
+
+        {/* For developers */}
+        <details class="bg-white border border-papaya-300/30 rounded-xl mb-12">
+          <summary class="px-4 sm:px-6 py-4 cursor-pointer font-bold text-sm text-gray-700 hover:text-gray-900">
+            For developers: API access, scripting, and self-hosting
+          </summary>
+          <div class="px-4 sm:px-6 pb-6 pt-2 space-y-6">
+            <div>
+              <h3 class="font-bold text-sm mb-2">Cloudflare R2 API (S3-compatible)</h3>
+              <p class="text-sm text-gray-600 mb-3">
+                Files are stored on Cloudflare R2. Any S3-compatible tool (rclone, AWS CLI, Cyberduck, boto3) works.
+                Self-hosters have direct access. Hosted users can request read-only API credentials scoped to their data.
+              </p>
+              <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                <pre class="text-sm text-gray-100"><code>{`# rclone — sync everything to a local folder
+rclone sync wc:wedding-computer-storage/vendors/YOUR_ID/ ./my-data/
+
+# AWS CLI — download a single contact
+aws s3 cp s3://wedding-computer-storage/vendors/YOUR_ID/contacts/sarah-smith.md . \\
+  --endpoint-url https://YOUR_ACCOUNT.r2.cloudflarestorage.com`}</code></pre>
+              </div>
+            </div>
+
+            <div>
+              <h3 class="font-bold text-sm mb-2">Scripting your data</h3>
+              <p class="text-sm text-gray-600 mb-3">
+                Files follow the <a href="/standard" class="text-horizon-700 font-bold hover:underline">Wedding CRM Markdown Standard</a>.
+                Parse the YAML frontmatter with any language:
+              </p>
+              <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                <pre class="text-sm text-gray-100"><code>{`# Python — list all quoted contacts
+import yaml
+from pathlib import Path
+
+for f in Path("contacts").glob("*.md"):
+    parts = f.read_text().split("---", 2)
+    data = yaml.safe_load(parts[1])
+    if data.get("status") == "quoted":
+        print(f"{data['first_name']} {data['last_name']}")`}</code></pre>
+              </div>
+            </div>
+
+            <div>
+              <h3 class="font-bold text-sm mb-2">Self-hosting</h3>
+              <p class="text-sm text-gray-600">
+                Wedding Computer is open source (AGPL-3.0). Self-host it on your own Cloudflare account
+                and you have direct access to the R2 bucket, D1 database, and all files. See the{' '}
+                <a href="https://github.com/joshwithers/wedding-computer" class="text-horizon-700 font-bold hover:underline">GitHub repo</a> for
+                setup instructions.
+              </p>
+            </div>
+          </div>
+        </details>
 
         {/* CTA */}
         <div class="bg-horizon-600 rounded-2xl p-6 sm:p-10 text-center text-white">
-          <h2 class="text-xl sm:text-2xl font-bold mb-3">Your data, your way</h2>
+          <h2 class="text-xl sm:text-2xl font-bold mb-3">Your data, always yours</h2>
           <p class="text-horizon-100 mb-6 max-w-md mx-auto text-sm">
-            Start using Wedding Computer and your data is always yours — in plain text, accessible anywhere.
+            Start using Wedding Computer. Connect GitHub. And never worry about losing your data again.
           </p>
           <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
             <a
