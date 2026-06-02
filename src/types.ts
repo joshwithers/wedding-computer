@@ -76,8 +76,34 @@ export type VendorProfile = {
   email_handle: string | null
   storage_type: string | null
   storage_config: string | null
+  tax_label: string | null
+  tax_rate: number
+  tax_inclusive: number
+  tax_number: string | null
+  tax_number_label: string | null
+  business_address: string | null
+  invoice_prefix: string
+  next_invoice_number: number
+  card_fee_enabled: number
+  card_fee_percent: number
+  service_templates: string | null
+  invoice_defaults: string | null
   created_at: string
   updated_at: string
+}
+
+export type ServiceTemplate = {
+  name: string
+  description: string
+  price_cents: number
+}
+
+export type InvoiceDefaults = {
+  booking_fee_type: 'fixed' | 'percentage'
+  booking_fee_value: number
+  installments: number
+  notes: string
+  include_card_fee: boolean
 }
 
 export type Email = {
@@ -204,6 +230,17 @@ export type Invoice = {
   public_token: string | null
   notes: string | null
   booking_form_data: string | null
+  invoice_number: string | null
+  tax_label: string | null
+  tax_rate: number
+  tax_inclusive: number
+  subtotal_cents: number
+  tax_amount_cents: number
+  card_fee_cents: number
+  card_fee_percent: number
+  vendor_tax_number: string | null
+  vendor_business_name: string | null
+  vendor_business_address: string | null
   created_at: string
   updated_at: string
 }
@@ -266,6 +303,28 @@ export type CalendarEvent = {
   notes: string | null
   created_at: string
   updated_at: string
+}
+
+export type Document = {
+  id: string
+  wedding_id: string | null
+  vendor_id: string | null
+  uploaded_by_user_id: string
+  r2_key: string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  category: string | null
+  description: string | null
+  visibility: 'private' | 'wedding' | 'public'
+  created_at: string
+}
+
+export type DocumentShare = {
+  id: string
+  document_id: string
+  user_id: string
+  created_at: string
 }
 
 export type Session = {

@@ -55,6 +55,9 @@ export interface StorageBackend {
   /** Write a file. Returns the new etag. */
   write(path: string, content: string): Promise<string>
 
+  /** Write a binary file (images, PDFs, etc.). Returns the new etag. */
+  writeBinary(path: string, data: ArrayBuffer, contentType: string): Promise<string>
+
   /** Delete a file. No-op if not found. */
   delete(path: string): Promise<void>
 

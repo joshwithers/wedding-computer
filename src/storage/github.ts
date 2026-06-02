@@ -155,6 +155,49 @@ export class GitHubStorageBackend implements StorageBackend {
     return result.content.sha
   }
 
+  async writeBinary(path: string, data: ArrayBuffer, _contentType: string): Promise<string> {
+    const fullPath = this.fullPath(path)
+
+    // Check if file exists to get its SHA (required for updates)
+    let sha: string | undefined
+    const existing = await this.api(`${fullPath}?ref=${this.config.branch}`)
+    if (existing.ok) {
+      const existingData = (await existing.json()) as GitHubFileResponse
+      sha = existingData.sha
+    }
+
+    // Convert ArrayBuffer to base64
+    const bytes = new Uint8Array(data)
+    let binary = ''
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i])
+    }
+    const base64Content = btoa(binary)
+
+    const body: Record<string, unknown> = {
+      message: sha ? `Update ${path}` : `Add ${path}`,
+      content: base64Content,
+      branch: this.config.branch,
+    }
+    if (sha) {
+      body.sha = sha
+    }
+
+    const res = await this.api(fullPath, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const errBody = await res.text()
+      console.error(`[github] writeBinary ${fullPath}: ${res.status} ${errBody}`)
+      throw new Error(`GitHub API error on writeBinary: ${res.status}`)
+    }
+
+    const result = (await res.json()) as { content: GitHubFileResponse }
+    return result.content.sha
+  }
+
   async delete(path: string): Promise<void> {
     const fullPath = this.fullPath(path)
 

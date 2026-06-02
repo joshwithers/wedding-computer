@@ -1,4 +1,4 @@
-import type { Invoice, InvoicePayment, LineItem } from '../types'
+import type { Invoice, InvoicePayment, LineItem, VendorProfile } from '../types'
 
 export async function listInvoices(
   db: D1Database,
@@ -22,6 +22,35 @@ export async function listInvoices(
     .then((r) => r.results)
 }
 
+export type InvoiceWithPaymentSummary = Invoice & {
+  contact_name: string | null
+  paid_cents: number
+  payment_count: number
+  paid_count: number
+}
+
+export async function listInvoicesForWedding(
+  db: D1Database,
+  vendorId: string,
+  weddingId: string
+): Promise<InvoiceWithPaymentSummary[]> {
+  return db
+    .prepare(
+      `SELECT i.*,
+              (c.first_name || ' ' || c.last_name) AS contact_name,
+              COALESCE((SELECT SUM(ip.amount_cents) FROM invoice_payments ip WHERE ip.invoice_id = i.id AND ip.status = 'paid'), 0) AS paid_cents,
+              COALESCE((SELECT COUNT(*) FROM invoice_payments ip WHERE ip.invoice_id = i.id), 0) AS payment_count,
+              COALESCE((SELECT COUNT(*) FROM invoice_payments ip WHERE ip.invoice_id = i.id AND ip.status = 'paid'), 0) AS paid_count
+       FROM invoices i
+       LEFT JOIN contacts c ON c.id = i.contact_id
+       WHERE i.vendor_id = ? AND i.wedding_id = ?
+       ORDER BY i.created_at DESC`
+    )
+    .bind(vendorId, weddingId)
+    .all<InvoiceWithPaymentSummary>()
+    .then((r) => r.results)
+}
+
 export async function getInvoice(
   db: D1Database,
   vendorId: string,
@@ -33,9 +62,55 @@ export async function getInvoice(
     .first<Invoice>()
 }
 
+/** Calculate tax breakdown from line item totals and vendor tax config */
+export function calculateTax(
+  lineItemTotalCents: number,
+  taxRate: number,
+  taxInclusive: boolean
+): { subtotal_cents: number; tax_amount_cents: number; total_cents: number } {
+  if (taxRate <= 0) {
+    return { subtotal_cents: lineItemTotalCents, tax_amount_cents: 0, total_cents: lineItemTotalCents }
+  }
+  if (taxInclusive) {
+    // Prices already include tax — extract the tax component
+    const taxAmount = Math.round(lineItemTotalCents * taxRate / (100 + taxRate))
+    return {
+      subtotal_cents: lineItemTotalCents - taxAmount,
+      tax_amount_cents: taxAmount,
+      total_cents: lineItemTotalCents,
+    }
+  } else {
+    // Prices are ex-tax — add tax on top
+    const taxAmount = Math.round(lineItemTotalCents * taxRate / 100)
+    return {
+      subtotal_cents: lineItemTotalCents,
+      tax_amount_cents: taxAmount,
+      total_cents: lineItemTotalCents + taxAmount,
+    }
+  }
+}
+
+/** Calculate optional card fee surcharge */
+export function calculateCardFee(
+  totalCents: number,
+  cardFeePercent: number
+): number {
+  if (cardFeePercent <= 0) return 0
+  return Math.round(totalCents * cardFeePercent / 100)
+}
+
+/** Derive the document title from tax config */
+export function invoiceDocumentTitle(taxLabel: string | null, taxRate: number): string {
+  if (!taxLabel || taxRate <= 0) return 'Invoice'
+  if (taxLabel === 'GST') return 'Tax Invoice'
+  if (taxLabel === 'VAT') return 'VAT Invoice'
+  return 'Tax Invoice'
+}
+
 export async function createInvoice(
   db: D1Database,
   vendorId: string,
+  vendor: Pick<VendorProfile, 'tax_label' | 'tax_rate' | 'tax_inclusive' | 'tax_number' | 'business_name' | 'business_address' | 'invoice_prefix' | 'next_invoice_number' | 'card_fee_enabled' | 'card_fee_percent'>,
   data: {
     contact_id?: string | null
     wedding_id?: string | null
@@ -46,14 +121,46 @@ export async function createInvoice(
     booking_fee_type: 'fixed' | 'percentage'
     booking_fee_value: number
     notes?: string | null
+    include_card_fee?: boolean
   }
 ): Promise<Invoice> {
   const token = Array.from(crypto.getRandomValues(new Uint8Array(16)))
     .map((b) => b.toString(16).padStart(2, '0')).join('')
+
+  // Tax calculation
+  const taxInclusive = !!vendor.tax_inclusive
+  const taxRate = vendor.tax_rate ?? 0
+  const tax = calculateTax(data.amount_cents, taxRate, taxInclusive)
+
+  // Card fee (opt-in per vendor, applied per invoice)
+  const applyCardFee = data.include_card_fee && vendor.card_fee_enabled && vendor.card_fee_percent > 0
+  const cardFeeCents = applyCardFee ? calculateCardFee(tax.total_cents, vendor.card_fee_percent) : 0
+  const cardFeePercent = applyCardFee ? vendor.card_fee_percent : 0
+
+  // Final total includes card fee
+  const finalTotal = tax.total_cents + cardFeeCents
+
+  // Invoice number
+  const prefix = vendor.invoice_prefix || 'INV-'
+  const num = vendor.next_invoice_number || 1
+  const invoiceNumber = `${prefix}${String(num).padStart(4, '0')}`
+
+  // Increment the counter
+  await db
+    .prepare("UPDATE vendor_profiles SET next_invoice_number = next_invoice_number + 1, updated_at = datetime('now') WHERE id = ?")
+    .bind(vendorId)
+    .run()
+
   const result = await db
     .prepare(
-      `INSERT INTO invoices (vendor_id, contact_id, wedding_id, title, description, amount_cents, currency, line_items, booking_fee_type, booking_fee_value, public_token, notes)
-       VALUES (?, ?, ?, ?, ?, ?, 'aud', ?, ?, ?, ?, ?)
+      `INSERT INTO invoices (
+        vendor_id, contact_id, wedding_id, title, description,
+        amount_cents, currency, line_items, booking_fee_type, booking_fee_value,
+        public_token, notes, invoice_number,
+        tax_label, tax_rate, tax_inclusive, subtotal_cents, tax_amount_cents,
+        card_fee_cents, card_fee_percent,
+        vendor_tax_number, vendor_business_name, vendor_business_address
+      ) VALUES (?, ?, ?, ?, ?, ?, 'aud', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
@@ -62,12 +169,23 @@ export async function createInvoice(
       data.wedding_id ?? null,
       data.title,
       data.description ?? null,
-      data.amount_cents,
+      finalTotal,
       JSON.stringify(data.line_items),
       data.booking_fee_type,
       data.booking_fee_value,
       token,
-      data.notes ?? null
+      data.notes ?? null,
+      invoiceNumber,
+      vendor.tax_label ?? null,
+      taxRate,
+      taxInclusive ? 1 : 0,
+      tax.subtotal_cents,
+      tax.tax_amount_cents,
+      cardFeeCents,
+      cardFeePercent,
+      vendor.tax_number ?? null,
+      vendor.business_name,
+      vendor.business_address ?? null
     )
     .first<Invoice>()
   return result!
@@ -94,7 +212,7 @@ export async function updateInvoice(
   db: D1Database,
   vendorId: string,
   invoiceId: string,
-  data: Partial<Pick<Invoice, 'title' | 'description' | 'amount_cents' | 'line_items' | 'booking_fee_type' | 'booking_fee_value' | 'status' | 'notes' | 'due_date' | 'paid_at' | 'booking_form_data'>>
+  data: Partial<Pick<Invoice, 'title' | 'description' | 'amount_cents' | 'line_items' | 'booking_fee_type' | 'booking_fee_value' | 'status' | 'notes' | 'due_date' | 'paid_at' | 'booking_form_data' | 'subtotal_cents' | 'tax_amount_cents' | 'card_fee_cents' | 'card_fee_percent'>>
 ): Promise<void> {
   const sets: string[] = []
   const values: unknown[] = []

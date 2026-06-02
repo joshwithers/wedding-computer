@@ -51,6 +51,13 @@ export class R2StorageBackend implements StorageBackend {
     return obj.etag
   }
 
+  async writeBinary(path: string, data: ArrayBuffer, contentType: string): Promise<string> {
+    const obj = await this.bucket.put(this.fullPath(path), data, {
+      httpMetadata: { contentType },
+    })
+    return obj.etag
+  }
+
   async delete(path: string): Promise<void> {
     await this.bucket.delete(this.fullPath(path))
   }

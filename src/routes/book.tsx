@@ -57,10 +57,28 @@ book.get('/book/:token', async (c) => {
         <div class="mb-6 pb-4 border-b border-gray-100">
           <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">{category}</p>
           <h1 class="text-xl font-bold">{invoice.vendor_name}</h1>
+          {invoice.vendor_business_address && (
+            <p class="text-xs text-gray-400 mt-0.5">{invoice.vendor_business_address}</p>
+          )}
+          {invoice.vendor_tax_number && (
+            <p class="text-xs text-gray-400 mt-0.5">
+              {invoice.tax_label === 'GST' ? 'ABN' : invoice.tax_label === 'VAT' ? 'VAT No.' : 'Tax No.'}: {invoice.vendor_tax_number}
+            </p>
+          )}
         </div>
 
-        {/* Proposal title */}
-        <h2 class="text-lg font-bold mb-1">{invoice.title}</h2>
+        {/* Document title + invoice number */}
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="text-lg font-bold">{invoice.title}</h2>
+          {invoice.invoice_number && (
+            <span class="text-sm text-gray-400">{invoice.invoice_number}</span>
+          )}
+        </div>
+        {invoice.tax_rate > 0 && (
+          <p class="text-xs font-bold text-gray-500 mb-1">
+            {invoice.tax_label === 'GST' ? 'Tax Invoice' : invoice.tax_label === 'VAT' ? 'VAT Invoice' : 'Tax Invoice'}
+          </p>
+        )}
         {invoice.description && (
           <p class="text-sm text-gray-600 mb-4 whitespace-pre-wrap">{invoice.description}</p>
         )}
@@ -89,6 +107,26 @@ book.get('/book/:token', async (c) => {
                 ))}
               </tbody>
               <tfoot>
+                {invoice.tax_rate > 0 && (
+                  <>
+                    <tr class="text-gray-500">
+                      <td class="px-4 py-1.5">
+                        Subtotal {invoice.tax_inclusive ? `(incl. ${invoice.tax_label ?? 'tax'})` : '(ex-tax)'}
+                      </td>
+                      <td class="px-4 py-1.5 text-right">${(invoice.subtotal_cents / 100).toLocaleString('en-AU')}</td>
+                    </tr>
+                    <tr class="text-gray-500">
+                      <td class="px-4 py-1.5">{invoice.tax_label ?? 'Tax'} ({invoice.tax_rate}%)</td>
+                      <td class="px-4 py-1.5 text-right">${(invoice.tax_amount_cents / 100).toLocaleString('en-AU')}</td>
+                    </tr>
+                  </>
+                )}
+                {invoice.card_fee_cents > 0 && (
+                  <tr class="text-gray-500">
+                    <td class="px-4 py-1.5">Card fee ({invoice.card_fee_percent}%)</td>
+                    <td class="px-4 py-1.5 text-right">${(invoice.card_fee_cents / 100).toLocaleString('en-AU')}</td>
+                  </tr>
+                )}
                 <tr class="bg-gray-50 font-bold">
                   <td class="px-4 py-2.5">Total</td>
                   <td class="px-4 py-2.5 text-right">${(invoice.amount_cents / 100).toLocaleString('en-AU')}</td>

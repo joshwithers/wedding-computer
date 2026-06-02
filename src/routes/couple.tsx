@@ -9,6 +9,7 @@ import { csrf } from '../middleware/csrf'
 import { getWedding, getWeddingMembers, getMembership, updateWedding } from '../db/weddings'
 import { updateUser } from '../db/users'
 import { listCoupleVendors, getCoupleVendor, getCoupleVendorByProfileId, createCoupleVendor, updateCoupleVendor, deleteCoupleVendor, syncPlatformVendors } from '../db/couple-vendors'
+import { listDocumentsForWedding, type DocumentWithUploader } from '../db/documents'
 import { formatDate, formatDateTime, daysUntil } from '../lib/date'
 
 type WeddingInvoice = {
@@ -135,6 +136,11 @@ couple.get('/wedding/:id', async (c) => {
   // Members for collaboration toggle
   const members = await getWeddingMembers(c.env.DB, weddingId)
   const platformVendorCount = members.filter((m) => m.role === 'vendor').length
+
+  // Documents
+  const documents = await listDocumentsForWedding(c.env.DB, weddingId, user.id)
+  const fileUploaded = c.req.query('uploaded')
+  const fileDeleted = c.req.query('deleted')
 
   return c.html(
     <CoupleLayout title={wedding.title} user={user} wedding={wedding} csrfToken={c.get('csrfToken')}>
@@ -329,6 +335,17 @@ couple.get('/wedding/:id', async (c) => {
             </div>
           </section>
         )}
+
+        {/* Files */}
+        <CoupleFiles
+          weddingId={weddingId}
+          documents={documents}
+          members={members}
+          userId={user.id}
+          csrfToken={c.get('csrfToken')}
+          uploaded={!!fileUploaded}
+          deleted={!!fileDeleted}
+        />
 
         {/* Wedding details */}
         <section>
@@ -1366,6 +1383,233 @@ couple.post('/wedding/:id/vendor/:vendorProfileId/notes', async (c) => {
 export default couple
 
 // ─── Components ───
+
+type CoupleWeddingMember = {
+  user_id: string
+  user_name: string
+  user_email: string
+  role: string
+  vendor_role: string | null
+  business_name: string | null
+  can_manage: number
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+function fileIcon(mimeType: string): string {
+  if (mimeType.startsWith('image/')) return 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'
+  if (mimeType === 'application/pdf') return 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z'
+  return 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'
+}
+
+function CoupleFiles({
+  weddingId,
+  documents,
+  members,
+  userId,
+  csrfToken,
+  uploaded,
+  deleted,
+}: {
+  weddingId: string
+  documents: DocumentWithUploader[]
+  members: CoupleWeddingMember[]
+  userId: string
+  csrfToken: string
+  uploaded: boolean
+  deleted: boolean
+}) {
+  const otherMembers = members.filter((m) => m.user_id !== userId)
+
+  return (
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-bold text-gray-500">Files</h2>
+        <span class="text-xs text-gray-400">{documents.length} file{documents.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      {uploaded && (
+        <p class="text-sm text-grapefruit-700 font-medium mb-3">File uploaded</p>
+      )}
+      {deleted && (
+        <p class="text-sm text-grapefruit-700 font-medium mb-3">File deleted</p>
+      )}
+
+      {documents.length > 0 && (
+        <div class="bg-white border border-papaya-300/30 rounded-2xl divide-y divide-gray-100 mb-4">
+          {documents.map((doc) => {
+            const isOwner = doc.uploaded_by_user_id === userId
+            const shares: string[] = doc.shared_with ? (() => {
+              try { const arr = JSON.parse(doc.shared_with); return Array.isArray(arr) ? arr : [] }
+              catch { return [] }
+            })() : []
+            const sharedNames = shares
+              .map((uid: string) => members.find((m) => m.user_id === uid))
+              .filter(Boolean)
+              .map((m) => m!.business_name ?? m!.user_name)
+
+            return (
+              <div class="p-3 flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                  <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={fileIcon(doc.mime_type)} />
+                  </svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <a
+                    href={`/files/${doc.id}`}
+                    target="_blank"
+                    class="text-sm font-medium text-gray-900 hover:text-grapefruit-700 truncate block"
+                  >
+                    {doc.filename}
+                  </a>
+                  <div class="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+                    <span>{formatFileSize(doc.size_bytes)}</span>
+                    <span>by {doc.uploader_name}</span>
+                    {doc.visibility === 'wedding' ? (
+                      <span class="text-grapefruit-600">Everyone</span>
+                    ) : sharedNames.length > 0 ? (
+                      <span class="text-amber-600" title={sharedNames.join(', ')}>
+                        Shared with {sharedNames.length}
+                      </span>
+                    ) : (
+                      <span>Private</span>
+                    )}
+                    {doc.description && (
+                      <span class="truncate max-w-[120px]" title={doc.description}>{doc.description}</span>
+                    )}
+                  </div>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <a
+                    href={`/files/${doc.id}/download`}
+                    class="text-gray-400 hover:text-gray-600 transition-colors"
+                    title="Download"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </a>
+                  {isOwner && (
+                    <form method="post" action={`/files/${doc.id}/delete`} class="inline">
+                      <input type="hidden" name="_csrf" value={csrfToken} />
+                      <button
+                        type="submit"
+                        class="text-gray-400 hover:text-grapefruit-600 transition-colors"
+                        title="Delete"
+                        onclick="return confirm('Delete this file?')"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Upload form */}
+      <details class="group" open={documents.length === 0 ? true : undefined}>
+        <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 transition-colors select-none flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+          Upload a file
+        </summary>
+        <form
+          method="post"
+          action={`/files/upload/${weddingId}`}
+          enctype="multipart/form-data"
+          class="mt-3 border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3"
+        >
+          <input type="hidden" name="_csrf" value={csrfToken} />
+
+          <div>
+            <input
+              type="file"
+              name="file"
+              required
+              class="block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-grapefruit-600 file:text-white hover:file:bg-grapefruit-700 file:cursor-pointer"
+            />
+            <p class="text-xs text-gray-400 mt-1">PDF, images, documents, spreadsheets. Max 10 MB.</p>
+          </div>
+
+          <div>
+            <input
+              type="text"
+              name="description"
+              placeholder="Optional description"
+              class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-grapefruit-600 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1.5">Who can see this?</label>
+            <div class="space-y-1.5">
+              <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="radio"
+                  name="visibility"
+                  value="wedding"
+                  checked
+                  class="text-grapefruit-600"
+                  onchange={`document.getElementById('couple-share-checkboxes').classList.add('hidden')`}
+                />
+                Everyone on this wedding
+              </label>
+              {otherMembers.length > 0 && (
+                <label class="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="visibility"
+                    value="private"
+                    class="text-grapefruit-600"
+                    onchange={`document.getElementById('couple-share-checkboxes').classList.remove('hidden')`}
+                  />
+                  Only specific people
+                </label>
+              )}
+            </div>
+          </div>
+
+          {otherMembers.length > 0 && (
+            <div id="couple-share-checkboxes" class="hidden pl-5 space-y-1">
+              {otherMembers.map((m) => (
+                <label class="flex items-center gap-2 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    name="share_with"
+                    value={m.user_id}
+                    class="text-grapefruit-600 rounded"
+                  />
+                  {m.business_name ?? m.user_name}
+                  <span class="text-xs text-gray-400">
+                    {m.vendor_role ? m.vendor_role : m.role}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            class="bg-grapefruit-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-grapefruit-700 transition-colors"
+          >
+            Upload
+          </button>
+        </form>
+      </details>
+    </section>
+  )
+}
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {

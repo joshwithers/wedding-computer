@@ -50,6 +50,18 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   email_handle TEXT,
   storage_type TEXT DEFAULT 'r2',
   storage_config TEXT,
+  tax_label TEXT,
+  tax_rate INTEGER NOT NULL DEFAULT 0,
+  tax_inclusive INTEGER NOT NULL DEFAULT 1,
+  tax_number TEXT,
+  tax_number_label TEXT,
+  business_address TEXT,
+  invoice_prefix TEXT NOT NULL DEFAULT 'INV-',
+  next_invoice_number INTEGER NOT NULL DEFAULT 1,
+  card_fee_enabled INTEGER NOT NULL DEFAULT 0,
+  card_fee_percent REAL NOT NULL DEFAULT 0,
+  service_templates TEXT,
+  invoice_defaults TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -159,6 +171,17 @@ CREATE TABLE IF NOT EXISTS invoices (
   public_token TEXT UNIQUE,
   notes TEXT,
   booking_form_data TEXT,
+  invoice_number TEXT,
+  tax_label TEXT,
+  tax_rate INTEGER NOT NULL DEFAULT 0,
+  tax_inclusive INTEGER NOT NULL DEFAULT 1,
+  subtotal_cents INTEGER NOT NULL DEFAULT 0,
+  tax_amount_cents INTEGER NOT NULL DEFAULT 0,
+  card_fee_cents INTEGER NOT NULL DEFAULT 0,
+  card_fee_percent REAL NOT NULL DEFAULT 0,
+  vendor_tax_number TEXT,
+  vendor_business_name TEXT,
+  vendor_business_address TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -220,9 +243,19 @@ CREATE TABLE IF NOT EXISTS documents (
   mime_type TEXT NOT NULL,
   size_bytes INTEGER NOT NULL,
   category TEXT,
+  description TEXT,
   visibility TEXT NOT NULL DEFAULT 'private'
     CHECK (visibility IN ('private','wedding','public')),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Document sharing: per-member visibility for wedding files
+CREATE TABLE IF NOT EXISTS document_shares (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(document_id, user_id)
 );
 
 -- Couple vendor planning entries
@@ -393,10 +426,13 @@ CREATE INDEX IF NOT EXISTS idx_contact_activities_contact ON contact_activities(
 CREATE INDEX IF NOT EXISTS idx_invoices_vendor ON invoices(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_wedding ON invoices(wedding_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(vendor_id, invoice_number);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_vendor_date ON calendar_events(vendor_id, date);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_wedding ON calendar_events(wedding_id);
 CREATE INDEX IF NOT EXISTS idx_availability_overrides_vendor ON availability_overrides(vendor_id, date);
 CREATE INDEX IF NOT EXISTS idx_documents_wedding ON documents(wedding_id);
+CREATE INDEX IF NOT EXISTS idx_document_shares_document ON document_shares(document_id);
+CREATE INDEX IF NOT EXISTS idx_document_shares_user ON document_shares(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource_type, resource_id);

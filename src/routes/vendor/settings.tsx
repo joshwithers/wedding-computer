@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import type { Env, VendorProfile } from '../../types'
+import type { Env, VendorProfile, ServiceTemplate, InvoiceDefaults } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
@@ -192,6 +192,120 @@ settings.get('/app/settings', (c) => {
           <p class="text-xs text-gray-400 mt-2">
             You can always record cash, direct debit, and PayID payments manually without Stripe.
           </p>
+        </section>
+
+        <section class="mt-10 pt-8 border-t border-gray-200">
+          <h2 class="text-base font-bold mb-2">Invoicing</h2>
+          <p class="text-sm text-gray-500 mb-4">
+            Configure tax, numbering, and fees for your invoices.
+          </p>
+          <form method="post" action="/app/settings/invoicing" class="space-y-5">
+            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+
+            <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 space-y-4">
+              <h3 class="text-sm font-bold">Tax</h3>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-bold text-gray-700 mb-1" for="tax_label">Tax type</label>
+                  <select id="tax_label" name="tax_label"
+                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600">
+                    <option value="" selected={!vendor.tax_label}>No tax</option>
+                    <option value="GST" selected={vendor.tax_label === 'GST'}>GST (Australia, NZ, Singapore, India)</option>
+                    <option value="VAT" selected={vendor.tax_label === 'VAT'}>VAT (UK, EU, South Africa)</option>
+                    <option value="Sales Tax" selected={vendor.tax_label === 'Sales Tax'}>Sales Tax (USA, Canada)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-gray-700 mb-1" for="tax_rate">Rate (%)</label>
+                  <input type="number" id="tax_rate" name="tax_rate" min="0" max="50" step="0.5"
+                    value={String(vendor.tax_rate || '')} placeholder="e.g. 10"
+                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">Pricing model</label>
+                <div class="flex gap-4">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="tax_inclusive" value="1" checked={!!vendor.tax_inclusive}
+                      class="w-4 h-4 border-gray-300 text-horizon-600 focus:ring-horizon-600" />
+                    <span class="text-sm text-gray-700">Prices include tax</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="tax_inclusive" value="0" checked={!vendor.tax_inclusive}
+                      class="w-4 h-4 border-gray-300 text-horizon-600 focus:ring-horizon-600" />
+                    <span class="text-sm text-gray-700">Prices exclude tax (added on top)</span>
+                  </label>
+                </div>
+                <p class="text-xs text-gray-400 mt-1">
+                  {vendor.tax_inclusive
+                    ? 'Your service prices already include tax. The tax component will be shown separately on invoices.'
+                    : 'Tax will be calculated and added on top of your service prices.'}
+                </p>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-bold text-gray-700 mb-1" for="tax_number">
+                    {vendor.tax_label === 'GST' ? 'ABN' : vendor.tax_label === 'VAT' ? 'VAT number' : 'Tax registration number'}
+                  </label>
+                  <input type="text" id="tax_number" name="tax_number" value={vendor.tax_number ?? ''} placeholder="e.g. 12 345 678 901"
+                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-gray-700 mb-1" for="business_address">Business address</label>
+                  <input type="text" id="business_address" name="business_address" value={vendor.business_address ?? ''} placeholder="123 Main St, Sydney NSW"
+                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 space-y-4">
+              <h3 class="text-sm font-bold">Invoice numbering</h3>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-bold text-gray-700 mb-1" for="invoice_prefix">Prefix</label>
+                  <input type="text" id="invoice_prefix" name="invoice_prefix" value={vendor.invoice_prefix || 'INV-'} placeholder="INV-"
+                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-gray-700 mb-1" for="next_invoice_number">Next number</label>
+                  <input type="number" id="next_invoice_number" name="next_invoice_number" min="1"
+                    value={String(vendor.next_invoice_number || 1)}
+                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
+                  <p class="text-xs text-gray-400 mt-1">Next invoice will be {vendor.invoice_prefix || 'INV-'}{String(vendor.next_invoice_number || 1).padStart(4, '0')}</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 space-y-4">
+              <h3 class="text-sm font-bold">Credit card surcharge</h3>
+              <p class="text-xs text-gray-500">
+                Optionally pass on card processing fees to clients. You can choose per-invoice whether to apply it.
+              </p>
+              <label class="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" name="card_fee_enabled" value="1" checked={!!vendor.card_fee_enabled}
+                  class="w-4 h-4 rounded border-gray-300 text-horizon-600 focus:ring-horizon-600" />
+                <span class="text-sm text-gray-700">Enable card fee surcharge</span>
+              </label>
+              <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1" for="card_fee_percent">Fee percentage</label>
+                <input type="number" id="card_fee_percent" name="card_fee_percent" min="0" max="5" step="0.1"
+                  value={vendor.card_fee_percent ? String(vendor.card_fee_percent) : ''} placeholder="e.g. 1.5"
+                  class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 max-w-xs" />
+                <p class="text-xs text-gray-400 mt-1">Typically 1–2%. Must not exceed your actual processing cost.</p>
+              </div>
+            </div>
+
+            <button type="submit"
+              class="bg-horizon-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
+              Save invoicing settings
+            </button>
+          </form>
+
+          {/* Service templates */}
+          <ServiceTemplatesEditor vendor={vendor} csrfToken={c.get('csrfToken')} />
+
+          {/* Invoice defaults */}
+          <InvoiceDefaultsEditor vendor={vendor} csrfToken={c.get('csrfToken')} />
         </section>
 
         <section class="mt-10 pt-8 border-t border-gray-200">
@@ -470,6 +584,92 @@ settings.post('/app/settings', async (c) => {
   } catch (e: any) {
     return c.redirect(`/app/settings?error=${encodeURIComponent(e.message)}`)
   }
+})
+
+// ─── Invoicing settings ───
+
+settings.post('/app/settings/invoicing', async (c) => {
+  const vendor = c.get('vendor')!
+  const body = await c.req.parseBody()
+
+  const taxLabel = trimOrNull(body.tax_label)
+  const taxRate = Math.max(0, Math.min(50, parseFloat(String(body.tax_rate || '0')) || 0))
+  const taxInclusive = body.tax_inclusive === '1' ? 1 : 0
+  const taxNumber = trimOrNull(body.tax_number)
+  const businessAddress = trimOrNull(body.business_address)
+  const invoicePrefix = (typeof body.invoice_prefix === 'string' && body.invoice_prefix.trim())
+    ? body.invoice_prefix.trim()
+    : 'INV-'
+  const nextInvoiceNumber = Math.max(1, parseInt(String(body.next_invoice_number || '1')) || 1)
+  const cardFeeEnabled = body.card_fee_enabled === '1' ? 1 : 0
+  const cardFeePercent = Math.max(0, Math.min(5, parseFloat(String(body.card_fee_percent || '0')) || 0))
+
+  await updateVendor(c.env.DB, vendor.id, {
+    tax_label: taxLabel,
+    tax_rate: taxRate,
+    tax_inclusive: taxInclusive,
+    tax_number: taxNumber,
+    business_address: businessAddress,
+    invoice_prefix: invoicePrefix,
+    next_invoice_number: nextInvoiceNumber,
+    card_fee_enabled: cardFeeEnabled,
+    card_fee_percent: cardFeePercent,
+  })
+
+  await auditLog(c, 'invoicing_settings_updated', 'vendor', vendor.id).catch(() => {})
+  return c.redirect('/app/settings?saved=1')
+})
+
+// ─── Service templates ───
+
+settings.post('/app/settings/service-templates', async (c) => {
+  const vendor = c.get('vendor')!
+  const body = await c.req.parseBody({ all: true })
+
+  const names = Array.isArray(body.svc_name) ? body.svc_name : [body.svc_name]
+  const descs = Array.isArray(body.svc_desc) ? body.svc_desc : [body.svc_desc]
+  const prices = Array.isArray(body.svc_price) ? body.svc_price : [body.svc_price]
+
+  const templates: ServiceTemplate[] = []
+  for (let i = 0; i < names.length; i++) {
+    const name = typeof names[i] === 'string' ? (names[i] as string).trim() : ''
+    const desc = typeof descs[i] === 'string' ? (descs[i] as string).trim() : ''
+    const price = parseFloat(String(prices[i] || '0'))
+    if (name) {
+      templates.push({
+        name,
+        description: desc || name,
+        price_cents: Math.round(Math.max(0, price) * 100),
+      })
+    }
+  }
+
+  await updateVendor(c.env.DB, vendor.id, {
+    service_templates: templates.length > 0 ? JSON.stringify(templates) : null,
+  })
+
+  return c.redirect('/app/settings?saved=1')
+})
+
+// ─── Invoice defaults ───
+
+settings.post('/app/settings/invoice-defaults', async (c) => {
+  const vendor = c.get('vendor')!
+  const body = await c.req.parseBody()
+
+  const defaults: InvoiceDefaults = {
+    booking_fee_type: body.default_fee_type === 'percentage' ? 'percentage' : 'fixed',
+    booking_fee_value: parseFloat(String(body.default_fee_value || '0')) || 0,
+    installments: Math.max(1, Math.min(6, parseInt(String(body.default_installments || '1')) || 1)),
+    notes: typeof body.default_notes === 'string' ? body.default_notes.trim() : '',
+    include_card_fee: body.default_card_fee === '1',
+  }
+
+  await updateVendor(c.env.DB, vendor.id, {
+    invoice_defaults: JSON.stringify(defaults),
+  })
+
+  return c.redirect('/app/settings?saved=1')
 })
 
 // ─── Ceremony types ───
@@ -1037,6 +1237,168 @@ function Field({
           disabled ? 'bg-gray-50 text-gray-500' : ''
         }`}
       />
+    </div>
+  )
+}
+
+function ServiceTemplatesEditor({ vendor, csrfToken }: { vendor: VendorProfile; csrfToken: string }) {
+  let templates: ServiceTemplate[] = []
+  if (vendor.service_templates) {
+    try { templates = JSON.parse(vendor.service_templates) } catch { /* ignore */ }
+  }
+
+  return (
+    <div class="mt-6">
+      <form method="post" action="/app/settings/service-templates">
+        <input type="hidden" name="_csrf" value={csrfToken} />
+        <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 space-y-4">
+          <div>
+            <h3 class="text-sm font-bold">Service catalogue</h3>
+            <p class="text-xs text-gray-500 mt-0.5">
+              Pre-defined services you can quickly add to invoices. They pre-fill description and price but can be edited per-invoice.
+            </p>
+          </div>
+
+          <div id="svc-templates" class="space-y-3">
+            {templates.length > 0 ? templates.map((t, i) => (
+              <ServiceTemplateRow index={i} name={t.name} desc={t.description} price={t.price_cents / 100} />
+            )) : (
+              <ServiceTemplateRow index={0} />
+            )}
+          </div>
+
+          <button type="button" id="add-svc-btn"
+            class="text-sm text-horizon-600 font-bold hover:text-horizon-700">
+            + Add service
+          </button>
+
+          <div>
+            <button type="submit"
+              class="bg-horizon-600 text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
+              Save services
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <script dangerouslySetInnerHTML={{ __html: `
+        (function() {
+          let svcCount = ${Math.max(templates.length, 1)};
+          document.getElementById('add-svc-btn').addEventListener('click', function() {
+            const container = document.getElementById('svc-templates');
+            const idx = svcCount++;
+            const div = document.createElement('div');
+            div.className = 'grid grid-cols-12 gap-2 items-end';
+            div.innerHTML = '<div class="col-span-4"><input type="text" name="svc_name" placeholder="Service name" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" /></div><div class="col-span-4"><input type="text" name="svc_desc" placeholder="Description on invoice" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" /></div><div class="col-span-3"><input type="number" name="svc_price" min="0" step="0.01" placeholder="Price ($)" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" /></div><div class="col-span-1"><button type="button" onclick="this.closest(\\'.grid\\').remove()" class="text-gray-400 hover:text-grapefruit-700 text-sm p-2">✕</button></div>';
+            container.appendChild(div);
+          });
+        })();
+      ` }} />
+    </div>
+  )
+}
+
+function ServiceTemplateRow({ index, name, desc, price }: { index: number; name?: string; desc?: string; price?: number }) {
+  return (
+    <div class="grid grid-cols-12 gap-2 items-end">
+      <div class="col-span-4">
+        {index === 0 && <label class="block text-xs text-gray-500 mb-1">Name</label>}
+        <input type="text" name="svc_name" value={name ?? ''} placeholder="e.g. Wedding Ceremony"
+          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
+      </div>
+      <div class="col-span-4">
+        {index === 0 && <label class="block text-xs text-gray-500 mb-1">Invoice description</label>}
+        <input type="text" name="svc_desc" value={desc ?? ''} placeholder="Description on invoice"
+          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
+      </div>
+      <div class="col-span-3">
+        {index === 0 && <label class="block text-xs text-gray-500 mb-1">Price ($)</label>}
+        <input type="number" name="svc_price" min="0" step="0.01" value={price ? String(price) : ''} placeholder="0.00"
+          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
+      </div>
+      <div class="col-span-1">
+        {index > 0 && (
+          <button type="button" onclick="this.closest('.grid').remove()"
+            class="text-gray-400 hover:text-grapefruit-700 text-sm p-2">✕</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function InvoiceDefaultsEditor({ vendor, csrfToken }: { vendor: VendorProfile; csrfToken: string }) {
+  let defaults: Partial<InvoiceDefaults> = {}
+  if (vendor.invoice_defaults) {
+    try { defaults = JSON.parse(vendor.invoice_defaults) } catch { /* ignore */ }
+  }
+
+  return (
+    <div class="mt-6">
+      <form method="post" action="/app/settings/invoice-defaults">
+        <input type="hidden" name="_csrf" value={csrfToken} />
+        <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 space-y-4">
+          <div>
+            <h3 class="text-sm font-bold">Invoice defaults</h3>
+            <p class="text-xs text-gray-500 mt-0.5">
+              Pre-fill these values when creating a new invoice. You can always change them per-invoice.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-gray-700 mb-1" for="default_fee_type">Default booking fee type</label>
+              <select id="default_fee_type" name="default_fee_type"
+                class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600">
+                <option value="fixed" selected={defaults.booking_fee_type !== 'percentage'}>Fixed amount</option>
+                <option value="percentage" selected={defaults.booking_fee_type === 'percentage'}>Percentage</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-gray-700 mb-1" for="default_fee_value">Default booking fee</label>
+              <input type="number" id="default_fee_value" name="default_fee_value" min="0" step="1"
+                value={defaults.booking_fee_value ? String(defaults.booking_fee_value) : ''} placeholder="e.g. 500 or 20"
+                class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
+              <p class="text-xs text-gray-400 mt-1">Dollars for fixed, whole number for %</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-gray-700 mb-1" for="default_installments">Default installments</label>
+              <select id="default_installments" name="default_installments"
+                class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600">
+                <option value="1" selected={!defaults.installments || defaults.installments === 1}>1 (final payment)</option>
+                <option value="2" selected={defaults.installments === 2}>2 payments</option>
+                <option value="3" selected={defaults.installments === 3}>3 payments</option>
+                <option value="4" selected={defaults.installments === 4}>4 payments</option>
+                <option value="6" selected={defaults.installments === 6}>6 payments</option>
+              </select>
+            </div>
+            {vendor.card_fee_enabled && vendor.card_fee_percent > 0 && (
+              <div class="flex items-end pb-1">
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" name="default_card_fee" value="1" checked={!!defaults.include_card_fee}
+                    class="w-4 h-4 rounded border-gray-300 text-horizon-600 focus:ring-horizon-600" />
+                  <span class="text-sm text-gray-700">Apply card fee by default</span>
+                </label>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1" for="default_notes">Default invoice notes</label>
+            <textarea id="default_notes" name="default_notes" rows={3} placeholder="Payment terms, conditions, etc."
+              class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600">{defaults.notes ?? ''}</textarea>
+          </div>
+
+          <div>
+            <button type="submit"
+              class="bg-horizon-600 text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
+              Save defaults
+            </button>
+          </div>
+        </div>
+      </form>
     </div>
   )
 }

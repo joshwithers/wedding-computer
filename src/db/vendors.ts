@@ -86,6 +86,18 @@ export async function updateVendor(
       | 'ceremony_types'
       | 'storage_type'
       | 'storage_config'
+      | 'tax_label'
+      | 'tax_rate'
+      | 'tax_inclusive'
+      | 'tax_number'
+      | 'tax_number_label'
+      | 'business_address'
+      | 'invoice_prefix'
+      | 'next_invoice_number'
+      | 'card_fee_enabled'
+      | 'card_fee_percent'
+      | 'service_templates'
+      | 'invoice_defaults'
     >
   >
 ): Promise<void> {

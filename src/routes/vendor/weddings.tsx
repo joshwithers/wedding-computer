@@ -13,6 +13,8 @@ import {
   getWeddingMembers,
   getMembership,
 } from '../../db/weddings'
+import { listDocumentsForWedding } from '../../db/documents'
+import { listInvoicesForWedding, type InvoiceWithPaymentSummary } from '../../db/invoices'
 import { getContact, updateContact } from '../../storage/contacts'
 import { getStorage } from '../../storage'
 import { writeWeddingFile } from '../../storage/weddings'
@@ -379,6 +381,18 @@ weddings.get('/app/weddings/:id', async (c) => {
     ? allMembers
     : allMembers.filter((m) => m.user_id === user.id || m.role === 'couple' || m.role === 'guest')
 
+  const documents = await listDocumentsForWedding(c.env.DB, weddingId, user.id)
+  const uploaded = c.req.query('uploaded')
+  const deleted = c.req.query('deleted')
+
+  // Invoices for this wedding
+  const weddingInvoices = await listInvoicesForWedding(c.env.DB, vendor.id, weddingId)
+  // Find the linked contact for "new invoice" link
+  const linkedContact = await c.env.DB
+    .prepare('SELECT id FROM contacts WHERE vendor_id = ? AND wedding_id = ? LIMIT 1')
+    .bind(vendor.id, weddingId)
+    .first<{ id: string }>()
+
   return c.html(
     <AppLayout
       title={wedding.title}
@@ -453,128 +467,6 @@ weddings.get('/app/weddings/:id', async (c) => {
                   </div>
                 ))}
               </div>
-              {canManage && (
-                <div class="mt-4 pt-4 border-t border-gray-100 space-y-4">
-                  {invited && (
-                    <p class="text-sm text-horizon-700 font-medium">Invited successfully</p>
-                  )}
-
-                  {/* Invite one of the people getting married */}
-                  <form
-                    method="post"
-                    action={`/app/weddings/${wedding.id}/invite`}
-                    class="flex gap-2 items-end"
-                  >
-                    <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                    <div class="flex-1">
-                      <label class="block text-xs font-bold text-gray-700 mb-1">
-                        Invite someone getting married
-                      </label>
-                      <input
-                        type="email"
-                        name="email"
-                        required
-                        placeholder="their@email.com"
-                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <input
-                        type="text"
-                        name="name"
-                        required
-                        placeholder="Their name"
-                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      class="bg-horizon-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
-                    >
-                      Invite
-                    </button>
-                  </form>
-
-                  {/* Add vendor */}
-                  <form
-                    method="post"
-                    action={`/app/weddings/${wedding.id}/add-vendor`}
-                    class="flex gap-2 items-end flex-wrap"
-                  >
-                    <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                    <div class="flex-1 min-w-[140px]">
-                      <label class="block text-xs font-bold text-gray-700 mb-1">Add a vendor</label>
-                      <input
-                        type="email"
-                        name="email"
-                        required
-                        placeholder="vendor@email.com"
-                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-                      />
-                    </div>
-                    <div class="min-w-[120px]">
-                      <input
-                        type="text"
-                        name="name"
-                        required
-                        placeholder="Business name"
-                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-                      />
-                    </div>
-                    <div class="min-w-[100px]">
-                      <input
-                        type="text"
-                        name="vendor_role"
-                        placeholder="e.g. photographer"
-                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      class="bg-horizon-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
-                    >
-                      Add
-                    </button>
-                  </form>
-
-                  {/* Add other person (family, coordinator, etc.) */}
-                  <form
-                    method="post"
-                    action={`/app/weddings/${wedding.id}/add-guest`}
-                    class="flex gap-2 items-end"
-                  >
-                    <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                    <div class="flex-1">
-                      <label class="block text-xs font-bold text-gray-700 mb-1">
-                        Add someone else
-                        <span class="font-normal text-gray-400 ml-1">(family, coordinator, etc.)</span>
-                      </label>
-                      <input
-                        type="email"
-                        name="email"
-                        required
-                        placeholder="person@email.com"
-                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <input
-                        type="text"
-                        name="name"
-                        required
-                        placeholder="Their name"
-                        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      class="bg-horizon-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
-                    >
-                      Add
-                    </button>
-                  </form>
-                </div>
-              )}
             </div>
 
           </div>
@@ -601,6 +493,13 @@ weddings.get('/app/weddings/:id', async (c) => {
           </div>
         </div>
 
+        {/* Invoices & Payments */}
+        <WeddingInvoices
+          weddingId={wedding.id}
+          invoices={weddingInvoices}
+          contactId={linkedContact?.id ?? null}
+        />
+
         {/* Notes — full-width auto-saving markdown editor */}
         <WeddingNotes
           weddingId={wedding.id}
@@ -608,6 +507,149 @@ weddings.get('/app/weddings/:id', async (c) => {
           canManage={canManage}
           csrfToken={c.get('csrfToken')}
         />
+
+        {/* Files */}
+        <WeddingFiles
+          weddingId={wedding.id}
+          documents={documents}
+          members={allMembers}
+          userId={user.id}
+          csrfToken={c.get('csrfToken')}
+          uploaded={!!uploaded}
+          deleted={!!deleted}
+        />
+
+        {/* Invite / add people — tucked away at the bottom */}
+        {canManage && (
+          <details class="group mt-2">
+            <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 transition-colors select-none flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+              </svg>
+              Add people to this wedding
+            </summary>
+            <div class="mt-3 border border-gray-100 rounded-xl p-4 space-y-4 bg-gray-50/50">
+              {invited && (
+                <p class="text-sm text-horizon-700 font-medium">Invited successfully</p>
+              )}
+
+              {/* Invite one of the people getting married */}
+              <form
+                method="post"
+                action={`/app/weddings/${wedding.id}/invite`}
+                class="flex gap-2 items-end"
+              >
+                <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                <div class="flex-1">
+                  <label class="block text-xs font-medium text-gray-500 mb-1">
+                    Invite someone getting married
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    required
+                    placeholder="their@email.com"
+                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    name="name"
+                    required
+                    placeholder="Their name"
+                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
+                >
+                  Invite
+                </button>
+              </form>
+
+              {/* Add vendor */}
+              <form
+                method="post"
+                action={`/app/weddings/${wedding.id}/add-vendor`}
+                class="flex gap-2 items-end flex-wrap"
+              >
+                <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                <div class="flex-1 min-w-[140px]">
+                  <label class="block text-xs font-medium text-gray-500 mb-1">Add a vendor</label>
+                  <input
+                    type="email"
+                    name="email"
+                    required
+                    placeholder="vendor@email.com"
+                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
+                  />
+                </div>
+                <div class="min-w-[120px]">
+                  <input
+                    type="text"
+                    name="name"
+                    required
+                    placeholder="Business name"
+                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
+                  />
+                </div>
+                <div class="min-w-[100px]">
+                  <input
+                    type="text"
+                    name="vendor_role"
+                    placeholder="e.g. photographer"
+                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
+                >
+                  Add
+                </button>
+              </form>
+
+              {/* Add other person (family, coordinator, etc.) */}
+              <form
+                method="post"
+                action={`/app/weddings/${wedding.id}/add-guest`}
+                class="flex gap-2 items-end"
+              >
+                <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                <div class="flex-1">
+                  <label class="block text-xs font-medium text-gray-500 mb-1">
+                    Add someone else
+                    <span class="font-normal text-gray-400 ml-1">(family, coordinator, etc.)</span>
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    required
+                    placeholder="person@email.com"
+                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    name="name"
+                    required
+                    placeholder="Their name"
+                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
+                >
+                  Add
+                </button>
+              </form>
+            </div>
+          </details>
+        )}
       </div>
     </AppLayout>
   )
@@ -794,6 +836,17 @@ export default weddings
 
 import type { Wedding } from '../../types'
 import type { WeddingWithRole } from '../../db/weddings'
+import type { DocumentWithUploader } from '../../db/documents'
+
+type WeddingMemberRow = {
+  user_id: string
+  user_name: string
+  user_email: string
+  role: string
+  vendor_role: string | null
+  business_name: string | null
+  can_manage: number
+}
 
 function WeddingGrid({ weddings }: { weddings: WeddingWithRole[] }) {
   return (
@@ -849,6 +902,114 @@ function InfoCard({ label, value }: { label: string; value: string }) {
     <div class="bg-white border border-papaya-300/30 rounded-2xl px-4 py-3">
       <p class="text-xs text-gray-500 mb-0.5">{label}</p>
       <p class="text-sm text-gray-900">{value}</p>
+    </div>
+  )
+}
+
+function InvoiceStatusBadge({ status }: { status: string }) {
+  const colors: Record<string, string> = {
+    draft: 'bg-gray-100 text-gray-600',
+    sent: 'bg-papaya-200 text-gray-700',
+    partial: 'bg-amber-100 text-amber-700',
+    paid: 'bg-horizon-100 text-horizon-700',
+    overdue: 'bg-grapefruit-100 text-grapefruit-700',
+    cancelled: 'bg-gray-100 text-gray-400',
+  }
+  return (
+    <span class={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${colors[status] ?? colors.draft}`}>
+      {status.charAt(0).toUpperCase() + status.slice(1)}
+    </span>
+  )
+}
+
+function WeddingInvoices({
+  weddingId,
+  invoices,
+  contactId,
+}: {
+  weddingId: string
+  invoices: InvoiceWithPaymentSummary[]
+  contactId: string | null
+}) {
+  const totalInvoiced = invoices.reduce((sum, i) => sum + i.amount_cents, 0)
+  const totalPaid = invoices.reduce((sum, i) => sum + i.paid_cents, 0)
+  const outstanding = totalInvoiced - totalPaid
+
+  const newInvoiceUrl = `/app/invoices/new?wedding=${weddingId}${contactId ? `&contact=${contactId}` : ''}`
+
+  return (
+    <div class="mt-6">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-bold text-gray-500">Invoices</h3>
+        <a
+          href={newInvoiceUrl}
+          class="text-xs font-bold text-horizon-600 hover:text-horizon-700"
+        >
+          + New invoice
+        </a>
+      </div>
+
+      {invoices.length === 0 ? (
+        <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 text-center">
+          <p class="text-sm text-gray-400">No invoices yet</p>
+          <a
+            href={newInvoiceUrl}
+            class="text-sm font-bold text-horizon-600 hover:text-horizon-700 mt-1 inline-block"
+          >
+            Create your first invoice
+          </a>
+        </div>
+      ) : (
+        <div>
+          {/* Payment summary */}
+          <div class="grid grid-cols-3 gap-3 mb-3">
+            <div class="bg-white border border-papaya-300/30 rounded-xl p-3 text-center">
+              <p class="text-xs text-gray-500">Invoiced</p>
+              <p class="text-sm font-bold">${(totalInvoiced / 100).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</p>
+            </div>
+            <div class="bg-white border border-papaya-300/30 rounded-xl p-3 text-center">
+              <p class="text-xs text-gray-500">Paid</p>
+              <p class="text-sm font-bold text-horizon-700">${(totalPaid / 100).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</p>
+            </div>
+            <div class="bg-white border border-papaya-300/30 rounded-xl p-3 text-center">
+              <p class="text-xs text-gray-500">Outstanding</p>
+              <p class={`text-sm font-bold ${outstanding > 0 ? 'text-grapefruit-700' : 'text-gray-400'}`}>
+                ${(outstanding / 100).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
+
+          {/* Invoice list */}
+          <div class="bg-white border border-papaya-300/30 rounded-2xl divide-y divide-gray-100">
+            {invoices.map((inv) => (
+              <a
+                href={`/app/invoices/${inv.id}`}
+                class="p-3 flex items-center justify-between hover:bg-papaya-50 transition-colors block"
+              >
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium text-gray-900 truncate">
+                    {inv.invoice_number && <span class="text-gray-400 font-normal mr-1">{inv.invoice_number}</span>}
+                    {inv.title}
+                  </p>
+                  <div class="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+                    {inv.contact_name && <span>{inv.contact_name}</span>}
+                    {inv.due_date && <span>Due {formatDate(inv.due_date)}</span>}
+                    {inv.payment_count > 0 && (
+                      <span>{inv.paid_count}/{inv.payment_count} payments</span>
+                    )}
+                  </div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0 ml-3">
+                  <span class="text-sm font-bold text-gray-900">
+                    ${(inv.amount_cents / 100).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                  </span>
+                  <InvoiceStatusBadge status={inv.status} />
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1108,6 +1269,224 @@ function WeddingNotes({
 })();
 ` }} />
       )}
+    </div>
+  )
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+function fileIcon(mimeType: string): string {
+  if (mimeType.startsWith('image/')) return 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'
+  if (mimeType === 'application/pdf') return 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z'
+  return 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'
+}
+
+function WeddingFiles({
+  weddingId,
+  documents,
+  members,
+  userId,
+  csrfToken,
+  uploaded,
+  deleted,
+}: {
+  weddingId: string
+  documents: DocumentWithUploader[]
+  members: WeddingMemberRow[]
+  userId: string
+  csrfToken: string
+  uploaded: boolean
+  deleted: boolean
+}) {
+  const otherMembers = members.filter((m) => m.user_id !== userId)
+
+  return (
+    <div class="mt-6">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-bold text-gray-500">Files</h3>
+        <span class="text-xs text-gray-400">{documents.length} file{documents.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      {uploaded && (
+        <p class="text-sm text-horizon-700 font-medium mb-3">File uploaded successfully</p>
+      )}
+      {deleted && (
+        <p class="text-sm text-horizon-700 font-medium mb-3">File deleted</p>
+      )}
+
+      {/* File list */}
+      {documents.length > 0 && (
+        <div class="bg-white border border-papaya-300/30 rounded-2xl divide-y divide-gray-100 mb-4">
+          {documents.map((doc) => {
+            const isOwner = doc.uploaded_by_user_id === userId
+            const shares: string[] = doc.shared_with ? (() => {
+              try { const arr = JSON.parse(doc.shared_with); return Array.isArray(arr) ? arr : [] }
+              catch { return [] }
+            })() : []
+            const sharedNames = shares
+              .map((uid: string) => members.find((m) => m.user_id === uid))
+              .filter(Boolean)
+              .map((m) => m!.business_name ?? m!.user_name)
+
+            return (
+              <div class="p-3 flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                  <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={fileIcon(doc.mime_type)} />
+                  </svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <a
+                    href={`/files/${doc.id}`}
+                    target="_blank"
+                    class="text-sm font-medium text-gray-900 hover:text-horizon-700 truncate block"
+                  >
+                    {doc.filename}
+                  </a>
+                  <div class="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+                    <span>{formatFileSize(doc.size_bytes)}</span>
+                    <span>by {doc.uploader_name}</span>
+                    {doc.visibility === 'wedding' ? (
+                      <span class="text-horizon-600">Everyone</span>
+                    ) : sharedNames.length > 0 ? (
+                      <span class="text-amber-600" title={sharedNames.join(', ')}>
+                        Shared with {sharedNames.length}
+                      </span>
+                    ) : (
+                      <span>Private</span>
+                    )}
+                    {doc.description && (
+                      <span class="truncate max-w-[120px]" title={doc.description}>{doc.description}</span>
+                    )}
+                  </div>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <a
+                    href={`/files/${doc.id}/download`}
+                    class="text-gray-400 hover:text-gray-600 transition-colors"
+                    title="Download"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </a>
+                  {isOwner && (
+                    <form method="post" action={`/files/${doc.id}/delete`} class="inline">
+                      <input type="hidden" name="_csrf" value={csrfToken} />
+                      <button
+                        type="submit"
+                        class="text-gray-400 hover:text-grapefruit-600 transition-colors"
+                        title="Delete"
+                        onclick="return confirm('Delete this file?')"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Upload form */}
+      <details class="group" open={documents.length === 0 ? true : undefined}>
+        <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 transition-colors select-none flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+          Upload a file
+        </summary>
+        <form
+          method="post"
+          action={`/files/upload/${weddingId}`}
+          enctype="multipart/form-data"
+          class="mt-3 border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3"
+        >
+          <input type="hidden" name="_csrf" value={csrfToken} />
+
+          <div>
+            <input
+              type="file"
+              name="file"
+              required
+              class="block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-horizon-600 file:text-white hover:file:bg-horizon-700 file:cursor-pointer"
+            />
+            <p class="text-xs text-gray-400 mt-1">PDF, images, documents, spreadsheets. Max 10 MB.</p>
+          </div>
+
+          <div>
+            <input
+              type="text"
+              name="description"
+              placeholder="Optional description"
+              class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1.5">Who can see this?</label>
+            <div class="space-y-1.5" id={`vis-${weddingId}`}>
+              <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="radio"
+                  name="visibility"
+                  value="wedding"
+                  checked
+                  class="text-horizon-600"
+                  onchange={`document.getElementById('share-checkboxes-${weddingId}').classList.add('hidden')`}
+                />
+                Everyone on this wedding
+              </label>
+              {otherMembers.length > 0 && (
+                <label class="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="visibility"
+                    value="private"
+                    class="text-horizon-600"
+                    onchange={`document.getElementById('share-checkboxes-${weddingId}').classList.remove('hidden')`}
+                  />
+                  Only specific people
+                </label>
+              )}
+            </div>
+          </div>
+
+          {otherMembers.length > 0 && (
+            <div id={`share-checkboxes-${weddingId}`} class="hidden pl-5 space-y-1">
+              {otherMembers.map((m) => (
+                <label class="flex items-center gap-2 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    name="share_with"
+                    value={m.user_id}
+                    class="text-horizon-600 rounded"
+                  />
+                  {m.business_name ?? m.user_name}
+                  <span class="text-xs text-gray-400">
+                    {m.vendor_role ? m.vendor_role : m.role}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            class="bg-horizon-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors"
+          >
+            Upload
+          </button>
+        </form>
+      </details>
     </div>
   )
 }

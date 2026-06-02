@@ -20,6 +20,7 @@ import analyticsRoute from './routes/vendor/analytics'
 import subscriptionRoute from './routes/vendor/subscription'
 import accountRoute from './routes/account'
 import adminRoute from './routes/admin'
+import filesRoute from './routes/files'
 import feed from './routes/feed'
 import carddav from './routes/carddav'
 import caldav from './routes/caldav'
@@ -106,6 +107,7 @@ app.route('/', contractRoute)
 app.route('/', analyticsRoute)
 app.route('/', subscriptionRoute)
 app.route('/', accountRoute)
+app.route('/', filesRoute)
 app.route('/', coupleRoute)
 app.route('/', adminRoute)
 

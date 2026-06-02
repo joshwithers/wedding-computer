@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import type { Env, Invoice, InvoicePayment, LineItem } from '../../types'
+import type { Env, Invoice, InvoicePayment, LineItem, ServiceTemplate, InvoiceDefaults } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
@@ -18,6 +18,9 @@ import {
   deletePayment,
   generatePaymentSchedule,
   recalculateInvoiceStatus,
+  calculateTax,
+  calculateCardFee,
+  invoiceDocumentTitle,
 } from '../../db/invoices'
 import { getContractTemplate, createContractForInvoice, getContractByInvoice } from '../../db/contracts'
 import { requireString, trimOrNull } from '../../lib/validation'
@@ -76,7 +79,10 @@ invoices.get('/app/invoices', async (c) => {
                 class="flex items-center justify-between bg-white border border-papaya-300/30 rounded-xl p-4 hover:border-papaya-300 transition-colors"
               >
                 <div>
-                  <p class="text-sm font-bold text-gray-900">{inv.title}</p>
+                  <p class="text-sm font-bold text-gray-900">
+                    {inv.invoice_number && <span class="text-gray-400 font-normal mr-1.5">{inv.invoice_number}</span>}
+                    {inv.title}
+                  </p>
                   <p class="text-xs text-gray-500 mt-0.5">
                     {inv.contact_name ?? 'No client'}{inv.due_date ? ` · Due ${formatDate(inv.due_date)}` : ''}
                   </p>
@@ -100,6 +106,21 @@ invoices.get('/app/invoices/new', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
   const contactId = c.req.query('contact')
+  const weddingId = c.req.query('wedding')
+
+  // If coming from a wedding page, look up the wedding for pre-fill
+  let weddingTitle: string | null = null
+  let weddingDate: string | null = null
+  if (weddingId) {
+    const wed = await c.env.DB
+      .prepare('SELECT title, date FROM weddings WHERE id = ?')
+      .bind(weddingId)
+      .first<{ title: string; date: string | null }>()
+    if (wed) {
+      weddingTitle = wed.title
+      weddingDate = wed.date
+    }
+  }
 
   const contacts = await c.env.DB
     .prepare("SELECT id, first_name, last_name, wedding_date FROM contacts WHERE vendor_id = ? AND status IN ('quoted','booked','completed') ORDER BY last_name")
@@ -107,15 +128,48 @@ invoices.get('/app/invoices/new', async (c) => {
     .all<{ id: string; first_name: string; last_name: string; wedding_date: string | null }>()
     .then((r) => r.results)
 
+  // Parse service templates and invoice defaults
+  let serviceTemplates: ServiceTemplate[] = []
+  if (vendor.service_templates) {
+    try { serviceTemplates = JSON.parse(vendor.service_templates) } catch { /* ignore */ }
+  }
+  let defaults: Partial<InvoiceDefaults> = {}
+  if (vendor.invoice_defaults) {
+    try { defaults = JSON.parse(vendor.invoice_defaults) } catch { /* ignore */ }
+  }
+
+  const defaultFeeType = defaults.booking_fee_type ?? 'fixed'
+  const defaultFeeValue = defaults.booking_fee_value ?? 500
+  const defaultInstallments = defaults.installments ?? 1
+  const defaultNotes = defaults.notes ?? ''
+  const defaultCardFee = defaults.include_card_fee ?? false
+
   return c.html(
     <AppLayout title="New invoice" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-2xl">
         <p class="text-sm text-gray-500 mb-4">
-          <a href="/app/invoices" class="hover:text-gray-900">Invoices</a> /
+          {weddingId ? (
+            <span>
+              <a href={`/app/weddings/${weddingId}`} class="hover:text-gray-900">{weddingTitle ?? 'Wedding'}</a> / New invoice
+            </span>
+          ) : (
+            <span>
+              <a href="/app/invoices" class="hover:text-gray-900">Invoices</a> /
+            </span>
+          )}
         </p>
 
         <form method="post" action="/app/invoices/new" class="space-y-6">
           <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+          {weddingId && <input type="hidden" name="wedding_id" value={weddingId} />}
+
+          {weddingTitle && (
+            <div class="bg-horizon-50 border border-horizon-200 rounded-2xl px-5 py-3 flex items-center gap-2">
+              <span class="text-xs font-bold text-horizon-700">Wedding:</span>
+              <a href={`/app/weddings/${weddingId}`} class="text-sm font-bold text-horizon-700 hover:underline">{weddingTitle}</a>
+              {weddingDate && <span class="text-xs text-horizon-600">· {formatDate(weddingDate)}</span>}
+            </div>
+          )}
 
           <section class="bg-white border border-papaya-300/30 rounded-2xl p-5 space-y-4">
             <h3 class="text-sm font-bold">Invoice details</h3>
@@ -139,13 +193,31 @@ invoices.get('/app/invoices/new', async (c) => {
             <div>
               <label class="block text-xs font-bold text-gray-700 mb-1" for="notes">Notes</label>
               <textarea id="notes" name="notes" rows={2} placeholder="Payment terms, conditions, etc."
-                class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600"></textarea>
+                class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600">{defaultNotes}</textarea>
             </div>
           </section>
 
           <section class="bg-white border border-papaya-300/30 rounded-2xl p-5 space-y-4">
             <h3 class="text-sm font-bold">Services</h3>
             <p class="text-xs text-gray-500">Add line items for each service included.</p>
+
+            {serviceTemplates.length > 0 && (
+              <div class="flex items-center gap-2">
+                <select id="svc-template-picker"
+                  class="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600">
+                  <option value="">Quick add from your services…</option>
+                  {serviceTemplates.map((t, i) => (
+                    <option value={String(i)}>
+                      {t.name} — ${(t.price_cents / 100).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" id="add-from-template-btn"
+                  class="bg-horizon-600 text-white px-3 py-2.5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">
+                  Add
+                </button>
+              </div>
+            )}
 
             <div id="line-items" class="space-y-3">
               <LineItemRow index={0} />
@@ -154,7 +226,7 @@ invoices.get('/app/invoices/new', async (c) => {
             <button type="button"
               onclick="addLineItem()"
               class="text-sm text-horizon-600 font-bold hover:text-horizon-700">
-              + Add service
+              + Add blank service
             </button>
           </section>
 
@@ -166,18 +238,43 @@ invoices.get('/app/invoices/new', async (c) => {
                 <label class="block text-xs font-bold text-gray-700 mb-1" for="booking_fee_type">Type</label>
                 <select id="booking_fee_type" name="booking_fee_type"
                   class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600">
-                  <option value="fixed">Fixed amount</option>
-                  <option value="percentage">Percentage</option>
+                  <option value="fixed" selected={defaultFeeType === 'fixed'}>Fixed amount</option>
+                  <option value="percentage" selected={defaultFeeType === 'percentage'}>Percentage</option>
                 </select>
               </div>
               <div>
                 <label class="block text-xs font-bold text-gray-700 mb-1" for="booking_fee_value">Amount</label>
-                <input type="number" id="booking_fee_value" name="booking_fee_value" min="0" step="1" value="500" placeholder="500"
+                <input type="number" id="booking_fee_value" name="booking_fee_value" min="0" step="1" value={String(defaultFeeValue)} placeholder="500"
                   class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
                 <p class="text-xs text-gray-400 mt-1" id="fee-hint">Dollars for fixed, whole number for %</p>
               </div>
             </div>
           </section>
+
+          {/* Tax & fee info */}
+          {(vendor.tax_rate > 0 || (vendor.card_fee_enabled && vendor.card_fee_percent > 0)) && (
+            <section class="bg-white border border-papaya-300/30 rounded-2xl p-5 space-y-4">
+              <h3 class="text-sm font-bold">Tax &amp; fees</h3>
+              {vendor.tax_rate > 0 && (
+                <div class="flex items-center gap-2 text-sm">
+                  <span class="text-gray-500">{vendor.tax_label ?? 'Tax'} ({vendor.tax_rate}%)</span>
+                  <span class="text-xs text-gray-400">
+                    · Prices are {vendor.tax_inclusive ? 'inclusive' : 'exclusive'} of {vendor.tax_label ?? 'tax'}
+                  </span>
+                </div>
+              )}
+              {vendor.card_fee_enabled && vendor.card_fee_percent > 0 && (
+                <label class="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" name="include_card_fee" value="1" checked={defaultCardFee}
+                    class="w-4 h-4 rounded border-gray-300 text-horizon-600 focus:ring-horizon-600" />
+                  <span class="text-sm text-gray-700">
+                    Add credit card surcharge ({vendor.card_fee_percent}%)
+                  </span>
+                  <span class="text-xs text-gray-400">Passed on to client</span>
+                </label>
+              )}
+            </section>
+          )}
 
           <section class="bg-white border border-papaya-300/30 rounded-2xl p-5 space-y-4">
             <h3 class="text-sm font-bold">Payment schedule</h3>
@@ -187,16 +284,16 @@ invoices.get('/app/invoices/new', async (c) => {
                 <label class="block text-xs font-bold text-gray-700 mb-1" for="installments">Installments</label>
                 <select id="installments" name="installments"
                   class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600">
-                  <option value="1">1 (final payment)</option>
-                  <option value="2">2 payments</option>
-                  <option value="3">3 payments</option>
-                  <option value="4">4 payments</option>
-                  <option value="6">6 payments</option>
+                  <option value="1" selected={defaultInstallments === 1}>1 (final payment)</option>
+                  <option value="2" selected={defaultInstallments === 2}>2 payments</option>
+                  <option value="3" selected={defaultInstallments === 3}>3 payments</option>
+                  <option value="4" selected={defaultInstallments === 4}>4 payments</option>
+                  <option value="6" selected={defaultInstallments === 6}>6 payments</option>
                 </select>
               </div>
               <div>
                 <label class="block text-xs font-bold text-gray-700 mb-1" for="wedding_date">Wedding date</label>
-                <input type="date" id="wedding_date" name="wedding_date"
+                <input type="date" id="wedding_date" name="wedding_date" value={weddingDate ?? ''}
                   class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
                 <p class="text-xs text-gray-400 mt-1">Used to space out payments</p>
               </div>
@@ -213,32 +310,29 @@ invoices.get('/app/invoices/new', async (c) => {
       </div>
 
       <script dangerouslySetInnerHTML={{ __html: `
-        let lineItemCount = 1;
-        function addLineItem() {
-          const container = document.getElementById('line-items');
-          const idx = lineItemCount++;
-          const div = document.createElement('div');
+        var lineItemCount = 1;
+        var serviceTemplates = ${JSON.stringify(serviceTemplates)};
+
+        function addLineItem(desc, qty, price) {
+          var container = document.getElementById('line-items');
+          var idx = lineItemCount++;
+          var div = document.createElement('div');
           div.className = 'grid grid-cols-12 gap-2 items-end';
-          div.innerHTML = \`
-            <div class="col-span-6">
-              <input type="text" name="item_desc_\${idx}" required placeholder="Service description"
-                class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
-            </div>
-            <div class="col-span-2">
-              <input type="number" name="item_qty_\${idx}" value="1" min="1" required
-                class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
-            </div>
-            <div class="col-span-3">
-              <input type="number" name="item_price_\${idx}" required min="0" step="0.01" placeholder="0.00"
-                class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
-            </div>
-            <div class="col-span-1">
-              <button type="button" onclick="this.closest('.grid').remove()"
-                class="text-gray-400 hover:text-grapefruit-700 text-sm p-2">✕</button>
-            </div>
-          \`;
+          div.innerHTML = '<div class="col-span-6"><input type="text" name="item_desc_' + idx + '" required placeholder="Service description" value="' + (desc || '').replace(/"/g, '&quot;') + '" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" /></div><div class="col-span-2"><input type="number" name="item_qty_' + idx + '" value="' + (qty || 1) + '" min="1" required class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" /></div><div class="col-span-3"><input type="number" name="item_price_' + idx + '" required min="0" step="0.01" placeholder="0.00" value="' + (price || '') + '" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" /></div><div class="col-span-1"><button type="button" onclick="this.closest(\\'.grid\\').remove()" class="text-gray-400 hover:text-grapefruit-700 text-sm p-2">✕</button></div>';
           container.appendChild(div);
           document.querySelector('input[name="item_count"]').value = lineItemCount;
+        }
+
+        var tplBtn = document.getElementById('add-from-template-btn');
+        if (tplBtn) {
+          tplBtn.addEventListener('click', function() {
+            var picker = document.getElementById('svc-template-picker');
+            var idx = parseInt(picker.value);
+            if (isNaN(idx) || !serviceTemplates[idx]) return;
+            var t = serviceTemplates[idx];
+            addLineItem(t.description, 1, (t.price_cents / 100).toFixed(2));
+            picker.value = '';
+          });
         }
       ` }} />
     </AppLayout>
@@ -252,6 +346,7 @@ invoices.post('/app/invoices/new', async (c) => {
   try {
     const title = requireString(body.title, 'Title')
     const contactId = trimOrNull(body.contact_id)
+    const weddingId = trimOrNull(body.wedding_id)
 
     const lineItems: LineItem[] = []
     const itemCount = parseInt(String(body.item_count || '10'))
@@ -277,14 +372,18 @@ invoices.post('/app/invoices/new', async (c) => {
     const feeRaw = parseInt(String(body.booking_fee_value || '0'))
     const feeValue = feeType === 'fixed' ? feeRaw * 100 : feeRaw
 
-    const invoice = await createInvoice(c.env.DB, vendor.id, {
+    const includeCardFee = body.include_card_fee === '1'
+
+    const invoice = await createInvoice(c.env.DB, vendor.id, vendor, {
       contact_id: contactId,
+      wedding_id: weddingId,
       title,
       amount_cents: totalCents,
       line_items: lineItems,
       booking_fee_type: feeType,
       booking_fee_value: feeValue,
       notes: trimOrNull(body.notes),
+      include_card_fee: includeCardFee,
     })
 
     const installments = parseInt(String(body.installments || '1'))
@@ -342,8 +441,17 @@ invoices.get('/app/invoices/:id', async (c) => {
         .first<{ first_name: string; last_name: string; email: string | null }>()
     : null
 
+  const wedding = invoice.wedding_id
+    ? await c.env.DB
+        .prepare('SELECT id, title, date FROM weddings WHERE id = ?')
+        .bind(invoice.wedding_id)
+        .first<{ id: string; title: string; date: string | null }>()
+    : null
+
   const paidTotal = payments.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount_cents, 0)
   const outstanding = invoice.amount_cents - paidTotal
+
+  const docTitle = invoiceDocumentTitle(invoice.tax_label, invoice.tax_rate)
 
   return c.html(
     <AppLayout title={invoice.title} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
@@ -354,9 +462,28 @@ invoices.get('/app/invoices/:id', async (c) => {
 
         <div class="flex items-start justify-between mb-6">
           <div>
-            <h2 class="text-xl font-bold">{invoice.title}</h2>
-            {contact && (
-              <p class="text-sm text-gray-500 mt-0.5">{contact.first_name} {contact.last_name}</p>
+            <div class="flex items-center gap-2">
+              <h2 class="text-xl font-bold">{invoice.title}</h2>
+              {invoice.invoice_number && (
+                <span class="text-sm text-gray-400 font-normal">{invoice.invoice_number}</span>
+              )}
+            </div>
+            {docTitle !== 'Invoice' && (
+              <p class="text-xs font-bold text-horizon-600 mt-0.5">{docTitle}</p>
+            )}
+            <div class="flex items-center gap-2 mt-0.5 flex-wrap">
+              {contact && (
+                <p class="text-sm text-gray-500">{contact.first_name} {contact.last_name}</p>
+              )}
+              {wedding && (
+                <a href={`/app/weddings/${wedding.id}`}
+                  class="inline-flex items-center gap-1 text-xs font-bold text-horizon-700 bg-horizon-50 px-2.5 py-0.5 rounded-full hover:bg-horizon-100 transition-colors">
+                  💒 {wedding.title}
+                </a>
+              )}
+            </div>
+            {invoice.vendor_tax_number && (
+              <p class="text-xs text-gray-400 mt-1">{invoice.tax_label === 'GST' ? 'ABN' : invoice.tax_label === 'VAT' ? 'VAT No.' : 'Tax No.'}: {invoice.vendor_tax_number}</p>
             )}
           </div>
           <div class="flex items-center gap-2">
@@ -411,9 +538,31 @@ invoices.get('/app/invoices/:id', async (c) => {
               </div>
             ))}
           </div>
-          <div class="border-t border-gray-200 mt-2 pt-2 flex items-center justify-between">
-            <p class="text-sm font-bold text-gray-700">Total</p>
-            <p class="text-sm font-bold">{formatCents(invoice.amount_cents)}</p>
+          <div class="border-t border-gray-200 mt-2 pt-2 space-y-1">
+            {invoice.tax_rate > 0 && (
+              <>
+                <div class="flex items-center justify-between">
+                  <p class="text-sm text-gray-500">
+                    Subtotal {invoice.tax_inclusive ? `(incl. ${invoice.tax_label ?? 'tax'})` : '(ex-tax)'}
+                  </p>
+                  <p class="text-sm text-gray-700">{formatCents(invoice.subtotal_cents)}</p>
+                </div>
+                <div class="flex items-center justify-between">
+                  <p class="text-sm text-gray-500">{invoice.tax_label ?? 'Tax'} ({invoice.tax_rate}%)</p>
+                  <p class="text-sm text-gray-700">{formatCents(invoice.tax_amount_cents)}</p>
+                </div>
+              </>
+            )}
+            {invoice.card_fee_cents > 0 && (
+              <div class="flex items-center justify-between">
+                <p class="text-sm text-gray-500">Card fee ({invoice.card_fee_percent}%)</p>
+                <p class="text-sm text-gray-700">{formatCents(invoice.card_fee_cents)}</p>
+              </div>
+            )}
+            <div class="flex items-center justify-between pt-1">
+              <p class="text-sm font-bold text-gray-700">Total</p>
+              <p class="text-sm font-bold">{formatCents(invoice.amount_cents)}</p>
+            </div>
           </div>
         </div>
 
@@ -762,12 +911,22 @@ invoices.post('/app/invoices/:id/edit', async (c) => {
     }
   }
 
-  const totalCents = lineItems.reduce((sum, li) => sum + li.amount_cents * li.quantity, 0)
+  const lineItemTotal = lineItems.reduce((sum, li) => sum + li.amount_cents * li.quantity, 0)
+
+  // Recalculate tax using the invoice's snapshot config
+  const tax = calculateTax(lineItemTotal, invoice.tax_rate, !!invoice.tax_inclusive)
+  const cardFeeCents = invoice.card_fee_percent > 0
+    ? calculateCardFee(tax.total_cents, invoice.card_fee_percent)
+    : 0
+  const finalTotal = tax.total_cents + cardFeeCents
 
   await updateInvoice(c.env.DB, vendor.id, invoice.id, {
     title,
     notes: trimOrNull(body.notes),
-    amount_cents: totalCents,
+    amount_cents: finalTotal,
+    subtotal_cents: tax.subtotal_cents,
+    tax_amount_cents: tax.tax_amount_cents,
+    card_fee_cents: cardFeeCents,
     line_items: JSON.stringify(lineItems),
   })
 
