@@ -29,6 +29,7 @@ function ErrorHint({ field, message }: { field: string; message: string }) {
 places.get('/api/places/search', async (c) => {
   const q = c.req.query('q')?.trim()
   const field = c.req.query('field') ?? 'location'
+  const mode = c.req.query('mode') // 'region' = cities/regions only
 
   if (!q || q.length < 2) {
     return c.html('')
@@ -41,6 +42,10 @@ places.get('/api/places/search', async (c) => {
     )
   }
 
+  const includedPrimaryTypes = mode === 'region'
+    ? ['locality', 'administrative_area_level_1', 'administrative_area_level_2', 'sublocality', 'postal_code']
+    : ['establishment', 'geocode']
+
   try {
     const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
       method: 'POST',
@@ -50,7 +55,7 @@ places.get('/api/places/search', async (c) => {
       },
       body: JSON.stringify({
         input: q,
-        includedPrimaryTypes: ['establishment', 'geocode'],
+        includedPrimaryTypes,
         languageCode: 'en',
       }),
     })
@@ -103,10 +108,13 @@ places.get('/api/places/search', async (c) => {
 
     // Each suggestion button fills the visible text input and the hidden `q` mirror,
     // then clears the dropdown. The `data-places` wrapper scopes the querySelector.
+    // In region mode, store just the city/region name; in default mode, store "Name, Address".
+    const isRegion = mode === 'region'
+
     return c.html(
       <div class="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
         {suggestions.map((s) => {
-          const display = s.address ? `${s.name}, ${s.address}` : s.name
+          const storedValue = isRegion ? s.name : (s.address ? `${s.name}, ${s.address}` : s.name)
           return (
             <button
               type="button"
@@ -114,8 +122,8 @@ places.get('/api/places/search', async (c) => {
               onclick={`
                 var w = this.closest('[data-places]');
                 var inp = w.querySelector('input[type=text]');
-                inp.value = ${JSON.stringify(display)};
-                w.querySelector('.places-q').value = ${JSON.stringify(display)};
+                inp.value = ${JSON.stringify(storedValue)};
+                w.querySelector('.places-q').value = ${JSON.stringify(storedValue)};
                 w.querySelector('[id^="suggestions-"]').innerHTML = '';
               `}
             >

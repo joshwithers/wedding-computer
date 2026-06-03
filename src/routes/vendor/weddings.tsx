@@ -1834,6 +1834,7 @@ function WeddingForm({
           label="City / Region"
           value={wedding?.location ?? defaults?.location ?? ''}
           placeholder="e.g. Melbourne, Byron Bay"
+          mode="region"
         />
         <p class="text-xs text-gray-400 mt-1">For reporting and analytics</p>
       </div>
@@ -1957,6 +1958,7 @@ function PlacesField({
   placeholder,
   timeName,
   timeValue,
+  mode,
 }: {
   name: string
   label: string
@@ -1964,10 +1966,13 @@ function PlacesField({
   placeholder?: string
   timeName?: string
   timeValue?: string | null
+  /** 'region' filters to cities/regions only */
+  mode?: 'region'
 }) {
   // The visible input keeps the form-submission `name`. A hidden input named `q`
   // inside the wrapper is mirrored via oninput and included by htmx for the GET.
   const wrapperId = `places-wrap-${name}`
+  const modeParam = mode ? `&mode=${mode}` : ''
   return (
     <div class="relative" data-places id={wrapperId}>
       <label class="block text-xs font-medium text-gray-500 mb-1">{label}</label>
@@ -1980,7 +1985,7 @@ function PlacesField({
             value={value ?? ''}
             placeholder={placeholder}
             autocomplete="off"
-            hx-get={`/api/places/search?field=${name}`}
+            hx-get={`/api/places/search?field=${name}${modeParam}`}
             hx-trigger="input changed delay:300ms"
             hx-target={`#suggestions-${name}`}
             hx-swap="innerHTML"
