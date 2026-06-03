@@ -1,4 +1,38 @@
-import type { CalendarEvent } from '../types'
+import type { CalendarEvent, EnrichedCalendarEvent } from '../types'
+
+const ENRICHED_SELECT = `
+  SELECT
+    ce.*,
+    w.title as wedding_title,
+    w.date as wedding_date,
+    w.time as wedding_time,
+    w.location as wedding_location,
+    w.ceremony_type,
+    w.reception_location,
+    w.reception_time,
+    w.getting_ready_location,
+    w.getting_ready_time,
+    w.dress_code,
+    w.guest_count,
+    w.duration_hours,
+    w.notes as wedding_notes,
+    w.timeline_notes,
+    co.first_name as contact_first_name,
+    co.last_name as contact_last_name,
+    co.email as contact_email,
+    co.phone as contact_phone,
+    co.partner_first_name,
+    co.partner_last_name,
+    co.partner_email,
+    co.partner_phone
+  FROM calendar_events ce
+  LEFT JOIN weddings w ON ce.wedding_id = w.id
+  LEFT JOIN contacts co ON ce.wedding_id IS NOT NULL AND co.id = (
+    SELECT id FROM contacts
+    WHERE wedding_id = ce.wedding_id AND vendor_id = ce.vendor_id
+    ORDER BY CASE WHEN status = 'booked' THEN 0 ELSE 1 END, created_at DESC
+    LIMIT 1
+  )`
 
 export async function listEventsByMonth(
   db: D1Database,
@@ -127,6 +161,77 @@ export async function deleteEvent(
     .prepare('DELETE FROM calendar_events WHERE id = ? AND vendor_id = ?')
     .bind(eventId, vendorId)
     .run()
+}
+
+// ─── Enriched queries (with wedding + contact details) ───
+
+export async function listEnrichedEventsByRange(
+  db: D1Database,
+  vendorId: string,
+  startDate: string,
+  endDate: string
+): Promise<EnrichedCalendarEvent[]> {
+  return db
+    .prepare(
+      `${ENRICHED_SELECT}
+       WHERE ce.vendor_id = ? AND ce.date >= ? AND ce.date <= ?
+       ORDER BY ce.date, ce.start_time`
+    )
+    .bind(vendorId, startDate, endDate)
+    .all<EnrichedCalendarEvent>()
+    .then((r) => r.results)
+}
+
+export async function listAllEnrichedEvents(
+  db: D1Database,
+  vendorId: string
+): Promise<EnrichedCalendarEvent[]> {
+  return db
+    .prepare(
+      `${ENRICHED_SELECT}
+       WHERE ce.vendor_id = ?
+       ORDER BY ce.date, ce.start_time`
+    )
+    .bind(vendorId)
+    .all<EnrichedCalendarEvent>()
+    .then((r) => r.results)
+}
+
+export async function listEnrichedEventsByIds(
+  db: D1Database,
+  vendorId: string,
+  ids: string[]
+): Promise<EnrichedCalendarEvent[]> {
+  if (ids.length === 0) return []
+  const results: EnrichedCalendarEvent[] = []
+  for (let i = 0; i < ids.length; i += 99) {
+    const batch = ids.slice(i, i + 99)
+    const placeholders = batch.map(() => '?').join(',')
+    const rows = await db
+      .prepare(
+        `${ENRICHED_SELECT}
+         WHERE ce.vendor_id = ? AND ce.id IN (${placeholders})
+         ORDER BY ce.date, ce.start_time`
+      )
+      .bind(vendorId, ...batch)
+      .all<EnrichedCalendarEvent>()
+    results.push(...rows.results)
+  }
+  return results
+}
+
+export async function getEnrichedEvent(
+  db: D1Database,
+  vendorId: string,
+  eventId: string
+): Promise<EnrichedCalendarEvent | null> {
+  return db
+    .prepare(
+      `${ENRICHED_SELECT}
+       WHERE ce.id = ? AND ce.vendor_id = ?`
+    )
+    .bind(eventId, vendorId)
+    .first<EnrichedCalendarEvent>()
 }
 
 // ─── Availability ───

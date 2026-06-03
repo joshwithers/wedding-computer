@@ -77,3 +77,73 @@ VALUES
   ('ev01000000000000ev010000', 'v1a2b3c4d5e6v1a2b3c4d5e6', 'Olivia & Ethan Wedding', '2026-07-12', '15:00', '16:30', 0, 'booking', 'w001000000000000w0010000'),
   ('ev02000000000000ev020000', 'v1a2b3c4d5e6v1a2b3c4d5e6', 'Holiday — Bali', '2026-08-01', null, null, 1, 'personal', null),
   ('ev03000000000000ev030000', 'v1a2b3c4d5e6v1a2b3c4d5e6', 'Blocked', '2026-09-05', null, null, 1, 'blocked', null);
+
+-- Checklist templates
+INSERT OR IGNORE INTO todo_templates (id, vendor_id, name, content, is_default)
+VALUES
+  ('tt01000000000000tt010000', 'v1a2b3c4d5e6v1a2b3c4d5e6', 'Wedding Ceremony', '## Before the wedding
+
+- [ ] Confirm ceremony date and time
+- [ ] Meet with couple for planning session
+- [ ] Collect legal paperwork (NOIM)
+- [ ] Write ceremony draft
+- [ ] Send ceremony draft to couple for review
+- [ ] Confirm readings and vows
+- [ ] Confirm music choices
+
+## Week of wedding
+
+- [ ] Confirm final timeline with couple
+- [ ] Confirm venue access and setup
+- [ ] Print ceremony script
+- [ ] Charge all devices
+- [ ] Pack ceremony kit
+
+## On the day
+
+- [ ] Arrive 30 minutes early
+- [ ] Check sound system
+- [ ] Brief bridal party on positions
+- [ ] Conduct rehearsal if needed
+- [ ] Perform ceremony
+
+## After the wedding
+
+- [ ] Lodge marriage paperwork
+- [ ] Send signed certificate
+- [ ] Follow up with couple', 1);
+
+-- Wedding todo (deployed from template to the confirmed wedding)
+INSERT OR IGNORE INTO wedding_todos (id, vendor_id, wedding_id, content, template_id)
+VALUES
+  ('wt01000000000000wt010000', 'v1a2b3c4d5e6v1a2b3c4d5e6', 'w001000000000000w0010000', '## Before the wedding
+
+- [x] Confirm ceremony date and time
+- [x] Meet with couple for planning session
+- [x] Collect legal paperwork (NOIM)
+- [ ] Write ceremony draft
+- [ ] Send ceremony draft to couple for review
+- [ ] Confirm readings and vows
+- [ ] Confirm music choices
+
+## Week of wedding
+
+- [ ] Confirm final timeline with couple
+- [ ] Confirm venue access and setup
+- [ ] Print ceremony script
+- [ ] Charge all devices
+- [ ] Pack ceremony kit
+
+## On the day
+
+- [ ] Arrive 30 minutes early
+- [ ] Check sound system
+- [ ] Brief bridal party on positions
+- [ ] Conduct rehearsal if needed
+- [ ] Perform ceremony
+
+## After the wedding
+
+- [ ] Lodge marriage paperwork
+- [ ] Send signed certificate
+- [ ] Follow up with couple', 'tt01000000000000tt010000');

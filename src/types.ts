@@ -154,6 +154,26 @@ export type Wedding = {
   updated_at: string
 }
 
+export type TodoTemplate = {
+  id: string
+  vendor_id: string
+  name: string
+  content: string
+  is_default: number
+  created_at: string
+  updated_at: string
+}
+
+export type WeddingTodo = {
+  id: string
+  vendor_id: string
+  wedding_id: string
+  content: string
+  template_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type ServiceContract = {
   id: string
   vendor_id: string
@@ -303,6 +323,31 @@ export type CalendarEvent = {
   notes: string | null
   created_at: string
   updated_at: string
+}
+
+export type EnrichedCalendarEvent = CalendarEvent & {
+  wedding_title: string | null
+  wedding_date: string | null
+  wedding_time: string | null
+  wedding_location: string | null
+  ceremony_type: string | null
+  reception_location: string | null
+  reception_time: string | null
+  getting_ready_location: string | null
+  getting_ready_time: string | null
+  dress_code: string | null
+  guest_count: number | null
+  duration_hours: number | null
+  wedding_notes: string | null
+  timeline_notes: string | null
+  contact_first_name: string | null
+  contact_last_name: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  partner_first_name: string | null
+  partner_last_name: string | null
+  partner_email: string | null
+  partner_phone: string | null
 }
 
 export type Document = {

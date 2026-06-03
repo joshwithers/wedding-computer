@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../types'
 import { getVendorByIcalToken } from '../db/vendors'
-import { listEventsByRange } from '../db/calendar'
+import { listEnrichedEventsByRange } from '../db/calendar'
 import { buildIcalFeed } from '../services/ical'
 
 const feed = new Hono<Env>()
@@ -19,7 +19,7 @@ feed.get('/cal/:token', async (c) => {
   const futureYear = now.getFullYear() + 2
   const endDate = `${futureYear}-12-31`
 
-  const events = await listEventsByRange(c.env.DB, vendor.id, startDate, endDate)
+  const events = await listEnrichedEventsByRange(c.env.DB, vendor.id, startDate, endDate)
 
   const ical = buildIcalFeed(events, vendor.business_name, vendor.timezone)
 

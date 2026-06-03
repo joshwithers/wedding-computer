@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import type { Env, Contact, VendorProfile } from '../types'
+import type { Env, Contact, VendorProfile, Wedding } from '../types'
 import {
   CARDDAV_HEADERS, authenticateVendor, unauthorizedResponse, forbiddenResponse,
   xmlResponse, escXml, escVCard, foldLine, toVCardRev, makeETag,
@@ -57,6 +57,24 @@ function rowToContact(row: FileIndexRow, vendorId: string): Contact {
     created_at: c.created_at ?? '',
     updated_at: c.updated_at ?? '',
   }
+}
+
+/** Batch-fetch weddings by IDs and return a map. */
+async function fetchWeddingsMap(db: D1Database, weddingIds: string[]): Promise<Record<string, Wedding>> {
+  const map: Record<string, Wedding> = {}
+  if (weddingIds.length === 0) return map
+  for (let i = 0; i < weddingIds.length; i += DB_BATCH) {
+    const batch = weddingIds.slice(i, i + DB_BATCH)
+    const placeholders = batch.map(() => '?').join(',')
+    const rows = await db
+      .prepare(`SELECT * FROM weddings WHERE id IN (${placeholders})`)
+      .bind(...batch)
+      .all<Wedding>()
+    for (const w of rows.results) {
+      map[w.id] = w
+    }
+  }
+  return map
 }
 
 const PRIVILEGE_SET = `<D:current-user-privilege-set>
@@ -244,9 +262,18 @@ carddav.on('REPORT', '/addressbooks/:token/contacts/', async (c) => {
       .then(r => r.results)
   }
 
+  // Fetch wedding data for all contacts that have a wedding_id
+  const weddingIds = [...new Set(
+    indexRows
+      .map(r => { try { return JSON.parse(r.cached_data).wedding_id } catch { return null } })
+      .filter((id): id is string => !!id)
+  )]
+  const weddingMap = await fetchWeddingsMap(c.env.DB, weddingIds)
+
   const responses = indexRows.map(row => {
     const contact = rowToContact(row, vendor.id)
-    const vcard = buildVCard(contact, vendor)
+    const wedding = contact.wedding_id ? weddingMap[contact.wedding_id] ?? null : null
+    const vcard = buildVCard(contact, vendor, wedding)
     const etag = makeETag(contact.id, contact.updated_at)
     return `<D:response>
     <D:href>${base}/addressbooks/${escXml(token)}/contacts/${contact.id}.vcf</D:href>
@@ -280,7 +307,17 @@ carddav.get('/addressbooks/:token/contacts/:uid', async (c) => {
   if (!row) return c.text('Not found', 404)
 
   const contact = rowToContact(row, vendor.id)
-  const vcard = buildVCard(contact, vendor)
+
+  // Fetch wedding details if this contact has a wedding
+  let wedding: Wedding | null = null
+  if (contact.wedding_id) {
+    wedding = await c.env.DB
+      .prepare('SELECT * FROM weddings WHERE id = ?')
+      .bind(contact.wedding_id)
+      .first<Wedding>() ?? null
+  }
+
+  const vcard = buildVCard(contact, vendor, wedding)
   const etag = makeETag(contact.id, contact.updated_at)
   return new Response(vcard, {
     status: 200,
@@ -314,17 +351,48 @@ carddav.get('/debug/:token', async (c) => {
   })
 })
 
-function buildVCard(contact: Contact, vendor: VendorProfile): string {
+// ─── vCard builder ───
+
+function shortDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return ''
+  try {
+    const d = new Date(dateStr + 'T00:00:00')
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    return `${d.getDate()} ${months[d.getMonth()]} '${String(d.getFullYear()).slice(2)}`
+  } catch {
+    return dateStr
+  }
+}
+
+function formatDisplayDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr + 'T00:00:00')
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+    return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`
+  } catch {
+    return dateStr
+  }
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+function buildVCard(contact: Contact, vendor: VendorProfile, wedding: Wedding | null): string {
   const lines: string[] = [
     'BEGIN:VCARD',
     'VERSION:3.0',
   ]
 
   const fn = `${contact.first_name} ${contact.last_name}`
-  lines.push(foldLine(`FN:💒 ${escVCard(fn)}`))
+  const weddingDate = wedding?.date ?? contact.wedding_date
+  const dateSuffix = weddingDate ? ` — ${shortDate(weddingDate)}` : ''
+  lines.push(foldLine(`FN:💒 ${escVCard(fn)}${dateSuffix}`))
   lines.push(foldLine(`N:${escVCard(contact.last_name)};${escVCard(contact.first_name)};;;`))
   lines.push(foldLine(`ORG:${escVCard(vendor.business_name)} — CRM`))
 
+  // Primary contact details
   if (contact.email) {
     lines.push(foldLine(`EMAIL;TYPE=INTERNET:${escVCard(contact.email)}`))
   }
@@ -332,17 +400,92 @@ function buildVCard(contact: Contact, vendor: VendorProfile): string {
     lines.push(foldLine(`TEL;TYPE=CELL:${escVCard(contact.phone)}`))
   }
 
-  const noteLines: string[] = []
-  noteLines.push(`Status: ${contact.status}`)
-  if (contact.wedding_date) noteLines.push(`Date: ${contact.wedding_date}`)
-  if (contact.wedding_location) noteLines.push(`Location: ${contact.wedding_location}`)
+  // Partner as related name + separate labeled contact entries
+  let itemNum = 1
   if (contact.partner_first_name) {
     const partnerName = [contact.partner_first_name, contact.partner_last_name].filter(Boolean).join(' ')
-    noteLines.push(`Partner: ${partnerName}`)
-    if (contact.partner_email) noteLines.push(`Partner email: ${contact.partner_email}`)
-    if (contact.partner_phone) noteLines.push(`Partner phone: ${contact.partner_phone}`)
+    lines.push(foldLine(`item${itemNum}.X-ABRELATEDNAMES:${escVCard(partnerName)}`))
+    lines.push(foldLine(`item${itemNum}.X-ABLabel:_$!<Spouse>!$_`))
+    itemNum++
+
+    if (contact.partner_email) {
+      lines.push(foldLine(`item${itemNum}.EMAIL;TYPE=INTERNET:${escVCard(contact.partner_email)}`))
+      lines.push(foldLine(`item${itemNum}.X-ABLabel:Partner`))
+      itemNum++
+    }
+    if (contact.partner_phone) {
+      lines.push(foldLine(`item${itemNum}.TEL:${escVCard(contact.partner_phone)}`))
+      lines.push(foldLine(`item${itemNum}.X-ABLabel:Partner`))
+      itemNum++
+    }
   }
-  if (contact.notes) noteLines.push(`Notes: ${contact.notes}`)
+
+  // Categories
+  const categories = [capitalize(contact.status), 'Wedding Computer']
+  lines.push(foldLine(`CATEGORIES:${categories.map(escVCard).join(',')}`))
+
+  // Rich NOTE with wedding + partner details
+  const noteLines: string[] = []
+  noteLines.push(`Status: ${capitalize(contact.status)}`)
+
+  // Wedding details section
+  if (wedding || contact.wedding_date) {
+    noteLines.push('')
+    noteLines.push('💒 WEDDING')
+    const wDate = wedding?.date ?? contact.wedding_date
+    if (wDate) noteLines.push(formatDisplayDate(wDate))
+
+    if (wedding) {
+      // Ceremony
+      if (wedding.time || wedding.location) {
+        if (wedding.time) noteLines.push(`⛪ Ceremony: ${wedding.time}`)
+        if (wedding.location) noteLines.push(`📍 ${wedding.location}`)
+      }
+      if (wedding.ceremony_type) noteLines.push(`Type: ${capitalize(wedding.ceremony_type)}`)
+      if (wedding.duration_hours) noteLines.push(`Duration: ${wedding.duration_hours}h`)
+
+      // Getting ready
+      if (wedding.getting_ready_time || wedding.getting_ready_location) {
+        noteLines.push('')
+        if (wedding.getting_ready_time) {
+          noteLines.push(`🏨 Getting Ready: ${wedding.getting_ready_time}`)
+        } else {
+          noteLines.push('🏨 Getting Ready')
+        }
+        if (wedding.getting_ready_location) noteLines.push(`📍 ${wedding.getting_ready_location}`)
+      }
+
+      // Reception
+      if (wedding.reception_time || wedding.reception_location) {
+        noteLines.push('')
+        if (wedding.reception_time) {
+          noteLines.push(`🥂 Reception: ${wedding.reception_time}`)
+        } else {
+          noteLines.push('🥂 Reception')
+        }
+        if (wedding.reception_location) noteLines.push(`📍 ${wedding.reception_location}`)
+      }
+
+      // Extra
+      if (wedding.dress_code) noteLines.push(`\n👔 Dress Code: ${wedding.dress_code}`)
+      if (wedding.guest_count) noteLines.push(`👥 Guests: ${wedding.guest_count}`)
+      if (wedding.timeline_notes) noteLines.push(`\n🗓️ Timeline: ${wedding.timeline_notes}`)
+      if (wedding.notes) noteLines.push(`\n💭 ${wedding.notes}`)
+    } else {
+      // Fallback: use cached contact fields
+      if (contact.wedding_location) noteLines.push(`📍 ${contact.wedding_location}`)
+    }
+  }
+
+  // Partner section in NOTE
+  if (contact.partner_first_name) {
+    const partnerName = [contact.partner_first_name, contact.partner_last_name].filter(Boolean).join(' ')
+    noteLines.push('')
+    noteLines.push('━━━━━━━━━━━━━━━━━━')
+    noteLines.push(`👤 Partner: ${partnerName}`)
+    if (contact.partner_email) noteLines.push(`📧 ${contact.partner_email}`)
+    if (contact.partner_phone) noteLines.push(`📱 ${contact.partner_phone}`)
+  }
 
   if (noteLines.length > 0) {
     lines.push(foldLine(`NOTE:${escVCard(noteLines.join('\n'))}`))

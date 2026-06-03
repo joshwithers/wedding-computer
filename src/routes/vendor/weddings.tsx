@@ -25,6 +25,9 @@ import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, formatTime, daysUntil, addHoursToTime } from '../../lib/date'
 import { createEvent } from '../../db/calendar'
 import { track } from '../../services/analytics'
+import { getWeddingTodo, upsertWeddingTodo } from '../../db/todos'
+import { listTemplates, getDefaultTemplate } from '../../db/todos'
+import { TodoSection } from './checklists'
 
 const WEDDING_STATUSES = [
   { value: 'planning', label: 'Planning' },
@@ -180,6 +183,12 @@ weddings.post('/app/weddings/new', async (c) => {
 
     // Push wedding file to storage (GitHub/R2) — best-effort, don't block
     pushWeddingToStorage(c.env, vendor, wedding.id).catch(() => {})
+
+    // Auto-deploy default checklist template if one exists
+    const defaultTemplate = await getDefaultTemplate(c.env.DB, vendor.id)
+    if (defaultTemplate) {
+      await upsertWeddingTodo(c.env.DB, vendor.id, wedding.id, defaultTemplate.content, defaultTemplate.id)
+    }
 
     // Link contact and auto-invite couple
     const contactId = trimOrNull(body.contact_id)
@@ -393,6 +402,10 @@ weddings.get('/app/weddings/:id', async (c) => {
     .bind(vendor.id, weddingId)
     .first<{ id: string }>()
 
+  // Todo checklist
+  const weddingTodo = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
+  const todoTemplates = await listTemplates(c.env.DB, vendor.id)
+
   return c.html(
     <AppLayout
       title={wedding.title}
@@ -492,6 +505,14 @@ weddings.get('/app/weddings/:id', async (c) => {
             <InfoCard label="Created" value={formatDate(wedding.created_at)} />
           </div>
         </div>
+
+        {/* Todo Checklist */}
+        <TodoSection
+          weddingId={wedding.id}
+          todo={weddingTodo}
+          templates={todoTemplates}
+          csrfToken={c.get('csrfToken')}
+        />
 
         {/* Invoices & Payments */}
         <WeddingInvoices

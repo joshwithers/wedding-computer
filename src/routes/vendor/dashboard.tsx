@@ -5,6 +5,8 @@ import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
 import { formatDate, daysUntil } from '../../lib/date'
+import { listWeddingTodosWithProgress } from '../../db/todos'
+import { todoStats } from '../../lib/todo-parser'
 
 const dashboard = new Hono<Env>()
 
@@ -26,9 +28,10 @@ dashboard.get('/app', async (c) => {
   let revenue = 0
   let counts = { total: 0, new_leads: 0, booked: 0 }
   let upcomingEvents: { id: string; title: string; date: string; start_time: string | null; type: string }[] = []
+  let todoProgress: { wedding_id: string; wedding_title: string; wedding_date: string | null; content: string }[] = []
 
   try {
-    const [weddings, contacts, overdue, revenueRow, contactCounts, events] =
+    const [weddings, contacts, overdue, revenueRow, contactCounts, events, todos] =
       await Promise.all([
         db
           .prepare(
@@ -94,6 +97,8 @@ dashboard.get('/app', async (c) => {
           .bind(vendor.id, today)
           .all<{ id: string; title: string; date: string; start_time: string | null; type: string }>()
           .then((r) => r.results),
+
+        listWeddingTodosWithProgress(db, vendor.id),
       ])
 
     upcomingWeddings = weddings
@@ -102,6 +107,7 @@ dashboard.get('/app', async (c) => {
     revenue = revenueRow?.total ?? 0
     counts = contactCounts ?? { total: 0, new_leads: 0, booked: 0 }
     upcomingEvents = events
+    todoProgress = todos
   } catch (err) {
     console.error('[dashboard] Failed to load dashboard data:', err)
   }
@@ -198,6 +204,43 @@ dashboard.get('/app', async (c) => {
                 )}
               </section>
             </div>
+
+            {/* Checklist progress */}
+            {todoProgress.length > 0 && (
+              <section class="bg-white border border-papaya-300/30 rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-3">
+                  <h3 class="text-sm font-bold">Checklists</h3>
+                  <a href="/app/checklists" class="text-xs text-horizon-600 font-bold hover:text-horizon-700">Templates</a>
+                </div>
+                <div class="space-y-3">
+                  {todoProgress.map((todo) => {
+                    const stats = todoStats(todo.content)
+                    const pct = stats.total > 0 ? Math.round((stats.checked / stats.total) * 100) : 0
+                    return (
+                      <a href={`/app/weddings/${todo.wedding_id}`} class="block hover:bg-papaya-50 rounded-lg px-2 py-2 -mx-2">
+                        <div class="flex items-center justify-between mb-1.5">
+                          <span class="text-sm font-medium text-gray-900 truncate">{todo.wedding_title}</span>
+                          <span class="text-xs text-gray-500 ml-2 whitespace-nowrap">
+                            {stats.checked}/{stats.total} ({pct}%)
+                          </span>
+                        </div>
+                        <div class="w-full bg-gray-100 rounded-full h-1.5">
+                          <div
+                            class={`h-1.5 rounded-full transition-all ${
+                              pct === 100 ? 'bg-horizon-600' : pct > 50 ? 'bg-horizon-400' : 'bg-papaya-400'
+                            }`}
+                            style={`width: ${pct}%`}
+                          />
+                        </div>
+                        {todo.wedding_date && (
+                          <p class="text-xs text-gray-400 mt-1">{formatDate(todo.wedding_date)}</p>
+                        )}
+                      </a>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
 
             {/* Recent contacts */}
             <section class="bg-white border border-papaya-300/30 rounded-2xl p-5">
