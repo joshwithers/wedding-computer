@@ -1829,14 +1829,11 @@ function WeddingForm({
       </div>
 
       <div>
-        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="location">City / Region</label>
-        <input
-          type="text"
-          id="location"
+        <PlacesField
           name="location"
+          label="City / Region"
           value={wedding?.location ?? defaults?.location ?? ''}
           placeholder="e.g. Melbourne, Byron Bay"
-          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
         />
         <p class="text-xs text-gray-400 mt-1">For reporting and analytics</p>
       </div>
