@@ -580,56 +580,58 @@ export const TodoSection = ({
         <h3 class="text-sm font-bold text-gray-500 mb-3">Checklist</h3>
         <div class="bg-white border border-papaya-300/30 rounded-2xl p-6 text-center">
           <p class="text-sm text-gray-500 mb-4">No checklist for this wedding yet</p>
-          <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
-            {templates.length > 0 ? (
-              <form
-                hx-post={`/app/weddings/${weddingId}/todos/deploy`}
-                hx-target="#wedding-todos"
-                hx-swap="outerHTML"
-                class="flex items-center gap-2"
-              >
-                <input type="hidden" name="_csrf" value={csrfToken} />
-                <select
-                  name="template_id"
-                  class="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600"
-                >
-                  {templates.map((t) => (
-                    <option value={t.id} selected={t.is_default === 1}>
-                      {t.name}{t.is_default === 1 ? ' (default)' : ''}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="submit"
-                  class="bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700 transition-colors"
-                >
-                  Deploy
-                </button>
-              </form>
-            ) : (
-              <a
-                href="/app/checklists/new"
-                class="bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700 transition-colors"
-              >
-                Create a template first
-              </a>
-            )}
-            <span class="text-xs text-gray-400">or</span>
+          {templates.length > 0 ? (
             <form
               hx-post={`/app/weddings/${weddingId}/todos/deploy`}
               hx-target="#wedding-todos"
               hx-swap="outerHTML"
+              class="flex items-center justify-center gap-2"
             >
               <input type="hidden" name="_csrf" value={csrfToken} />
-              <input type="hidden" name="template_id" value="" />
+              <select
+                name="template_id"
+                class="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600"
+              >
+                {templates.map((t) => (
+                  <option value={t.id} selected={t.is_default === 1}>
+                    {t.name}{t.is_default === 1 ? ' (default)' : ''}
+                  </option>
+                ))}
+                <option value="">Start blank</option>
+              </select>
               <button
                 type="submit"
-                class="border border-gray-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-papaya-50 transition-colors"
+                class="bg-horizon-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
               >
-                Start blank
+                Deploy
               </button>
             </form>
-          </div>
+          ) : (
+            <div class="flex items-center justify-center gap-3">
+              <a
+                href="/app/checklists/new"
+                class="inline-flex items-center bg-horizon-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
+              >
+                Create a template
+              </a>
+              <span class="text-xs text-gray-400">or</span>
+              <form
+                hx-post={`/app/weddings/${weddingId}/todos/deploy`}
+                hx-target="#wedding-todos"
+                hx-swap="outerHTML"
+                class="inline-flex"
+              >
+                <input type="hidden" name="_csrf" value={csrfToken} />
+                <input type="hidden" name="template_id" value="" />
+                <button
+                  type="submit"
+                  class="inline-flex items-center border border-gray-200 px-4 py-2 rounded-xl text-sm font-medium hover:bg-papaya-50 transition-colors"
+                >
+                  Start blank
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </div>
     )

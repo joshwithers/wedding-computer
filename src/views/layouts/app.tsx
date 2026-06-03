@@ -49,13 +49,18 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <MobileNavLink href="/app/calendar" label="Calendar" />
             <MobileNavLink href="/app/invoices" label="Invoices" />
             <MobileNavLink href="/app/emails" label="Emails" />
-            <MobileNavLink href="/app/form" label="Enquiry Form" />
-            <MobileNavLink href="/app/booking-form" label="Booking Form" />
-            <MobileNavLink href="/app/contract" label="Contract" />
-            <MobileNavLink href="/app/checklists" label="Checklists" />
-            <MobileNavLink href="/app/analytics" label="Analytics" />
-            <MobileNavLink href="/app/subscription" label="Subscription" />
-            <MobileNavLink href="/app/settings#data" label="Your Data" />
+            <div class="border-t border-papaya-300/30 mt-2 pt-2">
+              <p class="px-3 pt-1 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Setup</p>
+              <MobileNavLink href="/app/form" label="Enquiry Form" />
+              <MobileNavLink href="/app/booking-form" label="Booking Form" />
+              <MobileNavLink href="/app/contract" label="Contract" />
+              <MobileNavLink href="/app/checklists" label="Checklists" />
+            </div>
+            <div class="border-t border-papaya-300/30 mt-2 pt-2">
+              <MobileNavLink href="/app/analytics" label="Analytics" />
+              <MobileNavLink href="/app/subscription" label="Subscription" />
+              <MobileNavLink href="/app/settings#data" label="Your Data" />
+            </div>
             <div class="border-t border-papaya-300/30 mt-2 pt-2">
               <MobileNavLink href="/account" label="Your Profile" />
               <MobileNavLink href="/app/settings" label="Settings" />
@@ -87,13 +92,16 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <SidebarLink href="/app/calendar" label="Calendar" />
             <SidebarLink href="/app/invoices" label="Invoices" />
             <SidebarLink href="/app/emails" label="Emails" />
-            <SidebarLink href="/app/form" label="Enquiry Form" />
-            <SidebarLink href="/app/booking-form" label="Booking Form" />
-            <SidebarLink href="/app/contract" label="Contract" />
-            <SidebarLink href="/app/checklists" label="Checklists" />
-            <SidebarLink href="/app/analytics" label="Analytics" />
-            <SidebarLink href="/app/subscription" label="Subscription" />
-            <div class="border-t border-white/10 mt-2 pt-2">
+            <div class="border-t border-white/10 mt-3 pt-3">
+              <p class="px-3 pb-1 text-[10px] font-bold text-papaya-200/50 uppercase tracking-wider">Setup</p>
+              <SidebarLink href="/app/form" label="Enquiry Form" />
+              <SidebarLink href="/app/booking-form" label="Booking Form" />
+              <SidebarLink href="/app/contract" label="Contract" />
+              <SidebarLink href="/app/checklists" label="Checklists" />
+            </div>
+            <div class="border-t border-white/10 mt-3 pt-3">
+              <SidebarLink href="/app/analytics" label="Analytics" />
+              <SidebarLink href="/app/subscription" label="Subscription" />
               <SidebarLink href="/app/settings#data" label="Your Data" />
             </div>
           </nav>
