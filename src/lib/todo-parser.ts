@@ -26,9 +26,14 @@ export type ParsedTodoSection = {
 const TASK_RE = /^(\s*)- \[([ xX])\] (.+)$/
 const HEADING_RE = /^(#{1,6})\s+(.+)$/
 
+/** Normalise CRLF (from HTML form submission) to LF. */
+function norm(content: string): string {
+  return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+}
+
 /** Parse markdown content into sections of todo items. */
 export function parseTodoMarkdown(content: string): ParsedTodoSection[] {
-  const lines = content.split('\n')
+  const lines = norm(content).split('\n')
   const sections: ParsedTodoSection[] = []
   let current: ParsedTodoSection = { heading: null, headingLine: null, items: [] }
 
@@ -67,7 +72,7 @@ export function parseTodoMarkdown(content: string): ParsedTodoSection[] {
 
 /** Toggle a specific item's checked state at the given line number. */
 export function toggleTodoItem(content: string, lineNumber: number): string {
-  const lines = content.split('\n')
+  const lines = norm(content).split('\n')
   if (lineNumber < 0 || lineNumber >= lines.length) return content
 
   const line = lines[lineNumber]
@@ -86,7 +91,7 @@ export function addTodoItem(content: string, text: string, sectionHeading?: stri
   if (!trimmedText) return content
 
   const newLine = `- [ ] ${trimmedText}`
-  const lines = content.split('\n')
+  const lines = norm(content).split('\n')
 
   if (!sectionHeading) {
     // Add to the very end
@@ -150,7 +155,7 @@ export function addTodoItem(content: string, text: string, sectionHeading?: stri
 
 /** Remove a specific item at the given line number. */
 export function removeTodoItem(content: string, lineNumber: number): string {
-  const lines = content.split('\n')
+  const lines = norm(content).split('\n')
   if (lineNumber < 0 || lineNumber >= lines.length) return content
   if (!lines[lineNumber].match(TASK_RE)) return content
 
@@ -163,7 +168,7 @@ export function todoStats(content: string): { total: number; checked: number } {
   if (!content) return { total: 0, checked: 0 }
   let total = 0
   let checked = 0
-  for (const line of content.split('\n')) {
+  for (const line of norm(content).split('\n')) {
     const match = line.match(TASK_RE)
     if (match) {
       total++
