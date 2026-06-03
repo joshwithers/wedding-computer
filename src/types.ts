@@ -16,6 +16,7 @@ export type Bindings = {
   APPLE_CLIENT_SECRET: string
   TURNSTILE_SECRET_KEY: string
   TURNSTILE_SITE_KEY: string
+  GOOGLE_MAPS_API_KEY?: string
   APP_URL: string
 }
 
@@ -141,10 +142,17 @@ export type Wedding = {
   status: 'planning' | 'confirmed' | 'completed' | 'cancelled'
   ceremony_type: string | null
   vendor_visibility: 'private' | 'visible'
+  ceremony_location: string | null
   reception_location: string | null
   reception_time: string | null
   getting_ready_location: string | null
   getting_ready_time: string | null
+  getting_ready_1_label: string | null
+  getting_ready_2_location: string | null
+  getting_ready_2_label: string | null
+  getting_ready_2_time: string | null
+  portrait_location: string | null
+  portrait_time: string | null
   timeline_notes: string | null
   dress_code: string | null
   guest_count: number | null
@@ -331,10 +339,17 @@ export type EnrichedCalendarEvent = CalendarEvent & {
   wedding_time: string | null
   wedding_location: string | null
   ceremony_type: string | null
+  ceremony_location: string | null
   reception_location: string | null
   reception_time: string | null
   getting_ready_location: string | null
   getting_ready_time: string | null
+  getting_ready_1_label: string | null
+  getting_ready_2_location: string | null
+  getting_ready_2_label: string | null
+  getting_ready_2_time: string | null
+  portrait_location: string | null
+  portrait_time: string | null
   dress_code: string | null
   guest_count: number | null
   duration_hours: number | null

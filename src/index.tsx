@@ -17,6 +17,7 @@ import bookRoute from './routes/book'
 import bookingFormRoute from './routes/vendor/booking-form'
 import contractRoute from './routes/vendor/contracts'
 import checklistsRoute from './routes/vendor/checklists'
+import placesRoute from './routes/vendor/places'
 import analyticsRoute from './routes/vendor/analytics'
 import subscriptionRoute from './routes/vendor/subscription'
 import accountRoute from './routes/account'
@@ -106,6 +107,7 @@ app.route('/', emailRoutes)
 app.route('/', bookingFormRoute)
 app.route('/', contractRoute)
 app.route('/', checklistsRoute)
+app.route('/', placesRoute)
 app.route('/', analyticsRoute)
 app.route('/', subscriptionRoute)
 app.route('/', accountRoute)

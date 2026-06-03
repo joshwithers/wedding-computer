@@ -108,4 +108,15 @@ export function addHoursToTime(startTime: string, hours: number): string {
   return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`
 }
 
+/**
+ * Subtract hours from a time string. Returns "HH:MM" format.
+ * Clamps at 00:00.
+ *   subtractHoursFromTime("14:00", 1) → "13:00"
+ */
+export function subtractHoursFromTime(startTime: string, hours: number): string {
+  const [h, m] = startTime.split(':').map(Number)
+  const totalMinutes = Math.max(0, h * 60 + m - Math.round(hours * 60))
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`
+}
+
 export const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const

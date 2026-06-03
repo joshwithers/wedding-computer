@@ -437,22 +437,47 @@ function buildVCard(contact: Contact, vendor: VendorProfile, wedding: Wedding | 
 
     if (wedding) {
       // Ceremony
-      if (wedding.time || wedding.location) {
+      if (wedding.time || wedding.ceremony_location || wedding.location) {
         if (wedding.time) noteLines.push(`⛪ Ceremony: ${wedding.time}`)
-        if (wedding.location) noteLines.push(`📍 ${wedding.location}`)
+        if (wedding.ceremony_location) noteLines.push(`📍 ${wedding.ceremony_location}`)
+        else if (wedding.location) noteLines.push(`📍 ${wedding.location}`)
       }
       if (wedding.ceremony_type) noteLines.push(`Type: ${capitalize(wedding.ceremony_type)}`)
       if (wedding.duration_hours) noteLines.push(`Duration: ${wedding.duration_hours}h`)
 
-      // Getting ready
+      // Getting ready (party 1)
       if (wedding.getting_ready_time || wedding.getting_ready_location) {
         noteLines.push('')
+        const label1 = wedding.getting_ready_1_label ?? 'Party 1'
         if (wedding.getting_ready_time) {
-          noteLines.push(`🏨 Getting Ready: ${wedding.getting_ready_time}`)
+          noteLines.push(`🏨 Getting Ready (${label1}): ${wedding.getting_ready_time}`)
         } else {
-          noteLines.push('🏨 Getting Ready')
+          noteLines.push(`🏨 Getting Ready (${label1})`)
         }
         if (wedding.getting_ready_location) noteLines.push(`📍 ${wedding.getting_ready_location}`)
+      }
+
+      // Getting ready (party 2)
+      if (wedding.getting_ready_2_time || wedding.getting_ready_2_location) {
+        noteLines.push('')
+        const label2 = wedding.getting_ready_2_label ?? 'Party 2'
+        if (wedding.getting_ready_2_time) {
+          noteLines.push(`🏨 Getting Ready (${label2}): ${wedding.getting_ready_2_time}`)
+        } else {
+          noteLines.push(`🏨 Getting Ready (${label2})`)
+        }
+        if (wedding.getting_ready_2_location) noteLines.push(`📍 ${wedding.getting_ready_2_location}`)
+      }
+
+      // Portraits
+      if (wedding.portrait_time || wedding.portrait_location) {
+        noteLines.push('')
+        if (wedding.portrait_time) {
+          noteLines.push(`📸 Portraits: ${wedding.portrait_time}`)
+        } else {
+          noteLines.push('📸 Portraits')
+        }
+        if (wedding.portrait_location) noteLines.push(`📍 ${wedding.portrait_location}`)
       }
 
       // Reception

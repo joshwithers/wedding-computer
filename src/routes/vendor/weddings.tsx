@@ -22,12 +22,167 @@ import { createActivity } from '../../db/activities'
 import type { Bindings, VendorProfile } from '../../types'
 import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
-import { formatDate, formatTime, daysUntil, addHoursToTime } from '../../lib/date'
-import { createEvent } from '../../db/calendar'
+import { formatDate, formatTime, daysUntil, addHoursToTime, subtractHoursFromTime } from '../../lib/date'
+import { createEvent, updateEvent, deleteEvent } from '../../db/calendar'
 import { track } from '../../services/analytics'
 import { getWeddingTodo, upsertWeddingTodo } from '../../db/todos'
 import { listTemplates, getDefaultTemplate } from '../../db/todos'
 import { TodoSection } from './checklists'
+
+/**
+ * Sync per-location calendar events for a wedding.
+ * Each location with a time gets its own calendar event, tagged with notes like
+ * "wc:ceremony" so they can be found and updated on subsequent saves.
+ *
+ * Default durations:
+ *   Getting ready 1/2 = 1h
+ *   Ceremony = duration_hours or 1h, with 1h ceremony prep event before
+ *   Portraits = 1h
+ *   Reception = 3h
+ */
+async function syncWeddingCalendarEvents(
+  db: D1Database,
+  vendorId: string,
+  weddingId: string,
+  weddingTitle: string,
+  weddingDate: string,
+  data: {
+    ceremonyTime: string | null
+    ceremonyDuration: number
+    ceremonyLocation: string | null
+    gettingReadyTime: string | null
+    gettingReadyLocation: string | null
+    gettingReady1Label: string | null
+    gettingReady2Time: string | null
+    gettingReady2Location: string | null
+    gettingReady2Label: string | null
+    portraitTime: string | null
+    portraitLocation: string | null
+    receptionTime: string | null
+    receptionLocation: string | null
+  }
+) {
+  // Define the events we want to exist
+  type PlannedEvent = {
+    tag: string                   // e.g. "wc:ceremony"
+    title: string
+    startTime: string | null
+    endTime: string | null
+    location: string | null
+    shouldExist: boolean          // false → delete if present
+  }
+
+  const events: PlannedEvent[] = [
+    {
+      tag: 'wc:getting_ready_1',
+      title: `${weddingTitle} — Getting ready${data.gettingReady1Label ? ` (${data.gettingReady1Label})` : ''}`,
+      startTime: data.gettingReadyTime,
+      endTime: data.gettingReadyTime ? addHoursToTime(data.gettingReadyTime, 1) : null,
+      location: data.gettingReadyLocation,
+      shouldExist: !!(data.gettingReadyTime && data.gettingReadyLocation),
+    },
+    {
+      tag: 'wc:getting_ready_2',
+      title: `${weddingTitle} — Getting ready${data.gettingReady2Label ? ` (${data.gettingReady2Label})` : ''}`,
+      startTime: data.gettingReady2Time,
+      endTime: data.gettingReady2Time ? addHoursToTime(data.gettingReady2Time, 1) : null,
+      location: data.gettingReady2Location,
+      shouldExist: !!(data.gettingReady2Time && data.gettingReady2Location),
+    },
+    {
+      tag: 'wc:ceremony_prep',
+      title: `${weddingTitle} — Ceremony prep`,
+      startTime: data.ceremonyTime ? subtractHoursFromTime(data.ceremonyTime, 1) : null,
+      endTime: data.ceremonyTime,
+      location: data.ceremonyLocation,
+      shouldExist: !!data.ceremonyTime,
+    },
+    {
+      tag: 'wc:ceremony',
+      title: weddingTitle,
+      startTime: data.ceremonyTime,
+      endTime: data.ceremonyTime ? addHoursToTime(data.ceremonyTime, data.ceremonyDuration) : null,
+      location: data.ceremonyLocation,
+      shouldExist: true, // always keep the main event
+    },
+    {
+      tag: 'wc:portraits',
+      title: `${weddingTitle} — Portraits`,
+      startTime: data.portraitTime,
+      endTime: data.portraitTime ? addHoursToTime(data.portraitTime, 1) : null,
+      location: data.portraitLocation,
+      shouldExist: !!(data.portraitTime && data.portraitLocation),
+    },
+    {
+      tag: 'wc:reception',
+      title: `${weddingTitle} — Reception`,
+      startTime: data.receptionTime,
+      endTime: data.receptionTime ? addHoursToTime(data.receptionTime, 3) : null,
+      location: data.receptionLocation,
+      shouldExist: !!(data.receptionTime && data.receptionLocation),
+    },
+  ]
+
+  // Fetch all existing tagged events for this wedding
+  const existing = await db
+    .prepare(
+      `SELECT id, notes FROM calendar_events
+       WHERE vendor_id = ? AND wedding_id = ? AND notes LIKE 'wc:%'`
+    )
+    .bind(vendorId, weddingId)
+    .all<{ id: string; notes: string }>()
+    .then((r) => r.results)
+
+  const existingByTag = new Map(existing.map((e) => [e.notes, e.id]))
+
+  // Also find the legacy "booking" event (no tag) — migrate it to wc:ceremony
+  if (!existingByTag.has('wc:ceremony')) {
+    const legacy = await db
+      .prepare(
+        `SELECT id FROM calendar_events
+         WHERE vendor_id = ? AND wedding_id = ? AND type = 'booking' AND (notes IS NULL OR notes NOT LIKE 'wc:%')
+         LIMIT 1`
+      )
+      .bind(vendorId, weddingId)
+      .first<{ id: string }>()
+    if (legacy) {
+      existingByTag.set('wc:ceremony', legacy.id)
+    }
+  }
+
+  for (const planned of events) {
+    const existingId = existingByTag.get(planned.tag)
+
+    if (planned.shouldExist) {
+      if (existingId) {
+        // Update existing
+        await updateEvent(db, vendorId, existingId, {
+          title: planned.title,
+          date: weddingDate,
+          start_time: planned.startTime,
+          end_time: planned.endTime,
+          all_day: planned.startTime ? 0 : 1,
+          notes: planned.tag,
+        })
+      } else {
+        // Create new
+        await createEvent(db, vendorId, {
+          title: planned.title,
+          date: weddingDate,
+          start_time: planned.startTime,
+          end_time: planned.endTime,
+          all_day: !planned.startTime,
+          type: 'booking',
+          wedding_id: weddingId,
+          notes: planned.tag,
+        })
+      }
+    } else if (existingId) {
+      // Should not exist but does → remove
+      await deleteEvent(db, vendorId, existingId)
+    }
+  }
+}
 
 const WEDDING_STATUSES = [
   { value: 'planning', label: 'Planning' },
@@ -500,11 +655,14 @@ weddings.get('/app/weddings/:id', async (c) => {
                 }
               />
             )}
-            {wedding.location && <InfoCard label="Location" value={wedding.location} />}
+            {wedding.location && <InfoCard label="City / Region" value={wedding.location} />}
             <InfoCard label="Your role" value={`${vendor.category.charAt(0).toUpperCase() + vendor.category.slice(1)}${membership.can_manage ? ' (manager)' : ''}`} />
             <InfoCard label="Created" value={formatDate(wedding.created_at)} />
           </div>
         </div>
+
+        {/* Places */}
+        <WeddingPlaces wedding={wedding} />
 
         {/* Todo Checklist */}
         <TodoSection
@@ -757,6 +915,11 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     const durationHours = durationRaw ? parseFloat(durationRaw) : null
     const startTime = trimOrNull(body.time)
 
+    const gettingReadyTime = trimOrNull(body.getting_ready_time)
+    const gettingReady2Time = trimOrNull(body.getting_ready_2_time)
+    const receptionTime = trimOrNull(body.reception_time)
+    const portraitTime = trimOrNull(body.portrait_time)
+
     await updateWedding(c.env.DB, weddingId, {
       title,
       date: trimOrNull(body.date),
@@ -765,33 +928,43 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       location: trimOrNull(body.location),
       status: newStatus,
       ceremony_type: trimOrNull(body.ceremony_type),
+      ceremony_location: trimOrNull(body.ceremony_location),
+      reception_location: trimOrNull(body.reception_location),
+      reception_time: receptionTime,
+      getting_ready_location: trimOrNull(body.getting_ready_location),
+      getting_ready_time: gettingReadyTime,
+      getting_ready_1_label: trimOrNull(body.getting_ready_1_label),
+      getting_ready_2_location: trimOrNull(body.getting_ready_2_location),
+      getting_ready_2_label: trimOrNull(body.getting_ready_2_label),
+      getting_ready_2_time: gettingReady2Time,
+      portrait_location: trimOrNull(body.portrait_location),
+      portrait_time: portraitTime,
       notes: trimOrNull(body.notes),
     })
 
-    // Update the linked calendar event's times if one exists
+    // Sync all wedding calendar events
     const vendor = c.get('vendor')!
     try {
       const weddingDate = trimOrNull(body.date)
       if (weddingDate) {
-        const endTime = startTime && durationHours ? addHoursToTime(startTime, durationHours) : null
-        const { updateEvent } = await import('../../db/calendar')
-        // Find the booking event for this wedding
-        const eventRow = await c.env.DB
-          .prepare("SELECT id FROM calendar_events WHERE wedding_id = ? AND vendor_id = ? AND type = 'booking' LIMIT 1")
-          .bind(weddingId, vendor.id)
-          .first<{ id: string }>()
-        if (eventRow) {
-          await updateEvent(c.env.DB, vendor.id, eventRow.id, {
-            title,
-            date: weddingDate,
-            start_time: startTime,
-            end_time: endTime,
-            all_day: startTime ? 0 : 1,
-          })
-        }
+        await syncWeddingCalendarEvents(c.env.DB, vendor.id, weddingId, title, weddingDate, {
+          ceremonyTime: startTime,
+          ceremonyDuration: durationHours && !isNaN(durationHours) ? durationHours : 1,
+          ceremonyLocation: trimOrNull(body.ceremony_location),
+          gettingReadyTime: gettingReadyTime,
+          gettingReadyLocation: trimOrNull(body.getting_ready_location),
+          gettingReady1Label: trimOrNull(body.getting_ready_1_label),
+          gettingReady2Time: gettingReady2Time,
+          gettingReady2Location: trimOrNull(body.getting_ready_2_location),
+          gettingReady2Label: trimOrNull(body.getting_ready_2_label),
+          portraitTime: portraitTime,
+          portraitLocation: trimOrNull(body.portrait_location),
+          receptionTime: receptionTime,
+          receptionLocation: trimOrNull(body.reception_location),
+        })
       }
     } catch (calErr) {
-      console.error('[weddings] Failed to update calendar event:', calErr)
+      console.error('[weddings] Failed to sync calendar events:', calErr)
     }
 
     // Push updated wedding to storage (GitHub/R2)
@@ -915,6 +1088,62 @@ function WeddingStatusBadge({ status }: { status: string }) {
     <span class={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-gray-100 text-gray-600'}`}>
       {status.charAt(0).toUpperCase() + status.slice(1)}
     </span>
+  )
+}
+
+function WeddingPlaces({ wedding }: { wedding: Wedding }) {
+  const places: { label: string; value: string; time: string | null }[] = []
+
+  if (wedding.getting_ready_location) {
+    const label = wedding.getting_ready_1_label
+      ? `Getting ready — ${wedding.getting_ready_1_label}`
+      : 'Getting ready (1)'
+    places.push({ label, value: wedding.getting_ready_location, time: wedding.getting_ready_time })
+  }
+
+  if (wedding.getting_ready_2_location) {
+    const label = wedding.getting_ready_2_label
+      ? `Getting ready — ${wedding.getting_ready_2_label}`
+      : 'Getting ready (2)'
+    places.push({ label, value: wedding.getting_ready_2_location, time: wedding.getting_ready_2_time })
+  }
+
+  if (wedding.ceremony_location)
+    places.push({ label: 'Ceremony', value: wedding.ceremony_location, time: wedding.time })
+
+  if (wedding.portrait_location)
+    places.push({ label: 'Portraits', value: wedding.portrait_location, time: wedding.portrait_time })
+
+  if (wedding.reception_location)
+    places.push({ label: 'Reception', value: wedding.reception_location, time: wedding.reception_time })
+
+  if (places.length === 0) return <></>
+
+  return (
+    <div class="mt-6">
+      <h3 class="text-sm font-bold text-gray-500 mb-3">Places</h3>
+      <div class="bg-white border border-papaya-300/30 rounded-2xl divide-y divide-gray-100">
+        {places.map((p) => (
+          <div class="px-4 py-3 flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs text-gray-400 mb-0.5">
+                {p.label}
+                {p.time && <span class="ml-1 text-gray-500 font-medium">{formatTime(p.time)}</span>}
+              </p>
+              <p class="text-sm text-gray-900">{p.value}</p>
+            </div>
+            <a
+              href={`https://maps.google.com/maps?q=${encodeURIComponent(p.value)}`}
+              target="_blank"
+              rel="noopener"
+              class="text-xs text-horizon-600 hover:text-horizon-700 font-medium whitespace-nowrap mt-1"
+            >
+              Map
+            </a>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -1600,15 +1829,94 @@ function WeddingForm({
       </div>
 
       <div>
-        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="location">Location</label>
+        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="location">City / Region</label>
         <input
           type="text"
           id="location"
           name="location"
           value={wedding?.location ?? defaults?.location ?? ''}
+          placeholder="e.g. Melbourne, Byron Bay"
           class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
         />
+        <p class="text-xs text-gray-400 mt-1">For reporting and analytics</p>
       </div>
+
+      {/* Venue locations + times — show in edit mode (not initial create) */}
+      {wedding && (
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-gray-700">Places &amp; Times</h3>
+            <p class="text-xs text-gray-400">Each place creates a calendar event</p>
+          </div>
+
+          {/* Getting ready — two columns */}
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              <PlacesField
+                name="getting_ready_location"
+                label={wedding.getting_ready_1_label ? `Getting ready — ${wedding.getting_ready_1_label}` : 'Getting ready (party 1)'}
+                value={wedding.getting_ready_location}
+                placeholder="Where party 1 gets ready"
+                timeName="getting_ready_time"
+                timeValue={wedding.getting_ready_time}
+              />
+              <input
+                type="text"
+                name="getting_ready_1_label"
+                value={wedding.getting_ready_1_label ?? ''}
+                placeholder="Label (e.g. Bride, Partner 1)"
+                class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-500 focus:outline-none focus:ring-1 focus:ring-horizon-600"
+              />
+            </div>
+            <div class="space-y-1.5">
+              <PlacesField
+                name="getting_ready_2_location"
+                label={wedding.getting_ready_2_label ? `Getting ready — ${wedding.getting_ready_2_label}` : 'Getting ready (party 2)'}
+                value={wedding.getting_ready_2_location}
+                placeholder="Where party 2 gets ready"
+                timeName="getting_ready_2_time"
+                timeValue={wedding.getting_ready_2_time}
+              />
+              <input
+                type="text"
+                name="getting_ready_2_label"
+                value={wedding.getting_ready_2_label ?? ''}
+                placeholder="Label (e.g. Groom, Partner 2)"
+                class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-500 focus:outline-none focus:ring-1 focus:ring-horizon-600"
+              />
+            </div>
+          </div>
+
+          {/* Ceremony */}
+          <PlacesField
+            name="ceremony_location"
+            label="Ceremony"
+            value={wedding.ceremony_location}
+            placeholder="Ceremony venue"
+          />
+          <p class="text-xs text-gray-400 -mt-2">Ceremony time and duration are set above. A 1-hour prep event is auto-created before the ceremony.</p>
+
+          {/* Portraits */}
+          <PlacesField
+            name="portrait_location"
+            label="Portraits"
+            value={wedding.portrait_location}
+            placeholder="Portrait location"
+            timeName="portrait_time"
+            timeValue={wedding.portrait_time}
+          />
+
+          {/* Reception */}
+          <PlacesField
+            name="reception_location"
+            label="Reception"
+            value={wedding.reception_location}
+            placeholder="Reception venue"
+            timeName="reception_time"
+            timeValue={wedding.reception_time}
+          />
+        </div>
+      )}
 
       {wedding && (
         <div>
@@ -1642,5 +1950,54 @@ function WeddingForm({
         {wedding ? 'Save changes' : 'Create wedding'}
       </button>
     </form>
+  )
+}
+
+function PlacesField({
+  name,
+  label,
+  value,
+  placeholder,
+  timeName,
+  timeValue,
+}: {
+  name: string
+  label: string
+  value: string | null
+  placeholder?: string
+  timeName?: string
+  timeValue?: string | null
+}) {
+  return (
+    <div class="relative" data-places>
+      <label class="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+      <div class={timeName ? 'flex gap-2' : ''}>
+        <div class="flex-1 relative">
+          <input
+            type="text"
+            name={name}
+            value={value ?? ''}
+            placeholder={placeholder}
+            autocomplete="off"
+            hx-get={`/api/places/search?field=${name}`}
+            hx-trigger="input changed delay:300ms, focus"
+            hx-target={`#suggestions-${name}`}
+            hx-swap="innerHTML"
+            hx-params="none"
+            hx-vals={`js:{q: document.querySelector('[name="${name}"]').value}`}
+            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+          />
+          <div id={`suggestions-${name}`} class="relative" />
+        </div>
+        {timeName && (
+          <input
+            type="time"
+            name={timeName}
+            value={timeValue ?? ''}
+            class="w-28 shrink-0 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+          />
+        )}
+      </div>
+    </div>
   )
 }

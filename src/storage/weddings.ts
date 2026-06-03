@@ -32,10 +32,17 @@ type WeddingFrontmatter = {
   status: string
   ceremony_type?: string | null
   vendor_visibility?: string | null
+  ceremony_location?: string | null
   reception_location?: string | null
   reception_time?: string | null
   getting_ready_location?: string | null
   getting_ready_time?: string | null
+  getting_ready_1_label?: string | null
+  getting_ready_2_location?: string | null
+  getting_ready_2_label?: string | null
+  getting_ready_2_time?: string | null
+  portrait_location?: string | null
+  portrait_time?: string | null
   dress_code?: string | null
   guest_count?: number | null
   timeline_notes?: string | null
@@ -68,10 +75,17 @@ export function weddingToMarkdown(wedding: Wedding): MarkdownDocument<WeddingFro
     status: wedding.status,
     ceremony_type: wedding.ceremony_type,
     vendor_visibility: wedding.vendor_visibility,
+    ceremony_location: wedding.ceremony_location,
     reception_location: wedding.reception_location,
     reception_time: wedding.reception_time,
     getting_ready_location: wedding.getting_ready_location,
     getting_ready_time: wedding.getting_ready_time,
+    getting_ready_1_label: wedding.getting_ready_1_label,
+    getting_ready_2_location: wedding.getting_ready_2_location,
+    getting_ready_2_label: wedding.getting_ready_2_label,
+    getting_ready_2_time: wedding.getting_ready_2_time,
+    portrait_location: wedding.portrait_location,
+    portrait_time: wedding.portrait_time,
     dress_code: wedding.dress_code,
     guest_count: wedding.guest_count,
     timeline_notes: wedding.timeline_notes,
@@ -115,10 +129,17 @@ export function markdownToWedding(
     status: (fm.status as Wedding['status']) ?? 'planning',
     ceremony_type: fm.ceremony_type ?? null,
     vendor_visibility: (fm.vendor_visibility as Wedding['vendor_visibility']) ?? 'private',
+    ceremony_location: fm.ceremony_location ?? null,
     reception_location: fm.reception_location ?? null,
     reception_time: fm.reception_time ?? null,
     getting_ready_location: fm.getting_ready_location ?? null,
     getting_ready_time: fm.getting_ready_time ?? null,
+    getting_ready_1_label: fm.getting_ready_1_label ?? null,
+    getting_ready_2_location: fm.getting_ready_2_location ?? null,
+    getting_ready_2_label: fm.getting_ready_2_label ?? null,
+    getting_ready_2_time: fm.getting_ready_2_time ?? null,
+    portrait_location: fm.portrait_location ?? null,
+    portrait_time: fm.portrait_time ?? null,
     dress_code: fm.dress_code ?? null,
     guest_count: fm.guest_count ?? null,
     timeline_notes: fm.timeline_notes ?? null,

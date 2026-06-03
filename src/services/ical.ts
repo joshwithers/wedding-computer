@@ -47,9 +47,10 @@ export function buildVevent(event: EnrichedCalendarEvent, timezone: string): str
     lines.push(`DESCRIPTION:${escapeIcalText(description)}`)
   }
 
-  // Location from wedding if booking event
-  if (event.wedding_location && event.type === 'booking') {
-    lines.push(`LOCATION:${escapeIcalText(event.wedding_location)}`)
+  // Location — prefer ceremony_location, fall back to city/region
+  if (event.type === 'booking') {
+    const loc = event.ceremony_location ?? event.wedding_location
+    if (loc) lines.push(`LOCATION:${escapeIcalText(loc)}`)
   }
 
   lines.push('TRANSP:OPAQUE')
@@ -95,12 +96,14 @@ function buildEventDescription(event: EnrichedCalendarEvent): string {
     }
 
     // Ceremony details
-    if (event.wedding_time || event.wedding_location || event.ceremony_type) {
+    if (event.wedding_time || event.ceremony_location || event.wedding_location || event.ceremony_type) {
       lines.push('')
       if (event.wedding_time) {
         lines.push(`⛪ Ceremony: ${event.wedding_time}`)
       }
-      if (event.wedding_location) {
+      if (event.ceremony_location) {
+        lines.push(`📍 ${event.ceremony_location}`)
+      } else if (event.wedding_location) {
         lines.push(`📍 ${event.wedding_location}`)
       }
       if (event.ceremony_type) {
@@ -111,17 +114,33 @@ function buildEventDescription(event: EnrichedCalendarEvent): string {
       }
     }
 
-    // Getting ready
+    // Getting ready (party 1)
     if (event.getting_ready_time || event.getting_ready_location) {
       lines.push('')
+      const label1 = event.getting_ready_1_label ?? 'Party 1'
       if (event.getting_ready_time) {
-        lines.push(`🏨 Getting Ready: ${event.getting_ready_time}`)
+        lines.push(`🏨 Getting Ready (${label1}): ${event.getting_ready_time}`)
       } else {
-        lines.push('🏨 Getting Ready')
+        lines.push(`🏨 Getting Ready (${label1})`)
       }
       if (event.getting_ready_location) {
         lines.push(`📍 ${event.getting_ready_location}`)
       }
+    }
+
+    // Getting ready (party 2)
+    if (event.getting_ready_2_location) {
+      lines.push('')
+      const label2 = event.getting_ready_2_label ?? 'Party 2'
+      lines.push(`🏨 Getting Ready (${label2})`)
+      lines.push(`📍 ${event.getting_ready_2_location}`)
+    }
+
+    // Portraits
+    if (event.portrait_location) {
+      lines.push('')
+      lines.push(`📸 Portraits`)
+      lines.push(`📍 ${event.portrait_location}`)
     }
 
     // Reception
