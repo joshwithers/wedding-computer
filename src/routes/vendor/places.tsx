@@ -108,13 +108,10 @@ places.get('/api/places/search', async (c) => {
 
     // Each suggestion button fills the visible text input and the hidden `q` mirror,
     // then clears the dropdown. The `data-places` wrapper scopes the querySelector.
-    // In region mode, store just the city/region name; in default mode, store "Name, Address".
-    const isRegion = mode === 'region'
-
     return c.html(
       <div class="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
         {suggestions.map((s) => {
-          const storedValue = isRegion ? s.name : (s.address ? `${s.name}, ${s.address}` : s.name)
+          const storedValue = s.address ? `${s.name}, ${s.address}` : s.name
           return (
             <button
               type="button"
