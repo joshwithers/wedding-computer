@@ -1968,11 +1968,15 @@ function PlacesField({
   timeName?: string
   timeValue?: string | null
 }) {
+  // The visible input keeps the form-submission `name`. A hidden input named `q`
+  // inside the wrapper is mirrored via oninput and included by htmx for the GET.
+  const wrapperId = `places-wrap-${name}`
   return (
-    <div class="relative" data-places>
+    <div class="relative" data-places id={wrapperId}>
       <label class="block text-xs font-medium text-gray-500 mb-1">{label}</label>
       <div class={timeName ? 'flex gap-2' : ''}>
         <div class="flex-1 relative">
+          <input type="hidden" class="places-q" name="q" value={value ?? ''} form="" />
           <input
             type="text"
             name={name}
@@ -1980,14 +1984,14 @@ function PlacesField({
             placeholder={placeholder}
             autocomplete="off"
             hx-get={`/api/places/search?field=${name}`}
-            hx-trigger="input changed delay:300ms, focus"
+            hx-trigger="input changed delay:300ms"
             hx-target={`#suggestions-${name}`}
             hx-swap="innerHTML"
-            hx-params="none"
-            hx-vals={`js:{q: document.querySelector('[name="${name}"]').value}`}
+            hx-include={`#${wrapperId} .places-q`}
+            oninput={`document.querySelector('#${wrapperId} .places-q').value=this.value`}
             class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
           />
-          <div id={`suggestions-${name}`} class="relative" />
+          <div id={`suggestions-${name}`} />
         </div>
         {timeName && (
           <input
