@@ -177,14 +177,17 @@ export function weddingCachedData(wedding: Wedding): string {
 
 /**
  * Write a wedding to storage as a markdown file.
- * Called after creating/updating a wedding in D1.
+ * Handles folder renames when date or title changes.
+ *
+ * Returns the resolved folder path so callers (pushAllWeddingFiles)
+ * can write todo.md and log.md to the same location.
  */
 export async function writeWeddingFile(
   storage: StorageBackend,
   db: D1Database,
   vendorId: string,
   wedding: Wedding
-): Promise<void> {
+): Promise<string> {
   // Check if this wedding already has a file
   const indexRow = await db
     .prepare(
@@ -193,40 +196,101 @@ export async function writeWeddingFile(
     .bind(vendorId, 'wedding', wedding.id)
     .first<{ file_path: string }>()
 
-  let filePath: string
-  if (indexRow) {
-    filePath = indexRow.file_path
-  } else {
-    // New wedding → create folder: weddings/2026-07-12-sarah-james/wedding.md
-    const folder = weddingFolder(wedding.title, wedding.date)
-    filePath = folder + 'wedding.md'
-  }
+  const desiredFolder = weddingFolder(wedding.title, wedding.date)
+  const desiredPath = desiredFolder + 'wedding.md'
 
   const doc = weddingToMarkdown(wedding)
   const content = serializeMarkdown(doc)
-  const isNewFile = !indexRow
-  const etag = await storage.write(filePath, content)
 
-  // Update file index. If this fails on a new file, clean up the orphaned R2 file.
-  try {
+  if (!indexRow) {
+    // ── New wedding: write to desired path ──
+    const etag = await storage.write(desiredPath, content)
+    try {
+      await db
+        .prepare(
+          `INSERT INTO file_index (vendor_id, entity_type, entity_id, file_path, etag, cached_data, last_synced_at)
+           VALUES (?, 'wedding', ?, ?, ?, ?, datetime('now'))
+           ON CONFLICT(vendor_id, file_path) DO UPDATE SET
+             entity_id = excluded.entity_id,
+             etag = excluded.etag,
+             cached_data = excluded.cached_data,
+             last_synced_at = datetime('now')`
+        )
+        .bind(vendorId, wedding.id, desiredPath, etag, weddingCachedData(wedding))
+        .run()
+    } catch (err) {
+      try { await storage.delete(desiredPath) } catch { /* orphan ok */ }
+      throw err
+    }
+    return desiredFolder
+  }
+
+  const oldPath = indexRow.file_path
+  const oldFolder = oldPath.substring(0, oldPath.lastIndexOf('/') + 1)
+
+  if (oldFolder === desiredFolder) {
+    // ── Same folder: just update wedding.md in place ──
+    const etag = await storage.write(oldPath, content)
     await db
       .prepare(
-        `INSERT INTO file_index (vendor_id, entity_type, entity_id, file_path, etag, cached_data, last_synced_at)
-         VALUES (?, 'wedding', ?, ?, ?, ?, datetime('now'))
-         ON CONFLICT(vendor_id, file_path) DO UPDATE SET
-           entity_id = excluded.entity_id,
-           etag = excluded.etag,
-           cached_data = excluded.cached_data,
-           last_synced_at = datetime('now')`
+        `UPDATE file_index SET etag = ?, cached_data = ?, last_synced_at = datetime('now')
+         WHERE vendor_id = ? AND entity_type = 'wedding' AND entity_id = ?`
       )
-      .bind(vendorId, wedding.id, filePath, etag, weddingCachedData(wedding))
+      .bind(etag, weddingCachedData(wedding), vendorId, wedding.id)
       .run()
-  } catch (err) {
-    if (isNewFile) {
-      try { await storage.delete(filePath) } catch { /* orphan is acceptable */ }
+    return oldFolder
+  }
+
+  // ── Folder changed (date or title changed): move all files ──
+  console.log(`[storage] Renaming wedding folder: ${oldFolder} → ${desiredFolder}`)
+
+  // 1. Write wedding.md to the new folder
+  const etag = await storage.write(desiredPath, content)
+
+  // 2. Move companion files (todo.md, log.md) — best-effort
+  for (const companion of ['todo.md', 'log.md']) {
+    try {
+      const oldCompanion = await storage.read(oldFolder + companion)
+      if (oldCompanion) {
+        await storage.write(desiredFolder + companion, oldCompanion.content)
+        await storage.delete(oldFolder + companion)
+      }
+    } catch { /* non-fatal: companion files are regenerated on next push */ }
+  }
+
+  // 3. Move uploaded files — list and relocate
+  try {
+    const oldFiles = await storage.list(oldFolder + 'files/')
+    for (const f of oldFiles.files) {
+      try {
+        const filename = f.path.split('/').pop()
+        if (!filename) continue
+        await storage.move(f.path, desiredFolder + 'files/' + filename)
+      } catch { /* best-effort per file */ }
     }
+  } catch { /* files dir may not exist */ }
+
+  // 4. Update D1 index atomically — point to new path
+  try {
+    await db.batch([
+      db.prepare(
+        'DELETE FROM file_index WHERE vendor_id = ? AND entity_type = ? AND entity_id = ?'
+      ).bind(vendorId, 'wedding', wedding.id),
+      db.prepare(
+        `INSERT INTO file_index (vendor_id, entity_type, entity_id, file_path, etag, cached_data, last_synced_at)
+         VALUES (?, 'wedding', ?, ?, ?, ?, datetime('now'))`
+      ).bind(vendorId, wedding.id, desiredPath, etag, weddingCachedData(wedding)),
+    ])
+  } catch (err) {
+    // D1 failed — clean up new file, old file + index still valid
+    try { await storage.delete(desiredPath) } catch { /* orphan ok */ }
     throw err
   }
+
+  // 5. Delete old wedding.md — D1 is already updated, safe to clean up
+  try { await storage.delete(oldPath) } catch { /* orphaned old file is acceptable */ }
+
+  return desiredFolder
 }
 
 /**

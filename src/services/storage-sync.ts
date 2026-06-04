@@ -11,7 +11,7 @@
 
 import type { Bindings, VendorProfile, Wedding } from '../types'
 import { getStorage } from '../storage'
-import { writeWeddingFile, weddingFolder } from '../storage/weddings'
+import { writeWeddingFile } from '../storage/weddings'
 import { exportWeddingLogMarkdown } from '../db/wedding-log'
 import { getWeddingTodo } from '../db/todos'
 
@@ -71,10 +71,8 @@ export async function syncStorageBackground(env: Bindings): Promise<SyncResult> 
 
     for (const wedding of staleWeddings) {
       try {
-        const folder = weddingFolder(wedding.title, wedding.date)
-
-        // 1. wedding.md
-        await writeWeddingFile(storage, env.DB, vendor.id, wedding)
+        // 1. wedding.md — also handles folder rename, returns resolved folder
+        const folder = await writeWeddingFile(storage, env.DB, vendor.id, wedding)
 
         // 2. todo.md
         try {

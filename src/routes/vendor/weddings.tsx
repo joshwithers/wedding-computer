@@ -249,14 +249,13 @@ export async function pushAllWeddingFiles(env: Bindings, vendor: VendorProfile, 
   const wedding = await getWedding(env.DB, weddingId)
   if (!wedding) return
 
-  const { weddingFolder } = await import('../../storage/weddings')
-  const folder = weddingFolder(wedding.title, wedding.date)
-
-  // 1. wedding.md — the main wedding details
+  // 1. wedding.md — also handles folder rename if date/title changed
+  let folder: string
   try {
-    await writeWeddingFile(storage, env.DB, vendor.id, wedding)
+    folder = await writeWeddingFile(storage, env.DB, vendor.id, wedding)
   } catch (err: any) {
     console.error(`[storage] FAILED push wedding.md ${weddingId}:`, err.message)
+    return // can't continue without knowing the folder
   }
 
   // 2. todo.md — the checklist (if one exists)
@@ -274,14 +273,14 @@ export async function pushAllWeddingFiles(env: Bindings, vendor: VendorProfile, 
   // 3. log.md — the changelog
   try {
     const md = await exportWeddingLogMarkdown(env.DB, weddingId, wedding.title)
-    if (md.split('\n').length > 2) { // only push if there are log entries
+    if (md.split('\n').length > 2) {
       await storage.write(`${folder}log.md`, md)
     }
   } catch (err: any) {
     console.error(`[storage] FAILED push log.md ${weddingId}:`, err.message)
   }
 
-  console.log(`[storage] Pushed wedding files ${weddingId} to ${vendor.storage_type}`)
+  console.log(`[storage] Pushed wedding files ${weddingId} → ${folder}`)
 }
 
 // ─── Wedding list ───
