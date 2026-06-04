@@ -608,12 +608,23 @@ weddings.get('/app/weddings/:id', async (c) => {
   const weddingTodo = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
   const todoTemplates = await listTemplates(c.env.DB, vendor.id)
 
-  // Credits
-  const coupleVendors = await listCoupleVendors(c.env.DB, weddingId)
-  const credits = buildCredits(members, coupleVendors)
+  // Credits — couple_vendors may not exist yet, so handle gracefully
+  let credits: ReturnType<typeof buildCredits> = []
+  try {
+    const coupleVendors = await listCoupleVendors(c.env.DB, weddingId)
+    credits = buildCredits(members, coupleVendors)
+  } catch {
+    // Table might not exist; fall back to platform vendors only
+    credits = buildCredits(members, [])
+  }
 
   // Wedding log
-  const log = await listWeddingLog(c.env.DB, weddingId, 20)
+  let log: Awaited<ReturnType<typeof listWeddingLog>> = []
+  try {
+    log = await listWeddingLog(c.env.DB, weddingId, 20)
+  } catch {
+    // Table might not exist yet
+  }
 
   return c.html(
     <AppLayout
@@ -1054,7 +1065,9 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
         notes: trimOrNull(body.notes),
       })
       if (changes.length > 0) {
-        await appendWeddingLog(c.env.DB, weddingId, user.id, 'Wedding updated', changes.join('; '))
+        try {
+          await appendWeddingLog(c.env.DB, weddingId, user.id, 'Wedding updated', changes.join('; '))
+        } catch { /* table might not exist yet */ }
       }
     }
 
