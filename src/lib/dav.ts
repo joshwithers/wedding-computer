@@ -57,7 +57,7 @@ export function xmlResponse(xml: string, status: number, headers: Record<string,
   return new Response(body, {
     status,
     headers: {
-      'Content-Type': 'text/xml; charset=utf-8',
+      'Content-Type': 'application/xml; charset=utf-8',
       'Content-Length': String(body.byteLength),
       ...headers,
     },

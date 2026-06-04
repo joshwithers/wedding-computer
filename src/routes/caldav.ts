@@ -50,6 +50,41 @@ for (const method of ['PUT', 'DELETE', 'PATCH', 'MKCOL'] as const) {
   caldav.on(method, '*', () => forbiddenResponse(CALDAV_HEADERS))
 }
 
+// PROPFIND / — root discovery (Apple Calendar follows 301 here)
+caldav.on('PROPFIND', '/', async (c) => {
+  const vendor = await auth(c)
+  if (!vendor || !vendor.ical_token) {
+    return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:response>
+    <D:href>/caldav/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:current-user-principal><D:href>/caldav/principals/user/</D:href></D:current-user-principal>
+        <D:resourcetype><D:collection/></D:resourcetype>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>`, 207, { ...CALDAV_HEADERS, 'WWW-Authenticate': 'Basic realm="CalDAV"' })
+  }
+  const token = vendor.ical_token
+  return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:response>
+    <D:href>/caldav/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:current-user-principal><D:href>/caldav/principals/${escXml(token)}/</D:href></D:current-user-principal>
+        <C:calendar-home-set><D:href>/caldav/calendars/${escXml(token)}/</D:href></C:calendar-home-set>
+        <D:resourcetype><D:collection/></D:resourcetype>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>`, 207, CALDAV_HEADERS)
+})
+
 // PROPFIND /principals/:token/
 caldav.on('PROPFIND', '/principals/:token/', async (c) => {
   const vendor = await auth(c)

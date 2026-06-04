@@ -105,6 +105,42 @@ for (const method of ['PUT', 'DELETE', 'PATCH', 'MKCOL'] as const) {
   carddav.on(method, '*', () => forbiddenResponse(CARDDAV_HEADERS))
 }
 
+// PROPFIND / — root discovery (Apple Contacts follows 301 here)
+carddav.on('PROPFIND', '/', async (c) => {
+  const vendor = await auth(c)
+  if (!vendor || !vendor.ical_token) {
+    // Unauthenticated: return a generic principal hint so the client prompts for credentials
+    return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
+  <D:response>
+    <D:href>/carddav/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:current-user-principal><D:href>/carddav/principals/user/</D:href></D:current-user-principal>
+        <D:resourcetype><D:collection/></D:resourcetype>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>`, 207, { ...CARDDAV_HEADERS, 'WWW-Authenticate': 'Basic realm="CardDAV"' })
+  }
+  const token = vendor.ical_token
+  return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
+  <D:response>
+    <D:href>/carddav/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:current-user-principal><D:href>/carddav/principals/${escXml(token)}/</D:href></D:current-user-principal>
+        <C:addressbook-home-set><D:href>/carddav/addressbooks/${escXml(token)}/</D:href></C:addressbook-home-set>
+        <D:resourcetype><D:collection/></D:resourcetype>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>`, 207, CARDDAV_HEADERS)
+})
+
 // PROPFIND /principals/:token/
 carddav.on('PROPFIND', '/principals/:token/', async (c) => {
   const vendor = await auth(c)
