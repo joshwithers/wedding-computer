@@ -50,6 +50,7 @@ async function syncWeddingCalendarEvents(
   weddingTitle: string,
   weddingDate: string,
   data: {
+    emoji: string | null
     ceremonyTime: string | null
     ceremonyDuration: number
     ceremonyLocation: string | null
@@ -63,6 +64,8 @@ async function syncWeddingCalendarEvents(
     portraitLocation: string | null
     receptionTime: string | null
     receptionLocation: string | null
+    bumpInTime: string | null
+    bumpOutTime: string | null
   }
 ) {
   // Define the events we want to exist
@@ -75,10 +78,21 @@ async function syncWeddingCalendarEvents(
     shouldExist: boolean          // false → delete if present
   }
 
+  // Emoji prefix for all event titles
+  const pfx = data.emoji ? `${data.emoji} ` : ''
+
   const events: PlannedEvent[] = [
     {
+      tag: 'wc:bump_in',
+      title: `${pfx}${weddingTitle} — Bump in`,
+      startTime: data.bumpInTime,
+      endTime: data.ceremonyTime ? subtractHoursFromTime(data.ceremonyTime, 1) : (data.bumpInTime ? addHoursToTime(data.bumpInTime, 1) : null),
+      location: data.ceremonyLocation,
+      shouldExist: !!data.bumpInTime,
+    },
+    {
       tag: 'wc:getting_ready_1',
-      title: `${weddingTitle} — Getting ready${data.gettingReady1Label ? ` (${data.gettingReady1Label})` : ''}`,
+      title: `${pfx}${weddingTitle} — Getting ready${data.gettingReady1Label ? ` (${data.gettingReady1Label})` : ''}`,
       startTime: data.gettingReadyTime,
       endTime: data.gettingReadyTime ? addHoursToTime(data.gettingReadyTime, 1) : null,
       location: data.gettingReadyLocation,
@@ -86,7 +100,7 @@ async function syncWeddingCalendarEvents(
     },
     {
       tag: 'wc:getting_ready_2',
-      title: `${weddingTitle} — Getting ready${data.gettingReady2Label ? ` (${data.gettingReady2Label})` : ''}`,
+      title: `${pfx}${weddingTitle} — Getting ready${data.gettingReady2Label ? ` (${data.gettingReady2Label})` : ''}`,
       startTime: data.gettingReady2Time,
       endTime: data.gettingReady2Time ? addHoursToTime(data.gettingReady2Time, 1) : null,
       location: data.gettingReady2Location,
@@ -94,7 +108,7 @@ async function syncWeddingCalendarEvents(
     },
     {
       tag: 'wc:ceremony_prep',
-      title: `${weddingTitle} — Ceremony prep`,
+      title: `${pfx}${weddingTitle} — Ceremony prep`,
       startTime: data.ceremonyTime ? subtractHoursFromTime(data.ceremonyTime, 1) : null,
       endTime: data.ceremonyTime,
       location: data.ceremonyLocation,
@@ -102,7 +116,7 @@ async function syncWeddingCalendarEvents(
     },
     {
       tag: 'wc:ceremony',
-      title: weddingTitle,
+      title: `${pfx}${weddingTitle} — Ceremony`,
       startTime: data.ceremonyTime,
       endTime: data.ceremonyTime ? addHoursToTime(data.ceremonyTime, data.ceremonyDuration) : null,
       location: data.ceremonyLocation,
@@ -110,7 +124,7 @@ async function syncWeddingCalendarEvents(
     },
     {
       tag: 'wc:portraits',
-      title: `${weddingTitle} — Portraits`,
+      title: `${pfx}${weddingTitle} — Portraits`,
       startTime: data.portraitTime,
       endTime: data.portraitTime ? addHoursToTime(data.portraitTime, 1) : null,
       location: data.portraitLocation,
@@ -118,11 +132,19 @@ async function syncWeddingCalendarEvents(
     },
     {
       tag: 'wc:reception',
-      title: `${weddingTitle} — Reception`,
+      title: `${pfx}${weddingTitle} — Reception`,
       startTime: data.receptionTime,
       endTime: data.receptionTime ? addHoursToTime(data.receptionTime, 3) : null,
       location: data.receptionLocation,
       shouldExist: !!(data.receptionTime && data.receptionLocation),
+    },
+    {
+      tag: 'wc:bump_out',
+      title: `${pfx}${weddingTitle} — Bump out`,
+      startTime: data.bumpOutTime,
+      endTime: data.bumpOutTime ? addHoursToTime(data.bumpOutTime, 1) : null,
+      location: data.receptionLocation ?? data.ceremonyLocation,
+      shouldExist: !!data.bumpOutTime,
     },
   ]
 
@@ -200,7 +222,8 @@ function diffWeddingChanges(
     getting_ready_time: 'Getting ready (1) time', getting_ready_1_label: 'Getting ready (1) label',
     getting_ready_2_location: 'Getting ready (2) venue', getting_ready_2_label: 'Getting ready (2) label',
     getting_ready_2_time: 'Getting ready (2) time', portrait_location: 'Portraits venue',
-    portrait_time: 'Portraits time', notes: 'Notes',
+    portrait_time: 'Portraits time', emoji: 'Emoji',
+    bump_in_time: 'Bump in time', bump_out_time: 'Bump out time', notes: 'Notes',
   }
 
   const changes: string[] = []
@@ -1044,6 +1067,9 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     const gettingReady2Time = trimOrNull(body.getting_ready_2_time)
     const receptionTime = trimOrNull(body.reception_time)
     const portraitTime = trimOrNull(body.portrait_time)
+    const bumpInTime = trimOrNull(body.bump_in_time)
+    const bumpOutTime = trimOrNull(body.bump_out_time)
+    const emoji = trimOrNull(body.emoji)
 
     // Build update payload — only include fields the form actually submitted
     const updateData: Record<string, unknown> = {
@@ -1063,6 +1089,9 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       getting_ready_2_time: gettingReady2Time,
       portrait_location: trimOrNull(body.portrait_location),
       portrait_time: portraitTime,
+      emoji,
+      bump_in_time: bumpInTime,
+      bump_out_time: bumpOutTime,
       notes: trimOrNull(body.notes),
     }
     // Only include status if the form submitted one (avoid clearing it)
@@ -1095,6 +1124,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
         getting_ready_2_time: gettingReady2Time,
         portrait_location: trimOrNull(body.portrait_location),
         portrait_time: portraitTime,
+        emoji, bump_in_time: bumpInTime, bump_out_time: bumpOutTime,
         notes: trimOrNull(body.notes),
       })
       if (changes.length > 0) {
@@ -1110,6 +1140,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       const weddingDate = trimOrNull(body.date)
       if (weddingDate) {
         await syncWeddingCalendarEvents(c.env.DB, vendor.id, weddingId, title, weddingDate, {
+          emoji,
           ceremonyTime: startTime,
           ceremonyDuration: oldWedding?.duration_hours ?? 1,
           ceremonyLocation: trimOrNull(body.ceremony_location),
@@ -1123,6 +1154,8 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
           portraitLocation: trimOrNull(body.portrait_location),
           receptionTime: receptionTime,
           receptionLocation: trimOrNull(body.reception_location),
+          bumpInTime,
+          bumpOutTime,
         })
       }
     } catch (calErr) {
@@ -2051,6 +2084,30 @@ function WeddingForm({
             <p class="text-xs text-gray-400">Each place creates a calendar event</p>
           </div>
 
+          {/* Emoji prefix */}
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Emoji prefix for calendar events</label>
+            <input
+              type="text"
+              name="emoji"
+              value={wedding.emoji ?? ''}
+              placeholder="e.g. 💒 🌸 🎉"
+              maxLength={4}
+              class="w-20 border border-gray-200 rounded-xl px-3 py-2.5 text-center text-lg focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+            />
+          </div>
+
+          {/* Bump in */}
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Bump in (setup/arrival)</label>
+            <input
+              type="time"
+              name="bump_in_time"
+              value={wedding.bump_in_time ?? ''}
+              class="w-28 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+            />
+          </div>
+
           {/* Getting ready — two columns */}
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="space-y-1.5">
@@ -2119,6 +2176,17 @@ function WeddingForm({
             timeName="reception_time"
             timeValue={wedding.reception_time}
           />
+
+          {/* Bump out */}
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Bump out (packdown/departure)</label>
+            <input
+              type="time"
+              name="bump_out_time"
+              value={wedding.bump_out_time ?? ''}
+              class="w-28 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+            />
+          </div>
         </div>
       )}
 

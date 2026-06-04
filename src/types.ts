@@ -153,6 +153,9 @@ export type Wedding = {
   getting_ready_2_time: string | null
   portrait_location: string | null
   portrait_time: string | null
+  emoji: string | null
+  bump_in_time: string | null
+  bump_out_time: string | null
   timeline_notes: string | null
   dress_code: string | null
   guest_count: number | null

@@ -43,6 +43,9 @@ type WeddingFrontmatter = {
   getting_ready_2_time?: string | null
   portrait_location?: string | null
   portrait_time?: string | null
+  emoji?: string | null
+  bump_in_time?: string | null
+  bump_out_time?: string | null
   dress_code?: string | null
   guest_count?: number | null
   timeline_notes?: string | null
@@ -91,6 +94,9 @@ export function weddingToMarkdown(wedding: Wedding): MarkdownDocument<WeddingFro
     getting_ready_2_time: wedding.getting_ready_2_time,
     portrait_location: wedding.portrait_location,
     portrait_time: wedding.portrait_time,
+    emoji: wedding.emoji,
+    bump_in_time: wedding.bump_in_time,
+    bump_out_time: wedding.bump_out_time,
     dress_code: wedding.dress_code,
     guest_count: wedding.guest_count,
     timeline_notes: wedding.timeline_notes,
@@ -145,6 +151,9 @@ export function markdownToWedding(
     getting_ready_2_time: fm.getting_ready_2_time ?? null,
     portrait_location: fm.portrait_location ?? null,
     portrait_time: fm.portrait_time ?? null,
+    emoji: fm.emoji ?? null,
+    bump_in_time: fm.bump_in_time ?? null,
+    bump_out_time: fm.bump_out_time ?? null,
     dress_code: fm.dress_code ?? null,
     guest_count: fm.guest_count ?? null,
     timeline_notes: fm.timeline_notes ?? null,

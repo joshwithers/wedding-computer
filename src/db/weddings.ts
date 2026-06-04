@@ -68,7 +68,7 @@ export async function createWedding(
 export async function updateWedding(
   db: D1Database,
   weddingId: string,
-  data: Partial<Pick<Wedding, 'title' | 'date' | 'time' | 'duration_hours' | 'location' | 'status' | 'notes' | 'ceremony_type' | 'vendor_visibility' | 'ceremony_location' | 'reception_location' | 'reception_time' | 'getting_ready_location' | 'getting_ready_time' | 'getting_ready_1_label' | 'getting_ready_2_location' | 'getting_ready_2_label' | 'getting_ready_2_time' | 'portrait_location' | 'portrait_time' | 'timeline_notes' | 'dress_code' | 'guest_count'>>
+  data: Partial<Pick<Wedding, 'title' | 'date' | 'time' | 'duration_hours' | 'location' | 'status' | 'notes' | 'ceremony_type' | 'vendor_visibility' | 'ceremony_location' | 'reception_location' | 'reception_time' | 'getting_ready_location' | 'getting_ready_time' | 'getting_ready_1_label' | 'getting_ready_2_location' | 'getting_ready_2_label' | 'getting_ready_2_time' | 'portrait_location' | 'portrait_time' | 'emoji' | 'bump_in_time' | 'bump_out_time' | 'timeline_notes' | 'dress_code' | 'guest_count'>>
 ): Promise<void> {
   const sets: string[] = []
   const values: unknown[] = []
