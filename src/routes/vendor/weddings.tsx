@@ -1140,12 +1140,12 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       }
     }
 
-    // Sync all wedding calendar events
+    // Sync calendar events for ALL vendors on this wedding
     const vendor = c.get('vendor')!
     try {
       const weddingDate = trimOrNull(body.date)
       if (weddingDate) {
-        await syncWeddingCalendarEvents(c.env.DB, vendor.id, weddingId, title, weddingDate, {
+        const timelineData = {
           emoji,
           ceremonyTime: startTime,
           ceremonyDuration: oldWedding?.duration_hours ?? 1,
@@ -1167,7 +1167,31 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
           })(),
           bumpInTime,
           bumpOutTime,
-        })
+        }
+
+        // Get all vendor members on this wedding
+        const vendorMembers = await c.env.DB
+          .prepare(
+            `SELECT DISTINCT vendor_profile_id FROM wedding_members
+             WHERE wedding_id = ? AND status = 'active' AND vendor_profile_id IS NOT NULL`
+          )
+          .bind(weddingId)
+          .all<{ vendor_profile_id: string }>()
+          .then((r) => r.results)
+
+        // Sync events for each vendor
+        for (const vm of vendorMembers) {
+          try {
+            await syncWeddingCalendarEvents(c.env.DB, vm.vendor_profile_id, weddingId, title, weddingDate, timelineData)
+          } catch (err) {
+            console.error(`[weddings] calendar sync failed for vendor ${vm.vendor_profile_id}:`, err)
+          }
+        }
+
+        // If no vendor members found (shouldn't happen), at least sync for current vendor
+        if (vendorMembers.length === 0) {
+          await syncWeddingCalendarEvents(c.env.DB, vendor.id, weddingId, title, weddingDate, timelineData)
+        }
       }
     } catch (calErr) {
       console.error('[weddings] Failed to sync calendar events:', calErr)
