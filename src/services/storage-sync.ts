@@ -10,7 +10,7 @@
  */
 
 import type { Bindings, VendorProfile, Wedding } from '../types'
-import { getStorage } from '../storage'
+import { getStorageWithSecrets } from '../storage'
 import { writeWeddingFile } from '../storage/weddings'
 import { exportWeddingLogMarkdown } from '../db/wedding-log'
 import { getWeddingTodo } from '../db/todos'
@@ -37,7 +37,7 @@ export async function syncStorageBackground(env: Bindings): Promise<SyncResult> 
 
     let storage
     try {
-      storage = getStorage(env, vendor)
+      storage = await getStorageWithSecrets(env, vendor)
     } catch {
       continue // skip vendors with broken config
     }

@@ -14,6 +14,8 @@ import { listInvoices } from '../../db/invoices'
 import { deleteCookie } from 'hono/cookie'
 import { destroySession } from '../../services/auth'
 import { verifyGitHubToken, createGitHubRepo } from '../../storage/github'
+import { deleteVendorSecret, putVendorSecret, resolveSecret } from '../../services/secrets'
+import { redactedVendorProfile } from '../../lib/redaction'
 
 const settings = new Hono<Env>()
 
@@ -354,11 +356,11 @@ settings.get('/app/settings', (c) => {
             Sync your contacts and weddings to a private GitHub repository. Open your files in Obsidian, VS Code, or any text editor.
           </p>
           {(() => {
-            let gitConfig: { git_repo?: string; git_access_token?: string } | null = null
+            let gitConfig: { git_repo?: string; git_access_token?: string; git_access_token_ref?: string } | null = null
             if (vendor.storage_config) {
               try { gitConfig = JSON.parse(vendor.storage_config) } catch { /* ignore */ }
             }
-            const isConnected = vendor.storage_type === 'git' && gitConfig?.git_repo && gitConfig?.git_access_token
+            const isConnected = vendor.storage_type === 'git' && gitConfig?.git_repo && (gitConfig?.git_access_token_ref || gitConfig?.git_access_token)
 
             if (isConnected) {
               return (
@@ -455,8 +457,8 @@ settings.get('/app/settings', (c) => {
                 type="password"
                 id="anthropic_api_key"
                 name="anthropic_api_key"
-                value={vendor.anthropic_api_key ?? ''}
-                placeholder="sk-ant-..."
+                value=""
+                placeholder={vendor.anthropic_api_key ? 'Key saved — enter a new key to replace it' : 'sk-ant-...'}
                 class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
               />
             </div>
@@ -724,7 +726,14 @@ settings.post('/app/settings/ai', async (c) => {
   const body = await c.req.parseBody()
   const key = typeof body.anthropic_api_key === 'string' ? body.anthropic_api_key.trim() || null : null
 
-  await updateVendor(c.env.DB, vendor.id, { anthropic_api_key: key })
+  if (key) {
+    const ref = await putVendorSecret(c.env.KV, vendor.id, 'anthropic_api_key', key)
+    await updateVendor(c.env.DB, vendor.id, { anthropic_api_key: ref })
+  } else {
+    await deleteVendorSecret(c.env.KV, vendor.id, 'anthropic_api_key')
+    await updateVendor(c.env.DB, vendor.id, { anthropic_api_key: null })
+  }
+
   return c.redirect('/app/settings?saved=1')
 })
 
@@ -788,6 +797,8 @@ settings.post('/app/settings/github/connect', async (c) => {
       return c.redirect('/app/settings?error=Could+not+access+that+repository.+Check+your+token+permissions.')
     }
 
+    const tokenRef = await putVendorSecret(c.env.KV, vendor.id, 'github_access_token', token)
+
     // Save the config
     const config = JSON.stringify({
       type: 'git',
@@ -795,7 +806,7 @@ settings.post('/app/settings/github/connect', async (c) => {
       git_repo: repoFullName,
       git_branch: 'main',
       git_path: '',
-      git_access_token: token,
+      git_access_token_ref: tokenRef,
     })
 
     await updateVendor(c.env.DB, vendor.id, {
@@ -823,6 +834,8 @@ settings.post('/app/settings/github/connect', async (c) => {
 settings.post('/app/settings/github/disconnect', async (c) => {
   const vendor = c.get('vendor')!
 
+  await deleteVendorSecret(c.env.KV, vendor.id, 'github_access_token')
+
   await updateVendor(c.env.DB, vendor.id, {
     storage_type: 'r2',
     storage_config: null,
@@ -835,17 +848,18 @@ settings.post('/app/settings/github/disconnect', async (c) => {
 settings.post('/app/settings/github/sync', async (c) => {
   const vendor = c.get('vendor')!
 
-  let config: { git_repo?: string; git_access_token?: string } | null = null
+  let config: { git_repo?: string; git_access_token?: string; git_access_token_ref?: string } | null = null
   if (vendor.storage_config) {
     try { config = JSON.parse(vendor.storage_config) } catch { /* ignore */ }
   }
 
-  if (!config?.git_repo || !config?.git_access_token) {
+  const token = await resolveSecret(c.env.KV, config?.git_access_token_ref ?? config?.git_access_token)
+  if (!config?.git_repo || !token) {
     return c.redirect('/app/settings?error=GitHub+is+not+connected')
   }
 
   try {
-    const result = await initialGitHubSync(c.env.DB, vendor, config.git_access_token, config.git_repo)
+    const result = await initialGitHubSync(c.env.DB, vendor, token, config.git_repo)
     return c.redirect(`/app/settings?saved=1&synced=${result.pushed}`)
   } catch (err: any) {
     console.error('[github] sync error:', err)
@@ -1033,7 +1047,7 @@ settings.get('/app/settings/export', async (c) => {
     const data = {
       exported_at: new Date().toISOString(),
       user: { id: user.id, email: user.email, name: user.name, created_at: user.created_at },
-      vendor_profile: vendor,
+      vendor_profile: redactedVendorProfile(vendor),
       contacts,
       invoices: invoiceList,
       calendar_events: events.results,

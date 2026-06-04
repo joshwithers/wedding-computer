@@ -16,7 +16,7 @@ import {
 import { listDocumentsForWedding } from '../../db/documents'
 import { listInvoicesForWedding, type InvoiceWithPaymentSummary } from '../../db/invoices'
 import { getContact, updateContact } from '../../storage/contacts'
-import { getStorage } from '../../storage'
+import { getStorageWithSecrets } from '../../storage'
 import { writeWeddingFile } from '../../storage/weddings'
 import { createActivity } from '../../db/activities'
 import type { Bindings, VendorProfile, Wedding } from '../../types'
@@ -231,8 +231,8 @@ const weddings = new Hono<Env>()
 weddings.use('/app/*', requireAuth, csrf, requireVendor)
 
 /** Safe storage getter — returns null if storage unavailable */
-function tryGetStorage(env: Bindings, vendor: VendorProfile) {
-  try { return getStorage(env, vendor) } catch { return null }
+async function tryGetStorage(env: Bindings, vendor: VendorProfile) {
+  try { return await getStorageWithSecrets(env, vendor) } catch { return null }
 }
 
 /**
@@ -240,7 +240,7 @@ function tryGetStorage(env: Bindings, vendor: VendorProfile) {
  * Best-effort — never blocks the response. Call this after any wedding data change.
  */
 export async function pushAllWeddingFiles(env: Bindings, vendor: VendorProfile, weddingId: string) {
-  const storage = tryGetStorage(env, vendor)
+  const storage = await tryGetStorage(env, vendor)
   if (!storage) {
     console.log(`[storage] No storage backend for vendor ${vendor.id} (type=${vendor.storage_type ?? 'none'})`)
     return
@@ -419,7 +419,7 @@ weddings.post('/app/weddings/new', async (c) => {
     // Link contact and auto-invite couple
     const contactId = trimOrNull(body.contact_id)
     if (contactId) {
-      const storage = getStorage(c.env, vendor)
+      const storage = await getStorageWithSecrets(c.env, vendor)
       const contactResult = await getContact(storage, c.env.DB, vendor.id, contactId)
       if (contactResult) {
         const contact = contactResult.contact
@@ -1151,7 +1151,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
 weddings.get('/app/contacts/:id/promote', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
-  const storage = getStorage(c.env, vendor)
+  const storage = await getStorageWithSecrets(c.env, vendor)
   const contactResult = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
   if (!contactResult) return c.text('Contact not found', 404)
   const contact = contactResult.contact
@@ -1590,6 +1590,7 @@ function WeddingNotes({
         .md-preview th { background: #f9fafb; font-weight: 600; }
         .md-preview input[type="checkbox"] { margin-right: 0.4em; }
       ` }} />
+      <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
       <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
       {canManage ? (
         <script dangerouslySetInnerHTML={{ __html: `
@@ -1614,11 +1615,15 @@ function WeddingNotes({
     status.style.color = color || "#9ca3af";
   }
 
+  function safeMarkdown(src) {
+    if (!src) return '<p class="text-gray-400 italic">No notes yet</p>';
+    if (typeof marked === "undefined" || !marked.parse || !window.DOMPurify) return '<p class="text-gray-400 italic">Preview unavailable</p>';
+    return DOMPurify.sanitize(marked.parse(src));
+  }
+
   function renderPreview() {
-    if (typeof marked !== "undefined" && marked.parse) {
-      var val = textarea ? textarea.value : ${escaped};
-      preview.innerHTML = val ? marked.parse(val) : '<p class="text-gray-400 italic">No notes yet</p>';
-    }
+    var val = textarea ? textarea.value : ${escaped};
+    preview.innerHTML = safeMarkdown(val);
   }
 
   // Save notes to D1
@@ -1728,13 +1733,17 @@ function WeddingNotes({
       ) : (
         <script dangerouslySetInnerHTML={{ __html: `
 (function() {
+  function safeMarkdown(src) {
+    if (!src) return '<p class="text-gray-400 italic">No notes yet</p>';
+    if (typeof marked === "undefined" || !marked.parse || !window.DOMPurify) return '<p class="text-gray-400 italic">Preview unavailable</p>';
+    return DOMPurify.sanitize(marked.parse(src));
+  }
+
   function render() {
     var el = document.getElementById("notes-preview");
     if (!el) return;
     var src = ${escaped};
-    if (typeof marked !== "undefined" && marked.parse) {
-      el.innerHTML = src ? marked.parse(src) : '<p class="text-gray-400 italic">No notes yet</p>';
-    }
+    el.innerHTML = safeMarkdown(src);
   }
   if (typeof marked !== "undefined") render();
   else window.addEventListener("load", render);

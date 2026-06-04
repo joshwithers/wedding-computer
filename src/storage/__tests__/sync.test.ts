@@ -109,11 +109,19 @@ describe('syncVendor', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0].entity_id).toBe('contact-001')
     expect(rows[0].entity_type).toBe('contact')
+    expect(db.getTable('contacts')[0].email).toBe('sarah@example.com')
   })
 
   it('indexes new wedding files', async () => {
     const wedding = makeWedding()
     await seedWeddingFile(storage, wedding)
+    db.seed('vendor_profiles', [
+      {
+        id: VENDOR_ID,
+        user_id: 'user-vendor',
+        category: 'celebrant',
+      },
+    ])
 
     const result = await syncVendor(
       storage,
@@ -123,6 +131,13 @@ describe('syncVendor', () => {
 
     expect(result.indexed).toBe(1)
     expect(rows(db, 'file_index')[0].entity_type).toBe('wedding')
+    expect(db.getTable('weddings')[0].title).toBe('Sarah & James')
+    expect(db.getTable('wedding_members')[0]).toMatchObject({
+      wedding_id: 'wedding-001',
+      user_id: 'user-vendor',
+      role: 'vendor',
+      vendor_profile_id: VENDOR_ID,
+    })
   })
 
   it('skips files with matching etags', async () => {
@@ -173,6 +188,7 @@ describe('syncVendor', () => {
     )
 
     expect(result.updated).toBe(1)
+    expect(db.getTable('contacts')[0].email).toBe('sarah@example.com')
   })
 
   it('removes index entries for deleted files', async () => {

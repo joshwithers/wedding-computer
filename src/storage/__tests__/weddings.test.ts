@@ -11,6 +11,7 @@ import { serializeMarkdown, parseMarkdown } from '../markdown'
 import { MockStorageBackend } from './mock-storage'
 import { MockD1Database } from './mock-d1'
 import type { Wedding } from '../../types'
+import { StorageConflictError } from '../conflicts'
 
 const VENDOR_ID = 'vendor-abc123'
 
@@ -241,6 +242,45 @@ describe('writeWeddingFile', () => {
 
     // File should have been cleaned up
     expect(storage.files.size).toBe(0)
+  })
+
+  it('records a conflict instead of overwriting an externally changed wedding file', async () => {
+    const wedding = makeWedding()
+    const path = 'weddings/2026-12-15-sarah-james/wedding.md'
+    const originalEtag = await storage.write(path, serializeMarkdown(weddingToMarkdown(wedding)))
+    db.seed('file_index', [
+      {
+        vendor_id: VENDOR_ID,
+        entity_type: 'wedding',
+        entity_id: wedding.id,
+        file_path: path,
+        etag: originalEtag,
+      },
+    ])
+
+    await storage.write(
+      path,
+      serializeMarkdown(weddingToMarkdown({ ...wedding, notes: 'Edited in Git.' }))
+    )
+
+    await expect(
+      writeWeddingFile(
+        storage,
+        db as unknown as D1Database,
+        VENDOR_ID,
+        { ...wedding, notes: 'Edited in the app.' }
+      )
+    ).rejects.toBeInstanceOf(StorageConflictError)
+
+    const conflicts = db.getTable('file_conflicts')
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].entity_type).toBe('wedding')
+    expect(conflicts[0].local_content).toContain('Edited in the app.')
+    expect(conflicts[0].remote_content).toContain('Edited in Git.')
+
+    const file = await storage.read(path)
+    expect(file!.content).toContain('Edited in Git.')
+    expect(file!.content).not.toContain('Edited in the app.')
   })
 })
 

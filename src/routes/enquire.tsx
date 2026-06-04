@@ -3,7 +3,7 @@ import type { Env } from '../types'
 import { SharedHead } from '../views/head'
 import { getVendorById } from '../db/vendors'
 import { createContact } from '../storage/contacts'
-import { getStorage } from '../storage'
+import { getStorageWithSecrets } from '../storage'
 import { createActivity } from '../db/activities'
 import { verifyTurnstile } from '../services/turnstile'
 import { track } from '../services/analytics'
@@ -84,7 +84,7 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
   try {
     const { contactData, formData } = processSubmission(config, body as Record<string, string>)
 
-    const storage = getStorage(c.env, vendor)
+    const storage = await getStorageWithSecrets(c.env, vendor)
     const contact = await createContact(storage, c.env.DB, vendorId, {
       ...contactData,
       source: 'website',

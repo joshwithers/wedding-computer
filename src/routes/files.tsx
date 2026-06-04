@@ -11,7 +11,7 @@ import {
   clearDocumentShares,
 } from '../db/documents'
 import { getMembership, getWedding } from '../db/weddings'
-import { getStorage } from '../storage'
+import { getStorageWithSecrets } from '../storage'
 
 const files = new Hono<Env>()
 
@@ -44,6 +44,35 @@ const ALLOWED_TYPES = new Set([
 ])
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB — kept low for git sync compatibility
+
+function parseShareIds(input: unknown): string[] {
+  const raw = Array.isArray(input) ? input : [input]
+  return [...new Set(raw.filter((id): id is string => typeof id === 'string' && id.length > 0))]
+}
+
+async function validateShareTargets(
+  db: D1Database,
+  weddingId: string,
+  userIds: string[]
+): Promise<string[]> {
+  if (userIds.length === 0) return []
+
+  const placeholders = userIds.map(() => '?').join(',')
+  const rows = await db
+    .prepare(
+      `SELECT user_id FROM wedding_members
+       WHERE wedding_id = ? AND status = 'active' AND user_id IN (${placeholders})`
+    )
+    .bind(weddingId, ...userIds)
+    .all<{ user_id: string }>()
+
+  const valid = new Set(rows.results.map((row) => row.user_id))
+  if (userIds.some((id) => !valid.has(id))) {
+    throw new Error('Invalid document share target')
+  }
+
+  return userIds
+}
 
 // ─── Upload a file to a wedding ───
 
@@ -91,6 +120,11 @@ files.post('/files/upload/:weddingId', csrf, async (c) => {
   const visibility = body.visibility === 'wedding' ? 'wedding' as const : 'private' as const
   const description = typeof body.description === 'string' ? body.description.trim() : null
   const shareWith = body.share_with // may be string or string[]
+  const shareIds = visibility === 'private'
+    ? await validateShareTargets(c.env.DB, weddingId, parseShareIds(shareWith)).catch(() => null)
+    : []
+
+  if (!shareIds) return c.text('Invalid document share target', 403)
 
   // Upload to R2
   const ext = file.name.split('.').pop() ?? 'bin'
@@ -115,12 +149,8 @@ files.post('/files/upload/:weddingId', csrf, async (c) => {
   })
 
   // Add specific shares if visibility is private and share_with provided
-  if (visibility === 'private' && shareWith) {
-    const ids = Array.isArray(shareWith) ? shareWith : [shareWith]
-    const validIds = ids.filter((id) => typeof id === 'string' && id.length > 0)
-    if (validIds.length > 0) {
-      await addDocumentShares(c.env.DB, doc.id, validIds)
-    }
+  if (visibility === 'private' && shareIds.length > 0) {
+    await addDocumentShares(c.env.DB, doc.id, shareIds)
   }
 
   // Best-effort: sync file to vendor's git storage
@@ -139,7 +169,7 @@ files.post('/files/upload/:weddingId', csrf, async (c) => {
         .first<VendorProfile>()
 
       if (managingVendor) {
-        const storage = getStorage(c.env, managingVendor)
+        const storage = await getStorageWithSecrets(c.env, managingVendor)
         const { weddingFolder } = await import('../storage/weddings')
         const folder = weddingFolder(wedding.title, wedding.date)
         const storagePath = `${folder}files/${file.name}`
@@ -243,7 +273,7 @@ files.post('/files/:id/delete', csrf, async (c) => {
         .first<VendorProfile>()
 
       if (managingVendor) {
-        const storage = getStorage(c.env, managingVendor)
+        const storage = await getStorageWithSecrets(c.env, managingVendor)
         const { weddingFolder } = await import('../storage/weddings')
         const folder = weddingFolder(wedding.title, wedding.date)
         const storagePath = `${folder}files/${doc.filename}`
@@ -280,6 +310,11 @@ files.post('/files/:id/share', csrf, async (c) => {
   const body = await c.req.parseBody()
   const visibility = body.visibility === 'wedding' ? 'wedding' as const : 'private' as const
   const shareWith = body.share_with
+  const shareIds = visibility === 'private'
+    ? await validateShareTargets(c.env.DB, doc.wedding_id, parseShareIds(shareWith)).catch(() => null)
+    : []
+
+  if (!shareIds) return c.text('Invalid document share target', 403)
 
   // Update visibility
   await c.env.DB
@@ -289,12 +324,8 @@ files.post('/files/:id/share', csrf, async (c) => {
 
   // Reset and re-add shares
   await clearDocumentShares(c.env.DB, docId)
-  if (visibility === 'private' && shareWith) {
-    const ids = Array.isArray(shareWith) ? shareWith : [shareWith]
-    const validIds = ids.filter((id) => typeof id === 'string' && id.length > 0)
-    if (validIds.length > 0) {
-      await addDocumentShares(c.env.DB, docId, validIds)
-    }
+  if (visibility === 'private' && shareIds.length > 0) {
+    await addDocumentShares(c.env.DB, docId, shareIds)
   }
 
   const membership = await getMembership(c.env.DB, doc.wedding_id, user.id)

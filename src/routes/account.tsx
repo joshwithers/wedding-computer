@@ -16,6 +16,7 @@ import { destroySession } from '../services/auth'
 import { deleteCookie, getCookie } from 'hono/cookie'
 import { listPasskeys, deletePasskey } from '../db/passkeys'
 import type { PasskeyCredential } from '../types'
+import { redactedVendorProfile } from '../lib/redaction'
 
 const account = new Hono<Env>()
 
@@ -492,7 +493,7 @@ account.get('/account/export', async (c) => {
       listInvoices(c.env.DB, vendor.id),
       c.env.DB.prepare('SELECT * FROM calendar_events WHERE vendor_id = ? ORDER BY date DESC').bind(vendor.id).all(),
     ])
-    data.vendor_profile = vendor
+    data.vendor_profile = redactedVendorProfile(vendor)
     data.contacts = contacts
     data.invoices = invoices
     data.calendar_events = events.results

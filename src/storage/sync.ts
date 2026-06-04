@@ -18,9 +18,10 @@
 import type { Contact, Wedding } from '../types'
 import type { StorageBackend, FileMeta } from './types'
 import { parseMarkdown, ParseError } from './markdown'
-import { markdownToContact, contactCachedData } from './contacts'
+import { markdownToContact, contactCachedData, syncToContactsTable } from './contacts'
 import { markdownToWedding, weddingCachedData } from './weddings'
 import { isIgnoredPath } from './github'
+export { checkForExternalChange, recordConflict } from './conflicts'
 
 export type SyncResult = {
   indexed: number    // new files found and indexed
@@ -134,10 +135,13 @@ async function syncEntityType(
         const contact = markdownToContact(doc, vendorId)
         entityId = contact.id
         cachedData = contactCachedData(contact)
+        await syncToContactsTable(db, contact)
       } else {
         const wedding = markdownToWedding(doc)
         entityId = wedding.id
         cachedData = weddingCachedData(wedding)
+        await syncToWeddingsTable(db, wedding)
+        await ensureSyncedWeddingMembership(db, vendorId, wedding)
       }
 
       // Upsert the index row
@@ -207,53 +211,6 @@ async function listAllFiles(
 // ────────────────────────────────────────────
 // Conflict detection helpers
 // ────────────────────────────────────────────
-
-/**
- * Check if a file has been modified since we last read it.
- * Returns the new etag if changed, null if unchanged.
- */
-export async function checkForExternalChange(
-  storage: StorageBackend,
-  filePath: string,
-  expectedEtag: string
-): Promise<string | null> {
-  const meta = await storage.head(filePath)
-  if (!meta) return null // file was deleted
-  return meta.etag !== expectedEtag ? meta.etag : null
-}
-
-/**
- * Record a conflict in D1 for the user to resolve.
- */
-export async function recordConflict(
-  db: D1Database,
-  vendorId: string,
-  entityType: 'contact' | 'wedding',
-  entityId: string,
-  filePath: string,
-  localContent: string,
-  remoteContent: string,
-  localEtag: string,
-  remoteEtag: string
-): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO file_conflicts
-        (vendor_id, entity_type, entity_id, file_path, local_content, remote_content, local_etag, remote_etag)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .bind(
-      vendorId,
-      entityType,
-      entityId,
-      filePath,
-      localContent,
-      remoteContent,
-      localEtag,
-      remoteEtag
-    )
-    .run()
-}
 
 /**
  * Resolve a conflict: apply the chosen resolution and clean up.
@@ -392,4 +349,110 @@ export async function rebuildIndex(
 
   // Full sync from scratch
   return syncVendor(storage, db, vendorId)
+}
+
+async function syncToWeddingsTable(
+  db: D1Database,
+  wedding: Wedding
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO weddings (
+        id, title, date, time, duration_hours, location, location_lat, location_lng,
+        status, ceremony_type, vendor_visibility, ceremony_location, reception_location,
+        reception_time, getting_ready_location, getting_ready_time, getting_ready_1_label,
+        getting_ready_2_location, getting_ready_2_label, getting_ready_2_time,
+        portrait_location, portrait_time, timeline_notes, dress_code, guest_count,
+        notes, created_by_user_id, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         title = excluded.title,
+         date = excluded.date,
+         time = excluded.time,
+         duration_hours = excluded.duration_hours,
+         location = excluded.location,
+         location_lat = excluded.location_lat,
+         location_lng = excluded.location_lng,
+         status = excluded.status,
+         ceremony_type = excluded.ceremony_type,
+         vendor_visibility = excluded.vendor_visibility,
+         ceremony_location = excluded.ceremony_location,
+         reception_location = excluded.reception_location,
+         reception_time = excluded.reception_time,
+         getting_ready_location = excluded.getting_ready_location,
+         getting_ready_time = excluded.getting_ready_time,
+         getting_ready_1_label = excluded.getting_ready_1_label,
+         getting_ready_2_location = excluded.getting_ready_2_location,
+         getting_ready_2_label = excluded.getting_ready_2_label,
+         getting_ready_2_time = excluded.getting_ready_2_time,
+         portrait_location = excluded.portrait_location,
+         portrait_time = excluded.portrait_time,
+         timeline_notes = excluded.timeline_notes,
+         dress_code = excluded.dress_code,
+         guest_count = excluded.guest_count,
+         notes = excluded.notes,
+         updated_at = excluded.updated_at`
+    )
+    .bind(
+      wedding.id,
+      wedding.title,
+      wedding.date,
+      wedding.time,
+      wedding.duration_hours,
+      wedding.location,
+      wedding.location_lat,
+      wedding.location_lng,
+      wedding.status,
+      wedding.ceremony_type,
+      wedding.vendor_visibility,
+      wedding.ceremony_location,
+      wedding.reception_location,
+      wedding.reception_time,
+      wedding.getting_ready_location,
+      wedding.getting_ready_time,
+      wedding.getting_ready_1_label,
+      wedding.getting_ready_2_location,
+      wedding.getting_ready_2_label,
+      wedding.getting_ready_2_time,
+      wedding.portrait_location,
+      wedding.portrait_time,
+      wedding.timeline_notes,
+      wedding.dress_code,
+      wedding.guest_count,
+      wedding.notes,
+      wedding.created_by_user_id,
+      wedding.created_at,
+      wedding.updated_at
+    )
+    .run()
+}
+
+async function ensureSyncedWeddingMembership(
+  db: D1Database,
+  vendorId: string,
+  wedding: Wedding
+): Promise<void> {
+  const vendor = await db
+    .prepare('SELECT user_id, category FROM vendor_profiles WHERE id = ?')
+    .bind(vendorId)
+    .first<{ user_id: string; category: string }>()
+
+  if (!vendor?.user_id) return
+
+  const existing = await db
+    .prepare('SELECT id FROM wedding_members WHERE wedding_id = ? AND user_id = ?')
+    .bind(wedding.id, vendor.user_id)
+    .first<{ id: string }>()
+
+  if (existing) return
+
+  await db
+    .prepare(
+      `INSERT INTO wedding_members
+        (wedding_id, user_id, role, vendor_profile_id, vendor_role, can_manage, is_financial_party, status, accepted_at)
+       VALUES (?, ?, 'vendor', ?, ?, 1, 0, 'active', datetime('now'))`
+    )
+    .bind(wedding.id, vendor.user_id, vendorId, vendor.category ?? null)
+    .run()
 }

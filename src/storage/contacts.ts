@@ -20,6 +20,7 @@ import type { StorageBackend, MarkdownDocument } from './types'
 import { parseMarkdown, serializeMarkdown } from './markdown'
 import { contactFilename, deduplicateFilename } from './slug'
 import { generateId } from '../lib/crypto'
+import { recordWriteConflict } from './conflicts'
 
 /** Frontmatter fields for a contact markdown file */
 type ContactFrontmatter = {
@@ -274,7 +275,7 @@ export async function getContact(
   db: D1Database,
   vendorId: string,
   contactId: string
-): Promise<{ contact: Contact; etag: string; filePath: string } | null> {
+): Promise<{ contact: Contact; etag: string; indexedEtag: string; filePath: string; rawContent: string } | null> {
   const indexRow = await db
     .prepare(
       'SELECT file_path, etag FROM file_index WHERE vendor_id = ? AND entity_type = ? AND entity_id = ?'
@@ -298,7 +299,9 @@ export async function getContact(
   return {
     contact,
     etag: file.meta.etag,
+    indexedEtag: indexRow.etag,
     filePath: indexRow.file_path,
+    rawContent: file.content,
   }
 }
 
@@ -424,7 +427,7 @@ export async function updateContact(
   const result = await getContact(storage, db, vendorId, contactId)
   if (!result) return
 
-  const { contact, filePath } = result
+  const { contact, filePath, etag: remoteEtag, indexedEtag, rawContent } = result
 
   // Merge updates into the contact
   const updated: Contact = { ...contact }
@@ -464,6 +467,20 @@ export async function updateContact(
   // Serialize and write
   const doc = contactToMarkdown(updated)
   const content = serializeMarkdown(doc)
+
+  if (remoteEtag !== indexedEtag) {
+    await recordWriteConflict(
+      db,
+      vendorId,
+      'contact',
+      contactId,
+      filePath,
+      content,
+      rawContent,
+      indexedEtag,
+      remoteEtag
+    )
+  }
 
   if (newFilePath !== filePath) {
     // Rename: write new file, update D1 index atomically, THEN delete old file.
@@ -642,7 +659,7 @@ async function listExistingFilenames(
  *
  * This will be removed once all queries migrate to file_index.
  */
-async function syncToContactsTable(
+export async function syncToContactsTable(
   db: D1Database,
   contact: Contact
 ): Promise<void> {

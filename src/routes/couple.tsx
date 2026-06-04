@@ -450,14 +450,20 @@ couple.get('/wedding/:id', async (c) => {
               .md-preview blockquote { border-left: 3px solid #d1d5db; padding-left: 1em; color: #6b7280; margin: 0.75em 0; }
               .md-preview hr { border: none; border-top: 1px solid #e5e7eb; margin: 1em 0; }
             ` }} />
+            <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
             <script dangerouslySetInnerHTML={{ __html: `
 (function() {
+  function safeMarkdown(src) {
+    if (!src) return '';
+    if (typeof marked === "undefined" || !marked.parse || !window.DOMPurify) return '';
+    return DOMPurify.sanitize(marked.parse(src));
+  }
   function render() {
     var el = document.getElementById("vendor-notes-preview");
     if (!el || typeof marked === "undefined") return;
     var src = ${JSON.stringify(wedding.notes)};
-    el.innerHTML = src ? marked.parse(src) : '';
+    el.innerHTML = safeMarkdown(src);
   }
   if (typeof marked !== "undefined") render();
   else window.addEventListener("load", render);
@@ -899,6 +905,17 @@ couple.post('/wedding/:id/edit', async (c) => {
   }
   const guestCountRaw = str('guest_count')
   const guest_count = guestCountRaw ? parseInt(guestCountRaw, 10) || null : null
+
+  const activeCoupleMembers = await getWeddingMembers(c.env.DB, weddingId)
+  const editableCoupleUserIds = new Set(
+    activeCoupleMembers.filter((m) => m.role === 'couple').map((m) => m.user_id)
+  )
+
+  for (let i = 0; i < 10; i++) {
+    const userId = body[`couple_user_id_${i}`]
+    if (typeof userId !== 'string' || !userId) break
+    if (!editableCoupleUserIds.has(userId)) return c.text('Forbidden', 403)
+  }
 
   await updateWedding(c.env.DB, weddingId, {
     title,

@@ -31,7 +31,8 @@ import { authenticateVendor, CARDDAV_HEADERS, CALDAV_HEADERS, xmlResponse, escXm
 import { AuthLayout } from './views/layouts/auth'
 import { getVendorWithEmail } from './db/vendors'
 import { getContact } from './storage/contacts'
-import { getStorage } from './storage'
+import { getStorageWithSecrets } from './storage'
+import { StorageConflictError } from './storage/conflicts'
 import { sendEmailMessage, newLeadEmail } from './services/email'
 import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, dailyDigest } from './services/notifications'
@@ -45,6 +46,31 @@ app.onError((err, c) => {
   const path = c.req.path
   const userAgent = c.req.header('user-agent') ?? 'unknown'
   const isHtmx = c.req.header('hx-request') === 'true'
+
+  if (err instanceof StorageConflictError) {
+    if (isHtmx) {
+      return c.html(
+        <div class="bg-papaya-100 border border-papaya-300/50 text-gray-700 text-sm rounded-xl p-3">
+          This file changed in your connected storage before we could save. We kept both versions and recorded a conflict for review.
+        </div>,
+        409
+      )
+    }
+
+    return c.html(
+      <AuthLayout title="Storage conflict">
+        <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8 text-center">
+          <div class="text-4xl mb-4">409</div>
+          <h2 class="text-xl font-bold mb-2">Storage conflict</h2>
+          <p class="text-sm text-gray-500 mb-6">This file changed in your connected storage before we could save. We kept both versions and recorded a conflict for review.</p>
+          <a href="/app" class="inline-block bg-horizon-600 text-white py-2.5 px-6 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
+            Back to dashboard
+          </a>
+        </div>
+      </AuthLayout>,
+      409
+    )
+  }
 
   // Log full error details for debugging
   console.error(JSON.stringify({
@@ -247,7 +273,7 @@ export default {
             continue
           }
 
-          const storage = getStorage(env, vendor)
+          const storage = await getStorageWithSecrets(env, vendor)
           const contactResult = await getContact(storage, env.DB, body.vendorId, body.contactId)
           if (!contactResult) {
             console.error('[QUEUE] contact not found', body.contactId)

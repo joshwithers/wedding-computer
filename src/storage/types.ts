@@ -82,7 +82,8 @@ export type StorageConfig = {
   git_repo?: string         // "owner/repo"
   git_branch?: string       // defaults to "main"
   git_path?: string         // subdirectory in repo, defaults to ""
-  git_access_token?: string // encrypted, stored in KV
+  git_access_token_ref?: string // KV reference
+  git_access_token?: string     // legacy raw token; do not write new configs with this
 }
 
 /**

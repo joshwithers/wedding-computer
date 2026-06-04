@@ -17,6 +17,7 @@ import type { Wedding } from '../types'
 import type { StorageBackend, MarkdownDocument } from './types'
 import { parseMarkdown, serializeMarkdown } from './markdown'
 import { weddingFolderName, deduplicateFilename } from './slug'
+import { recordWriteConflict } from './conflicts'
 
 /** Frontmatter fields for a wedding markdown file */
 type WeddingFrontmatter = {
@@ -191,10 +192,10 @@ export async function writeWeddingFile(
   // Check if this wedding already has a file
   const indexRow = await db
     .prepare(
-      'SELECT file_path FROM file_index WHERE vendor_id = ? AND entity_type = ? AND entity_id = ?'
+      'SELECT file_path, etag FROM file_index WHERE vendor_id = ? AND entity_type = ? AND entity_id = ?'
     )
     .bind(vendorId, 'wedding', wedding.id)
-    .first<{ file_path: string }>()
+    .first<{ file_path: string; etag: string }>()
 
   const desiredFolder = weddingFolder(wedding.title, wedding.date)
   const desiredPath = desiredFolder + 'wedding.md'
@@ -227,6 +228,20 @@ export async function writeWeddingFile(
 
   const oldPath = indexRow.file_path
   const oldFolder = oldPath.substring(0, oldPath.lastIndexOf('/') + 1)
+  const remoteFile = await storage.read(oldPath)
+  if (remoteFile && remoteFile.meta.etag !== indexRow.etag) {
+    await recordWriteConflict(
+      db,
+      vendorId,
+      'wedding',
+      wedding.id,
+      oldPath,
+      content,
+      remoteFile.content,
+      indexRow.etag,
+      remoteFile.meta.etag
+    )
+  }
 
   if (oldFolder === desiredFolder) {
     // ── Same folder: just update wedding.md in place ──

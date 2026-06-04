@@ -5,7 +5,7 @@ import { SharedHead } from '../views/head'
 import { getInvoiceByToken } from '../db/invoices'
 import { listPayments, updateInvoice } from '../db/invoices'
 import { updateContact } from '../storage/contacts'
-import { getStorage } from '../storage'
+import { getStorageWithSecrets } from '../storage'
 import { createActivity } from '../db/activities'
 import { getVendorById } from '../db/vendors'
 import { getContractByInvoice, signContract } from '../db/contracts'
@@ -302,7 +302,7 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
   if (invoice.contact_id) {
     if (Object.keys(contactUpdates).length > 0) {
       try {
-        const storage = getStorage(c.env, vendor)
+        const storage = await getStorageWithSecrets(c.env, vendor)
         await updateContact(storage, c.env.DB, invoice.vendor_id, invoice.contact_id, contactUpdates)
       } catch (err) {
         // Contact update is non-critical — the booking form submission

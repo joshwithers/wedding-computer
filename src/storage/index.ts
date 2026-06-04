@@ -6,7 +6,7 @@
  * - "git" (future): files synced with a GitHub/GitLab repo
  *
  * Usage in routes:
- *   const storage = getStorage(c.env, vendor)
+ *   const storage = await getStorageWithSecrets(c.env, vendor)
  *   const contact = await getContact(storage, c.env.DB, vendor.id, id)
  */
 
@@ -14,6 +14,7 @@ import type { Bindings, VendorProfile } from '../types'
 import type { StorageBackend, StorageConfig } from './types'
 import { R2StorageBackend } from './r2'
 import { GitHubStorageBackend } from './github'
+import { resolveSecret } from '../services/secrets'
 
 /**
  * Get the storage backend for a vendor.
@@ -57,4 +58,37 @@ export function getStorage(env: Bindings, vendor: VendorProfile): StorageBackend
     default:
       throw new Error(`Unknown storage type: ${storageType}`)
   }
+}
+
+export async function getStorageWithSecrets(
+  env: Bindings,
+  vendor: VendorProfile
+): Promise<StorageBackend> {
+  const storageType = vendor.storage_type ?? 'r2'
+
+  if (storageType !== 'git') {
+    return getStorage(env, vendor)
+  }
+
+  let config: StorageConfig | null = null
+  if (vendor.storage_config) {
+    try { config = JSON.parse(vendor.storage_config) } catch { /* ignore */ }
+  }
+
+  const token = await resolveSecret(env.KV, config?.git_access_token_ref ?? config?.git_access_token)
+  if (config?.git_repo && token) {
+    return new GitHubStorageBackend({
+      token,
+      repo: config.git_repo,
+      branch: config.git_branch ?? 'main',
+      path: config.git_path ?? '',
+    })
+  }
+
+  if (env.STORAGE) {
+    console.warn(`[storage] Vendor ${vendor.id} has git storage but missing config. Using R2.`)
+    return new R2StorageBackend(env.STORAGE, vendor.id)
+  }
+
+  throw new Error('Git storage is not fully configured and R2 is unavailable')
 }

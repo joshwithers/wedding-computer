@@ -14,6 +14,7 @@ import { serializeMarkdown, parseMarkdown } from '../markdown'
 import { MockStorageBackend } from './mock-storage'
 import { MockD1Database } from './mock-d1'
 import type { Contact } from '../../types'
+import { StorageConflictError } from '../conflicts'
 
 // Mock generateId to return predictable values
 vi.mock('../../lib/crypto', () => ({
@@ -657,6 +658,37 @@ describe('updateContact', () => {
     expect(doc.frontmatter.status).toBe('contacted')
     // Unchanged fields should be preserved
     expect(doc.frontmatter.first_name).toBe('Sarah')
+  })
+
+  it('records a conflict instead of overwriting an externally changed file', async () => {
+    const externallyEdited = makeContact({
+      email: 'external@example.com',
+      notes: 'Edited in Git.',
+    })
+    await storage.write(
+      'contacts/sarah-smith-james-wilson.md',
+      serializeMarkdown(contactToMarkdown(externallyEdited))
+    )
+
+    await expect(
+      updateContact(
+        storage,
+        db as unknown as D1Database,
+        VENDOR_ID,
+        'contact-001',
+        { email: 'local@example.com' }
+      )
+    ).rejects.toBeInstanceOf(StorageConflictError)
+
+    const conflicts = db.getTable('file_conflicts')
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].entity_type).toBe('contact')
+    expect(conflicts[0].local_content).toContain('local@example.com')
+    expect(conflicts[0].remote_content).toContain('external@example.com')
+
+    const file = await storage.read('contacts/sarah-smith-james-wilson.md')
+    expect(file!.content).toContain('external@example.com')
+    expect(file!.content).not.toContain('local@example.com')
   })
 
   it('silently does nothing when contact not found', async () => {

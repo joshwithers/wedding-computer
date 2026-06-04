@@ -13,7 +13,7 @@ import {
   deleteContact,
   countContactsByStatus,
 } from '../../storage/contacts'
-import { getStorage } from '../../storage'
+import { getStorageWithSecrets } from '../../storage'
 import type { StorageBackend } from '../../storage/types'
 import { needsMigration, migrateContacts } from '../../storage/migrate'
 import { listActivities, createActivity } from '../../db/activities'
@@ -24,6 +24,7 @@ import { draftEmail } from '../../services/ai'
 import { sendEmailMessage } from '../../services/email'
 import { auditLog } from '../../middleware/audit'
 import { track } from '../../services/analytics'
+import { resolveSecret } from '../../services/secrets'
 
 const STATUSES = [
   { value: 'new', label: 'New' },
@@ -42,9 +43,9 @@ const STATUSES = [
  * Try to get the storage backend for a vendor.
  * Returns null instead of throwing if R2 is unavailable.
  */
-function tryGetStorage(env: Bindings, vendor: VendorProfile): StorageBackend | null {
+async function tryGetStorage(env: Bindings, vendor: VendorProfile): Promise<StorageBackend | null> {
   try {
-    return getStorage(env, vendor)
+    return await getStorageWithSecrets(env, vendor)
   } catch {
     return null
   }
@@ -256,7 +257,7 @@ contacts.get('/app/contacts', async (c) => {
     // data still exists and the page can still render.
     try {
       if (await needsMigration(c.env.DB, vendor.id)) {
-        const storage = tryGetStorage(c.env, vendor)
+        const storage = await tryGetStorage(c.env, vendor)
         if (storage) {
           const migrationResult = await migrateContacts(storage, c.env.DB, vendor.id)
           console.log(
@@ -405,7 +406,7 @@ contacts.post('/app/contacts/new', async (c) => {
     }
 
     let contact: Contact
-    const storage = tryGetStorage(c.env, vendor)
+    const storage = await tryGetStorage(c.env, vendor)
     if (storage) {
       try {
         contact = await createContact(storage, c.env.DB, vendor.id, contactData)
@@ -436,7 +437,7 @@ contacts.get('/app/contacts/:id', async (c) => {
     let contact: Contact | null = null
 
     // Try storage-backed contact first
-    const storage = tryGetStorage(c.env, vendor)
+    const storage = await tryGetStorage(c.env, vendor)
     if (storage) {
       try {
         const result = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
@@ -618,7 +619,7 @@ contacts.get('/app/contacts/:id/edit', async (c) => {
   try {
     let contact: Contact | null = null
 
-    const storage = tryGetStorage(c.env, vendor)
+    const storage = await tryGetStorage(c.env, vendor)
     if (storage) {
       try {
         const result = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
@@ -689,7 +690,7 @@ contacts.post('/app/contacts/:id/edit', async (c) => {
       notes: trimOrNull(body.notes),
     }
 
-    const storage = tryGetStorage(c.env, vendor)
+    const storage = await tryGetStorage(c.env, vendor)
     if (storage) {
       try {
         await updateContact(storage, c.env.DB, vendor.id, contactId, updateData)
@@ -720,7 +721,7 @@ contacts.post('/app/contacts/:id/status', async (c) => {
 
     // Load the contact to get the old status for the activity log
     let oldContact: Contact | null = null
-    const storage = tryGetStorage(c.env, vendor)
+    const storage = await tryGetStorage(c.env, vendor)
     if (storage) {
       try {
         const result = await getContact(storage, c.env.DB, vendor.id, contactId)
@@ -809,7 +810,7 @@ contacts.post('/app/contacts/:id/notes', async (c) => {
   try {
     // Verify the contact exists (try storage, fall back to D1)
     let contactExists = false
-    const storage = tryGetStorage(c.env, vendor)
+    const storage = await tryGetStorage(c.env, vendor)
     if (storage) {
       try {
         const result = await getContact(storage, c.env.DB, vendor.id, contactId)
@@ -853,7 +854,7 @@ contacts.post('/app/contacts/:id/delete', async (c) => {
   try {
     await auditLog(c, 'contact_deleted', 'contact', contactId).catch(() => {})
 
-    const storage = tryGetStorage(c.env, vendor)
+    const storage = await tryGetStorage(c.env, vendor)
     if (storage) {
       try {
         await deleteContact(storage, c.env.DB, vendor.id, contactId)
@@ -882,7 +883,7 @@ contacts.get('/app/contacts/:id/email', async (c) => {
   try {
     let contact: Contact | null = null
 
-    const storage = tryGetStorage(c.env, vendor)
+    const storage = await tryGetStorage(c.env, vendor)
     if (storage) {
       try {
         const result = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
@@ -998,7 +999,7 @@ contacts.post('/app/contacts/:id/email/draft', async (c) => {
   try {
     let contact: Contact | null = null
 
-    const storage = tryGetStorage(c.env, vendor)
+    const storage = await tryGetStorage(c.env, vendor)
     if (storage) {
       try {
         const result = await getContact(storage, c.env.DB, vendor.id, contactId)
@@ -1017,6 +1018,7 @@ contacts.post('/app/contacts/:id/email/draft', async (c) => {
     const body = await c.req.parseBody()
     const purpose = String(body.purpose || 'Follow up on their enquiry')
 
+    const anthropicKey = await resolveSecret(c.env.KV, vendor.anthropic_api_key)
     const draft = await draftEmail(
       c.env.AI,
       {
@@ -1030,7 +1032,7 @@ contacts.post('/app/contacts/:id/email/draft', async (c) => {
         notes: contact.notes,
         purpose,
       },
-      vendor.anthropic_api_key,
+      anthropicKey,
     )
 
     return c.redirect(
@@ -1052,7 +1054,7 @@ contacts.post('/app/contacts/:id/email/send', async (c) => {
   try {
     let contact: Contact | null = null
 
-    const storage = tryGetStorage(c.env, vendor)
+    const storage = await tryGetStorage(c.env, vendor)
     if (storage) {
       try {
         const result = await getContact(storage, c.env.DB, vendor.id, contactId)
