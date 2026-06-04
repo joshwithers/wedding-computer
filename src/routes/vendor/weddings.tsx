@@ -238,13 +238,17 @@ function tryGetStorage(env: Bindings, vendor: VendorProfile) {
 /** Push a wedding to storage (GitHub/R2) after a D1 write. Best-effort — never blocks the response. */
 async function pushWeddingToStorage(env: Bindings, vendor: VendorProfile, weddingId: string) {
   const storage = tryGetStorage(env, vendor)
-  if (!storage) return
+  if (!storage) {
+    console.log(`[storage] No storage backend for vendor ${vendor.id} (type=${vendor.storage_type ?? 'none'})`)
+    return
+  }
   try {
     const wedding = await getWedding(env.DB, weddingId)
     if (!wedding) return
     await writeWeddingFile(storage, env.DB, vendor.id, wedding)
-  } catch (err) {
-    console.error(`[weddings] Failed to push wedding ${weddingId} to storage:`, err)
+    console.log(`[storage] Pushed wedding ${weddingId} to ${vendor.storage_type}`)
+  } catch (err: any) {
+    console.error(`[storage] FAILED push wedding ${weddingId}:`, err.message, err.stack?.split('\n').slice(0, 3).join(' | '))
   }
 }
 
@@ -254,8 +258,9 @@ async function pushLogToStorage(env: Bindings, vendor: VendorProfile, weddingId:
   try {
     const md = await exportWeddingLogMarkdown(env.DB, weddingId, weddingTitle)
     await storage.write(`weddings/${weddingId}-log.md`, md)
-  } catch (err) {
-    console.error(`[weddings] Failed to push log ${weddingId} to storage:`, err)
+    console.log(`[storage] Pushed log ${weddingId} to ${vendor.storage_type}`)
+  } catch (err: any) {
+    console.error(`[storage] FAILED push log ${weddingId}:`, err.message)
   }
 }
 
@@ -1014,8 +1019,6 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     const title = requireString(body.title, 'Title')
     const oldWedding = await getWedding(c.env.DB, weddingId)
     const newStatus = (body.status as Wedding['status']) || undefined
-    const durationRaw = trimOrNull(body.duration_hours)
-    const durationHours = durationRaw ? parseFloat(durationRaw) : null
     const startTime = trimOrNull(body.time)
 
     const gettingReadyTime = trimOrNull(body.getting_ready_time)
@@ -1023,13 +1026,12 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     const receptionTime = trimOrNull(body.reception_time)
     const portraitTime = trimOrNull(body.portrait_time)
 
-    await updateWedding(c.env.DB, weddingId, {
+    // Build update payload — only include fields the form actually submitted
+    const updateData: Record<string, unknown> = {
       title,
       date: trimOrNull(body.date),
       time: startTime,
-      duration_hours: durationHours && !isNaN(durationHours) ? durationHours : null,
       location: trimOrNull(body.location),
-      status: newStatus,
       ceremony_type: trimOrNull(body.ceremony_type),
       ceremony_location: trimOrNull(body.ceremony_location),
       reception_location: trimOrNull(body.reception_location),
@@ -1043,7 +1045,19 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       portrait_location: trimOrNull(body.portrait_location),
       portrait_time: portraitTime,
       notes: trimOrNull(body.notes),
-    })
+    }
+    // Only include status if the form submitted one (avoid clearing it)
+    if (newStatus) updateData.status = newStatus
+    // Only update duration_hours if the form included it
+    if (body.duration_hours !== undefined) {
+      const durationRaw = trimOrNull(body.duration_hours)
+      const durationHours = durationRaw ? parseFloat(durationRaw) : null
+      updateData.duration_hours = durationHours && !isNaN(durationHours) ? durationHours : null
+    }
+
+    console.log('[weddings] edit', weddingId, 'fields:', Object.keys(updateData).join(','))
+    await updateWedding(c.env.DB, weddingId, updateData as any)
+    console.log('[weddings] edit', weddingId, 'updateWedding succeeded')
 
     // Log changes
     if (oldWedding) {
@@ -1078,7 +1092,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       if (weddingDate) {
         await syncWeddingCalendarEvents(c.env.DB, vendor.id, weddingId, title, weddingDate, {
           ceremonyTime: startTime,
-          ceremonyDuration: durationHours && !isNaN(durationHours) ? durationHours : 1,
+          ceremonyDuration: oldWedding?.duration_hours ?? 1,
           ceremonyLocation: trimOrNull(body.ceremony_location),
           gettingReadyTime: gettingReadyTime,
           gettingReadyLocation: trimOrNull(body.getting_ready_location),
