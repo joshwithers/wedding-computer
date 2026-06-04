@@ -19,7 +19,7 @@ import { getContact, updateContact } from '../../storage/contacts'
 import { getStorage } from '../../storage'
 import { writeWeddingFile } from '../../storage/weddings'
 import { createActivity } from '../../db/activities'
-import type { Bindings, VendorProfile } from '../../types'
+import type { Bindings, VendorProfile, Wedding } from '../../types'
 import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, formatTime, daysUntil, addHoursToTime, subtractHoursFromTime } from '../../lib/date'
@@ -28,6 +28,9 @@ import { track } from '../../services/analytics'
 import { getWeddingTodo, upsertWeddingTodo } from '../../db/todos'
 import { listTemplates, getDefaultTemplate } from '../../db/todos'
 import { TodoSection } from './checklists'
+import { appendWeddingLog, listWeddingLog, exportWeddingLogMarkdown } from '../../db/wedding-log'
+import { listCoupleVendors } from '../../db/couple-vendors'
+import { buildCredits, formatInstagramCredits, formatWebCredits, formatHtmlCredits } from '../../services/wedding-credits'
 
 /**
  * Sync per-location calendar events for a wedding.
@@ -184,6 +187,38 @@ async function syncWeddingCalendarEvents(
   }
 }
 
+/** Compare old and new wedding data and return human-readable change descriptions. */
+function diffWeddingChanges(
+  oldW: Wedding,
+  newData: Record<string, string | number | null | undefined>
+): string[] {
+  const labels: Record<string, string> = {
+    title: 'Title', date: 'Date', time: 'Ceremony time', location: 'City/Region',
+    status: 'Status', ceremony_type: 'Ceremony type',
+    ceremony_location: 'Ceremony venue', reception_location: 'Reception venue',
+    reception_time: 'Reception time', getting_ready_location: 'Getting ready (1) venue',
+    getting_ready_time: 'Getting ready (1) time', getting_ready_1_label: 'Getting ready (1) label',
+    getting_ready_2_location: 'Getting ready (2) venue', getting_ready_2_label: 'Getting ready (2) label',
+    getting_ready_2_time: 'Getting ready (2) time', portrait_location: 'Portraits venue',
+    portrait_time: 'Portraits time', notes: 'Notes',
+  }
+
+  const changes: string[] = []
+  for (const [key, label] of Object.entries(labels)) {
+    const oldVal = (oldW as Record<string, unknown>)[key] ?? null
+    const newVal = newData[key] ?? null
+    if (newVal === undefined) continue // field not in form
+    if (String(oldVal ?? '') !== String(newVal ?? '')) {
+      if (newVal) {
+        changes.push(`${label} changed to "${newVal}"`)
+      } else {
+        changes.push(`${label} cleared`)
+      }
+    }
+  }
+  return changes
+}
+
 const WEDDING_STATUSES = [
   { value: 'planning', label: 'Planning' },
   { value: 'confirmed', label: 'Confirmed' },
@@ -210,6 +245,17 @@ async function pushWeddingToStorage(env: Bindings, vendor: VendorProfile, weddin
     await writeWeddingFile(storage, env.DB, vendor.id, wedding)
   } catch (err) {
     console.error(`[weddings] Failed to push wedding ${weddingId} to storage:`, err)
+  }
+}
+
+async function pushLogToStorage(env: Bindings, vendor: VendorProfile, weddingId: string, weddingTitle: string) {
+  const storage = tryGetStorage(env, vendor)
+  if (!storage) return
+  try {
+    const md = await exportWeddingLogMarkdown(env.DB, weddingId, weddingTitle)
+    await storage.write(`weddings/${weddingId}-log.md`, md)
+  } catch (err) {
+    console.error(`[weddings] Failed to push log ${weddingId} to storage:`, err)
   }
 }
 
@@ -338,6 +384,7 @@ weddings.post('/app/weddings/new', async (c) => {
 
     // Push wedding file to storage (GitHub/R2) — best-effort, don't block
     pushWeddingToStorage(c.env, vendor, wedding.id).catch(() => {})
+    appendWeddingLog(c.env.DB, wedding.id, user.id, 'Wedding created').catch(() => {})
 
     // Auto-deploy default checklist template if one exists
     const defaultTemplate = await getDefaultTemplate(c.env.DB, vendor.id)
@@ -561,6 +608,13 @@ weddings.get('/app/weddings/:id', async (c) => {
   const weddingTodo = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
   const todoTemplates = await listTemplates(c.env.DB, vendor.id)
 
+  // Credits
+  const coupleVendors = await listCoupleVendors(c.env.DB, weddingId)
+  const credits = buildCredits(members, coupleVendors)
+
+  // Wedding log
+  const log = await listWeddingLog(c.env.DB, weddingId, 20)
+
   return c.html(
     <AppLayout
       title={wedding.title}
@@ -697,6 +751,37 @@ weddings.get('/app/weddings/:id', async (c) => {
           uploaded={!!uploaded}
           deleted={!!deleted}
         />
+
+        {/* Vendor Credits */}
+        {credits.length > 0 && (
+          <WeddingCredits credits={credits} weddingTitle={wedding.title} />
+        )}
+
+        {/* Wedding Log */}
+        {log.length > 0 && (
+          <div class="mt-6">
+            <h3 class="text-sm font-bold text-gray-500 mb-3">Activity Log</h3>
+            <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
+              <div class="space-y-2">
+                {log.map((entry) => (
+                  <div class="flex items-start gap-2 text-xs">
+                    <span class="text-gray-400 whitespace-nowrap shrink-0">
+                      {entry.created_at.replace('T', ' ').slice(0, 16)}
+                    </span>
+                    <span class="text-gray-500">
+                      <strong class="text-gray-700">{entry.user_name ?? 'System'}</strong>
+                      {': '}
+                      {entry.action}
+                      {entry.detail && (
+                        <span class="text-gray-400"> — {entry.detail}</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Invite / add people — tucked away at the bottom */}
         {canManage && (
@@ -949,6 +1034,30 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       notes: trimOrNull(body.notes),
     })
 
+    // Log changes
+    if (oldWedding) {
+      const changes = diffWeddingChanges(oldWedding, {
+        title, date: trimOrNull(body.date), time: startTime,
+        location: trimOrNull(body.location), status: newStatus as string | undefined,
+        ceremony_type: trimOrNull(body.ceremony_type),
+        ceremony_location: trimOrNull(body.ceremony_location),
+        reception_location: trimOrNull(body.reception_location),
+        reception_time: receptionTime,
+        getting_ready_location: trimOrNull(body.getting_ready_location),
+        getting_ready_time: gettingReadyTime,
+        getting_ready_1_label: trimOrNull(body.getting_ready_1_label),
+        getting_ready_2_location: trimOrNull(body.getting_ready_2_location),
+        getting_ready_2_label: trimOrNull(body.getting_ready_2_label),
+        getting_ready_2_time: gettingReady2Time,
+        portrait_location: trimOrNull(body.portrait_location),
+        portrait_time: portraitTime,
+        notes: trimOrNull(body.notes),
+      })
+      if (changes.length > 0) {
+        await appendWeddingLog(c.env.DB, weddingId, user.id, 'Wedding updated', changes.join('; '))
+      }
+    }
+
     // Sync all wedding calendar events
     const vendor = c.get('vendor')!
     try {
@@ -974,8 +1083,9 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       console.error('[weddings] Failed to sync calendar events:', calErr)
     }
 
-    // Push updated wedding to storage (GitHub/R2)
+    // Push updated wedding + log to storage (GitHub/R2)
     pushWeddingToStorage(c.env, vendor, weddingId).catch(() => {})
+    pushLogToStorage(c.env, vendor, weddingId, title).catch(() => {})
 
     if (newStatus === 'confirmed' && oldWedding?.status !== 'confirmed') {
       track(c.env.DB, c.get('vendor')!.id, 'booking_confirmed', { weddingId })
@@ -1036,7 +1146,6 @@ export default weddings
 
 // ─── Components ───
 
-import type { Wedding } from '../../types'
 import type { WeddingWithRole } from '../../db/weddings'
 import type { DocumentWithUploader } from '../../db/documents'
 
@@ -1096,6 +1205,66 @@ function WeddingStatusBadge({ status }: { status: string }) {
     <span class={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-gray-100 text-gray-600'}`}>
       {status.charAt(0).toUpperCase() + status.slice(1)}
     </span>
+  )
+}
+
+type CreditEntry = { role: string; name: string; instagram: string | null; website: string | null }
+
+function WeddingCredits({ credits, weddingTitle }: { credits: CreditEntry[]; weddingTitle: string }) {
+  const igText = formatInstagramCredits(credits)
+  const mdText = formatWebCredits(credits)
+  const htmlText = formatHtmlCredits(credits)
+
+  return (
+    <div class="mt-6">
+      <h3 class="text-sm font-bold text-gray-500 mb-3">Vendor Credits</h3>
+      <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
+        {/* Preview */}
+        <div class="space-y-1 mb-4">
+          {credits.map((c) => (
+            <div class="flex items-center gap-2 text-sm">
+              <span class="text-gray-500 font-medium w-28 shrink-0 text-right">{c.role}:</span>
+              <span class="text-gray-900">{c.name}</span>
+              {c.instagram && (
+                <a
+                  href={`https://instagram.com/${c.instagram.replace(/^@/, '')}`}
+                  target="_blank"
+                  rel="noopener"
+                  class="text-xs text-horizon-600 hover:underline"
+                >
+                  @{c.instagram.replace(/^@/, '')}
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Copy buttons */}
+        <div class="flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+          <button
+            type="button"
+            onclick={`navigator.clipboard.writeText(${JSON.stringify(igText)});this.textContent='Copied!'`}
+            class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg font-medium transition-colors"
+          >
+            Copy for Instagram
+          </button>
+          <button
+            type="button"
+            onclick={`navigator.clipboard.writeText(${JSON.stringify(mdText)});this.textContent='Copied!'`}
+            class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg font-medium transition-colors"
+          >
+            Copy Markdown
+          </button>
+          <button
+            type="button"
+            onclick={`navigator.clipboard.writeText(${JSON.stringify(htmlText)});this.textContent='Copied!'`}
+            class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg font-medium transition-colors"
+          >
+            Copy HTML
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 

@@ -508,6 +508,18 @@ CREATE INDEX IF NOT EXISTS idx_file_index_entity ON file_index(vendor_id, entity
 CREATE INDEX IF NOT EXISTS idx_file_conflicts_vendor ON file_conflicts(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_file_conflicts_pending ON file_conflicts(vendor_id, status);
 
+-- Append-only wedding changelog
+CREATE TABLE IF NOT EXISTS wedding_log (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  wedding_id TEXT NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
+  user_id TEXT REFERENCES users(id),
+  action TEXT NOT NULL,
+  detail TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_wedding_log_wedding ON wedding_log(wedding_id, created_at);
+
 -- Todo checklist templates and per-wedding checklists
 CREATE TABLE IF NOT EXISTS todo_templates (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),

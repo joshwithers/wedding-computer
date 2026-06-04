@@ -162,6 +162,15 @@ export type Wedding = {
   updated_at: string
 }
 
+export type WeddingLogEntry = {
+  id: string
+  wedding_id: string
+  user_id: string | null
+  action: string
+  detail: string | null
+  created_at: string
+}
+
 export type TodoTemplate = {
   id: string
   vendor_id: string
