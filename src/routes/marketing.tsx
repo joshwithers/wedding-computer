@@ -796,8 +796,13 @@ Backup plan: The Calyx indoor space.
       john-james-doe.md
       jane-wilson-2.md
     weddings/
-      sarah-james-2026-12-15.md
-      smith-wilson-wedding.md`}</code></pre>
+      2026-12-15-sarah-james/
+        wedding.md
+        todo.md
+        log.md
+        files/
+      smith-wilson/
+        wedding.md`}</code></pre>
         </div>
 
         {/* YAML tips */}
@@ -1060,8 +1065,13 @@ Budget: $3,000 - $5,000`}</code></pre>
   john-doe.md
   jane-wilson-james-brown.md
 weddings/
-  sarah-james-2026-12-15.md
-  doe-wedding.md`}</code></pre>
+  2026-12-15-sarah-james/
+    wedding.md
+    todo.md
+    log.md
+    files/
+  doe-wedding/
+    wedding.md`}</code></pre>
         </div>
         <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
           <p>

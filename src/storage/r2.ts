@@ -3,7 +3,7 @@
  *
  * Each vendor's files are stored under a prefix:
  *   vendors/{vendor_id}/contacts/john-doe.md
- *   vendors/{vendor_id}/weddings/smith-jones-2026.md
+ *   vendors/{vendor_id}/weddings/2026-07-12-smith-jones/wedding.md
  *
  * R2 provides ETags on every object, which we use for
  * conflict detection. When a file is read, the etag is

@@ -66,6 +66,20 @@ export function weddingFilename(
 }
 
 /**
+ * Generate a wedding folder name: {date}-{title-slug}/
+ *
+ *   "Sarah & James", "2026-07-12" → "2026-07-12-sarah-james"
+ *   "Smith-Jones", null           → "smith-jones"
+ */
+export function weddingFolderName(
+  title: string,
+  date?: string | null
+): string {
+  const titleSlug = slugify(title)
+  return date ? `${date}-${titleSlug}` : titleSlug
+}
+
+/**
  * Given an existing set of filenames, ensure uniqueness by
  * appending -2, -3, etc. if needed.
  *

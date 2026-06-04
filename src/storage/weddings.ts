@@ -1,13 +1,12 @@
 /**
  * Wedding markdown format and data access layer.
  *
- * Weddings are stored as markdown files in the owner
- * vendor's storage:
- *   vendors/{vendor_id}/weddings/sarah-james-2026-12-15.md
- *
- * Weddings are multi-party entities: couples and other vendors
- * access them through the web app, but the canonical file
- * lives in the creating vendor's storage.
+ * Each wedding gets its own folder in the vendor's storage:
+ *   weddings/2026-07-12-sarah-james/
+ *     wedding.md    ← wedding details
+ *     todo.md       ← checklist (written by checklists route)
+ *     log.md        ← changelog (written by weddings route)
+ *     files/        ← uploaded documents and images
  *
  * D1 remains the primary query path for weddings (joins with
  * wedding_members, invoices, etc.), with the markdown file
@@ -17,7 +16,7 @@
 import type { Wedding } from '../types'
 import type { StorageBackend, MarkdownDocument } from './types'
 import { parseMarkdown, serializeMarkdown } from './markdown'
-import { weddingFilename, deduplicateFilename } from './slug'
+import { weddingFolderName, deduplicateFilename } from './slug'
 
 /** Frontmatter fields for a wedding markdown file */
 type WeddingFrontmatter = {
@@ -51,8 +50,13 @@ type WeddingFrontmatter = {
   updated_at: string
 }
 
-/** Directory within a vendor's storage */
+/** Top-level directory for all wedding folders */
 const WEDDINGS_DIR = 'weddings/'
+
+/** Build the folder path for a wedding: weddings/2026-07-12-sarah-james/ */
+export function weddingFolder(title: string, date?: string | null): string {
+  return WEDDINGS_DIR + weddingFolderName(title, date) + '/'
+}
 
 // ────────────────────────────────────────────
 // Serialization: Wedding ↔ Markdown
@@ -193,11 +197,9 @@ export async function writeWeddingFile(
   if (indexRow) {
     filePath = indexRow.file_path
   } else {
-    // Generate a new filename
-    const desiredFilename = weddingFilename(wedding.title, wedding.date)
-    const existing = await listExistingFilenames(storage)
-    const filename = deduplicateFilename(desiredFilename, existing)
-    filePath = WEDDINGS_DIR + filename
+    // New wedding → create folder: weddings/2026-07-12-sarah-james/wedding.md
+    const folder = weddingFolder(wedding.title, wedding.date)
+    filePath = folder + 'wedding.md'
   }
 
   const doc = weddingToMarkdown(wedding)
@@ -307,11 +309,16 @@ export async function deleteWeddingFile(
 // Helpers
 // ────────────────────────────────────────────
 
-async function listExistingFilenames(
+async function listExistingFolders(
   storage: StorageBackend
 ): Promise<Set<string>> {
   const result = await storage.list(WEDDINGS_DIR)
-  return new Set(
-    result.files.map((f) => f.path.slice(WEDDINGS_DIR.length))
-  )
+  // Extract folder names from paths like "weddings/2026-07-12-sarah-james/wedding.md"
+  const folders = new Set<string>()
+  for (const f of result.files) {
+    const rel = f.path.slice(WEDDINGS_DIR.length)
+    const slashIdx = rel.indexOf('/')
+    if (slashIdx > 0) folders.add(rel.slice(0, slashIdx))
+  }
+  return folders
 }

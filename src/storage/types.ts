@@ -46,7 +46,10 @@ export type ConflictResolution = 'keep_remote' | 'keep_local' | 'merge'
  *
  * All paths are relative to the vendor's root:
  *   contacts/john-doe.md
- *   weddings/smith-jones-2026.md
+ *   weddings/2026-07-12-smith-jones/wedding.md
+ *   weddings/2026-07-12-smith-jones/todo.md
+ *   weddings/2026-07-12-smith-jones/log.md
+ *   weddings/2026-07-12-smith-jones/files/photo.jpg
  */
 export interface StorageBackend {
   /** Read a file. Returns null if not found. */

@@ -4,7 +4,7 @@
  * Uses the GitHub Contents API to read/write files. Each vendor's data
  * lives in the repo root (or a configured subdirectory):
  *   contacts/john-doe.md
- *   weddings/smith-jones-2026.md
+ *   weddings/2026-07-12-smith-jones/wedding.md
  *
  * This is a push-on-write backend: every create/update/delete in the
  * web app is immediately pushed to GitHub. External edits (made in

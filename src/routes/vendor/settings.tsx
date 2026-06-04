@@ -1128,7 +1128,8 @@ settings.get('/app/settings/export-markdown', async (c) => {
 
     for (const w of weddings) {
       lines.push(`${'='.repeat(60)}`)
-      lines.push(`FILE: weddings/${slugify(w.title || 'untitled', '')}.md`)
+      const dateSlug = w.date ? `${w.date}-` : ''
+      lines.push(`FILE: weddings/${dateSlug}${slugify(w.title || 'untitled', '')}/wedding.md`)
       lines.push(`${'='.repeat(60)}`)
       lines.push('---')
       lines.push(`id: "${w.id}"`)

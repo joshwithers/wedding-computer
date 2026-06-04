@@ -17,7 +17,8 @@ import type { StorageBackend } from './types'
 import { contactToMarkdown, contactCachedData } from './contacts'
 import { weddingToMarkdown, weddingCachedData } from './weddings'
 import { serializeMarkdown } from './markdown'
-import { contactFilename, weddingFilename, deduplicateFilename } from './slug'
+import { contactFilename, deduplicateFilename } from './slug'
+import { weddingFolder } from './weddings'
 
 export type MigrationResult = {
   migrated: number
@@ -140,8 +141,6 @@ export async function migrateWeddings(
     .bind(userId)
     .all<Wedding>()
 
-  const existingFiles = await listExistingWeddingFilenames(storage)
-
   for (const wedding of weddings.results) {
     if (indexedIds.has(wedding.id)) {
       result.skipped++
@@ -149,10 +148,8 @@ export async function migrateWeddings(
     }
 
     try {
-      const desiredFilename = weddingFilename(wedding.title, wedding.date)
-      const filename = deduplicateFilename(desiredFilename, existingFiles)
-      const filePath = 'weddings/' + filename
-      existingFiles.add(filename)
+      const folder = weddingFolder(wedding.title, wedding.date)
+      const filePath = folder + 'wedding.md'
 
       const doc = weddingToMarkdown(wedding)
       const content = serializeMarkdown(doc)
@@ -222,9 +219,3 @@ async function listExistingContactFilenames(
   return new Set(result.files.map((f) => f.path.slice('contacts/'.length)))
 }
 
-async function listExistingWeddingFilenames(
-  storage: StorageBackend
-): Promise<Set<string>> {
-  const result = await storage.list('weddings/')
-  return new Set(result.files.map((f) => f.path.slice('weddings/'.length)))
-}

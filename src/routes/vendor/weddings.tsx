@@ -256,8 +256,12 @@ async function pushLogToStorage(env: Bindings, vendor: VendorProfile, weddingId:
   const storage = tryGetStorage(env, vendor)
   if (!storage) return
   try {
+    const wedding = await getWedding(env.DB, weddingId)
+    if (!wedding) return
+    const { weddingFolder } = await import('../../storage/weddings')
+    const folder = weddingFolder(wedding.title, wedding.date)
     const md = await exportWeddingLogMarkdown(env.DB, weddingId, weddingTitle)
-    await storage.write(`weddings/${weddingId}-log.md`, md)
+    await storage.write(`${folder}log.md`, md)
     console.log(`[storage] Pushed log ${weddingId} to ${vendor.storage_type}`)
   } catch (err: any) {
     console.error(`[storage] FAILED push log ${weddingId}:`, err.message)

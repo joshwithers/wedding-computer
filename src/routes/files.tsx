@@ -140,8 +140,9 @@ files.post('/files/upload/:weddingId', csrf, async (c) => {
 
       if (managingVendor) {
         const storage = getStorage(c.env, managingVendor)
-        const slug = wedding.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-        const storagePath = `weddings/files/${slug}/${file.name}`
+        const { weddingFolder } = await import('../storage/weddings')
+        const folder = weddingFolder(wedding.title, wedding.date)
+        const storagePath = `${folder}files/${file.name}`
         const arrayBuf = await c.env.STORAGE.get(r2Key).then((obj) => obj?.arrayBuffer())
         if (arrayBuf) {
           await storage.writeBinary(storagePath, arrayBuf, file.type)
@@ -243,8 +244,9 @@ files.post('/files/:id/delete', csrf, async (c) => {
 
       if (managingVendor) {
         const storage = getStorage(c.env, managingVendor)
-        const slug = wedding.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-        const storagePath = `weddings/files/${slug}/${doc.filename}`
+        const { weddingFolder } = await import('../storage/weddings')
+        const folder = weddingFolder(wedding.title, wedding.date)
+        const storagePath = `${folder}files/${doc.filename}`
         await storage.delete(storagePath)
       }
     }
