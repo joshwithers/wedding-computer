@@ -64,6 +64,7 @@ async function syncWeddingCalendarEvents(
     portraitLocation: string | null
     receptionTime: string | null
     receptionLocation: string | null
+    receptionDuration: number
     bumpInTime: string | null
     bumpOutTime: string | null
   }
@@ -134,7 +135,7 @@ async function syncWeddingCalendarEvents(
       tag: 'wc:reception',
       title: `${pfx}${weddingTitle} — Reception`,
       startTime: data.receptionTime,
-      endTime: data.receptionTime ? addHoursToTime(data.receptionTime, 3) : null,
+      endTime: data.receptionTime ? addHoursToTime(data.receptionTime, data.receptionDuration) : null,
       location: data.receptionLocation,
       shouldExist: !!(data.receptionTime && data.receptionLocation),
     },
@@ -1092,6 +1093,11 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       emoji,
       bump_in_time: bumpInTime,
       bump_out_time: bumpOutTime,
+      reception_duration_hours: (() => {
+        const raw = trimOrNull(body.reception_duration_hours)
+        const val = raw ? parseFloat(raw) : null
+        return val && !isNaN(val) ? val : null
+      })(),
       notes: trimOrNull(body.notes),
     }
     // Only include status if the form submitted one (avoid clearing it)
@@ -1154,6 +1160,11 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
           portraitLocation: trimOrNull(body.portrait_location),
           receptionTime: receptionTime,
           receptionLocation: trimOrNull(body.reception_location),
+          receptionDuration: (() => {
+            const raw = trimOrNull(body.reception_duration_hours)
+            const val = raw ? parseFloat(raw) : null
+            return val && !isNaN(val) ? val : 3
+          })(),
           bumpInTime,
           bumpOutTime,
         })
@@ -2168,14 +2179,31 @@ function WeddingForm({
           />
 
           {/* Reception */}
-          <PlacesField
-            name="reception_location"
-            label="Reception"
-            value={wedding.reception_location}
-            placeholder="Reception venue"
-            timeName="reception_time"
-            timeValue={wedding.reception_time}
-          />
+          <div class="flex gap-3 items-end">
+            <div class="flex-1">
+              <PlacesField
+                name="reception_location"
+                label="Reception"
+                value={wedding.reception_location}
+                placeholder="Reception venue"
+                timeName="reception_time"
+                timeValue={wedding.reception_time}
+              />
+            </div>
+            <div class="shrink-0">
+              <label class="block text-xs font-medium text-gray-500 mb-1">Duration</label>
+              <select
+                name="reception_duration_hours"
+                class="w-24 border border-gray-200 rounded-xl px-2 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600"
+              >
+                {[1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8].map((h) => (
+                  <option value={String(h)} selected={h === (wedding.reception_duration_hours ?? 3)}>
+                    {h % 1 === 0 ? `${h}h` : `${Math.floor(h)}h 30m`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
           {/* Bump out */}
           <div>

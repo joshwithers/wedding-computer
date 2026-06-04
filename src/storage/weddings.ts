@@ -46,6 +46,7 @@ type WeddingFrontmatter = {
   emoji?: string | null
   bump_in_time?: string | null
   bump_out_time?: string | null
+  reception_duration_hours?: number | null
   dress_code?: string | null
   guest_count?: number | null
   timeline_notes?: string | null
@@ -97,6 +98,7 @@ export function weddingToMarkdown(wedding: Wedding): MarkdownDocument<WeddingFro
     emoji: wedding.emoji,
     bump_in_time: wedding.bump_in_time,
     bump_out_time: wedding.bump_out_time,
+    reception_duration_hours: wedding.reception_duration_hours,
     dress_code: wedding.dress_code,
     guest_count: wedding.guest_count,
     timeline_notes: wedding.timeline_notes,
@@ -154,6 +156,7 @@ export function markdownToWedding(
     emoji: fm.emoji ?? null,
     bump_in_time: fm.bump_in_time ?? null,
     bump_out_time: fm.bump_out_time ?? null,
+    reception_duration_hours: fm.reception_duration_hours ?? null,
     dress_code: fm.dress_code ?? null,
     guest_count: fm.guest_count ?? null,
     timeline_notes: fm.timeline_notes ?? null,

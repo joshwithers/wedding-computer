@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS weddings (
   emoji TEXT,
   bump_in_time TEXT,
   bump_out_time TEXT,
+  reception_duration_hours REAL,
   timeline_notes TEXT,
   dress_code TEXT,
   guest_count INTEGER,

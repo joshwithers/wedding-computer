@@ -156,6 +156,7 @@ export type Wedding = {
   emoji: string | null
   bump_in_time: string | null
   bump_out_time: string | null
+  reception_duration_hours: number | null
   timeline_notes: string | null
   dress_code: string | null
   guest_count: number | null
