@@ -65,8 +65,6 @@ async function syncWeddingCalendarEvents(
     receptionTime: string | null
     receptionLocation: string | null
     receptionDuration: number
-    bumpInTime: string | null
-    bumpOutTime: string | null
   }
 ) {
   // Define the events we want to exist
@@ -83,14 +81,6 @@ async function syncWeddingCalendarEvents(
   const pfx = data.emoji ? `${data.emoji} ` : ''
 
   const events: PlannedEvent[] = [
-    {
-      tag: 'wc:bump_in',
-      title: `${pfx}${weddingTitle} — Bump in`,
-      startTime: data.bumpInTime,
-      endTime: data.ceremonyTime ? subtractHoursFromTime(data.ceremonyTime, 1) : (data.bumpInTime ? addHoursToTime(data.bumpInTime, 1) : null),
-      location: data.ceremonyLocation,
-      shouldExist: !!data.bumpInTime,
-    },
     {
       tag: 'wc:getting_ready_1',
       title: `${pfx}${weddingTitle} — Getting ready${data.gettingReady1Label ? ` (${data.gettingReady1Label})` : ''}`,
@@ -138,14 +128,6 @@ async function syncWeddingCalendarEvents(
       endTime: data.receptionTime ? addHoursToTime(data.receptionTime, data.receptionDuration) : null,
       location: data.receptionLocation,
       shouldExist: !!(data.receptionTime && data.receptionLocation),
-    },
-    {
-      tag: 'wc:bump_out',
-      title: `${pfx}${weddingTitle} — Bump out`,
-      startTime: data.bumpOutTime,
-      endTime: data.bumpOutTime ? addHoursToTime(data.bumpOutTime, 1) : null,
-      location: data.receptionLocation ?? data.ceremonyLocation,
-      shouldExist: !!data.bumpOutTime,
     },
   ]
 
@@ -210,6 +192,76 @@ async function syncWeddingCalendarEvents(
   }
 }
 
+/**
+ * Sync per-vendor bump in/out calendar events.
+ * These are personal to each vendor — not shared on the wedding timeline.
+ */
+async function syncVendorBumpEvents(
+  db: D1Database,
+  vendorId: string,
+  weddingId: string,
+  weddingTitle: string,
+  weddingDate: string,
+  emoji: string | null,
+  bumpInTime: string | null,
+  bumpOutTime: string | null,
+  ceremonyLocation: string | null,
+  receptionLocation: string | null,
+) {
+  const pfx = emoji ? `${emoji} ` : ''
+
+  const events = [
+    {
+      tag: 'wc:bump_in',
+      title: `${pfx}${weddingTitle} — Bump in`,
+      startTime: bumpInTime,
+      endTime: bumpInTime ? addHoursToTime(bumpInTime, 1) : null,
+      location: ceremonyLocation,
+      shouldExist: !!bumpInTime,
+    },
+    {
+      tag: 'wc:bump_out',
+      title: `${pfx}${weddingTitle} — Bump out`,
+      startTime: bumpOutTime,
+      endTime: bumpOutTime ? addHoursToTime(bumpOutTime, 1) : null,
+      location: receptionLocation ?? ceremonyLocation,
+      shouldExist: !!bumpOutTime,
+    },
+  ]
+
+  const existing = await db
+    .prepare(
+      `SELECT id, notes FROM calendar_events
+       WHERE vendor_id = ? AND wedding_id = ? AND notes IN ('wc:bump_in', 'wc:bump_out')`
+    )
+    .bind(vendorId, weddingId)
+    .all<{ id: string; notes: string }>()
+    .then((r) => r.results)
+  const existingByTag = new Map(existing.map((e) => [e.notes, e.id]))
+
+  for (const planned of events) {
+    const existingId = existingByTag.get(planned.tag)
+    if (planned.shouldExist) {
+      if (existingId) {
+        await updateEvent(db, vendorId, existingId, {
+          title: planned.title, date: weddingDate,
+          start_time: planned.startTime, end_time: planned.endTime,
+          all_day: planned.startTime ? 0 : 1, notes: planned.tag,
+        })
+      } else {
+        await createEvent(db, vendorId, {
+          title: planned.title, date: weddingDate,
+          start_time: planned.startTime, end_time: planned.endTime,
+          all_day: !planned.startTime, type: 'booking',
+          wedding_id: weddingId, notes: planned.tag,
+        })
+      }
+    } else if (existingId) {
+      await deleteEvent(db, vendorId, existingId)
+    }
+  }
+}
+
 /** Compare old and new wedding data and return human-readable change descriptions. */
 function diffWeddingChanges(
   oldW: Wedding,
@@ -223,8 +275,7 @@ function diffWeddingChanges(
     getting_ready_time: 'Getting ready (1) time', getting_ready_1_label: 'Getting ready (1) label',
     getting_ready_2_location: 'Getting ready (2) venue', getting_ready_2_label: 'Getting ready (2) label',
     getting_ready_2_time: 'Getting ready (2) time', portrait_location: 'Portraits venue',
-    portrait_time: 'Portraits time', emoji: 'Emoji',
-    bump_in_time: 'Bump in time', bump_out_time: 'Bump out time', notes: 'Notes',
+    portrait_time: 'Portraits time', emoji: 'Emoji', notes: 'Notes',
   }
 
   const changes: string[] = []
@@ -777,6 +828,46 @@ weddings.get('/app/weddings/:id', async (c) => {
         {/* Places */}
         <WeddingPlaces wedding={wedding} />
 
+        {/* Per-vendor bump times */}
+        <div id="vendor-bumps" class="mt-6">
+          <h3 class="text-sm font-bold text-gray-500 mb-3">Your bump in/out</h3>
+          <form
+            hx-post={`/app/weddings/${wedding.id}/bumps`}
+            hx-target="#vendor-bumps"
+            hx-swap="innerHTML"
+            class="bg-white border border-papaya-300/30 rounded-2xl p-4"
+          >
+            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+            <p class="text-xs text-gray-400 mb-3">Personal to you — other vendors set their own.</p>
+            <div class="flex items-end gap-4">
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Bump in</label>
+                <input
+                  type="time"
+                  name="bump_in_time"
+                  value={membership.bump_in_time ?? ''}
+                  class="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600"
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Bump out</label>
+                <input
+                  type="time"
+                  name="bump_out_time"
+                  value={membership.bump_out_time ?? ''}
+                  class="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600"
+                />
+              </div>
+              <button
+                type="submit"
+                class="bg-horizon-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
+              >
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+
         {/* Todo Checklist */}
         <TodoSection
           weddingId={wedding.id}
@@ -994,6 +1085,61 @@ weddings.post('/app/weddings/:id/notes', async (c) => {
   return c.json({ saved: true, at: new Date().toISOString() })
 })
 
+// ─── Per-vendor bump in/out times ───
+weddings.post('/app/weddings/:id/bumps', async (c) => {
+  const user = c.get('user')
+  const vendor = c.get('vendor')!
+  const weddingId = c.req.param('id')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership) return c.text('Not found', 404)
+
+  const body = await c.req.parseBody()
+  const bumpIn = trimOrNull(body.bump_in_time)
+  const bumpOut = trimOrNull(body.bump_out_time)
+
+  // Save to this vendor's membership row
+  await c.env.DB
+    .prepare(
+      `UPDATE wedding_members SET bump_in_time = ?, bump_out_time = ?
+       WHERE wedding_id = ? AND user_id = ?`
+    )
+    .bind(bumpIn, bumpOut, weddingId, user.id)
+    .run()
+
+  // Sync bump calendar events
+  const wedding = await getWedding(c.env.DB, weddingId)
+  if (wedding?.date) {
+    try {
+      await syncVendorBumpEvents(
+        c.env.DB, vendor.id, weddingId, wedding.title, wedding.date,
+        wedding.emoji, bumpIn, bumpOut,
+        wedding.ceremony_location, wedding.reception_location,
+      )
+    } catch { /* best-effort */ }
+  }
+
+  return c.html(
+    <div>
+      <h3 class="text-sm font-bold text-gray-500 mb-3">Your bump in/out</h3>
+      <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
+        <p class="text-xs text-gray-400 mb-3">Personal to you — other vendors set their own.</p>
+        <div class="flex items-end gap-4">
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Bump in</label>
+            <input type="time" name="bump_in_time" value={bumpIn ?? ''} class="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Bump out</label>
+            <input type="time" name="bump_out_time" value={bumpOut ?? ''} class="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
+          </div>
+          <span class="text-xs text-horizon-600 font-medium">Saved</span>
+        </div>
+      </div>
+    </div>
+  )
+})
+
 // ─── Sync notes to git storage (called after period of inactivity) ───
 weddings.post('/app/weddings/:id/notes/sync', async (c) => {
   const user = c.get('user')
@@ -1091,8 +1237,6 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       portrait_location: trimOrNull(body.portrait_location),
       portrait_time: portraitTime,
       emoji,
-      bump_in_time: bumpInTime,
-      bump_out_time: bumpOutTime,
       reception_duration_hours: (() => {
         const raw = trimOrNull(body.reception_duration_hours)
         const val = raw ? parseFloat(raw) : null
@@ -1130,7 +1274,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
         getting_ready_2_time: gettingReady2Time,
         portrait_location: trimOrNull(body.portrait_location),
         portrait_time: portraitTime,
-        emoji, bump_in_time: bumpInTime, bump_out_time: bumpOutTime,
+        emoji,
         notes: trimOrNull(body.notes),
       })
       if (changes.length > 0) {
@@ -1165,8 +1309,6 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
             const val = raw ? parseFloat(raw) : null
             return val && !isNaN(val) ? val : 3
           })(),
-          bumpInTime,
-          bumpOutTime,
         }
 
         // Get all vendor members on this wedding
@@ -1195,6 +1337,30 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       }
     } catch (calErr) {
       console.error('[weddings] Failed to sync calendar events:', calErr)
+    }
+
+    // Per-vendor bump in/out — save to wedding_members and sync calendar
+    try {
+      const weddingDate = trimOrNull(body.date)
+      if (weddingDate) {
+        // Save bump times to this vendor's membership row
+        await c.env.DB
+          .prepare(
+            `UPDATE wedding_members SET bump_in_time = ?, bump_out_time = ?
+             WHERE wedding_id = ? AND vendor_profile_id = ?`
+          )
+          .bind(bumpInTime, bumpOutTime, weddingId, vendor.id)
+          .run()
+
+        // Sync bump calendar events for this vendor only
+        await syncVendorBumpEvents(
+          c.env.DB, vendor.id, weddingId, title, weddingDate, emoji,
+          bumpInTime, bumpOutTime,
+          trimOrNull(body.ceremony_location), trimOrNull(body.reception_location),
+        )
+      }
+    } catch (bumpErr) {
+      console.error('[weddings] Failed to sync bump events:', bumpErr)
     }
 
     // Push all wedding files to storage (GitHub/R2)
@@ -2132,17 +2298,6 @@ function WeddingForm({
             />
           </div>
 
-          {/* Bump in */}
-          <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">Bump in (setup/arrival)</label>
-            <input
-              type="time"
-              name="bump_in_time"
-              value={wedding.bump_in_time ?? ''}
-              class="w-28 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-            />
-          </div>
-
           {/* Getting ready — two columns */}
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="space-y-1.5">
@@ -2229,16 +2384,6 @@ function WeddingForm({
             </div>
           </div>
 
-          {/* Bump out */}
-          <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">Bump out (packdown/departure)</label>
-            <input
-              type="time"
-              name="bump_out_time"
-              value={wedding.bump_out_time ?? ''}
-              class="w-28 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-            />
-          </div>
         </div>
       )}
 

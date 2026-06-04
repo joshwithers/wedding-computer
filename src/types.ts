@@ -222,6 +222,8 @@ export type WeddingMember = {
   is_financial_party: number
   permissions: string
   status: 'invited' | 'active' | 'removed'
+  bump_in_time: string | null
+  bump_out_time: string | null
   invited_at: string
   accepted_at: string | null
   created_at: string
