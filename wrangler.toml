@@ -44,7 +44,7 @@ enabled = true
 invocation_logs = true
 
 [triggers]
-crons = ["0 20 * * *"]
+crons = ["0 20 * * *", "*/5 * * * *"]
 
 [[routes]]
 pattern = "wedding.computer"

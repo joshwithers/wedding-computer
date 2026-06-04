@@ -35,6 +35,7 @@ import { getStorage } from './storage'
 import { sendEmailMessage, newLeadEmail } from './services/email'
 import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, dailyDigest } from './services/notifications'
+import { syncStorageBackground } from './services/storage-sync'
 
 const app = new Hono<Env>()
 
@@ -350,10 +351,26 @@ export default {
 
   async scheduled(event: ScheduledEvent, env: Env['Bindings'], ctx: ExecutionContext): Promise<void> {
     console.log('[CRON] triggered', event.cron)
-    try {
-      await dailyDigest({ db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL })
-    } catch (e: any) {
-      console.error('[CRON] daily digest failed', e.message)
+
+    if (event.cron === '0 20 * * *') {
+      // Daily digest — 8pm UTC
+      try {
+        await dailyDigest({ db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL })
+      } catch (e: any) {
+        console.error('[CRON] daily digest failed', e.message)
+      }
+    }
+
+    if (event.cron === '*/5 * * * *') {
+      // Storage sync — every 5 minutes
+      try {
+        const result = await syncStorageBackground(env)
+        if (result.weddingsSynced > 0 || result.errors > 0) {
+          console.log(`[CRON] storage sync: ${result.vendorsChecked} vendors, ${result.weddingsSynced} weddings synced, ${result.errors} errors`)
+        }
+      } catch (e: any) {
+        console.error('[CRON] storage sync failed', e.message)
+      }
     }
   },
 }
