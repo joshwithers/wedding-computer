@@ -27,9 +27,12 @@ function ErrorHint({ field, message }: { field: string; message: string }) {
  * Returns an HTML fragment of clickable suggestions for htmx.
  */
 places.get('/api/places/search', async (c) => {
-  const q = c.req.query('q')?.trim()
   const field = c.req.query('field') ?? 'location'
   const mode = c.req.query('mode') // 'region' = cities/regions only
+
+  // hx-include="this" sends the input as field_name=value;
+  // also accept ?q= for direct calls
+  const q = (c.req.query('q') ?? c.req.query(field) ?? '').trim()
 
   if (!q || q.length < 2) {
     return c.html('')
@@ -118,9 +121,7 @@ places.get('/api/places/search', async (c) => {
               class="block w-full text-left px-4 py-2.5 hover:bg-papaya-50 transition-colors border-b border-gray-100 last:border-0"
               onclick={`
                 var w = this.closest('[data-places]');
-                var inp = w.querySelector('input[type=text]');
-                inp.value = ${JSON.stringify(storedValue)};
-                w.querySelector('.places-q').value = ${JSON.stringify(storedValue)};
+                w.querySelector('input[type=text]').value = ${JSON.stringify(storedValue)};
                 w.querySelector('[id^="suggestions-"]').innerHTML = '';
               `}
             >

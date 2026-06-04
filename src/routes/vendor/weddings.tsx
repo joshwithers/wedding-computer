@@ -882,12 +882,19 @@ weddings.get('/app/weddings/:id/edit', async (c) => {
 
   const types: string[] = vendor.ceremony_types ? JSON.parse(vendor.ceremony_types) : []
 
+  const error = c.req.query('error')
+
   return c.html(
     <AppLayout title={`Edit ${wedding.title}`} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-xl">
         <p class="text-sm text-gray-500 mb-4">
           <a href={`/app/weddings/${wedding.id}`} class="hover:text-gray-900">{wedding.title}</a> / Edit
         </p>
+        {error && (
+          <div class="bg-grapefruit-50 border border-grapefruit-200 text-grapefruit-700 text-sm rounded-xl p-3 mb-4">
+            {error}
+          </div>
+        )}
         <WeddingForm
           action={`/app/weddings/${wedding.id}/edit`}
           csrfToken={c.get('csrfToken')}
@@ -980,6 +987,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
 
     return c.redirect(`/app/weddings/${weddingId}`)
   } catch (e: any) {
+    console.error('[weddings] edit failed:', weddingId, e.message, e.stack?.split('\n').slice(0, 3).join(' | '))
     return c.redirect(`/app/weddings/${weddingId}/edit?error=${encodeURIComponent(e.message)}`)
   }
 })
@@ -1790,42 +1798,15 @@ function WeddingForm({
         </select>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-sm font-bold text-gray-700 mb-1.5" for="date">Date</label>
-          <input
-            type="date"
-            id="date"
-            name="date"
-            value={wedding?.date ?? defaults?.date ?? ''}
-            class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-          />
-        </div>
-        <div>
-          <label class="block text-sm font-bold text-gray-700 mb-1.5" for="time">Start time</label>
-          <input
-            type="time"
-            id="time"
-            name="time"
-            value={wedding?.time ?? ''}
-            class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-          />
-        </div>
-        <div>
-          <label class="block text-sm font-bold text-gray-700 mb-1.5" for="duration_hours">Duration (hours)</label>
-          <select
-            id="duration_hours"
-            name="duration_hours"
-            class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-          >
-            <option value="">—</option>
-            {[0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8, 10, 12].map((h) => (
-              <option value={String(h)} selected={wedding?.duration_hours === h}>
-                {h === 0.5 ? '30 min' : h % 1 === 0 ? `${h}h` : `${Math.floor(h)}h 30m`}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="date">Date</label>
+        <input
+          type="date"
+          id="date"
+          name="date"
+          value={wedding?.date ?? defaults?.date ?? ''}
+          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+        />
       </div>
 
       <div>
@@ -1891,8 +1872,10 @@ function WeddingForm({
             label="Ceremony"
             value={wedding.ceremony_location}
             placeholder="Ceremony venue"
+            timeName="time"
+            timeValue={wedding.time}
           />
-          <p class="text-xs text-gray-400 -mt-2">Ceremony time and duration are set above. A 1-hour prep event is auto-created before the ceremony.</p>
+          <p class="text-xs text-gray-400 -mt-2">A 1-hour ceremony prep event is auto-created before this time.</p>
 
           {/* Portraits */}
           <PlacesField
@@ -1969,16 +1952,12 @@ function PlacesField({
   /** 'region' filters to cities/regions only */
   mode?: 'region'
 }) {
-  // The visible input keeps the form-submission `name`. A hidden input named `q`
-  // inside the wrapper is mirrored via oninput and included by htmx for the GET.
-  const wrapperId = `places-wrap-${name}`
   const modeParam = mode ? `&mode=${mode}` : ''
   return (
-    <div class="relative" data-places id={wrapperId}>
+    <div class="relative" data-places>
       <label class="block text-xs font-medium text-gray-500 mb-1">{label}</label>
       <div class={timeName ? 'flex gap-2' : ''}>
         <div class="flex-1 relative">
-          <input type="hidden" class="places-q" name="q" value={value ?? ''} form="" />
           <input
             type="text"
             name={name}
@@ -1989,8 +1968,7 @@ function PlacesField({
             hx-trigger="input changed delay:300ms"
             hx-target={`#suggestions-${name}`}
             hx-swap="innerHTML"
-            hx-include={`#${wrapperId} .places-q`}
-            oninput={`document.querySelector('#${wrapperId} .places-q').value=this.value`}
+            hx-include="this"
             class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
           />
           <div id={`suggestions-${name}`} />
