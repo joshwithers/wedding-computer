@@ -235,37 +235,53 @@ function tryGetStorage(env: Bindings, vendor: VendorProfile) {
   try { return getStorage(env, vendor) } catch { return null }
 }
 
-/** Push a wedding to storage (GitHub/R2) after a D1 write. Best-effort — never blocks the response. */
-async function pushWeddingToStorage(env: Bindings, vendor: VendorProfile, weddingId: string) {
+/**
+ * Push ALL wedding files to storage (GitHub/R2): wedding.md, todo.md, log.md.
+ * Best-effort — never blocks the response. Call this after any wedding data change.
+ */
+export async function pushAllWeddingFiles(env: Bindings, vendor: VendorProfile, weddingId: string) {
   const storage = tryGetStorage(env, vendor)
   if (!storage) {
     console.log(`[storage] No storage backend for vendor ${vendor.id} (type=${vendor.storage_type ?? 'none'})`)
     return
   }
-  try {
-    const wedding = await getWedding(env.DB, weddingId)
-    if (!wedding) return
-    await writeWeddingFile(storage, env.DB, vendor.id, wedding)
-    console.log(`[storage] Pushed wedding ${weddingId} to ${vendor.storage_type}`)
-  } catch (err: any) {
-    console.error(`[storage] FAILED push wedding ${weddingId}:`, err.message, err.stack?.split('\n').slice(0, 3).join(' | '))
-  }
-}
 
-async function pushLogToStorage(env: Bindings, vendor: VendorProfile, weddingId: string, weddingTitle: string) {
-  const storage = tryGetStorage(env, vendor)
-  if (!storage) return
+  const wedding = await getWedding(env.DB, weddingId)
+  if (!wedding) return
+
+  const { weddingFolder } = await import('../../storage/weddings')
+  const folder = weddingFolder(wedding.title, wedding.date)
+
+  // 1. wedding.md — the main wedding details
   try {
-    const wedding = await getWedding(env.DB, weddingId)
-    if (!wedding) return
-    const { weddingFolder } = await import('../../storage/weddings')
-    const folder = weddingFolder(wedding.title, wedding.date)
-    const md = await exportWeddingLogMarkdown(env.DB, weddingId, weddingTitle)
-    await storage.write(`${folder}log.md`, md)
-    console.log(`[storage] Pushed log ${weddingId} to ${vendor.storage_type}`)
+    await writeWeddingFile(storage, env.DB, vendor.id, wedding)
   } catch (err: any) {
-    console.error(`[storage] FAILED push log ${weddingId}:`, err.message)
+    console.error(`[storage] FAILED push wedding.md ${weddingId}:`, err.message)
   }
+
+  // 2. todo.md — the checklist (if one exists)
+  try {
+    const todo = await getWeddingTodo(env.DB, vendor.id, weddingId)
+    if (todo) {
+      const now = new Date().toISOString()
+      const md = `---\nwedding: ${wedding.title}\nwedding_id: ${weddingId}\nupdated_at: ${now}\n---\n\n${todo.content}\n`
+      await storage.write(`${folder}todo.md`, md)
+    }
+  } catch (err: any) {
+    console.error(`[storage] FAILED push todo.md ${weddingId}:`, err.message)
+  }
+
+  // 3. log.md — the changelog
+  try {
+    const md = await exportWeddingLogMarkdown(env.DB, weddingId, wedding.title)
+    if (md.split('\n').length > 2) { // only push if there are log entries
+      await storage.write(`${folder}log.md`, md)
+    }
+  } catch (err: any) {
+    console.error(`[storage] FAILED push log.md ${weddingId}:`, err.message)
+  }
+
+  console.log(`[storage] Pushed wedding files ${weddingId} to ${vendor.storage_type}`)
 }
 
 // ─── Wedding list ───
@@ -392,8 +408,8 @@ weddings.post('/app/weddings/new', async (c) => {
     })
 
     // Push wedding file to storage (GitHub/R2) — best-effort, don't block
-    pushWeddingToStorage(c.env, vendor, wedding.id).catch(() => {})
     appendWeddingLog(c.env.DB, wedding.id, user.id, 'Wedding created').catch(() => {})
+    pushAllWeddingFiles(c.env, vendor, wedding.id).catch(() => {})
 
     // Auto-deploy default checklist template if one exists
     const defaultTemplate = await getDefaultTemplate(c.env.DB, vendor.id)
@@ -965,7 +981,7 @@ weddings.post('/app/weddings/:id/notes/sync', async (c) => {
   if (!membership || !membership.can_manage) return c.json({ error: 'forbidden' }, 403)
 
   try {
-    await pushWeddingToStorage(c.env, vendor, weddingId)
+    await pushAllWeddingFiles(c.env, vendor, weddingId)
     return c.json({ synced: true, at: new Date().toISOString() })
   } catch (err) {
     console.error('[notes/sync]', err)
@@ -1114,9 +1130,8 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       console.error('[weddings] Failed to sync calendar events:', calErr)
     }
 
-    // Push updated wedding + log to storage (GitHub/R2)
-    pushWeddingToStorage(c.env, vendor, weddingId).catch(() => {})
-    pushLogToStorage(c.env, vendor, weddingId, title).catch(() => {})
+    // Push all wedding files to storage (GitHub/R2)
+    pushAllWeddingFiles(c.env, vendor, weddingId).catch(() => {})
 
     if (newStatus === 'confirmed' && oldWedding?.status !== 'confirmed') {
       track(c.env.DB, c.get('vendor')!.id, 'booking_confirmed', { weddingId })
