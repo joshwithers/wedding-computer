@@ -189,12 +189,12 @@ function calDavDiscoveryXml(href: string, authHeader: string | undefined, db: D1
 // CardDAV well-known discovery (unauthenticated initial probe, authenticated follow-up)
 app.on('PROPFIND', '/.well-known/carddav', (c) =>
   cardDavDiscoveryXml('/.well-known/carddav', c.req.raw.headers.get('Authorization') ?? undefined, c.env.DB))
-app.get('/.well-known/carddav', (c) => c.redirect('/carddav/', 301))
+app.get('/.well-known/carddav', (c) => c.redirect('/carddav', 301))
 
 // CalDAV well-known discovery
 app.on('PROPFIND', '/.well-known/caldav', (c) =>
   calDavDiscoveryXml('/.well-known/caldav', c.req.raw.headers.get('Authorization') ?? undefined, c.env.DB))
-app.get('/.well-known/caldav', (c) => c.redirect('/caldav/', 301))
+app.get('/.well-known/caldav', (c) => c.redirect('/caldav', 301))
 
 // Root PROPFIND probe — check body to determine if CardDAV or CalDAV
 app.on('PROPFIND', '/', async (c) => {
@@ -204,6 +204,12 @@ app.on('PROPFIND', '/', async (c) => {
   }
   return cardDavDiscoveryXml('/', c.req.raw.headers.get('Authorization') ?? undefined, c.env.DB)
 })
+
+// CardDAV/CalDAV with trailing slash — Hono sub-routers don't match the trailing slash
+app.on('PROPFIND', '/carddav/', (c) =>
+  cardDavDiscoveryXml('/carddav/', c.req.raw.headers.get('Authorization') ?? undefined, c.env.DB))
+app.on('PROPFIND', '/caldav/', (c) =>
+  calDavDiscoveryXml('/caldav/', c.req.raw.headers.get('Authorization') ?? undefined, c.env.DB))
 
 // Mount DAV sub-routers
 app.route('/carddav', carddav)
