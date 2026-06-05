@@ -39,7 +39,7 @@ marketing.get('/', (c) => {
             </a>
             <a
               href="/about"
-              class="text-gray-600 px-6 py-3.5 rounded-xl text-sm font-bold hover:text-horizon-700 transition-colors"
+              class="border border-gray-300 text-gray-700 px-6 py-3.5 rounded-xl text-sm font-bold hover:border-horizon-600 hover:text-horizon-700 transition-colors"
             >
               Learn more
             </a>
