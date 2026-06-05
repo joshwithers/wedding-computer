@@ -883,12 +883,26 @@ weddings.get('/app/weddings/:id', async (c) => {
           contactId={linkedContact?.id ?? null}
         />
 
-        {/* Notes — full-width auto-saving markdown editor */}
+        {/* Shared notes — visible to all vendors and the couple */}
         <WeddingNotes
           weddingId={wedding.id}
           notes={wedding.notes ?? ''}
           canManage={canManage}
           csrfToken={c.get('csrfToken')}
+          label="Wedding Notes"
+          hint="Visible to all vendors and the couple"
+          shared
+        />
+
+        {/* Private vendor notes — only this vendor can see */}
+        <WeddingNotes
+          weddingId={wedding.id}
+          notes={membership.vendor_notes ?? ''}
+          canManage={true}
+          csrfToken={c.get('csrfToken')}
+          label="Your Private Notes"
+          hint="Only you can see these"
+          endpoint={`/app/weddings/${wedding.id}/private-notes`}
         />
 
         {/* Files */}
@@ -1081,6 +1095,25 @@ weddings.post('/app/weddings/:id/notes', async (c) => {
   const notes = typeof body.notes === 'string' ? body.notes : ''
 
   await updateWedding(c.env.DB, weddingId, { notes: notes || null })
+
+  return c.json({ saved: true, at: new Date().toISOString() })
+})
+
+// ─── Per-vendor private notes ───
+weddings.post('/app/weddings/:id/private-notes', async (c) => {
+  const user = c.get('user')
+  const weddingId = c.req.param('id')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership) return c.json({ error: 'forbidden' }, 403)
+
+  const body = await c.req.json<{ notes: string }>()
+  const notes = typeof body.notes === 'string' ? body.notes : ''
+
+  await c.env.DB
+    .prepare('UPDATE wedding_members SET vendor_notes = ? WHERE wedding_id = ? AND user_id = ?')
+    .bind(notes || null, weddingId, user.id)
+    .run()
 
   return c.json({ saved: true, at: new Date().toISOString() })
 })
@@ -1725,37 +1758,52 @@ function WeddingNotes({
   notes,
   canManage,
   csrfToken,
+  label,
+  hint,
+  shared,
+  endpoint,
 }: {
   weddingId: string
   notes: string
   canManage: boolean
   csrfToken: string
+  label?: string
+  hint?: string
+  shared?: boolean
+  endpoint?: string
 }) {
   // Escape notes for safe embedding in JS
   const escaped = JSON.stringify(notes)
+  // Unique IDs so two instances on the same page don't collide
+  const suffix = shared ? '' : '-private'
+  const notesEndpoint = endpoint ?? `/app/weddings/${weddingId}/notes`
+  const syncEndpoint = shared ? `/app/weddings/${weddingId}/notes/sync` : null
 
   return (
-    <div class="mt-6" id="wedding-notes-section">
-      <div class="bg-white border border-papaya-300/30 rounded-2xl overflow-hidden">
-        <div class="flex items-center justify-between px-5 py-3 border-b border-papaya-300/30">
-          <h3 class="text-sm font-bold text-gray-500">Notes</h3>
+    <div class="mt-6" id={`wedding-notes-section${suffix}`}>
+      <div class={`rounded-2xl overflow-hidden ${shared ? 'bg-white border border-papaya-300/30' : 'bg-gray-50 border border-gray-200'}`}>
+        <div class={`flex items-center justify-between px-5 py-3 border-b ${shared ? 'border-papaya-300/30' : 'border-gray-200'}`}>
+          <div>
+            <h3 class="text-sm font-bold text-gray-500">{label ?? 'Notes'}</h3>
+            {hint && <p class="text-[10px] text-gray-400">{hint}</p>}
+          </div>
           <div class="flex items-center gap-3">
-            <span id="notes-status" class="text-xs text-gray-400 transition-opacity"></span>
+            <span id={`notes-status${suffix}`} class="text-xs text-gray-400 transition-opacity"></span>
             {canManage && (
               <div class="flex border border-gray-200 rounded-lg overflow-hidden text-xs">
                 <button
                   type="button"
-                  id="btn-edit"
+                  id={`btn-edit${suffix}`}
                   class="px-3 py-1 font-bold bg-horizon-50 text-horizon-700"
-                  onclick="notesEditor.showEdit()"
+                  onclick={`notesEditor${suffix.replace('-', '_')}.showEdit()`}
                 >
                   Edit
                 </button>
                 <button
                   type="button"
-                  id="btn-preview"
+                  id={`btn-preview${suffix}`}
                   class="px-3 py-1 font-bold text-gray-400 hover:text-gray-600"
-                  onclick="notesEditor.showPreview()"
+                  onclick={`notesEditor${suffix.replace('-', '_')}.showPreview()`}
                 >
                   Preview
                 </button>
@@ -1766,18 +1814,18 @@ function WeddingNotes({
 
         {canManage ? (
           <>
-            <div id="notes-edit-pane">
+            <div id={`notes-edit-pane${suffix}`}>
               <textarea
-                id="notes-textarea"
-                class="w-full px-5 py-4 text-sm text-gray-800 font-mono leading-relaxed resize-y focus:outline-none min-h-[320px] bg-transparent"
-                placeholder="Write notes about this wedding... Markdown is supported."
+                id={`notes-textarea${suffix}`}
+                class="w-full px-5 py-4 text-sm text-gray-800 font-mono leading-relaxed resize-y focus:outline-none min-h-[200px] bg-transparent"
+                placeholder={shared ? 'Wedding notes visible to all team members... Markdown supported.' : 'Your private notes... Only you can see these.'}
                 spellcheck={true}
               >{notes}</textarea>
             </div>
-            <div id="notes-preview-pane" class="hidden">
+            <div id={`notes-preview-pane${suffix}`} class="hidden">
               <div
-                id="notes-preview"
-                class="px-5 py-4 md-preview text-sm max-w-none text-gray-800 min-h-[320px]"
+                id={`notes-preview${suffix}`}
+                class="px-5 py-4 md-preview text-sm max-w-none text-gray-800 min-h-[200px]"
               >
                 {notes ? (
                   <p class="text-gray-400 italic">Loading preview...</p>
@@ -1789,7 +1837,7 @@ function WeddingNotes({
           </>
         ) : (
           <div
-            id="notes-preview"
+            id={`notes-preview${suffix}`}
             class="px-5 py-4 md-preview text-sm max-w-none text-gray-800 min-h-[120px]"
           >
             {notes ? (
@@ -1829,25 +1877,21 @@ function WeddingNotes({
       {canManage ? (
         <script dangerouslySetInnerHTML={{ __html: `
 (function() {
-  var weddingId = "${weddingId}";
+  var S = "${suffix}";
   var csrf = "${csrfToken}";
-  var textarea = document.getElementById("notes-textarea");
-  var preview = document.getElementById("notes-preview");
-  var status = document.getElementById("notes-status");
-  var editPane = document.getElementById("notes-edit-pane");
-  var previewPane = document.getElementById("notes-preview-pane");
-  var btnEdit = document.getElementById("btn-edit");
-  var btnPreview = document.getElementById("btn-preview");
+  var saveUrl = "${notesEndpoint}";
+  var syncUrl = ${syncEndpoint ? `"${syncEndpoint}"` : 'null'};
+  var textarea = document.getElementById("notes-textarea" + S);
+  var preview = document.getElementById("notes-preview" + S);
+  var status = document.getElementById("notes-status" + S);
+  var editPane = document.getElementById("notes-edit-pane" + S);
+  var previewPane = document.getElementById("notes-preview-pane" + S);
+  var btnEdit = document.getElementById("btn-edit" + S);
+  var btnPreview = document.getElementById("btn-preview" + S);
 
-  var saveTimer = null;
-  var syncTimer = null;
-  var lastSaved = ${escaped};
-  var saving = false;
+  var saveTimer = null, syncTimer = null, lastSaved = ${escaped}, saving = false;
 
-  function setStatus(text, color) {
-    status.textContent = text;
-    status.style.color = color || "#9ca3af";
-  }
+  function setStatus(t,c) { status.textContent = t; status.style.color = c || "#9ca3af"; }
 
   function safeMarkdown(src) {
     if (!src) return '<p class="text-gray-400 italic">No notes yet</p>';
@@ -1855,111 +1899,50 @@ function WeddingNotes({
     return DOMPurify.sanitize(marked.parse(src));
   }
 
-  function renderPreview() {
-    var val = textarea ? textarea.value : ${escaped};
-    preview.innerHTML = safeMarkdown(val);
-  }
+  function renderPreview() { preview.innerHTML = safeMarkdown(textarea ? textarea.value : ${escaped}); }
 
-  // Save notes to D1
   function save() {
     var val = textarea.value;
     if (val === lastSaved) return;
-    saving = true;
-    setStatus("Saving...", "#6b7280");
-
-    fetch("/app/weddings/" + weddingId + "/notes", {
+    saving = true; setStatus("Saving...", "#6b7280");
+    fetch(saveUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
       body: JSON.stringify({ notes: val })
     })
     .then(function(r) { return r.json(); })
-    .then(function(data) {
+    .then(function(d) {
       saving = false;
-      if (data.saved) {
-        lastSaved = val;
-        setStatus("Saved", "#16a34a");
-        // Schedule git sync after 10s of inactivity
-        clearTimeout(syncTimer);
-        syncTimer = setTimeout(syncToGit, 10000);
-      } else {
-        setStatus("Save failed", "#dc2626");
-      }
+      if (d.saved) { lastSaved = val; setStatus("Saved", "#16a34a");
+        if (syncUrl) { clearTimeout(syncTimer); syncTimer = setTimeout(syncToGit, 10000); }
+        else setTimeout(function() { if (status.textContent === "Saved") setStatus(""); }, 4000);
+      } else setStatus("Save failed", "#dc2626");
     })
-    .catch(function() {
-      saving = false;
-      setStatus("Save failed — retrying...", "#dc2626");
-      // Retry once after 3s
-      setTimeout(function() { save(); }, 3000);
-    });
+    .catch(function() { saving = false; setStatus("Save failed", "#dc2626"); setTimeout(save, 3000); });
   }
 
-  // Push to git storage
   function syncToGit() {
+    if (!syncUrl) return;
     setStatus("Syncing...", "#6b7280");
-    fetch("/app/weddings/" + weddingId + "/notes/sync", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }
-    })
+    fetch(syncUrl, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf } })
     .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.synced) {
-        setStatus("Saved & synced", "#16a34a");
-        setTimeout(function() {
-          if (status.textContent === "Saved & synced") setStatus("");
-        }, 4000);
-      } else {
-        setStatus("Saved", "#16a34a");
-      }
+    .then(function(d) {
+      setStatus(d.synced ? "Saved & synced" : "Saved", "#16a34a");
+      setTimeout(function() { if (status.textContent.indexOf("Saved") === 0) setStatus(""); }, 4000);
     })
-    .catch(function() {
-      setStatus("Saved (sync pending)", "#ca8a04");
-    });
+    .catch(function() { setStatus("Saved (sync pending)", "#ca8a04"); });
   }
 
-  // Debounced save on input
-  textarea.addEventListener("input", function() {
-    clearTimeout(saveTimer);
-    clearTimeout(syncTimer);
-    setStatus("Editing...", "#9ca3af");
-    saveTimer = setTimeout(save, 1500);
-  });
+  textarea.addEventListener("input", function() { clearTimeout(saveTimer); clearTimeout(syncTimer); setStatus("Editing..."); saveTimer = setTimeout(save, 1500); });
+  textarea.addEventListener("blur", function() { if (textarea.value !== lastSaved) { clearTimeout(saveTimer); save(); } });
+  window.addEventListener("beforeunload", function(e) { if (textarea.value !== lastSaved) { save(); e.preventDefault(); e.returnValue = ""; } });
 
-  // Save on blur (switching tabs, etc.)
-  textarea.addEventListener("blur", function() {
-    if (textarea.value !== lastSaved) {
-      clearTimeout(saveTimer);
-      save();
-    }
-  });
-
-  // Save before leaving page
-  window.addEventListener("beforeunload", function(e) {
-    if (textarea.value !== lastSaved) {
-      save();
-      e.preventDefault();
-      e.returnValue = "";
-    }
-  });
-
-  // Tab/preview toggle
-  window.notesEditor = {
-    showEdit: function() {
-      editPane.classList.remove("hidden");
-      previewPane.classList.add("hidden");
-      btnEdit.className = "px-3 py-1 font-bold bg-horizon-50 text-horizon-700";
-      btnPreview.className = "px-3 py-1 font-bold text-gray-400 hover:text-gray-600";
-      textarea.focus();
-    },
-    showPreview: function() {
-      renderPreview();
-      previewPane.classList.remove("hidden");
-      editPane.classList.add("hidden");
-      btnPreview.className = "px-3 py-1 font-bold bg-horizon-50 text-horizon-700";
-      btnEdit.className = "px-3 py-1 font-bold text-gray-400 hover:text-gray-600";
-    }
+  var editorName = "notesEditor${suffix.replace(/-/g, '_')}";
+  window[editorName] = {
+    showEdit: function() { editPane.classList.remove("hidden"); previewPane.classList.add("hidden"); btnEdit.className = "px-3 py-1 font-bold bg-horizon-50 text-horizon-700"; btnPreview.className = "px-3 py-1 font-bold text-gray-400 hover:text-gray-600"; textarea.focus(); },
+    showPreview: function() { renderPreview(); previewPane.classList.remove("hidden"); editPane.classList.add("hidden"); btnPreview.className = "px-3 py-1 font-bold bg-horizon-50 text-horizon-700"; btnEdit.className = "px-3 py-1 font-bold text-gray-400 hover:text-gray-600"; }
   };
 
-  // Initial render check — render preview on load in case they switch tabs
   if (typeof marked !== "undefined") renderPreview();
   else window.addEventListener("load", renderPreview);
 })();
@@ -1972,12 +1955,10 @@ function WeddingNotes({
     if (typeof marked === "undefined" || !marked.parse || !window.DOMPurify) return '<p class="text-gray-400 italic">Preview unavailable</p>';
     return DOMPurify.sanitize(marked.parse(src));
   }
-
   function render() {
-    var el = document.getElementById("notes-preview");
+    var el = document.getElementById("notes-preview${suffix}");
     if (!el) return;
-    var src = ${escaped};
-    el.innerHTML = safeMarkdown(src);
+    el.innerHTML = safeMarkdown(${escaped});
   }
   if (typeof marked !== "undefined") render();
   else window.addEventListener("load", render);

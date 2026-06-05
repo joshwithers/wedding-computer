@@ -224,6 +224,7 @@ export type WeddingMember = {
   status: 'invited' | 'active' | 'removed'
   bump_in_time: string | null
   bump_out_time: string | null
+  vendor_notes: string | null
   invited_at: string
   accepted_at: string | null
   created_at: string
