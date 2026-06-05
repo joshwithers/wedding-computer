@@ -178,6 +178,29 @@ onboarding.get('/onboarding/business', async (c) => {
                 ))}
               </select>
             </div>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="email_handle">
+                Your email address
+              </label>
+              <p class="text-xs text-gray-500 mb-2">
+                Choose a handle for sending and receiving emails on Wedding Computer.
+              </p>
+              <div class="flex items-center gap-0">
+                <input
+                  type="text"
+                  id="email_handle"
+                  name="email_handle"
+                  placeholder="yourname"
+                  pattern="[a-z0-9\-]+"
+                  required
+                  class="flex-1 border border-gray-300 rounded-l-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                  oninput="this.value = this.value.toLowerCase().replace(/[^a-z0-9-]/g, '')"
+                />
+                <span class="border border-l-0 border-gray-300 rounded-r-xl px-4 py-3 text-sm text-gray-500 bg-gray-50 whitespace-nowrap">
+                  @wedding.computer
+                </span>
+              </div>
+            </div>
           </div>
           <button
             type="submit"
@@ -210,7 +233,25 @@ onboarding.post('/onboarding/business', async (c) => {
       await updateUser(c.env.DB, user.id, { name })
     }
 
-    await createVendor(c.env.DB, user.id, businessName, category)
+    // Validate and claim email handle
+    const rawHandle = typeof body.email_handle === 'string' ? body.email_handle.trim().toLowerCase() : ''
+    const emailHandle = rawHandle.replace(/[^a-z0-9-]/g, '') || null
+
+    if (emailHandle && emailHandle.length < 3) {
+      return c.redirect('/onboarding/business?error=Email+handle+must+be+at+least+3+characters')
+    }
+
+    if (emailHandle) {
+      const existing = await c.env.DB
+        .prepare('SELECT id FROM vendor_profiles WHERE email_handle = ?')
+        .bind(emailHandle)
+        .first()
+      if (existing) {
+        return c.redirect('/onboarding/business?error=That+email+handle+is+already+taken')
+      }
+    }
+
+    await createVendor(c.env.DB, user.id, businessName, category, emailHandle)
     return c.redirect('/app')
   } catch (e: any) {
     return c.redirect(`/onboarding/business?error=${encodeURIComponent(e.message)}`)

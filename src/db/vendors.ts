@@ -24,15 +24,16 @@ export async function createVendor(
   db: D1Database,
   userId: string,
   businessName: string,
-  category: string
+  category: string,
+  emailHandle?: string | null
 ): Promise<VendorProfile> {
   const result = await db
     .prepare(
-      `INSERT INTO vendor_profiles (user_id, business_name, category)
-       VALUES (?, ?, ?)
+      `INSERT INTO vendor_profiles (user_id, business_name, category, email_handle)
+       VALUES (?, ?, ?, ?)
        RETURNING *`
     )
-    .bind(userId, businessName, category)
+    .bind(userId, businessName, category, emailHandle ?? null)
     .first<VendorProfile>()
   return result!
 }
