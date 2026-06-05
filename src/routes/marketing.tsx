@@ -150,8 +150,8 @@ marketing.get('/', (c) => {
             <FeatureCard
               color="grapefruit"
               icon="plaintext"
-              title="Plain text files"
-              desc="Your contacts and weddings are stored as plain text markdown files with YAML frontmatter. Open them in any text editor, sync with Obsidian, or build your own tools. Your data outlives any app."
+              title="Plain text files — live, right now"
+              desc="Every contact, wedding, checklist, and changelog is a plain text markdown file — synced live to GitHub. Open them in Obsidian, VS Code, TextEdit, or Notepad. Your data is portable, always accessible, and never locked in."
             />
           </div>
         </section>
@@ -163,13 +163,37 @@ marketing.get('/', (c) => {
               <div class="w-12 h-12 rounded-2xl bg-horizon-50 flex items-center justify-center mx-auto mb-4">
                 <div class="w-6 h-6 text-horizon-600" dangerouslySetInnerHTML={{ __html: featureIcons.plaintext }} />
               </div>
-              <h2 class="text-xl sm:text-2xl font-bold mb-3">Your data should outlive any app</h2>
-              <p class="text-gray-600 leading-relaxed mb-4">
-                Wedding Computer stores your contacts and weddings as plain text markdown files — the same
-                format used by Wikipedia, GitHub, and millions of writers worldwide. No proprietary database
-                lock-in. No export button that gives you a useless ZIP file. Your data is always readable,
-                always yours, and will still make sense in 50 years.
+              <h2 class="text-xl sm:text-2xl font-bold mb-3">Your data is yours — live, portable, and never locked in</h2>
+              <p class="text-gray-600 leading-relaxed mb-6">
+                Wedding Computer stores everything as plain text markdown files — the same
+                format used by Wikipedia, GitHub, and millions of writers. Your files sync live
+                to a private GitHub repo, so you can access them right now in Obsidian, VS Code,
+                TextEdit, Notepad, or any tool that reads text files. No proprietary format. No
+                export-and-pray. If you stop using Wedding Computer tomorrow, your data is already
+                on your computer in files you can read with anything.
               </p>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                <div class="text-center">
+                  <div class="text-lg mb-1">📂</div>
+                  <p class="text-xs font-bold text-gray-700">GitHub</p>
+                  <p class="text-[10px] text-gray-400">Auto-synced repo</p>
+                </div>
+                <div class="text-center">
+                  <div class="text-lg mb-1">💎</div>
+                  <p class="text-xs font-bold text-gray-700">Obsidian</p>
+                  <p class="text-[10px] text-gray-400">Open as a vault</p>
+                </div>
+                <div class="text-center">
+                  <div class="text-lg mb-1">📝</div>
+                  <p class="text-xs font-bold text-gray-700">Any text editor</p>
+                  <p class="text-[10px] text-gray-400">TextEdit, Notepad, vim</p>
+                </div>
+                <div class="text-center">
+                  <div class="text-lg mb-1">🔧</div>
+                  <p class="text-xs font-bold text-gray-700">Your own tools</p>
+                  <p class="text-[10px] text-gray-400">Parse YAML + markdown</p>
+                </div>
+              </div>
               <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
                 <a href="/standard" class="text-horizon-700 font-bold text-sm hover:underline">Read the open format spec →</a>
                 <span class="hidden sm:inline text-gray-300">|</span>
