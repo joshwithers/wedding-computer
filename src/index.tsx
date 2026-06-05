@@ -212,6 +212,28 @@ function calDavDiscoveryXml(href: string, authHeader: string | undefined, db: D1
   })()
 }
 
+// Agent discovery (DNS-AID / well-known)
+app.get('/.well-known/agent', (c) =>
+  c.json({
+    name: 'Wedding Computer',
+    description: 'Wedding collaboration platform for vendors, venues, planners, and couples.',
+    url: 'https://wedding.computer',
+    protocols: {
+      carddav: { endpoint: '/.well-known/carddav', description: 'Contact sync via CardDAV' },
+      caldav: { endpoint: '/.well-known/caldav', description: 'Calendar sync via CalDAV' },
+      ical: { endpoint: '/feed/{token}.ics', description: 'Read-only calendar feed (iCal)' },
+    },
+    documentation: {
+      homepage: 'https://wedding.computer/about',
+      'open-format': 'https://wedding.computer/standard',
+      'plain-text-data': 'https://wedding.computer/docs/plain-text',
+    },
+    sitemap: 'https://wedding.computer/sitemap.xml',
+    source: 'https://github.com/joshwithers/wedding-computer',
+    license: 'AGPL-3.0',
+  })
+)
+
 // CardDAV well-known discovery (unauthenticated initial probe, authenticated follow-up)
 app.on('PROPFIND', '/.well-known/carddav', (c) =>
   cardDavDiscoveryXml('/.well-known/carddav', c.req.raw.headers.get('Authorization') ?? undefined, c.env.DB))
