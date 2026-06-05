@@ -158,6 +158,37 @@ app.get('/.well-known/agent-skills/index.json', (c) =>
   })
 )
 
+// API Catalog (RFC 9727)
+app.get('/.well-known/api-catalog', (c) => {
+  return new Response(JSON.stringify({
+    linkset: [
+      {
+        anchor: 'https://wedding.computer/mcp',
+        'service-desc': [{ href: 'https://wedding.computer/.well-known/mcp/server-card.json', type: 'application/json' }],
+        'service-doc': [{ href: 'https://wedding.computer/auth.md', type: 'text/markdown' }],
+        status: [{ href: 'https://wedding.computer/health', type: 'application/json' }],
+      },
+      {
+        anchor: 'https://wedding.computer/.well-known/carddav',
+        'service-doc': [{ href: 'https://wedding.computer/docs/plain-text', type: 'text/html' }],
+        status: [{ href: 'https://wedding.computer/health', type: 'application/json' }],
+      },
+      {
+        anchor: 'https://wedding.computer/.well-known/caldav',
+        'service-doc': [{ href: 'https://wedding.computer/docs/plain-text', type: 'text/html' }],
+        status: [{ href: 'https://wedding.computer/health', type: 'application/json' }],
+      },
+      {
+        anchor: 'https://wedding.computer/feed',
+        'service-doc': [{ href: 'https://wedding.computer/docs/plain-text', type: 'text/html' }],
+        status: [{ href: 'https://wedding.computer/health', type: 'application/json' }],
+      },
+    ],
+  }), {
+    headers: { 'Content-Type': 'application/linkset+json' },
+  })
+})
+
 // OAuth Protected Resource metadata (RFC 9470)
 app.get('/.well-known/oauth-protected-resource', (c) =>
   c.json({
