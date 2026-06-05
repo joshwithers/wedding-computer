@@ -27,6 +27,7 @@ import feed from './routes/feed'
 import carddav from './routes/carddav'
 import caldav from './routes/caldav'
 import stripe from './routes/stripe'
+import mcpRoute from './routes/mcp'
 import { authenticateVendor, CARDDAV_HEADERS, CALDAV_HEADERS, xmlResponse, escXml } from './lib/dav'
 import { AuthLayout } from './views/layouts/auth'
 import { getVendorWithEmail } from './db/vendors'
@@ -212,6 +213,9 @@ function calDavDiscoveryXml(href: string, authHeader: string | undefined, db: D1
   })()
 }
 
+// MCP server
+app.route('/', mcpRoute)
+
 // Agent discovery (DNS-AID / well-known)
 app.get('/.well-known/agent', (c) =>
   c.json({
@@ -219,6 +223,7 @@ app.get('/.well-known/agent', (c) =>
     description: 'Wedding collaboration platform for vendors, venues, planners, and couples.',
     url: 'https://wedding.computer',
     protocols: {
+      mcp: { endpoint: '/mcp', description: 'Model Context Protocol — AI agent access to contacts, weddings, checklists, and calendar', auth: 'Bearer token' },
       carddav: { endpoint: '/.well-known/carddav', description: 'Contact sync via CardDAV' },
       caldav: { endpoint: '/.well-known/caldav', description: 'Calendar sync via CalDAV' },
       ical: { endpoint: '/feed/{token}.ics', description: 'Read-only calendar feed (iCal)' },
