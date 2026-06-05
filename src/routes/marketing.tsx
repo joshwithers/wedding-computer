@@ -12,6 +12,18 @@ marketing.use('*', async (c, next) => {
   }
 })
 
+// RFC 8288 Link headers for agent discovery
+marketing.use('/', async (c, next) => {
+  await next()
+  c.header('Link', [
+    '</sitemap.xml>; rel="sitemap"',
+    '</standard>; rel="service-doc"; title="Open Format Specification"',
+    '</docs/plain-text>; rel="help"; title="Plain Text Data Documentation"',
+    '</.well-known/carddav>; rel="related"; title="CardDAV"',
+    '</.well-known/caldav>; rel="related"; title="CalDAV"',
+  ].join(', '))
+})
+
 marketing.get('/', (c) => {
   return c.html(
     <MarketingLayout>
