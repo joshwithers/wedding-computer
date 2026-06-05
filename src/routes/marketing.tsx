@@ -27,8 +27,9 @@ marketing.get('/', (c) => {
             <span class="text-horizon-700">one place</span>
           </h1>
           <p class="text-base sm:text-lg text-gray-600 max-w-xl mx-auto mb-6 sm:mb-10 leading-relaxed">
-            CRM, calendar, invoicing, and collaboration — built for the
-            people who make weddings happen.
+            The collaboration platform where vendors, venues, planners,
+            and couples plan weddings together — with shared timelines,
+            calendars, and files that keep everyone on the same page.
           </p>
           <div class="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <a
@@ -43,6 +44,35 @@ marketing.get('/', (c) => {
             >
               Learn more
             </a>
+          </div>
+        </section>
+
+        {/* Collaboration pitch */}
+        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
+          <div class="max-w-3xl mx-auto text-center mb-10">
+            <h2 class="text-xl sm:text-2xl font-bold mb-4">One wedding, one place, everyone together</h2>
+            <p class="text-gray-600 leading-relaxed mb-6">
+              Weddings involve a lot of people — the couple, the celebrant, the photographer,
+              the florist, the venue, the planner. Wedding Computer gives every party their own
+              view of the same wedding, with shared timelines and files that stay in sync.
+            </p>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+            <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 text-center">
+              <div class="text-2xl mb-2">🤝</div>
+              <h3 class="text-sm font-bold mb-1">Shared timeline</h3>
+              <p class="text-xs text-gray-500">Ceremony, portraits, reception — set the times once and every vendor gets them in their calendar automatically.</p>
+            </div>
+            <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 text-center">
+              <div class="text-2xl mb-2">👥</div>
+              <h3 class="text-sm font-bold mb-1">Everyone has access</h3>
+              <p class="text-xs text-gray-500">Vendors manage their own invoices, checklists, and private notes. Couples see the big picture and track their budget.</p>
+            </div>
+            <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 text-center">
+              <div class="text-2xl mb-2">📋</div>
+              <h3 class="text-sm font-bold mb-1">Vendor credits built in</h3>
+              <p class="text-xs text-gray-500">One-click copy of the full vendor credit list for Instagram captions or blog posts — with @handles and website links.</p>
+            </div>
           </div>
         </section>
 
@@ -91,7 +121,7 @@ marketing.get('/', (c) => {
               color="horizon"
               icon="workspace"
               title="Wedding workspaces"
-              desc="Shared workspace for each wedding. Invite couples and other vendors with role-based access. Vendor visibility controlled by the couple."
+              desc="Every wedding is a shared workspace. Invite the couple, the venue, and every vendor — everyone sees the same timeline, places, and notes. Set it once, share it everywhere."
             />
             <FeatureCard
               color="grapefruit"
