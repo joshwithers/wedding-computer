@@ -40,6 +40,52 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => (
           </div>
         </div>
       </footer>
+      <script dangerouslySetInnerHTML={{ __html: `
+(function() {
+  if (!navigator.modelContext || !navigator.modelContext.provideContext) return;
+  navigator.modelContext.provideContext({
+    tools: [
+      {
+        name: "get_started",
+        description: "Navigate to the sign-up / login page to create a Wedding Computer account.",
+        inputSchema: { type: "object", properties: {} },
+        execute: function() { window.location.href = "/login"; return { success: true }; }
+      },
+      {
+        name: "view_pricing",
+        description: "View Wedding Computer pricing plans and features.",
+        inputSchema: { type: "object", properties: {} },
+        execute: function() { window.location.href = "/pricing"; return { success: true }; }
+      },
+      {
+        name: "view_about",
+        description: "Learn more about Wedding Computer — what it does, who it's for, and the team behind it.",
+        inputSchema: { type: "object", properties: {} },
+        execute: function() { window.location.href = "/about"; return { success: true }; }
+      },
+      {
+        name: "view_data_format",
+        description: "Read the open plain text data format specification — how contacts and weddings are stored as markdown files.",
+        inputSchema: { type: "object", properties: {} },
+        execute: function() { window.location.href = "/standard"; return { success: true }; }
+      },
+      {
+        name: "view_mcp_server",
+        description: "Get the MCP server configuration for connecting AI agents to Wedding Computer.",
+        inputSchema: { type: "object", properties: {} },
+        execute: function() {
+          return {
+            url: "https://wedding.computer/mcp",
+            transport: "streamable-http",
+            auth: "Bearer token from Settings > Calendar & Sync",
+            serverCard: "https://wedding.computer/.well-known/mcp/server-card.json"
+          };
+        }
+      }
+    ]
+  });
+})();
+      ` }} />
     </body>
   </html>
 )
