@@ -114,6 +114,50 @@ app.onError((err, c) => {
 // Health check
 app.get('/health', (c) => c.json({ ok: true }))
 
+// Agent Skills Discovery (RFC v0.2.0)
+app.get('/.well-known/agent-skills/index.json', (c) =>
+  c.json({
+    $schema: 'https://agentskills.io/schema/index.json',
+    skills: [
+      {
+        name: 'wedding-computer-mcp',
+        type: 'mcp',
+        description: 'Access contacts, weddings, checklists, calendar, and vendor credits via MCP. Returns plain text markdown.',
+        url: 'https://wedding.computer/.well-known/mcp/server-card.json',
+        sha256: '',
+      },
+      {
+        name: 'wedding-computer-carddav',
+        type: 'protocol',
+        description: 'Sync wedding contacts to Apple Contacts, Google Contacts, or any CardDAV client.',
+        url: 'https://wedding.computer/.well-known/carddav',
+        sha256: '',
+      },
+      {
+        name: 'wedding-computer-caldav',
+        type: 'protocol',
+        description: 'Sync wedding calendar events to Apple Calendar, Google Calendar, or any CalDAV client.',
+        url: 'https://wedding.computer/.well-known/caldav',
+        sha256: '',
+      },
+      {
+        name: 'wedding-computer-ical',
+        type: 'protocol',
+        description: 'Read-only iCal calendar feed (.ics) for subscribing in any calendar app.',
+        url: 'https://wedding.computer/feed',
+        sha256: '',
+      },
+      {
+        name: 'wedding-computer-agent-discovery',
+        type: 'metadata',
+        description: 'Agent discovery endpoint with protocol listings and documentation links.',
+        url: 'https://wedding.computer/.well-known/agent',
+        sha256: '',
+      },
+    ],
+  })
+)
+
 // MCP Server Card (SEP-1649)
 app.get('/.well-known/mcp/server-card.json', (c) =>
   c.json({
