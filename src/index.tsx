@@ -114,6 +114,43 @@ app.onError((err, c) => {
 // Health check
 app.get('/health', (c) => c.json({ ok: true }))
 
+// MCP Server Card (SEP-1649)
+app.get('/.well-known/mcp/server-card.json', (c) =>
+  c.json({
+    $schema: 'https://raw.githubusercontent.com/modelcontextprotocol/modelcontextprotocol/main/schema/mcp-server-card.schema.json',
+    serverInfo: {
+      name: 'wedding-computer',
+      version: '1.0.0',
+      title: 'Wedding Computer',
+      description: 'Access your contacts, weddings, checklists, calendar, and vendor credits via MCP. Data returned as plain text markdown — the same format stored in your GitHub repo.',
+    },
+    transport: {
+      type: 'streamable-http',
+      url: 'https://wedding.computer/mcp',
+      authentication: {
+        type: 'bearer',
+        instructions: 'Use your sync token from Settings > Calendar & Sync as the Bearer token.',
+      },
+    },
+    capabilities: {
+      tools: {
+        listChanged: false,
+      },
+    },
+    tools: [
+      { name: 'list_contacts', description: 'List all contacts with name, email, status, and wedding date.' },
+      { name: 'get_contact', description: 'Get a contact as a markdown file by ID.' },
+      { name: 'search_contacts', description: 'Search contacts by name, email, or status.' },
+      { name: 'list_weddings', description: 'List all weddings with title, date, location, and status.' },
+      { name: 'get_wedding', description: 'Get a wedding as a markdown file by ID.' },
+      { name: 'get_wedding_todo', description: 'Get the checklist for a wedding.' },
+      { name: 'get_wedding_log', description: 'Get the activity changelog for a wedding.' },
+      { name: 'get_wedding_credits', description: 'Get vendor credits for Instagram, markdown, or HTML.' },
+      { name: 'get_upcoming_events', description: 'Get calendar events for the next N days.' },
+    ],
+  })
+)
+
 // Public routes
 app.route('/', marketing)
 app.route('/', auth)
