@@ -158,6 +158,34 @@ app.get('/.well-known/agent-skills/index.json', (c) =>
   })
 )
 
+// OAuth Protected Resource metadata (RFC 9470)
+app.get('/.well-known/oauth-protected-resource', (c) =>
+  c.json({
+    resource: 'https://wedding.computer',
+    bearer_methods_supported: ['header'],
+    resource_documentation: 'https://wedding.computer/auth.md',
+  })
+)
+
+// OAuth Authorization Server metadata (with agent_auth extension)
+app.get('/.well-known/oauth-authorization-server', (c) =>
+  c.json({
+    issuer: 'https://wedding.computer',
+    token_endpoint: 'https://wedding.computer/login',
+    token_endpoint_auth_methods_supported: ['none'],
+    response_types_supported: ['token'],
+    grant_types_supported: ['magic_link'],
+    service_documentation: 'https://wedding.computer/auth.md',
+    agent_auth: {
+      supported_identity_types: ['bearer_token'],
+      supported_credential_types: ['api_key'],
+      registration_instructions: 'Sign in at https://wedding.computer/login, then copy your sync token from Settings > Calendar & Sync.',
+      documentation_url: 'https://wedding.computer/auth.md',
+      revocation_instructions: 'Regenerate your token in Settings > Calendar & Sync to revoke the old one.',
+    },
+  })
+)
+
 // MCP Server Card (SEP-1649)
 app.get('/.well-known/mcp/server-card.json', (c) =>
   c.json({
