@@ -208,10 +208,12 @@ app.get('/.well-known/oauth-authorization-server', (c) =>
     grant_types_supported: ['magic_link'],
     service_documentation: 'https://wedding.computer/auth.md',
     agent_auth: {
+      register_uri: 'https://wedding.computer/login',
       supported_identity_types: ['bearer_token'],
       supported_credential_types: ['api_key'],
       registration_instructions: 'Sign in at https://wedding.computer/login, then copy your sync token from Settings > Calendar & Sync.',
       documentation_url: 'https://wedding.computer/auth.md',
+      claim_url: 'https://wedding.computer/app/settings',
       revocation_instructions: 'Regenerate your token in Settings > Calendar & Sync to revoke the old one.',
     },
   })
