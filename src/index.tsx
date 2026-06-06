@@ -193,8 +193,11 @@ app.get('/.well-known/api-catalog', (c) => {
 app.get('/.well-known/oauth-protected-resource', (c) =>
   c.json({
     resource: 'https://wedding.computer',
+    authorization_servers: ['https://wedding.computer'],
     bearer_methods_supported: ['header'],
+    scopes_supported: ['read'],
     resource_documentation: 'https://wedding.computer/auth.md',
+    resource_signing_alg_values_supported: [],
   })
 )
 
