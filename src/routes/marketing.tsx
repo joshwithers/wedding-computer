@@ -4,11 +4,96 @@ import { MarketingLayout } from '../views/layouts/marketing'
 
 const marketing = new Hono<Env>()
 
+// Markdown content negotiation — return markdown when agents request it
+const markdownPages: Record<string, string> = {
+  '/': `# Wedding Computer
+
+The collaboration platform where vendors, venues, planners, and couples plan weddings together — with shared timelines, calendars, and files that keep everyone on the same page.
+
+## Features
+
+- **CRM & pipeline** — track every lead from first enquiry to booked
+- **Custom enquiry forms** — branded forms with CAPTCHA protection
+- **Calendar & availability** — monthly calendar with CalDAV and iCal sync
+- **Invoicing & payments** — line items, payment schedules, Stripe Connect
+- **Built-in email** — send and receive from your @wedding.computer address
+- **AI email drafting** — one-click personalised drafts
+- **Wedding workspaces** — shared workspace for each wedding with all vendors and the couple
+- **Couple planner** — vendor grid, budget tracker, booking forms
+- **GitHub sync** — contacts and weddings sync to a private repo as plain text markdown
+- **Plain text files** — every file is portable, human-readable, and never locked in
+- **Open source** — AGPL-3.0, self-hostable on Cloudflare Workers
+
+## Collaboration
+
+Every wedding is a shared workspace. Set ceremony, portraits, and reception times once — every vendor gets them in their calendar automatically. Vendor credits are built in for Instagram and blog posts.
+
+## Your Data
+
+All data is stored as plain text markdown files, synced live to GitHub. Access your files in Obsidian, VS Code, TextEdit, Notepad, or any text editor. If you stop using Wedding Computer, your data is already on your computer.
+
+## Agent Access
+
+- MCP Server: \`https://wedding.computer/mcp\` (Bearer token auth)
+- [MCP Server Card](https://wedding.computer/.well-known/mcp/server-card.json)
+- [Agent Discovery](https://wedding.computer/.well-known/agent)
+- [Auth Instructions](https://wedding.computer/auth.md)
+
+## Links
+
+- [Get started free](https://wedding.computer/login)
+- [About](https://wedding.computer/about)
+- [Pricing](https://wedding.computer/pricing)
+- [Open Format Spec](https://wedding.computer/standard)
+- [Source Code](https://github.com/joshwithers/wedding-computer)
+`,
+  '/about': `# About Wedding Computer
+
+Wedding Computer is a collaboration platform for the wedding industry. It started as a vendor CRM and evolved into a multi-party tool where vendors, venues, planners, and couples coordinate on shared wedding entities.
+
+Built on Cloudflare Workers. Open source under AGPL-3.0.
+
+## Links
+
+- [Home](https://wedding.computer/)
+- [Pricing](https://wedding.computer/pricing)
+- [Source](https://github.com/joshwithers/wedding-computer)
+`,
+  '/pricing': `# Pricing — Wedding Computer
+
+Wedding Computer is **free forever**. No trial, no credit card, no catch.
+
+Optional paid add-ons may be available in the future for premium features, but the core platform — CRM, calendar, invoicing, email, wedding workspaces, GitHub sync — is free.
+
+## Links
+
+- [Get started free](https://wedding.computer/login)
+`,
+}
+
 // Cache marketing pages at the edge — content rarely changes
 marketing.use('*', async (c, next) => {
+  // Check for markdown content negotiation before processing
+  const accept = c.req.header('Accept') ?? ''
+  if (accept.includes('text/markdown')) {
+    const md = markdownPages[c.req.path]
+    if (md) {
+      const body = new TextEncoder().encode(md)
+      return new Response(body, {
+        headers: {
+          'Content-Type': 'text/markdown; charset=utf-8',
+          'Content-Length': String(body.byteLength),
+          'Cache-Control': 'public, max-age=300, s-maxage=3600',
+          'Vary': 'Accept',
+        },
+      })
+    }
+  }
+
   await next()
   if (c.res.status === 200 && c.req.method === 'GET') {
     c.res.headers.set('Cache-Control', 'public, max-age=300, s-maxage=3600')
+    c.res.headers.set('Vary', 'Accept')
   }
 })
 
