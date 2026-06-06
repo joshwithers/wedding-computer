@@ -119,9 +119,9 @@ marketing.get('/', (c) => {
             Free
           </div>
           <h1 class="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] mb-4 sm:mb-6">
-            Run your wedding<br />
-            business from<br />
-            <span class="text-horizon-700">one place</span>
+            <span class="block">Run your wedding </span>
+            <span class="block">business from </span>
+            <span class="block text-horizon-700">one place</span>
           </h1>
           <p class="text-base sm:text-lg text-gray-600 max-w-xl mx-auto mb-6 sm:mb-10 leading-relaxed">
             The collaboration platform where vendors, venues, planners,
@@ -139,7 +139,7 @@ marketing.get('/', (c) => {
               href="/about"
               class="border border-gray-300 text-gray-700 px-6 py-3.5 rounded-xl text-sm font-bold hover:border-horizon-600 hover:text-horizon-700 transition-colors"
             >
-              Learn more
+              See how it works
             </a>
           </div>
         </section>
@@ -273,22 +273,22 @@ marketing.get('/', (c) => {
                 <div class="text-center">
                   <div class="text-lg mb-1">📂</div>
                   <p class="text-xs font-bold text-gray-700">GitHub</p>
-                  <p class="text-[10px] text-gray-400">Auto-synced repo</p>
+                  <p class="text-[10px] text-gray-500">Auto-synced repo</p>
                 </div>
                 <div class="text-center">
                   <div class="text-lg mb-1">💎</div>
                   <p class="text-xs font-bold text-gray-700">Obsidian</p>
-                  <p class="text-[10px] text-gray-400">Open as a vault</p>
+                  <p class="text-[10px] text-gray-500">Open as a vault</p>
                 </div>
                 <div class="text-center">
                   <div class="text-lg mb-1">📝</div>
                   <p class="text-xs font-bold text-gray-700">Any text editor</p>
-                  <p class="text-[10px] text-gray-400">TextEdit, Notepad, vim</p>
+                  <p class="text-[10px] text-gray-500">TextEdit, Notepad, vim</p>
                 </div>
                 <div class="text-center">
                   <div class="text-lg mb-1">🔧</div>
                   <p class="text-xs font-bold text-gray-700">Your own tools</p>
-                  <p class="text-[10px] text-gray-400">Parse YAML + markdown</p>
+                  <p class="text-[10px] text-gray-500">Parse YAML + markdown</p>
                 </div>
               </div>
               <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -304,7 +304,7 @@ marketing.get('/', (c) => {
         <section class="py-8 sm:py-16">
           <div class="bg-horizon-600 rounded-2xl sm:rounded-3xl p-6 sm:p-12 text-center text-white">
             <h2 class="text-2xl sm:text-3xl font-bold mb-4">Ready to simplify your wedding business?</h2>
-            <p class="text-horizon-100 mb-6 sm:mb-8 max-w-md mx-auto">
+            <p class="text-white mb-6 sm:mb-8 max-w-md mx-auto">
               Join vendors who are already managing their leads, weddings, and invoices in one place.
             </p>
             <a
@@ -556,7 +556,7 @@ marketing.get('/about', (c) => {
         {/* CTA */}
         <div class="bg-horizon-600 rounded-2xl p-6 sm:p-10 text-center text-white">
           <h2 class="text-xl sm:text-2xl font-bold mb-3">Ready to try it?</h2>
-          <p class="text-horizon-100 mb-6 max-w-md mx-auto text-sm">
+          <p class="text-white mb-6 max-w-md mx-auto text-sm">
             Free to use. No credit card. Set up in under a minute.
           </p>
           <a
@@ -1023,7 +1023,7 @@ Backup plan: The Calyx indoor space.
         {/* CTA */}
         <div class="bg-horizon-600 rounded-2xl p-6 sm:p-10 text-center text-white">
           <h2 class="text-xl sm:text-2xl font-bold mb-3">Build on this standard</h2>
-          <p class="text-horizon-100 mb-6 max-w-md mx-auto text-sm">
+          <p class="text-white mb-6 max-w-md mx-auto text-sm">
             If you're building wedding software, adopt this format. Your users will thank you.
           </p>
           <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -1309,7 +1309,7 @@ for f in Path("contacts").glob("*.md"):
         {/* CTA */}
         <div class="bg-horizon-600 rounded-2xl p-6 sm:p-10 text-center text-white">
           <h2 class="text-xl sm:text-2xl font-bold mb-3">Your data, always yours</h2>
-          <p class="text-horizon-100 mb-6 max-w-md mx-auto text-sm">
+          <p class="text-white mb-6 max-w-md mx-auto text-sm">
             Start using Wedding Computer. Connect GitHub. And never worry about losing your data again.
           </p>
           <div class="flex flex-col sm:flex-row items-center justify-center gap-3">

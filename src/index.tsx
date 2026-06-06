@@ -41,6 +41,25 @@ import { syncStorageBackground } from './services/storage-sync'
 
 const app = new Hono<Env>()
 
+app.use('*', async (c, next) => {
+  await next()
+
+  const contentType = c.res.headers.get('Content-Type') ?? ''
+  const isHtmx = c.req.header('hx-request') === 'true'
+  if (!contentType.includes('text/html') || isHtmx) return
+
+  const body = await c.res.clone().text()
+  if (!body.startsWith('<html')) return
+
+  const headers = new Headers(c.res.headers)
+  headers.delete('Content-Length')
+  c.res = new Response(`<!DOCTYPE html>${body}`, {
+    status: c.res.status,
+    statusText: c.res.statusText,
+    headers,
+  })
+})
+
 app.onError((err, c) => {
   const url = c.req.url
   const method = c.req.method
