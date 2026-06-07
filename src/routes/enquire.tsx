@@ -7,6 +7,9 @@ import { getStorageWithSecrets } from '../storage'
 import { createActivity } from '../db/activities'
 import { verifyTurnstile } from '../services/turnstile'
 import { track } from '../services/analytics'
+import { draftEnquiryReply } from '../services/ai'
+import { resolveSecret } from '../services/secrets'
+import { getScoreForDate } from '../db/busyness'
 import { rateLimit } from '../middleware/rate-limit'
 import { sanitize, isValidEmail } from '../lib/validation'
 import { parseFormConfig } from '../lib/form-schema'
@@ -103,6 +106,54 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
       vendorId,
       contactId: contact.id,
     })
+
+    if (vendor.availability_sharing === 'ai_reply' && contactData.email) {
+      try {
+        const weddingDate = contactData.wedding_date ?? null
+        let isAvailable: boolean | null = null
+        let busynessScore: number | null = null
+
+        if (weddingDate) {
+          const events = await c.env.DB
+            .prepare('SELECT COUNT(*) as count FROM calendar_events WHERE vendor_id = ? AND date = ? AND type IN (\'booking\', \'blocked\')')
+            .bind(vendorId, weddingDate)
+            .first<{ count: number }>()
+          isAvailable = (events?.count ?? 0) === 0
+
+          const score = await getScoreForDate(c.env.DB, weddingDate, 'global', 'global')
+          busynessScore = score?.score ?? null
+        }
+
+        const anthropicKey = await resolveSecret(c.env.KV, vendor.anthropic_api_key)
+        const draft = await draftEnquiryReply(c.env.AI, {
+          vendorName: vendor.business_name,
+          vendorCategory: vendor.category,
+          contactName: `${contactData.first_name} ${contactData.last_name}`.trim(),
+          weddingDate,
+          weddingLocation: contactData.wedding_location ?? null,
+          isAvailable,
+          busynessScore,
+          notes: null,
+        }, anthropicKey)
+
+        if (draft) {
+          await c.env.DB.prepare(
+            `INSERT INTO emails (vendor_id, contact_id, direction, from_email, from_name, to_email, subject, body_text, status, is_system)
+             VALUES (?, ?, 'outbound', ?, ?, ?, ?, ?, 'draft', 1)`
+          ).bind(
+            vendorId,
+            contact.id,
+            vendor.email_handle ? `${vendor.email_handle}@wedding.computer` : 'noreply@wedding.computer',
+            vendor.business_name,
+            contactData.email,
+            `Re: Enquiry from ${contactData.first_name}`,
+            draft,
+          ).run()
+        }
+      } catch (e: any) {
+        console.error('[enquiry] AI auto-reply failed', e.message)
+      }
+    }
 
     return c.html(
       <EnquiryShell embed={embed}>

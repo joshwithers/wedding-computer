@@ -99,6 +99,15 @@ export async function updateVendor(
       | 'card_fee_percent'
       | 'service_templates'
       | 'invoice_defaults'
+      | 'is_agency'
+      | 'location_city'
+      | 'location_state'
+      | 'location_country'
+      | 'location_lat'
+      | 'location_lng'
+      | 'location_place_id'
+      | 'availability_sharing'
+      | 'directory_listed'
     >
   >
 ): Promise<void> {

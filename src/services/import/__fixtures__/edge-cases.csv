@@ -1,0 +1,11 @@
+First Name,Last Name,Email,Phone,Partner First Name,Wedding Date,Wedding Location,Notes,Status
+Sarah,Smith,sarah@example.com,0412 345 678,Tom,15/03/2026,"Byron Bay, NSW","She said ""I love it""",booked
+,"",missing@example.com,,,,,No first name - should be skipped,new
+Emma,Wilson,emma@example.com,+61 423 456 789,James,03/25/2026,Gold Coast,US-style date (month > 12 in second position),quoted
+Olivia,"O'Brien",olivia@example.com,0434567890,,12/11/2026,Sydney,"Apostrophe in name, tricky CSV",meeting
+,,,,,,,Completely empty row should be skipped,
+"Mia ""Mimi""",Taylor,mia@example.com,0445678901,Liam,5/3/2026,Melbourne,Ambiguous date and nickname in quotes,new
+Charlotte,Anderson,charlotte@example.com,0456789012,Noah,01/01/27,Brisbane,Two-digit year,contacted
+Amelia,Martinez,amelia@example.com,04-5678-9013,,15.03.2026,Perth,Dot-separated date format,lead
+Isla,Thompson,isla@example.com,0467890124,,March 15 2026,Adelaide,Natural language date,prospect
+Luna,Garcia,luna@example.com,0478901235,,sometime in spring,Hobart,Unparseable date should pass through,won

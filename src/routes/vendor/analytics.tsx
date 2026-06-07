@@ -7,6 +7,7 @@ import { csrf } from '../../middleware/csrf'
 import { isProVendor } from '../../db/subscriptions'
 import {
   countEvents,
+  countEventsGlobal,
   getMonthlyEventCounts,
   getConversionFunnel,
   getRevenue,
@@ -15,6 +16,7 @@ import {
   getAverageSpendPerWedding,
 } from '../../db/analytics'
 import { listGoals, upsertGoal, deleteGoal, getCurrentYearGoals } from '../../db/goals'
+import { getDateHeatmap } from '../../db/busyness'
 
 const analytics = new Hono<Env>()
 
@@ -112,6 +114,11 @@ analytics.get('/app/analytics', async (c) => {
     avgSpendVendor,
     avgSpendIndustry,
     yearGoals,
+    industryEnquiries,
+    industryBookings,
+    cityHeatmap,
+    stateHeatmap,
+    globalHeatmap,
   ] = await Promise.all([
     countEvents(db, vendor.id, 'enquiry_received', thirtyDaysAgo, today),
     countEvents(db, vendor.id, 'enquiry_received', sixtyDaysAgo, thirtyDaysAgo),
@@ -127,6 +134,17 @@ analytics.get('/app/analytics', async (c) => {
     getAverageSpendPerWedding(db, vendor.id, yearStart, yearEnd),
     getAverageSpendPerWedding(db, null, yearStart, yearEnd),
     getCurrentYearGoals(db, vendor.id),
+    // Benchmarks at geographic levels
+    countEventsGlobal(db, 'enquiry_received', thirtyDaysAgo, today, { category: vendor.category }),
+    countEventsGlobal(db, 'booking_confirmed', thirtyDaysAgo, today, { category: vendor.category }),
+    // Busyness heatmap (next 90 days)
+    vendor.location_city
+      ? getDateHeatmap(db, today, new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10), 'city', vendor.location_city)
+      : Promise.resolve([]),
+    vendor.location_state
+      ? getDateHeatmap(db, today, new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10), 'state', vendor.location_state)
+      : Promise.resolve([]),
+    getDateHeatmap(db, today, new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10), 'global', 'global'),
   ])
 
   const bookingRate = enquiriesCurrent > 0 ? Math.round((bookingsCurrent / enquiriesCurrent) * 100) : 0
@@ -365,11 +383,64 @@ analytics.get('/app/analytics', async (c) => {
             <BenchmarkCard
               label="Booking rate"
               yours={bookingRate}
-              industry={0}
+              industry={industryBookings > 0 && industryEnquiries > 0 ? Math.round((industryBookings / industryEnquiries) * 100) : 0}
               format="percent"
-              note="Industry average coming soon"
+            />
+            <BenchmarkCard
+              label="Enquiries (30d)"
+              yours={enquiriesCurrent}
+              industry={industryEnquiries}
+              format="number"
+              note={`All ${vendor.category}s on platform`}
+            />
+            <BenchmarkCard
+              label="Bookings (30d)"
+              yours={bookingsCurrent}
+              industry={industryBookings}
+              format="number"
+              note={`All ${vendor.category}s on platform`}
             />
           </div>
+        </section>
+
+        {/* Date busyness heatmap */}
+        <section class="bg-white rounded-2xl p-5 sm:p-6">
+          <h3 class="font-bold text-gray-900 mb-1">Date busyness</h3>
+          <p class="text-sm text-gray-500 mb-5">How busy upcoming dates are for enquiries and bookings</p>
+
+          {globalHeatmap.length > 0 ? (
+            <div class="space-y-6">
+              {vendor.location_city && cityHeatmap.length > 0 && (
+                <div>
+                  <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">{vendor.location_city}</h4>
+                  <HeatmapGrid data={cityHeatmap} />
+                </div>
+              )}
+              {vendor.location_state && stateHeatmap.length > 0 && (
+                <div>
+                  <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">{vendor.location_state}</h4>
+                  <HeatmapGrid data={stateHeatmap} />
+                </div>
+              )}
+              <div>
+                <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Global</h4>
+                <HeatmapGrid data={globalHeatmap} />
+              </div>
+              <div class="flex items-center gap-2 text-xs text-gray-400">
+                <span>Quiet</span>
+                <div class="flex gap-0.5">
+                  <div class="w-4 h-4 rounded bg-gray-100" />
+                  <div class="w-4 h-4 rounded bg-horizon-100" />
+                  <div class="w-4 h-4 rounded bg-horizon-300" />
+                  <div class="w-4 h-4 rounded bg-horizon-500" />
+                  <div class="w-4 h-4 rounded bg-horizon-700" />
+                </div>
+                <span>Busy</span>
+              </div>
+            </div>
+          ) : (
+            <p class="text-sm text-gray-400">Busyness data will appear after the first daily aggregation runs.</p>
+          )}
         </section>
       </div>
     </AppLayout>
@@ -601,7 +672,7 @@ function UpgradePrompt() {
         </div>
 
         <div class="mb-6">
-          <p class="text-3xl font-bold text-gray-900">$14<span class="text-base font-medium text-gray-500">/month</span></p>
+          <p class="text-3xl font-bold text-gray-900">$28<span class="text-base font-medium text-gray-500">/month</span></p>
         </div>
 
         <a
@@ -665,11 +736,13 @@ function BenchmarkCard({
   label: string
   yours: number
   industry: number
-  format: 'currency' | 'percent'
+  format: 'currency' | 'percent' | 'number'
   note?: string
 }) {
-  const yourDisplay = format === 'currency' ? formatCents(yours) : formatPct(yours)
-  const industryDisplay = note ? note : format === 'currency' ? formatCents(industry) : formatPct(industry)
+  const fmt = (v: number) =>
+    format === 'currency' ? formatCents(v) : format === 'percent' ? formatPct(v) : String(v)
+  const yourDisplay = fmt(yours)
+  const industryDisplay = note ? note : fmt(industry)
   const diff = industry > 0 ? yours - industry : 0
   const ahead = diff >= 0
 
@@ -692,6 +765,31 @@ function BenchmarkCard({
           </p>
         )}
       </div>
+    </div>
+  )
+}
+
+function HeatmapGrid({ data }: { data: Array<{ date: string; score: number; enquiry_count: number; booking_count: number }> }) {
+  return (
+    <div class="flex flex-wrap gap-1">
+      {data.map((d) => {
+        const bg = d.score === 0
+          ? 'bg-gray-100'
+          : d.score < 0.5
+            ? 'bg-horizon-100'
+            : d.score < 1.0
+              ? 'bg-horizon-300'
+              : d.score < 2.0
+                ? 'bg-horizon-500'
+                : 'bg-horizon-700'
+        const dayLabel = new Date(d.date + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })
+        return (
+          <div
+            class={`w-6 h-6 rounded ${bg} cursor-default`}
+            title={`${dayLabel}: ${d.enquiry_count} enquiries, ${d.booking_count} bookings (score: ${d.score.toFixed(1)})`}
+          />
+        )
+      })}
     </div>
   )
 }

@@ -115,7 +115,7 @@ export async function getMRR(db: D1Database): Promise<number> {
        WHERE plan = 'pro' AND status IN ('active', 'trialing')`
     )
     .first<{ count: number }>()
-  return (row?.count ?? 0) * 1400
+  return (row?.count ?? 0) * 2800
 }
 
 export async function getConversionRate(db: D1Database): Promise<number> {

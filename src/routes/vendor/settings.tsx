@@ -80,7 +80,30 @@ settings.get('/app/settings', (c) => {
               <Field label="Phone" name="phone" value={vendor.phone ?? ''} type="tel" />
               <Field label="Website" name="website" value={vendor.website ?? ''} type="url" />
               <Field label="Instagram" name="instagram" value={vendor.instagram ?? ''} placeholder="@handle" />
-              <Field label="Location" name="location" value={vendor.location ?? ''} />
+              <div>
+                <label class="block text-sm font-bold text-gray-700 mb-1.5">Location</label>
+                <div class="relative" data-places>
+                  <input
+                    type="text"
+                    name="location"
+                    id="location-input"
+                    value={vendor.location ?? ''}
+                    placeholder="Start typing a city or region..."
+                    autocomplete="off"
+                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                    hx-get="/api/places/search?field=location&mode=region"
+                    hx-trigger="keyup changed delay:300ms"
+                    hx-target="#suggestions-location"
+                    hx-include="this"
+                  />
+                  <div id="suggestions-location" class="relative"></div>
+                </div>
+                {vendor.location_city && (
+                  <p class="text-xs text-gray-400 mt-1">
+                    {[vendor.location_city, vendor.location_state, vendor.location_country].filter(Boolean).join(', ')}
+                  </p>
+                )}
+              </div>
               <div>
                 <label class="block text-sm font-bold text-gray-700 mb-1.5" for="bio">Bio</label>
                 <textarea
@@ -351,6 +374,71 @@ settings.get('/app/settings', (c) => {
         </section>
 
         <section class="mt-10 pt-8 border-t border-gray-200">
+          <h2 class="text-base font-bold mb-2">Availability sharing</h2>
+          <p class="text-sm text-gray-500 mb-4">
+            Control who can see your calendar availability.
+          </p>
+          <form method="post" action="/app/settings/availability-sharing">
+            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+            <div class="space-y-3">
+              {([
+                ['private', 'Private', 'Only you can see your availability'],
+                ['vendors_only', 'Vendors only', 'Other vendors on shared weddings can see your availability'],
+                ['public', 'Public', 'Anyone with your profile link can see available dates'],
+                ['ai_reply', 'AI auto-reply', 'AI includes your availability when replying to enquiries'],
+              ] as const).map(([value, label, desc]) => (
+                <label class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-gray-200 hover:border-horizon-300 transition-colors">
+                  <input
+                    type="radio"
+                    name="availability_sharing"
+                    value={value}
+                    checked={vendor.availability_sharing === value}
+                    class="mt-0.5 w-4 h-4 border-gray-300 text-horizon-600 focus:ring-horizon-600"
+                  />
+                  <div>
+                    <span class="text-sm font-bold text-gray-900">{label}</span>
+                    <p class="text-xs text-gray-500">{desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <button type="submit"
+              class="mt-4 bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
+              Save
+            </button>
+          </form>
+        </section>
+
+        <section class="mt-10 pt-8 border-t border-gray-200">
+          <h2 class="text-base font-bold mb-2">Directory listing</h2>
+          <p class="text-sm text-gray-500 mb-4">
+            Opt in to appear in the public wedding vendor directory at wedding.institute.
+          </p>
+          <form method="post" action="/app/settings/directory-listing">
+            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                name="directory_listed"
+                value="1"
+                checked={!!vendor.directory_listed}
+                class="w-4 h-4 rounded border-gray-300 text-horizon-600 focus:ring-horizon-600"
+              />
+              <span class="text-sm text-gray-700">List my business in the public directory</span>
+            </label>
+            {!vendor.location_city && (
+              <p class="text-xs text-grapefruit-600 mt-2">
+                Set your location above to appear in location-based directory searches.
+              </p>
+            )}
+            <button type="submit"
+              class="mt-4 bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
+              Save
+            </button>
+          </form>
+        </section>
+
+        <section class="mt-10 pt-8 border-t border-gray-200">
           <h2 class="text-base font-bold mb-2">GitHub sync</h2>
           <p class="text-sm text-gray-500 mb-4">
             Sync your contacts and weddings to a private GitHub repository. Open your files in Obsidian, VS Code, or any text editor.
@@ -571,15 +659,40 @@ settings.post('/app/settings', async (c) => {
     const businessName = requireString(body.business_name, 'Business name')
     const category = requireString(body.category, 'Category')
 
-    await updateVendor(c.env.DB, vendor.id, {
+    const location = trimOrNull(body.location)
+
+    const updates: Parameters<typeof updateVendor>[2] = {
       business_name: businessName,
       category,
       phone: trimOrNull(body.phone),
       website: trimOrNull(body.website),
       instagram: trimOrNull(body.instagram),
       bio: trimOrNull(body.bio),
-      location: trimOrNull(body.location),
-    })
+      location,
+    }
+
+    if (location && location !== vendor.location && c.env.GOOGLE_MAPS_API_KEY) {
+      try {
+        const geoRes = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${c.env.GOOGLE_MAPS_API_KEY}`
+        )
+        if (geoRes.ok) {
+          const geoData = (await geoRes.json()) as { results?: Array<{ address_components?: Array<{ long_name: string; types: string[] }>; geometry?: { location?: { lat: number; lng: number } }; place_id?: string }> }
+          const result = geoData.results?.[0]
+          if (result) {
+            const find = (type: string) => result.address_components?.find((c) => c.types.includes(type))?.long_name ?? null
+            updates.location_city = find('locality') ?? find('administrative_area_level_2')
+            updates.location_state = find('administrative_area_level_1')
+            updates.location_country = find('country')
+            updates.location_lat = result.geometry?.location?.lat ?? null
+            updates.location_lng = result.geometry?.location?.lng ?? null
+            updates.location_place_id = result.place_id ?? null
+          }
+        }
+      } catch { /* geocoding is best-effort */ }
+    }
+
+    await updateVendor(c.env.DB, vendor.id, updates)
 
     await auditLog(c, 'settings_updated', 'vendor', vendor.id).catch(() => {})
     return c.redirect('/app/settings?saved=1')
@@ -597,7 +710,14 @@ settings.post('/app/settings/invoicing', async (c) => {
   const taxLabel = trimOrNull(body.tax_label)
   const taxRate = Math.max(0, Math.min(50, parseFloat(String(body.tax_rate || '0')) || 0))
   const taxInclusive = body.tax_inclusive === '1' ? 1 : 0
-  const taxNumber = trimOrNull(body.tax_number)
+  let taxNumber = trimOrNull(body.tax_number)
+  if (taxNumber && (taxLabel === 'GST' || taxLabel === null)) {
+    const digits = taxNumber.replace(/\s/g, '')
+    if (!/^\d{11}$/.test(digits)) {
+      return c.redirect('/app/settings?error=' + encodeURIComponent('ABN must be exactly 11 digits'))
+    }
+    taxNumber = digits.replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4')
+  }
   const businessAddress = trimOrNull(body.business_address)
   const invoicePrefix = (typeof body.invoice_prefix === 'string' && body.invoice_prefix.trim())
     ? body.invoice_prefix.trim()
@@ -716,6 +836,30 @@ settings.post('/app/settings/email-handle', async (c) => {
 
   await updateVendor(c.env.DB, vendor.id, { email_handle: handle })
 
+  return c.redirect('/app/settings?saved=1')
+})
+
+// ─── Availability sharing ───
+
+settings.post('/app/settings/availability-sharing', async (c) => {
+  const vendor = c.get('vendor')!
+  const body = await c.req.parseBody()
+  const sharing = String(body.availability_sharing ?? 'private')
+  const valid = ['private', 'vendors_only', 'public', 'ai_reply'] as const
+  const value = valid.includes(sharing as any) ? sharing as typeof valid[number] : 'private'
+
+  await updateVendor(c.env.DB, vendor.id, { availability_sharing: value })
+  return c.redirect('/app/settings?saved=1')
+})
+
+// ─── Directory listing ───
+
+settings.post('/app/settings/directory-listing', async (c) => {
+  const vendor = c.get('vendor')!
+  const body = await c.req.parseBody()
+  const listed = body.directory_listed === '1' ? 1 : 0
+
+  await updateVendor(c.env.DB, vendor.id, { directory_listed: listed })
   return c.redirect('/app/settings?saved=1')
 })
 

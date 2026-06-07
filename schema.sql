@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   stripe_onboarding_complete INTEGER NOT NULL DEFAULT 0,
   availability_default TEXT,
   is_organiser INTEGER NOT NULL DEFAULT 0,
+  is_agency INTEGER NOT NULL DEFAULT 0,
   enquiry_form TEXT,
   booking_form TEXT,
   ceremony_types TEXT,
@@ -62,6 +63,14 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   card_fee_percent REAL NOT NULL DEFAULT 0,
   service_templates TEXT,
   invoice_defaults TEXT,
+  location_city TEXT,
+  location_state TEXT,
+  location_country TEXT,
+  location_lat REAL,
+  location_lng REAL,
+  location_place_id TEXT,
+  availability_sharing TEXT NOT NULL DEFAULT 'private',
+  directory_listed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -552,5 +561,137 @@ CREATE INDEX IF NOT EXISTS idx_wedding_todos_wedding ON wedding_todos(wedding_id
 
 -- Performance composite indexes
 CREATE INDEX IF NOT EXISTS idx_contacts_vendor_status ON contacts(vendor_id, status);
+
+-- Team members belonging to an agency vendor
+CREATE TABLE IF NOT EXISTS team_members (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  title TEXT,
+  avatar_url TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Assignments of team members to weddings
+CREATE TABLE IF NOT EXISTS wedding_team_assignments (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  wedding_id TEXT NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
+  wedding_member_id TEXT NOT NULL REFERENCES wedding_members(id) ON DELETE CASCADE,
+  team_member_id TEXT NOT NULL REFERENCES team_members(id) ON DELETE CASCADE,
+  role TEXT,
+  notes TEXT,
+  assigned_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(wedding_id, team_member_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_members_vendor ON team_members(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_team_members_active ON team_members(vendor_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_wedding_team_wedding ON wedding_team_assignments(wedding_id);
+CREATE INDEX IF NOT EXISTS idx_wedding_team_member ON wedding_team_assignments(team_member_id);
+CREATE INDEX IF NOT EXISTS idx_wedding_team_wm ON wedding_team_assignments(wedding_member_id);
+
+-- Data import job tracking
+CREATE TABLE IF NOT EXISTS import_jobs (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  source TEXT NOT NULL,
+  entity_type TEXT NOT NULL DEFAULT 'contact'
+    CHECK (entity_type IN ('contact', 'wedding', 'invoice')),
+  status TEXT NOT NULL DEFAULT 'uploading'
+    CHECK (status IN ('uploading', 'mapping', 'previewing', 'processing', 'completed', 'failed', 'cancelled')),
+  filename TEXT,
+  column_mapping TEXT,
+  total_records INTEGER NOT NULL DEFAULT 0,
+  imported_count INTEGER NOT NULL DEFAULT 0,
+  skipped_count INTEGER NOT NULL DEFAULT 0,
+  failed_count INTEGER NOT NULL DEFAULT 0,
+  error_log TEXT,
+  config TEXT,
+  raw_data TEXT,
+  preview_data TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS import_records (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  import_job_id TEXT NOT NULL REFERENCES import_jobs(id) ON DELETE CASCADE,
+  record_index INTEGER NOT NULL,
+  entity_type TEXT NOT NULL DEFAULT 'contact',
+  entity_id TEXT,
+  raw_data TEXT NOT NULL,
+  mapped_data TEXT,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'imported', 'skipped', 'failed', 'duplicate')),
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_jobs_vendor ON import_jobs(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_import_jobs_status ON import_jobs(vendor_id, status);
+CREATE INDEX IF NOT EXISTS idx_import_records_job ON import_records(import_job_id);
+CREATE INDEX IF NOT EXISTS idx_import_records_status ON import_records(import_job_id, status);
 CREATE INDEX IF NOT EXISTS idx_invoices_vendor_status ON invoices(vendor_id, status);
 CREATE INDEX IF NOT EXISTS idx_emails_vendor_unread ON emails(vendor_id, direction, is_read, is_system);
+
+-- Run sheet items (day-of timeline for a wedding)
+CREATE TABLE IF NOT EXISTS run_sheet_items (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  wedding_id TEXT NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
+  vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  time TEXT,
+  end_time TEXT,
+  title TEXT NOT NULL,
+  description TEXT,
+  location TEXT,
+  assigned_to TEXT,
+  category TEXT DEFAULT 'other'
+    CHECK (category IN ('getting_ready', 'ceremony', 'portraits', 'reception', 'other')),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_run_sheet_items_wedding ON run_sheet_items(wedding_id);
+CREATE INDEX IF NOT EXISTS idx_run_sheet_items_vendor ON run_sheet_items(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_run_sheet_items_order ON run_sheet_items(wedding_id, sort_order);
+
+-- Busyness scores (aggregated daily by cron)
+CREATE TABLE IF NOT EXISTS busyness_scores (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  date TEXT NOT NULL,
+  level TEXT NOT NULL CHECK (level IN ('city', 'state', 'country', 'global')),
+  level_value TEXT NOT NULL,
+  enquiry_count INTEGER NOT NULL DEFAULT 0,
+  booking_count INTEGER NOT NULL DEFAULT 0,
+  score REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(date, level, level_value)
+);
+
+CREATE INDEX IF NOT EXISTS idx_busyness_scores_date ON busyness_scores(date);
+CREATE INDEX IF NOT EXISTS idx_busyness_scores_level ON busyness_scores(level, level_value);
+CREATE INDEX IF NOT EXISTS idx_busyness_scores_lookup ON busyness_scores(date, level, level_value);
+
+-- Quote calculators (vendor-configurable pricing tools)
+CREATE TABLE IF NOT EXISTS quote_calculators (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  config TEXT NOT NULL DEFAULT '{}',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  public_token TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_quote_calculators_vendor ON quote_calculators(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_quote_calculators_token ON quote_calculators(public_token);

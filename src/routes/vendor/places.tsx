@@ -173,4 +173,65 @@ places.get('/api/places/status', async (c) => {
   }
 })
 
+type GeocodedLocation = {
+  city: string | null
+  state: string | null
+  country: string | null
+  lat: number | null
+  lng: number | null
+  place_id: string | null
+  formatted: string
+}
+
+places.post('/api/places/geocode', async (c) => {
+  const body = await c.req.parseBody()
+  const address = String(body.address ?? '').trim()
+  if (!address) return c.json({ error: 'address required' }, 400)
+
+  const apiKey = c.env.GOOGLE_MAPS_API_KEY
+  if (!apiKey) return c.json({ error: 'GOOGLE_MAPS_API_KEY not set' }, 500)
+
+  try {
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`
+    )
+    if (!res.ok) return c.json({ error: `Geocoding failed (${res.status})` }, 502)
+
+    const data = (await res.json()) as {
+      results?: Array<{
+        address_components?: Array<{
+          long_name: string
+          short_name: string
+          types: string[]
+        }>
+        geometry?: { location?: { lat: number; lng: number } }
+        place_id?: string
+        formatted_address?: string
+      }>
+    }
+
+    const result = data.results?.[0]
+    if (!result) return c.json({ error: 'No results found' }, 404)
+
+    const components = result.address_components ?? []
+    const find = (type: string) =>
+      components.find((c) => c.types.includes(type))?.long_name ?? null
+
+    const location: GeocodedLocation = {
+      city: find('locality') ?? find('administrative_area_level_2'),
+      state: find('administrative_area_level_1'),
+      country: find('country'),
+      lat: result.geometry?.location?.lat ?? null,
+      lng: result.geometry?.location?.lng ?? null,
+      place_id: result.place_id ?? null,
+      formatted: result.formatted_address ?? address,
+    }
+
+    return c.json(location)
+  } catch (err: any) {
+    console.error('[places] geocode error', err.message)
+    return c.json({ error: err.message }, 500)
+  }
+})
+
 export default places

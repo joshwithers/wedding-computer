@@ -72,3 +72,109 @@ async function draftWithAnthropic(apiKey: string, prompt: string): Promise<strin
 
   return data.content[0]?.text ?? ''
 }
+
+async function generateWithAI(
+  ai: Ai,
+  anthropicKey: string | null | undefined,
+  prompt: string,
+  maxTokens = 1024,
+): Promise<string> {
+  if (anthropicKey) return draftWithAnthropic(anthropicKey, prompt)
+  const result = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: maxTokens,
+  }) as { response?: string }
+  return result.response ?? ''
+}
+
+type RunSheetContext = {
+  weddingDate: string | null
+  weddingTime: string | null
+  location: string | null
+  ceremonyLocation: string | null
+  ceremonyType: string | null
+  receptionLocation: string | null
+  receptionTime: string | null
+  gettingReadyLocation: string | null
+  gettingReadyTime: string | null
+  gettingReady2Location: string | null
+  gettingReady2Time: string | null
+  portraitLocation: string | null
+  portraitTime: string | null
+  durationHours: number | null
+  vendorCategory: string
+  vendorName: string
+  notes: string | null
+}
+
+export async function generateRunSheet(
+  ai: Ai,
+  context: RunSheetContext,
+  anthropicKey?: string | null,
+): Promise<Array<{ time: string; end_time: string; title: string; description: string; location: string; category: string }>> {
+  const prompt = `You are helping a wedding ${context.vendorCategory} (${context.vendorName}) create a day-of run sheet for a wedding.
+
+Wedding details:
+- Date: ${context.weddingDate ?? 'TBD'}
+- Ceremony time: ${context.weddingTime ?? 'TBD'}
+- Duration: ${context.durationHours ?? 8} hours
+- Ceremony type: ${context.ceremonyType ?? 'wedding'}
+- Ceremony location: ${context.ceremonyLocation ?? context.location ?? 'TBD'}
+- Reception location: ${context.receptionLocation ?? 'same venue'}
+- Reception time: ${context.receptionTime ?? 'after ceremony'}
+- Getting ready location: ${context.gettingReadyLocation ?? 'TBD'}
+- Getting ready time: ${context.gettingReadyTime ?? 'TBD'}
+${context.gettingReady2Location ? `- Getting ready (party 2): ${context.gettingReady2Location} at ${context.gettingReady2Time ?? 'TBD'}` : ''}
+- Portrait location: ${context.portraitLocation ?? 'on-site'}
+- Portrait time: ${context.portraitTime ?? 'after ceremony'}
+${context.notes ? `- Notes: ${context.notes}` : ''}
+
+Generate a detailed run sheet as a JSON array. Each item has: time (24h format "HH:MM"), end_time ("HH:MM"), title (short), description (1 sentence), location, category (one of: getting_ready, ceremony, portraits, reception, other).
+
+Include typical events for a ${context.vendorCategory}: arrivals, prep, ceremony, photos, reception key moments, pack-down. Use realistic Australian wedding timing. Return ONLY the JSON array, no other text.`
+
+  const raw = await generateWithAI(ai, anthropicKey, prompt, 2048)
+
+  try {
+    const match = raw.match(/\[[\s\S]*\]/)
+    if (!match) return []
+    return JSON.parse(match[0])
+  } catch {
+    return []
+  }
+}
+
+type EnquiryReplyContext = {
+  vendorName: string
+  vendorCategory: string
+  contactName: string
+  weddingDate: string | null
+  weddingLocation: string | null
+  isAvailable: boolean | null
+  busynessScore: number | null
+  notes: string | null
+}
+
+export async function draftEnquiryReply(
+  ai: Ai,
+  context: EnquiryReplyContext,
+  anthropicKey?: string | null,
+): Promise<string> {
+  const availabilityInfo = context.isAvailable === null
+    ? 'Availability is unknown for this date.'
+    : context.isAvailable
+      ? `You ARE available on ${context.weddingDate}.${context.busynessScore !== null ? ` This date has a busyness score of ${context.busynessScore.toFixed(1)} (${context.busynessScore > 2 ? 'very popular' : context.busynessScore > 1 ? 'moderately busy' : 'relatively quiet'}).` : ''}`
+      : `You are NOT available on ${context.weddingDate}.`
+
+  const prompt = `You are a wedding ${context.vendorCategory} named ${context.vendorName}. A new enquiry just came in from ${context.contactName}.
+
+${context.weddingDate ? `Requested date: ${context.weddingDate}` : 'No date specified'}
+${context.weddingLocation ? `Location: ${context.weddingLocation}` : ''}
+${context.notes ? `Their message: ${context.notes}` : ''}
+
+${availabilityInfo}
+
+Draft a warm, professional reply acknowledging their enquiry. If available, express enthusiasm. If not available, be gracious and suggest they check back or offer alternative dates. Keep it concise (2-3 paragraphs), friendly, Australian English. Write just the body — no subject line, no sign-off.`
+
+  return generateWithAI(ai, anthropicKey, prompt)
+}

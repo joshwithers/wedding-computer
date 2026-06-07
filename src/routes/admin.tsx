@@ -148,7 +148,7 @@ admin.get('/admin', async (c) => {
           <StatCard label="Total weddings" value={String(totalWeddings)} />
           <StatCard label="Total couples" value={String(totalCouples)} />
           <StatCard label="Active Pro subscribers" value={String(activeProCount)} />
-          <StatCard label="MRR" value={formatCents(mrr)} sub={`${activeProCount} x $14/mo`} />
+          <StatCard label="MRR" value={formatCents(mrr)} sub={`${activeProCount} x $28/mo`} />
           <StatCard label="Pro conversion rate" value={formatPercent(conversionRate)} />
         </div>
 

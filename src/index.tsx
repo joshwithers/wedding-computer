@@ -20,6 +20,10 @@ import checklistsRoute from './routes/vendor/checklists'
 import placesRoute from './routes/vendor/places'
 import analyticsRoute from './routes/vendor/analytics'
 import subscriptionRoute from './routes/vendor/subscription'
+import teamRoute from './routes/vendor/team'
+import importRoute from './routes/vendor/import'
+import runSheetRoute from './routes/vendor/run-sheet'
+import quotesRoute from './routes/vendor/quotes'
 import accountRoute from './routes/account'
 import adminRoute from './routes/admin'
 import filesRoute from './routes/files'
@@ -28,6 +32,7 @@ import carddav from './routes/carddav'
 import caldav from './routes/caldav'
 import stripe from './routes/stripe'
 import mcpRoute from './routes/mcp'
+import publicRoutes from './routes/public'
 import { authenticateVendor, CARDDAV_HEADERS, CALDAV_HEADERS, xmlResponse, escXml } from './lib/dav'
 import { AuthLayout } from './views/layouts/auth'
 import { getVendorWithEmail } from './db/vendors'
@@ -37,6 +42,7 @@ import { StorageConflictError } from './storage/conflicts'
 import { sendEmailMessage, newLeadEmail } from './services/email'
 import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, dailyDigest } from './services/notifications'
+import { aggregateBusynessScores } from './db/busyness'
 import { syncStorageBackground } from './services/storage-sync'
 
 const app = new Hono<Env>()
@@ -284,6 +290,7 @@ app.route('/', auth)
 app.route('/', onboarding)
 app.route('/', enquire)
 app.route('/', bookRoute)
+app.route('/', publicRoutes)
 app.route('/', feed)
 app.route('/', stripe)
 
@@ -302,6 +309,10 @@ app.route('/', checklistsRoute)
 app.route('/', placesRoute)
 app.route('/', analyticsRoute)
 app.route('/', subscriptionRoute)
+app.route('/', teamRoute)
+app.route('/', importRoute)
+app.route('/', runSheetRoute)
+app.route('/', quotesRoute)
 app.route('/', accountRoute)
 app.route('/', filesRoute)
 app.route('/', coupleRoute)
@@ -581,6 +592,12 @@ export default {
         await dailyDigest({ db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL })
       } catch (e: any) {
         console.error('[CRON] daily digest failed', e.message)
+      }
+
+      try {
+        await aggregateBusynessScores(env.DB)
+      } catch (e: any) {
+        console.error('[CRON] busyness aggregation failed', e.message)
       }
     }
 

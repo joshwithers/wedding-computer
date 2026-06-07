@@ -15,11 +15,20 @@ The collaboration platform where vendors, venues, planners, and couples plan wed
 - **CRM & pipeline** — track every lead from first enquiry to booked
 - **Custom enquiry forms** — branded forms with CAPTCHA protection
 - **Calendar & availability** — monthly calendar with CalDAV and iCal sync
-- **Invoicing & payments** — line items, payment schedules, Stripe Connect
+- **Public availability calendar** — share your availability publicly or with other vendors
+- **Invoicing & payments** — ATO-compliant tax invoices with GST, ABN, payment schedules, and Stripe Connect
+- **Quote calculator** — embeddable pricing tool for your website
 - **Built-in email** — send and receive from your @wedding.computer address
 - **AI email drafting** — one-click personalised drafts
+- **AI enquiry auto-replies** — draft availability-aware responses to new enquiries
+- **Day-of run sheet builder** — timeline planner with AI generation
 - **Wedding workspaces** — shared workspace for each wedding with all vendors and the couple
+- **Analytics & benchmarks** — anonymised industry data at city, state, country, and global levels
+- **Date busyness scores** — see how busy any date is for enquiries and bookings in your area
+- **Import from other CRMs** — CSV/JSON import from Dubsado, Studio Ninja, HoneyBook, VSCO Workspace, or any spreadsheet, with AI-powered text extraction
+- **Team & agency management** — manage team rosters and assign members to weddings
 - **Couple planner** — vendor grid, budget tracker, booking forms
+- **Directory listing** — opt in to the wedding.institute vendor directory
 - **GitHub sync** — contacts and weddings sync to a private repo as plain text markdown
 - **Plain text files** — every file is portable, human-readable, and never locked in
 - **Open source** — AGPL-3.0, self-hostable on Cloudflare Workers
@@ -63,7 +72,19 @@ Built on Cloudflare Workers. Open source under AGPL-3.0.
 
 Wedding Computer is **free forever**. No trial, no credit card, no catch.
 
-Optional paid add-ons may be available in the future for premium features, but the core platform — CRM, calendar, invoicing, email, wedding workspaces, GitHub sync — is free.
+The core platform — CRM, calendar, invoicing, email, wedding workspaces, run sheets, quote calculator, GitHub sync — is free.
+
+## Pro — $28 AUD/month
+
+Upgrade for analytics and AI-powered features:
+
+- Business analytics and reporting
+- Anonymised industry benchmarks
+- Date busyness scores
+- Goal tracking
+- AI-powered insights
+- AI enquiry auto-replies
+- AI email drafting
 
 ## Links
 
@@ -228,6 +249,18 @@ marketing.get('/', (c) => {
             />
             <FeatureCard
               color="horizon"
+              icon="import"
+              title="Import from anywhere"
+              desc="Bring your existing data with you. Import CSV or JSON files from Dubsado, Studio Ninja, HoneyBook, VSCO Workspace, or any spreadsheet. AI-powered extraction can pull contacts from pasted text or a URL."
+            />
+            <FeatureCard
+              color="grapefruit"
+              icon="team"
+              title="Team & agency management"
+              desc="Photography studios, celebrant agencies, and multi-person businesses can manage a team roster and assign individual team members to each wedding."
+            />
+            <FeatureCard
+              color="horizon"
               icon="sync"
               title="GitHub sync"
               desc="Connect your GitHub account and your contacts and weddings sync to a private repo automatically. Browse files on github.com, open them in Obsidian, or clone them anywhere."
@@ -236,7 +269,25 @@ marketing.get('/', (c) => {
               color="grapefruit"
               icon="analytics"
               title="Business analytics"
-              desc="Track enquiries, bookings, revenue, and conversion rates. Set goals for the year and measure yourself against industry benchmarks."
+              desc="Track enquiries, bookings, revenue, and conversion rates. Set goals for the year and measure yourself against anonymised industry benchmarks at city, state, country, and global levels."
+            />
+            <FeatureCard
+              color="horizon"
+              icon="calendar"
+              title="Date busyness scores"
+              desc="See how busy upcoming dates are for enquiries and bookings — at your city, state, country, and global level. Know whether a date is popping off or likely to be quiet."
+            />
+            <FeatureCard
+              color="grapefruit"
+              icon="invoice"
+              title="Quote calculator"
+              desc="Create an embeddable quote calculator for your website. Clients choose their options and see an instant estimate. Capture enquiries directly from the calculator."
+            />
+            <FeatureCard
+              color="horizon"
+              icon="wedding"
+              title="Day-of run sheet"
+              desc="Build a detailed timeline for each wedding day. AI generates a starting run sheet from your wedding details — then customise times, locations, and assignments."
             />
             <FeatureCard
               color="horizon"
@@ -251,6 +302,41 @@ marketing.get('/', (c) => {
               desc="Every contact, wedding, checklist, and changelog is a plain text markdown file — synced live to GitHub. Open them in Obsidian, VS Code, TextEdit, or Notepad. Your data is portable, always accessible, and never locked in."
             />
           </div>
+        </section>
+
+        {/* Switching CRMs */}
+        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
+          <div class="max-w-3xl mx-auto text-center mb-8">
+            <h2 class="text-xl sm:text-2xl font-bold mb-3">Switching from another CRM?</h2>
+            <p class="text-gray-600 text-sm leading-relaxed max-w-lg mx-auto">
+              Wedding Computer imports contacts from CSV and JSON files exported from the CRMs used by wedding vendors across Australia and beyond. Upload your file, map your columns, preview the data, and import.
+            </p>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 max-w-3xl mx-auto mb-6">
+            <div class="bg-white border border-papaya-300/30 rounded-xl p-4 text-center">
+              <p class="text-sm font-bold text-gray-700">Dubsado</p>
+              <p class="text-[10px] text-gray-500">CSV import</p>
+            </div>
+            <div class="bg-white border border-papaya-300/30 rounded-xl p-4 text-center">
+              <p class="text-sm font-bold text-gray-700">Studio Ninja</p>
+              <p class="text-[10px] text-gray-500">CSV import</p>
+            </div>
+            <div class="bg-white border border-papaya-300/30 rounded-xl p-4 text-center">
+              <p class="text-sm font-bold text-gray-700">HoneyBook</p>
+              <p class="text-[10px] text-gray-500">CSV import</p>
+            </div>
+            <div class="bg-white border border-papaya-300/30 rounded-xl p-4 text-center">
+              <p class="text-sm font-bold text-gray-700">VSCO Workspace</p>
+              <p class="text-[10px] text-gray-500 italic">formerly Táve</p>
+            </div>
+            <div class="bg-white border border-papaya-300/30 rounded-xl p-4 text-center">
+              <p class="text-sm font-bold text-gray-700">Any CSV / JSON</p>
+              <p class="text-[10px] text-gray-500">Custom mapping</p>
+            </div>
+          </div>
+          <p class="text-center text-xs text-gray-400 max-w-lg mx-auto">
+            Column mapping is automatic for known CRMs and fuzzy-matched for everything else. You can also paste text or a URL and let AI extract the contacts for you.
+          </p>
         </section>
 
         {/* Data philosophy */}
@@ -341,7 +427,7 @@ marketing.get('/about', (c) => {
           <p>
             It's free to start, open source, and built by people who work in weddings.
             Couples use it free forever. Vendors get a generous free tier with all the core tools,
-            and can unlock analytics, benchmarking, and AI features with a Pro plan for $14/month.
+            and can unlock analytics, benchmarking, and AI features with a Pro plan for $28/month.
           </p>
         </div>
 
@@ -396,6 +482,14 @@ marketing.get('/about', (c) => {
           <AboutFeature
             title="Service contracts"
             desc="Write a default service agreement template. When you create an invoice, a copy of the contract is attached automatically. Couples sign digitally on the booking page — their name, email, IP address, and timestamp are recorded."
+          />
+          <AboutFeature
+            title="Import from other CRMs"
+            desc="Switching from Dubsado, Studio Ninja, HoneyBook, or VSCO Workspace? Export your contacts as CSV and import them here. Columns are auto-mapped for known CRM exports, or you can map them manually. AI-powered extraction can also pull contacts from pasted text or any web page."
+          />
+          <AboutFeature
+            title="Team & agency management"
+            desc="Run a photography agency, celebrant team, or multi-person business? Add team members to your roster with contact details and roles. Then assign individuals to specific weddings — the wedding workspace shows which team members are working each event."
           />
         </div>
 
@@ -593,6 +687,12 @@ marketing.get('/pricing', (c) => {
               <PricingFeature text="Invoicing with Stripe Connect" />
               <PricingFeature text="Built-in email" />
               <PricingFeature text="Wedding workspaces" />
+              <PricingFeature text="Import from other CRMs" />
+              <PricingFeature text="Team & agency management" />
+              <PricingFeature text="Day-of run sheet builder" />
+              <PricingFeature text="Quote calculator" />
+              <PricingFeature text="Public availability calendar" />
+              <PricingFeature text="Directory listing opt-in" />
               <PricingFeature text="Couple planner dashboard" />
               <PricingFeature text="Plain text file access" />
               <PricingFeature text="Passkey sign-in" />
@@ -611,7 +711,7 @@ marketing.get('/pricing', (c) => {
               Recommended
             </div>
             <p class="text-sm font-bold text-horizon-700 uppercase tracking-wide mb-3">Pro</p>
-            <p class="text-4xl font-bold mb-1">$14</p>
+            <p class="text-4xl font-bold mb-1">$28</p>
             <p class="text-sm text-gray-500 mb-6">per month</p>
             <ul class="space-y-2.5 text-sm text-gray-700 mb-8">
               <PricingFeature text="Everything in Free" bold />
@@ -622,6 +722,9 @@ marketing.get('/pricing', (c) => {
               <PricingFeature text="Revenue and source insights" />
               <PricingFeature text="Business goals and targets" />
               <PricingFeature text="AI email drafting" />
+              <PricingFeature text="Date busyness scores" />
+              <PricingFeature text="Anonymised industry benchmarks" />
+              <PricingFeature text="AI enquiry auto-replies" />
             </ul>
             <a
               href="/login"
@@ -1137,7 +1240,7 @@ Budget: $3,000 - $5,000`}</code></pre>
             />
           </div>
           <p class="text-sm text-gray-500 mt-4">
-            GitHub sync is available on the Pro plan ($14/month).
+            GitHub sync is available on the Pro plan ($28/month).
           </p>
         </div>
 
@@ -1391,4 +1494,6 @@ const featureIcons: Record<string, string> = {
   sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>',
   notifications: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
   plaintext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>',
+  import: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+  team: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>',
 }

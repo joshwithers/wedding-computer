@@ -68,7 +68,7 @@ subscription.get('/app/subscription', async (c) => {
                 <div class="space-y-2 mb-6">
                   <div class="flex items-center justify-between text-sm">
                     <span class="text-gray-500">Plan</span>
-                    <span class="font-bold text-gray-900">Pro &mdash; $14 AUD / month</span>
+                    <span class="font-bold text-gray-900">Pro &mdash; $28 AUD / month</span>
                   </div>
                   {periodEnd && (
                     <div class="flex items-center justify-between text-sm">
@@ -108,7 +108,7 @@ subscription.get('/app/subscription', async (c) => {
             </ul>
 
             <div class="mb-6">
-              <span class="text-2xl font-bold text-gray-900">$14</span>
+              <span class="text-2xl font-bold text-gray-900">$28</span>
               <span class="text-sm text-gray-500 ml-1">AUD / month</span>
             </div>
 
@@ -145,7 +145,7 @@ subscription.post('/app/subscription/checkout', async (c) => {
       'line_items[0][price_data][currency]': 'aud',
       'line_items[0][price_data][product_data][name]': 'Wedding Computer Pro',
       'line_items[0][price_data][product_data][description]': 'Analytics, insights, AI features, and business goals',
-      'line_items[0][price_data][unit_amount]': '1400',
+      'line_items[0][price_data][unit_amount]': '2800',
       'line_items[0][price_data][recurring][interval]': 'month',
       'line_items[0][quantity]': '1',
       'success_url': `${c.env.APP_URL}/app/subscription?success=1`,

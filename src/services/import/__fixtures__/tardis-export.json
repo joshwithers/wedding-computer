@@ -1,0 +1,47 @@
+[
+  {
+    "first_name": "Ivy",
+    "last_name": "Scott",
+    "email": "ivy.s@example.com",
+    "phone": "0412000111",
+    "partner_first_name": "Henry",
+    "partner_last_name": "Scott",
+    "partner_email": "henry.s@example.com",
+    "partner_phone": "0412000112",
+    "wedding_date": "2026-06-20",
+    "wedding_location": "Byron Bay NSW",
+    "source": "website",
+    "status": "booked",
+    "notes": "Sunset ceremony at Broken Head"
+  },
+  {
+    "first_name": "Willow",
+    "last_name": "Green",
+    "email": "willow.g@example.com",
+    "phone": "0423111222",
+    "partner_first_name": "Alexander",
+    "partner_last_name": "Green",
+    "partner_email": null,
+    "partner_phone": null,
+    "wedding_date": "2026-11-14",
+    "wedding_location": "Gold Coast QLD",
+    "source": "instagram",
+    "status": "quoted",
+    "notes": null
+  },
+  {
+    "first_name": "Violet",
+    "last_name": "Adams",
+    "email": "violet.a@example.com",
+    "phone": "0434222333",
+    "partner_first_name": null,
+    "partner_last_name": null,
+    "partner_email": null,
+    "partner_phone": null,
+    "wedding_date": null,
+    "wedding_location": "TBD",
+    "source": "referral",
+    "status": "new",
+    "notes": "Just engaged, exploring options"
+  }
+]

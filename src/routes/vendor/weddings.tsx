@@ -801,6 +801,19 @@ weddings.get('/app/weddings/:id', async (c) => {
               </div>
             </div>
 
+            {vendor.is_agency === 1 && (
+              <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
+                <h3 class="text-sm font-bold text-gray-500 mb-3">Your team</h3>
+                <div
+                  hx-get={`/app/weddings/${wedding.id}/team-assignments`}
+                  hx-trigger="load"
+                  hx-swap="innerHTML"
+                >
+                  <p class="text-xs text-gray-400">Loading team assignments...</p>
+                </div>
+              </div>
+            )}
+
           </div>
 
           {/* Sidebar */}
@@ -904,6 +917,20 @@ weddings.get('/app/weddings/:id', async (c) => {
           hint="Only you can see these"
           endpoint={`/app/weddings/${wedding.id}/private-notes`}
         />
+
+        {/* Run Sheet */}
+        <div class="mt-6">
+          <a
+            href={`/app/weddings/${wedding.id}/run-sheet`}
+            class="flex items-center justify-between bg-white border border-papaya-300/30 rounded-2xl p-4 hover:border-horizon-300 transition-colors group"
+          >
+            <div>
+              <h3 class="text-sm font-bold text-gray-900 group-hover:text-horizon-600">Run Sheet</h3>
+              <p class="text-xs text-gray-500">Day-of timeline and logistics</p>
+            </div>
+            <svg class="w-5 h-5 text-gray-400 group-hover:text-horizon-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+          </a>
+        </div>
 
         {/* Files */}
         <WeddingFiles

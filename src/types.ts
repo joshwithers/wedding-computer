@@ -69,6 +69,7 @@ export type VendorProfile = {
   stripe_onboarding_complete: number
   availability_default: string | null
   is_organiser: number
+  is_agency: number
   enquiry_form: string | null
   booking_form: string | null
   ceremony_types: string | null
@@ -89,6 +90,14 @@ export type VendorProfile = {
   card_fee_percent: number
   service_templates: string | null
   invoice_defaults: string | null
+  location_city: string | null
+  location_state: string | null
+  location_country: string | null
+  location_lat: number | null
+  location_lng: number | null
+  location_place_id: string | null
+  availability_sharing: 'private' | 'vendors_only' | 'public' | 'ai_reply'
+  directory_listed: number
   created_at: string
   updated_at: string
 }
@@ -509,3 +518,122 @@ export type Subscription = {
 
 export const SEASONS = ['summer', 'autumn', 'winter', 'spring'] as const
 export type Season = (typeof SEASONS)[number]
+
+export type TeamMember = {
+  id: string
+  vendor_id: string
+  user_id: string | null
+  name: string
+  email: string | null
+  phone: string | null
+  title: string | null
+  avatar_url: string | null
+  is_active: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type WeddingTeamAssignment = {
+  id: string
+  wedding_id: string
+  wedding_member_id: string
+  team_member_id: string
+  role: string | null
+  notes: string | null
+  assigned_at: string
+}
+
+export type ImportJob = {
+  id: string
+  vendor_id: string
+  source: string
+  entity_type: 'contact' | 'wedding' | 'invoice'
+  status: 'uploading' | 'mapping' | 'previewing' | 'processing' | 'completed' | 'failed' | 'cancelled'
+  filename: string | null
+  column_mapping: string | null
+  total_records: number
+  imported_count: number
+  skipped_count: number
+  failed_count: number
+  error_log: string | null
+  config: string | null
+  raw_data: string | null
+  preview_data: string | null
+  created_at: string
+  completed_at: string | null
+}
+
+export type ImportRecord = {
+  id: string
+  import_job_id: string
+  record_index: number
+  entity_type: string
+  entity_id: string | null
+  raw_data: string
+  mapped_data: string | null
+  status: 'pending' | 'imported' | 'skipped' | 'failed' | 'duplicate'
+  error: string | null
+  created_at: string
+}
+
+export const IMPORT_SOURCES = [
+  'csv', 'json', 'dubsado', 'studio_ninja', 'honeybook', 'vsco_workspace', 'tardis', 'text', 'web_scrape',
+] as const
+export type ImportSource = (typeof IMPORT_SOURCES)[number]
+
+export type RunSheetItem = {
+  id: string
+  wedding_id: string
+  vendor_id: string
+  time: string | null
+  end_time: string | null
+  title: string
+  description: string | null
+  location: string | null
+  assigned_to: string | null
+  category: 'getting_ready' | 'ceremony' | 'portraits' | 'reception' | 'other'
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export const RUN_SHEET_CATEGORIES = [
+  'getting_ready', 'ceremony', 'portraits', 'reception', 'other',
+] as const
+
+export type BusynessScore = {
+  id: string
+  date: string
+  level: 'city' | 'state' | 'country' | 'global'
+  level_value: string
+  enquiry_count: number
+  booking_count: number
+  score: number
+  created_at: string
+}
+
+export type QuoteCalculator = {
+  id: string
+  vendor_id: string
+  title: string
+  description: string | null
+  config: string
+  is_active: number
+  public_token: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type QuoteCalculatorConfig = {
+  base_price_cents: number
+  currency: string
+  options: QuoteOption[]
+}
+
+export type QuoteOption = {
+  name: string
+  description?: string
+  price_cents: number
+  type: 'addon' | 'upgrade' | 'hourly'
+}
