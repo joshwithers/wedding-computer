@@ -51,6 +51,7 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <MobileNavLink href="/app/emails" label="Emails" />
             <div class="border-t border-papaya-300/30 mt-2 pt-2">
               <p class="px-3 pt-1 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Setup</p>
+              <MobileNavLink href="/app/forms" label="Forms" />
               <MobileNavLink href="/app/form" label="Enquiry Form" />
               <MobileNavLink href="/app/booking-form" label="Booking Form" />
               <MobileNavLink href="/app/contract" label="Contract" />
@@ -97,6 +98,7 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <SidebarLink href="/app/emails" label="Emails" />
             <div class="border-t border-white/10 mt-3 pt-3">
               <p class="px-3 pb-1 text-[10px] font-bold text-papaya-200/50 uppercase tracking-wider">Setup</p>
+              <SidebarLink href="/app/forms" label="Forms" />
               <SidebarLink href="/app/form" label="Enquiry Form" />
               <SidebarLink href="/app/booking-form" label="Booking Form" />
               <SidebarLink href="/app/contract" label="Contract" />

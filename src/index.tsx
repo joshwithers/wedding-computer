@@ -33,6 +33,8 @@ import caldav from './routes/caldav'
 import stripe from './routes/stripe'
 import mcpRoute from './routes/mcp'
 import publicRoutes from './routes/public'
+import formsRoute from './routes/vendor/forms'
+import publicFormRoute from './routes/form'
 import { authenticateVendor, CARDDAV_HEADERS, CALDAV_HEADERS, xmlResponse, escXml } from './lib/dav'
 import { AuthLayout } from './views/layouts/auth'
 import { getVendorWithEmail } from './db/vendors'
@@ -291,6 +293,7 @@ app.route('/', onboarding)
 app.route('/', enquire)
 app.route('/', bookRoute)
 app.route('/', publicRoutes)
+app.route('/', publicFormRoute)
 app.route('/', feed)
 app.route('/', stripe)
 
@@ -313,6 +316,7 @@ app.route('/', teamRoute)
 app.route('/', importRoute)
 app.route('/', runSheetRoute)
 app.route('/', quotesRoute)
+app.route('/', formsRoute)
 app.route('/', accountRoute)
 app.route('/', filesRoute)
 app.route('/', coupleRoute)

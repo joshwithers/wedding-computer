@@ -46,6 +46,11 @@ invocation_logs = true
 [triggers]
 crons = ["0 20 * * *", "*/5 * * * *"]
 
+[[rules]]
+type = "Data"
+globs = ["**/*.pdf"]
+fallthrough = true
+
 [[routes]]
 pattern = "wedding.computer"
 custom_domain = true

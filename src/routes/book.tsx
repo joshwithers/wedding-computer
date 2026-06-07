@@ -613,9 +613,11 @@ function RenderField({ field }: { field: FormField }) {
           class={`${inputClass} bg-white`}
         >
           <option value="">{field.placeholder ?? 'Select...'}</option>
-          {field.options?.map((opt) => (
-            <option value={opt}>{opt}</option>
-          ))}
+          {field.options?.map((opt) => {
+            const optVal = typeof opt === 'string' ? opt : opt.value
+            const optLabel = typeof opt === 'string' ? opt : opt.label
+            return <option value={optVal}>{optLabel}</option>
+          })}
         </select>
       </div>
     )
@@ -626,18 +628,22 @@ function RenderField({ field }: { field: FormField }) {
       <div>
         {labelEl}
         <div class="space-y-2 mt-1">
-          {field.options?.map((opt) => (
+          {field.options?.map((opt) => {
+            const optVal = typeof opt === 'string' ? opt : opt.value
+            const optLabel = typeof opt === 'string' ? opt : opt.label
+            return (
             <label class="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="radio"
                 name={field.id}
-                value={opt}
+                value={optVal}
                 required={field.required}
                 class="accent-grapefruit-700"
               />
-              {opt}
+              {optLabel}
             </label>
-          ))}
+            )
+          })}
         </div>
       </div>
     )

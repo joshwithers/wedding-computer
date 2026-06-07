@@ -9,6 +9,8 @@ export type FieldType =
   | 'checkbox'
   | 'number'
   | 'heading'
+  | 'address'
+  | 'country'
 
 export type ContactMapping =
   | 'first_name'
@@ -21,15 +23,40 @@ export type ContactMapping =
   | 'wedding_location'
   | 'notes'
 
+export type FieldCondition = {
+  field: string
+  operator: 'eq' | 'neq' | 'in'
+  value: string | string[]
+}
+
 export type FormField = {
   id: string
   type: FieldType
   label: string
   placeholder?: string
   required?: boolean
-  options?: string[]
+  options?: string[] | { value: string; label: string }[]
   width?: 'full' | 'half'
   mapTo?: ContactMapping
+  helpText?: string
+  conditions?: FieldCondition[]
+  titleCase?: boolean
+}
+
+export type FormStep = {
+  id: string
+  title: string
+  description?: string
+  fields: FormField[]
+}
+
+export type FormAction = {
+  type: 'notify_vendor' | 'email_submitter' | 'email_recipient' | 'ai_email' | 'create_contact' | 'generate_pdf'
+  enabled: boolean
+  emailField?: string
+  recipientEmail?: string
+  aiPrompt?: string
+  template?: string
 }
 
 export type FormActions = {
@@ -39,6 +66,7 @@ export type FormActions = {
     mode: 'ai' | 'template'
     template?: string
   }
+  actions?: FormAction[]
 }
 
 export type FormConfig = {
@@ -47,6 +75,7 @@ export type FormConfig = {
   subtitle?: string
   submitLabel: string
   fields: FormField[]
+  steps?: FormStep[]
   actions: FormActions
 }
 
@@ -61,6 +90,8 @@ export const FIELD_TYPES: { value: FieldType; label: string }[] = [
   { value: 'checkbox', label: 'Checkbox' },
   { value: 'number', label: 'Number' },
   { value: 'heading', label: 'Section heading' },
+  { value: 'address', label: 'Address (autocomplete)' },
+  { value: 'country', label: 'Country' },
 ]
 
 export const CONTACT_MAPPINGS: { value: ContactMapping; label: string }[] = [

@@ -637,3 +637,31 @@ export type QuoteOption = {
   price_cents: number
   type: 'addon' | 'upgrade' | 'hourly'
 }
+
+export type Form = {
+  id: string
+  vendor_id: string
+  title: string
+  slug: string | null
+  type: 'custom' | 'noim' | 'contact'
+  config: string
+  is_active: number
+  public_token: string
+  wedding_id: string | null
+  contact_id: string | null
+  submission_count: number
+  created_at: string
+  updated_at: string
+}
+
+export type FormSubmission = {
+  id: string
+  form_id: string
+  vendor_id: string
+  data: string
+  contact_id: string | null
+  status: 'submitted' | 'reviewed' | 'archived'
+  ip_address: string | null
+  user_agent: string | null
+  created_at: string
+}
