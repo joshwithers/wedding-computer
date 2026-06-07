@@ -311,6 +311,190 @@ marketing.get('/', (c) => {
           </div>
         </section>
 
+        {/* Built for your role */}
+        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
+          <div class="max-w-3xl mx-auto text-center mb-8">
+            <h2 class="text-xl sm:text-2xl font-bold mb-3">Built for how you actually work</h2>
+            <p class="text-gray-600 text-sm leading-relaxed max-w-lg mx-auto">
+              Every vendor type has different priorities. Pick yours and see how Wedding Computer fits your workflow — and how collaboration makes it better.
+            </p>
+          </div>
+          <div class="flex flex-wrap justify-center gap-2 mb-8" id="role-tabs">
+            <RoleTab role="venue" label="Venues" active />
+            <RoleTab role="planner" label="Planners" />
+            <RoleTab role="photographer" label="Photographers" />
+            <RoleTab role="videographer" label="Videographers" />
+            <RoleTab role="celebrant" label="Celebrants" />
+            <RoleTab role="florist" label="Florists" />
+            <RoleTab role="music" label="Musicians & DJs" />
+          </div>
+          <div id="role-panels">
+            <RolePanel role="venue" active>
+              <RoleFeature
+                title="One workspace per wedding — you're the host"
+                desc="As the venue, you're often the hub. Create the wedding workspace, invite every vendor, and keep ceremony, reception, and bump-in times in one place. When you update the timeline, everyone sees it."
+              />
+              <RoleFeature
+                title="Enquiry forms built for venue enquiries"
+                desc="Custom form fields for event type, guest count, date preferences, and ceremony style. Leads land in your CRM pipeline with all the details you need to quote."
+              />
+              <RoleFeature
+                title="Calendar that shows the full picture"
+                desc="See every booking, hold, and blocked date. Know at a glance which Saturdays are free. Share your availability publicly so couples and planners can check before they enquire."
+              />
+              <RoleFeature
+                title="Invoicing with payment schedules"
+                desc="Venues often invoice in stages — deposit, interim, final. Create multi-installment invoices with due dates and track payments as they come in."
+              />
+              <RoleCollab>
+                When the photographer needs bump-in times or the celebrant needs the ceremony location, they already have it — because you set it once in the shared workspace. No back-and-forth emails.
+              </RoleCollab>
+            </RolePanel>
+            <RolePanel role="planner">
+              <RoleFeature
+                title="Manage every vendor from one dashboard"
+                desc="You're coordinating the whole team. See every vendor on the wedding, their invoices, their timelines, and their checklists — without chasing updates."
+              />
+              <RoleFeature
+                title="Run sheets your team can rely on"
+                desc="Build the day-of timeline with times, locations, and assignments. AI generates a starting run sheet from the wedding details — then you refine it. Every vendor gets the same version."
+              />
+              <RoleFeature
+                title="Team roster for your agency"
+                desc="Assign coordinators, assistants, and day-of staff to each wedding. Everyone knows who's on the job."
+              />
+              <RoleFeature
+                title="Analytics across your whole book of business"
+                desc="Track enquiries, bookings, and revenue across all your weddings. See conversion rates, average deal sizes, and how your pipeline is trending."
+              />
+              <RoleCollab>
+                You set the run sheet once and every vendor — photographer, celebrant, florist, DJ — sees the same timeline. Changes sync instantly. No more WhatsApp group updates at midnight.
+              </RoleCollab>
+            </RolePanel>
+            <RolePanel role="photographer">
+              <RoleFeature
+                title="CRM built for how photographers sell"
+                desc="Track every enquiry through your pipeline — from new lead to contacted, quoted, booked, and delivered. Log emails, calls, and notes on each contact."
+              />
+              <RoleFeature
+                title="Know the wedding timeline before you arrive"
+                desc="When the planner or venue sets ceremony, portraits, and reception times, you see them automatically. No hunting through email threads for the run sheet."
+              />
+              <RoleFeature
+                title="Vendor credits, ready to paste"
+                desc="After the wedding, one click gives you the full vendor credit list — formatted for Instagram captions with @handles, or for your blog with website links."
+              />
+              <RoleFeature
+                title="Import from Studio Ninja, HoneyBook, or Dubsado"
+                desc="Bring your existing client database with you. Upload a CSV and Wedding Computer maps the columns automatically."
+              />
+              <RoleCollab>
+                When the celebrant and couple confirm the timeline, you see it immediately in your calendar. The florist's setup time, the DJ's bump-in — it's all there so you can plan your shot list around the real schedule.
+              </RoleCollab>
+            </RolePanel>
+            <RolePanel role="videographer">
+              <RoleFeature
+                title="See the full timeline without asking"
+                desc="Ceremony start, first look timing, reception formalities — it's all in the shared workspace. When times change, your calendar updates automatically."
+              />
+              <RoleFeature
+                title="Coordinate with the photographer, not compete"
+                desc="Both creatives see the same timeline and the same portrait window. Know when you're shooting together and when you each have dedicated time."
+              />
+              <RoleFeature
+                title="Invoicing and quote calculator"
+                desc="Create packages with add-ons — highlight reel, full ceremony edit, drone footage. Embed a quote calculator on your website so couples can estimate their package before they enquire."
+              />
+              <RoleFeature
+                title="Vendor credits for your socials"
+                desc="After delivery, pull the full vendor credit list for your Instagram reel caption — every vendor name and @handle, ready to paste."
+              />
+              <RoleCollab>
+                The run sheet tells you when to be where. The photographer's timeline tells you when you'll be shooting together. No more texting each other the night before to figure out the schedule.
+              </RoleCollab>
+            </RolePanel>
+            <RolePanel role="celebrant">
+              <RoleFeature
+                title="Enquiry pipeline built for ceremony bookings"
+                desc="Track couples from first enquiry through to booked and completed. See their wedding date, ceremony type, and location right in your contact list."
+              />
+              <RoleFeature
+                title="Checklists for legal and ceremony prep"
+                desc="Use checklists to track your NOIM timeline, ceremony script drafts, rehearsal scheduling, and paperwork. Never miss a legal deadline."
+              />
+              <RoleFeature
+                title="Calendar with ceremony-specific details"
+                desc="Your calendar shows ceremony time, location, and getting-ready details. Share your availability publicly so couples can see your free dates."
+              />
+              <RoleFeature
+                title="AI-drafted replies to enquiries"
+                desc="When a new enquiry comes in, AI drafts a personalised response using the couple's details and your availability. Review it, edit it, send it."
+              />
+              <RoleCollab>
+                When the venue confirms the ceremony location or the planner adjusts the timeline, you see it immediately — no more last-minute "actually, we moved the ceremony to the garden" emails.
+              </RoleCollab>
+            </RolePanel>
+            <RolePanel role="florist">
+              <RoleFeature
+                title="Quote calculator for complex floral packages"
+                desc="Bouquets, buttonholes, table centrepieces, ceremony arch — build a calculator with all your options and let couples estimate their florals before they enquire."
+              />
+              <RoleFeature
+                title="Know bump-in times and venue details"
+                desc="The shared workspace tells you when you can access the venue, where the ceremony and reception are, and when everything needs to be set up."
+              />
+              <RoleFeature
+                title="Invoicing with deposit schedules"
+                desc="Florals often need a deposit to secure flowers. Create invoices with custom payment schedules and track each payment."
+              />
+              <RoleFeature
+                title="Import your existing client list"
+                desc="Bring your contacts from any spreadsheet or CRM. Upload a CSV, map the columns, and you're running in minutes."
+              />
+              <RoleCollab>
+                You need the venue's bump-in time and the ceremony start time to plan your setup. When the planner sets the run sheet, you see it in your calendar — setup window, ceremony start, pack-down time, all confirmed.
+              </RoleCollab>
+            </RolePanel>
+            <RolePanel role="music">
+              <RoleFeature
+                title="Reception timeline at your fingertips"
+                desc="First dance, speeches, cake cutting — the run sheet tells you exactly when each formality happens so you can plan your sets and transitions."
+              />
+              <RoleFeature
+                title="Enquiry forms with your options"
+                desc="Ceremony music, cocktail hour, reception DJ, live band — customise your enquiry form fields to capture exactly what the couple is looking for."
+              />
+              <RoleFeature
+                title="Calendar with load-in details"
+                desc="Know your bump-in time, sound check window, and set times. When the planner updates the schedule, your calendar reflects it."
+              />
+              <RoleFeature
+                title="Quote calculator for packages and add-ons"
+                desc="Ceremony acoustic set, cocktail hour, 5-hour reception, extra hour — let couples build their own package and see the price before they reach out."
+              />
+              <RoleCollab>
+                The MC's speech schedule, the photographer's must-have moments, the caterer's meal service timing — everything is on the same run sheet, so your set list matches the actual flow of the night.
+              </RoleCollab>
+            </RolePanel>
+          </div>
+          <script dangerouslySetInnerHTML={{ __html: `
+            document.getElementById('role-tabs').addEventListener('click', function(e) {
+              var btn = e.target.closest('[data-role]');
+              if (!btn) return;
+              var role = btn.getAttribute('data-role');
+              document.querySelectorAll('#role-tabs [data-role]').forEach(function(t) {
+                t.classList.remove('bg-horizon-600', 'text-white');
+                t.classList.add('bg-white', 'text-gray-700');
+              });
+              btn.classList.remove('bg-white', 'text-gray-700');
+              btn.classList.add('bg-horizon-600', 'text-white');
+              document.querySelectorAll('#role-panels [data-panel]').forEach(function(p) {
+                p.style.display = p.getAttribute('data-panel') === role ? '' : 'none';
+              });
+            });
+          ` }} />
+        </section>
+
         {/* Switching CRMs */}
         <section class="py-10 sm:py-16 border-t border-papaya-300/30">
           <div class="max-w-3xl mx-auto text-center mb-8">
@@ -1473,6 +1657,45 @@ function AboutFeature({ title, desc }: { title: string; desc: string }) {
     <div class="bg-white border border-papaya-300/30 rounded-xl p-4">
       <h3 class="font-bold text-gray-900 text-sm mb-1">{title}</h3>
       <p class="text-sm text-gray-600 leading-relaxed">{desc}</p>
+    </div>
+  )
+}
+
+function RoleTab({ role, label, active }: { role: string; label: string; active?: boolean }) {
+  return (
+    <button
+      data-role={role}
+      class={`px-4 py-2 rounded-full text-sm font-bold transition-colors cursor-pointer ${active ? 'bg-horizon-600 text-white' : 'bg-white text-gray-700'} border border-papaya-300/30 hover:border-horizon-600/30`}
+    >
+      {label}
+    </button>
+  )
+}
+
+function RolePanel({ role, active, children }: { role: string; active?: boolean; children: any }) {
+  return (
+    <div data-panel={role} style={active ? {} : { display: 'none' }} class="max-w-3xl mx-auto">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function RoleFeature({ title, desc }: { title: string; desc: string }) {
+  return (
+    <div class="bg-white border border-papaya-300/30 rounded-xl p-4">
+      <h3 class="font-bold text-gray-900 text-sm mb-1">{title}</h3>
+      <p class="text-xs text-gray-600 leading-relaxed">{desc}</p>
+    </div>
+  )
+}
+
+function RoleCollab({ children }: { children: any }) {
+  return (
+    <div class="sm:col-span-2 bg-horizon-50 border border-horizon-600/10 rounded-xl p-4">
+      <p class="text-xs font-bold text-horizon-700 mb-1">How collaboration makes it better</p>
+      <p class="text-xs text-gray-700 leading-relaxed">{children}</p>
     </div>
   )
 }
