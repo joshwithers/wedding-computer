@@ -105,6 +105,7 @@ export async function createImportRecord(
 
 export async function updateImportRecord(
   db: D1Database,
+  vendorId: string,
   recordId: string,
   data: Partial<Pick<ImportRecord, 'status' | 'entity_id' | 'mapped_data' | 'error'>>
 ): Promise<void> {
@@ -117,9 +118,11 @@ export async function updateImportRecord(
     }
   }
   if (sets.length === 0) return
-  values.push(recordId)
+  values.push(recordId, vendorId)
   await db
-    .prepare(`UPDATE import_records SET ${sets.join(', ')} WHERE id = ?`)
+    .prepare(
+      `UPDATE import_records SET ${sets.join(', ')} WHERE id = ? AND import_job_id IN (SELECT id FROM import_jobs WHERE vendor_id = ?)`
+    )
     .bind(...values)
     .run()
 }

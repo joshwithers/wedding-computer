@@ -405,8 +405,13 @@ runSheet.get('/app/weddings/:weddingId/run-sheet/:itemId/card', async (c) => {
 
 runSheet.post('/app/weddings/:weddingId/run-sheet', async (c) => {
   const vendor = c.get('vendor')!
+  const user = c.get('user')
   const weddingId = c.req.param('weddingId')
   const csrfToken = c.get('csrfToken')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership) return c.text('Not found', 404)
+
   const body = await c.req.parseBody()
 
   try {
@@ -442,9 +447,14 @@ runSheet.post('/app/weddings/:weddingId/run-sheet', async (c) => {
 
 runSheet.post('/app/weddings/:weddingId/run-sheet/:itemId', async (c) => {
   const vendor = c.get('vendor')!
+  const user = c.get('user')
   const weddingId = c.req.param('weddingId')
   const itemId = c.req.param('itemId')
   const csrfToken = c.get('csrfToken')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership) return c.text('Not found', 404)
+
   const body = await c.req.parseBody()
 
   try {
@@ -477,9 +487,13 @@ runSheet.post('/app/weddings/:weddingId/run-sheet/:itemId', async (c) => {
 
 runSheet.post('/app/weddings/:weddingId/run-sheet/:itemId/delete', async (c) => {
   const vendor = c.get('vendor')!
+  const user = c.get('user')
   const weddingId = c.req.param('weddingId')
   const itemId = c.req.param('itemId')
   const csrfToken = c.get('csrfToken')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership) return c.text('Not found', 404)
 
   await deleteRunSheetItem(c.env.DB, itemId, vendor.id)
 
@@ -495,7 +509,11 @@ runSheet.post('/app/weddings/:weddingId/run-sheet/:itemId/delete', async (c) => 
 
 runSheet.post('/app/weddings/:weddingId/run-sheet/reorder', async (c) => {
   const vendor = c.get('vendor')!
+  const user = c.get('user')
   const weddingId = c.req.param('weddingId')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership) return c.json({ error: 'Not found' }, 404)
 
   const { ids } = await c.req.json<{ ids: string[] }>()
   if (!Array.isArray(ids)) return c.json({ error: 'ids must be an array' }, 400)

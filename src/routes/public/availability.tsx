@@ -22,9 +22,9 @@ const availability = new Hono<Env>()
 availability.get('/v/:vendorId/availability', async (c) => {
   const vendorId = c.req.param('vendorId')
   const vendor = await c.env.DB
-    .prepare('SELECT * FROM vendor_profiles WHERE id = ?')
+    .prepare('SELECT id, business_name, category, location, availability_sharing, availability_default FROM vendor_profiles WHERE id = ?')
     .bind(vendorId)
-    .first<VendorProfile>()
+    .first<Pick<VendorProfile, 'id' | 'business_name' | 'category' | 'location' | 'availability_sharing' | 'availability_default'>>()
 
   if (!vendor || vendor.availability_sharing !== 'public') {
     return c.html(

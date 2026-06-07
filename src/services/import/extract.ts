@@ -121,6 +121,29 @@ export async function extractFromUrl(
   ai: Ai,
   anthropicKey?: string | null
 ): Promise<ExtractionResult> {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw new Error('Invalid URL')
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Only http and https URLs are supported')
+  }
+  const hostname = parsed.hostname.toLowerCase()
+  if (
+    hostname === 'localhost' ||
+    hostname.startsWith('127.') ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('169.254.') ||
+    hostname.endsWith('.internal') ||
+    hostname.endsWith('.local') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+  ) {
+    throw new Error('Cannot fetch internal or private URLs')
+  }
+
   const res = await fetch(url, {
     headers: {
       'User-Agent': 'WeddingComputer/1.0 (Contact Import)',

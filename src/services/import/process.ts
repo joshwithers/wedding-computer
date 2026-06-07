@@ -52,7 +52,7 @@ export async function processImportJob(
     })
 
     if (!mapped.first_name || mapped.first_name.trim() === '') {
-      await updateImportRecord(db, record.id, {
+      await updateImportRecord(db, vendorId, record.id, {
         status: 'skipped',
         error: 'Missing required field: first_name',
       })
@@ -63,13 +63,13 @@ export async function processImportJob(
     try {
       if (job.entity_type === 'contact') {
         const contact = await importContact(db, vendorId, mapped)
-        await updateImportRecord(db, record.id, {
+        await updateImportRecord(db, vendorId, record.id, {
           status: 'imported',
           entity_id: contact.id,
         })
         result.imported++
       } else {
-        await updateImportRecord(db, record.id, {
+        await updateImportRecord(db, vendorId, record.id, {
           status: 'skipped',
           error: `Import of ${job.entity_type} not yet supported`,
         })
@@ -77,7 +77,7 @@ export async function processImportJob(
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
-      await updateImportRecord(db, record.id, {
+      await updateImportRecord(db, vendorId, record.id, {
         status: 'failed',
         error: message,
       })

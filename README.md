@@ -84,7 +84,7 @@ wrangler deploy             # Deploy to Cloudflare Workers
 ### Tests
 
 ```bash
-npm test                    # Run all tests (149 across 7 suites)
+npm test                    # Run all tests (253 across 13 suites)
 npm run test:watch          # Watch mode
 ```
 
@@ -98,14 +98,47 @@ src/
     marketing.tsx        Public website, /standard, /docs/plain-text
     auth.ts              Login, magic links, OAuth, passkeys
     book.tsx             Public booking page (contracts, payments)
-    vendor/              Vendor dashboard, CRM, calendar, invoicing
+    enquire.tsx          Public enquiry form + AI auto-reply
+    vendor/
+      dashboard.tsx      Vendor home
+      contacts.tsx       CRM contacts & pipeline
+      weddings.tsx       Wedding list & detail
+      calendar.tsx       Calendar & availability
+      invoices.tsx       Invoicing with Stripe Connect
+      settings.tsx       Profile, tax, location picker, availability sharing
+      analytics.tsx      Analytics, benchmarks, busyness heatmaps
+      run-sheet.tsx      Day-of run sheet builder
+      quotes.tsx         Quote calculator config
+      team.tsx           Team & agency management
+      import.tsx         CSV/JSON import wizard
+      emails.tsx         Built-in email
+      booking-form.tsx   Custom booking forms
+      contracts.tsx      Service contracts
+      checklists.tsx     Wedding checklists
+      places.tsx         Google Places autocomplete + geocoding
+    public/
+      availability.tsx   Public availability calendar
+      quote.tsx          Embeddable quote calculator
+      directory.tsx      JSON API for wedding.institute directory
     couple.tsx           Couple dashboard, vendor tracking, wedding editing
     stripe.ts            Stripe webhooks
     carddav.ts           CardDAV contact sync
     caldav.ts            CalDAV calendar sync
     feed.ts              iCal feed
+    mcp.ts               MCP server (AI agent access)
   middleware/             Auth, CSRF, rate limiting, audit
-  db/                    Data access layer (all queries scoped by tenant)
+  db/
+    vendors.ts           Vendor profile CRUD
+    contacts.ts          CRM contacts
+    invoices.ts          Invoice records + tax calculations
+    calendar.ts          Events & availability
+    analytics.ts         Event tracking & aggregate queries
+    busyness.ts          Date busyness score aggregation (daily cron)
+    quotes.ts            Quote calculator CRUD
+    run-sheet.ts         Run sheet item CRUD
+    team-members.ts      Team member CRUD & wedding assignment
+    imports.ts           Import job & record tracking
+    subscriptions.ts     Pro subscription management
   storage/               Markdown file storage layer
     markdown.ts          YAML frontmatter parser/serializer
     contacts.ts          Contact ↔ markdown + CRUD
@@ -115,23 +148,37 @@ src/
     github.ts            GitHub StorageBackend (Contents API)
     sync.ts              Scan-and-index engine (ETag-based)
     migrate.ts           Lazy D1→markdown migration
-    __tests__/           149 tests covering all storage modules
-  services/              Email, notifications, AI, Stripe Connect
+    __tests__/           Storage module tests
+  services/
+    ai.ts                Claude/Workers AI (email drafts, run sheets, enquiry replies)
+    email.ts             Transactional email via Resend
+    notifications.ts     Email notifications for wedding events
+    analytics.ts         Event tracking
+    import/              CSV parser, AI text extraction, import processing
   views/                 Layouts, shared components
-  lib/                   Utilities (dates, validation, crypto)
+  lib/                   Utilities (dates, validation, crypto, DAV)
 schema.sql               Full database schema
-migrations/              Numbered migration files
+migrations/              Numbered migration files (001–030)
 ```
 
 ## Features
 
 ### For Vendors
-- **CRM**: Lead capture forms, contact pipeline, activity logging
+- **CRM**: Lead capture forms, eight-stage contact pipeline, activity logging, search
 - **Calendar**: Monthly view, availability settings, CardDAV/CalDAV/iCal sync
-- **Invoicing**: Line items, payment schedules, booking fees, Stripe Connect
+- **Public availability calendar**: Opt-in to share your availability publicly, with vendors only, or via AI auto-replies
+- **Invoicing**: ATO-compliant tax invoices with GST/ABN, line items, payment schedules, booking fees, Stripe Connect
+- **Quote calculator**: Configurable pricing tool, embeddable on your website via iframe
 - **Booking forms**: Custom form builder, service contracts, e-signatures
 - **Email**: Inbound/outbound email with AI-assisted drafting
+- **AI enquiry auto-replies**: When a new enquiry arrives, AI drafts an availability-aware response for your review
+- **Day-of run sheet**: Timeline planner for each wedding with AI generation from wedding details
+- **Analytics & benchmarks**: Business analytics with anonymised industry benchmarks at city/state/country/global levels
+- **Date busyness scores**: See how busy any date is for enquiries and bookings in your area
+- **Team management**: Agency rosters with member assignment to individual weddings
+- **Import from anywhere**: CSV/JSON import from Dubsado, Studio Ninja, HoneyBook, VSCO Workspace, or any spreadsheet — plus AI-powered text extraction
 - **Weddings**: Multi-vendor collaboration on shared wedding entities
+- **Directory listing**: Opt in to the wedding.institute vendor directory
 - **Plain text data**: All contacts/weddings stored as markdown files you can access anywhere
 - **GitHub sync**: Connect a private repo and your data syncs automatically — open in Obsidian or VS Code
 
@@ -141,13 +188,20 @@ migrations/              Numbered migration files
 - **Vendor tracking**: Add any vendor (on or off platform), set budgets
 - **Privacy controls**: Toggle vendor-to-vendor visibility
 
+### Public API
+- **Directory API**: JSON endpoints at `/api/directory/vendors`, `/api/directory/categories`, `/api/directory/locations` for the wedding.institute directory (CORS-enabled)
+- **Public availability**: `/v/:vendorId/availability` — calendar view for vendors who opt in
+- **Embeddable quote**: `/quote/:token` — standalone quote calculator with enquiry form
+
 ### Platform
 - **Zero-JS frontend**: Server-rendered HTML with htmx for interactivity
 - **Global edge**: Sub-50ms responses via Cloudflare Workers
 - **Protocol support**: CardDAV, CalDAV, iCal for native app integration
+- **MCP server**: AI agent access to contacts, weddings, checklists, and calendar
 - **GitHub sync**: Auto-push markdown files to a private repo for local access
 - **Open data format**: [Wedding CRM Markdown Standard](https://wedding.computer/standard) (CC0)
 - **Multi-ceremony**: Weddings, elopements, vow renewals, commitments
+- **Busyness aggregation**: Daily cron computes enquiry/booking density at city/state/country/global levels
 - **Open source**: AGPL-3.0 — audit the code, self-host, or contribute
 
 ## License

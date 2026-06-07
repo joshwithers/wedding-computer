@@ -409,8 +409,8 @@ function Calculator({
 
       {/* Client-side total calculation */}
       <script dangerouslySetInnerHTML={{ __html: `
-        var basePrice = ${config.base_price_cents};
-        var currency = '${currency}';
+        var basePrice = ${Number(config.base_price_cents) || 0};
+        var currency = '${String(currency).replace(/[^A-Z]/g, '').slice(0, 3)}';
         function formatCents(cents) {
           return '$' + (cents / 100).toFixed(2);
         }

@@ -711,7 +711,7 @@ settings.post('/app/settings/invoicing', async (c) => {
   const taxRate = Math.max(0, Math.min(50, parseFloat(String(body.tax_rate || '0')) || 0))
   const taxInclusive = body.tax_inclusive === '1' ? 1 : 0
   let taxNumber = trimOrNull(body.tax_number)
-  if (taxNumber && (taxLabel === 'GST' || taxLabel === null)) {
+  if (taxNumber && taxLabel === 'GST') {
     const digits = taxNumber.replace(/\s/g, '')
     if (!/^\d{11}$/.test(digits)) {
       return c.redirect('/app/settings?error=' + encodeURIComponent('ABN must be exactly 11 digits'))
