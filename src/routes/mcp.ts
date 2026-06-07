@@ -21,6 +21,7 @@
 import { Hono } from 'hono'
 import type { Env, VendorProfile } from '../types'
 import { getVendorByIcalToken } from '../db/vendors'
+import { isProVendor } from '../db/subscriptions'
 
 const mcp = new Hono<Env>()
 
@@ -288,6 +289,11 @@ mcp.post('/mcp', async (c) => {
   const vendor = await authenticateMcp(c.env.DB, c.req.header('Authorization'))
   if (!vendor) {
     return c.json(rpcError(null, -32000, 'Unauthorized — use Bearer token from Settings > Calendar & Sync'), 401)
+  }
+
+  const pro = await isProVendor(c.env.DB, vendor.id)
+  if (!pro) {
+    return c.json(rpcError(null, -32001, 'MCP access requires a Pro subscription — upgrade at wedding.computer/pricing'), 403)
   }
 
   let body: JsonRpcRequest | JsonRpcRequest[]

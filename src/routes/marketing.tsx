@@ -85,6 +85,7 @@ Upgrade for analytics and AI-powered features:
 - AI-powered insights
 - AI enquiry auto-replies
 - AI email drafting
+- MCP access for AI tools (Claude, ChatGPT, Cursor, etc.)
 
 ## Links
 
@@ -140,14 +141,14 @@ marketing.get('/', (c) => {
             Free
           </div>
           <h1 class="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] mb-4 sm:mb-6">
-            <span class="block">Run your wedding </span>
-            <span class="block">business from </span>
-            <span class="block text-horizon-700">one place</span>
+            <span class="block">Excel as a wedding creative</span>
+            <span class="block">without running your business</span>
+            <span class="block text-horizon-700">from a spreadsheet</span>
           </h1>
           <p class="text-base sm:text-lg text-gray-600 max-w-xl mx-auto mb-6 sm:mb-10 leading-relaxed">
-            The collaboration platform where vendors, venues, planners,
-            and couples plan weddings together — with shared timelines,
-            calendars, and files that keep everyone on the same page.
+            The platform where vendors, venues, planners, and couples
+            plan weddings together — with a real CRM, shared timelines,
+            and files that keep everyone on the same page.
           </p>
           <div class="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <a
@@ -285,9 +286,15 @@ marketing.get('/', (c) => {
             />
             <FeatureCard
               color="horizon"
-              icon="wedding"
+              icon="runsheet"
               title="Day-of run sheet"
               desc="Build a detailed timeline for each wedding day. AI generates a starting run sheet from your wedding details — then customise times, locations, and assignments."
+            />
+            <FeatureCard
+              color="grapefruit"
+              icon="mcp"
+              title="MCP access for AI tools"
+              desc="Connect Claude, ChatGPT, Cursor, or any AI tool that supports Model Context Protocol directly to your data. Read contacts, weddings, run sheets, and checklists from your own AI workflow. Pro feature."
             />
             <FeatureCard
               color="horizon"
@@ -490,6 +497,10 @@ marketing.get('/about', (c) => {
           <AboutFeature
             title="Team & agency management"
             desc="Run a photography agency, celebrant team, or multi-person business? Add team members to your roster with contact details and roles. Then assign individuals to specific weddings — the wedding workspace shows which team members are working each event."
+          />
+          <AboutFeature
+            title="MCP access for AI tools (Pro)"
+            desc="Connect any AI tool that supports Model Context Protocol — Claude Desktop, ChatGPT, Cursor, Windsurf, or your own agent — directly to your Wedding Computer data. Read contacts, weddings, run sheets, checklists, and changelogs from your own AI workflow. Your token is in Settings under Calendar & Sync."
           />
         </div>
 
@@ -725,6 +736,7 @@ marketing.get('/pricing', (c) => {
               <PricingFeature text="Date busyness scores" />
               <PricingFeature text="Anonymised industry benchmarks" />
               <PricingFeature text="AI enquiry auto-replies" />
+              <PricingFeature text="MCP access for AI tools" />
             </ul>
             <a
               href="/login"
@@ -1496,4 +1508,6 @@ const featureIcons: Record<string, string> = {
   plaintext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>',
   import: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
   team: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>',
+  runsheet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="4" cy="6" r="1.5" fill="currentColor"/><circle cx="4" cy="12" r="1.5" fill="currentColor"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/></svg>',
+  mcp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6"/><path d="M9 13h4"/><circle cx="7" cy="9" r="0.5" fill="currentColor"/><circle cx="7" cy="13" r="0.5" fill="currentColor"/><path d="M15 17l2-2-2-2"/></svg>',
 }
