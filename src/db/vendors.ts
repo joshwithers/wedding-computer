@@ -83,6 +83,19 @@ export async function getVendorByIcalToken(
     .first<VendorProfile>()
 }
 
+// Resolve a vendor by their write-only enquiry intake key (API/webhook channel).
+// Separate from ical_token so this key can only ever create leads.
+export async function getVendorByEnquiryKey(
+  db: D1Database,
+  key: string
+): Promise<VendorProfile | null> {
+  if (!key || key.length < 16) return null
+  return db
+    .prepare('SELECT * FROM vendor_profiles WHERE enquiry_key = ?')
+    .bind(key)
+    .first<VendorProfile>()
+}
+
 export async function updateVendor(
   db: D1Database,
   id: string,
@@ -100,6 +113,7 @@ export async function updateVendor(
       | 'enquiry_form'
       | 'booking_form'
       | 'ical_token'
+      | 'enquiry_key'
       | 'stripe_account_id'
       | 'stripe_onboarding_complete'
       | 'anthropic_api_key'

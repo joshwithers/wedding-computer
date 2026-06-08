@@ -19,9 +19,10 @@
  */
 
 import { Hono } from 'hono'
-import type { Env, VendorProfile } from '../types'
+import type { Env, Bindings, VendorProfile } from '../types'
 import { getVendorByIcalToken } from '../db/vendors'
 import { isProVendor } from '../db/subscriptions'
+import { processJsonSubmission, createEnquiry } from '../services/enquiry'
 
 const mcp = new Hono<Env>()
 
@@ -140,12 +141,32 @@ const TOOLS = [
       properties: { days: { type: 'number', description: 'Number of days ahead (default: 30)' } },
     },
   },
+  {
+    name: 'submit_enquiry',
+    description: 'Create a new lead/enquiry in the CRM — e.g. when entering an enquiry on the vendor\'s behalf or capturing one from a conversation. Requires first_name, last_name, and a valid email.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        first_name: { type: 'string', description: 'Lead\'s first name (required)' },
+        last_name: { type: 'string', description: 'Lead\'s last name (required)' },
+        email: { type: 'string', description: 'Lead\'s email address (required)' },
+        phone: { type: 'string', description: 'Phone number' },
+        partner_first_name: { type: 'string', description: 'Partner\'s first name' },
+        partner_last_name: { type: 'string', description: 'Partner\'s last name' },
+        wedding_date: { type: 'string', description: 'Wedding date, YYYY-MM-DD' },
+        wedding_location: { type: 'string', description: 'City or venue' },
+        notes: { type: 'string', description: 'Message or notes about the enquiry' },
+      },
+      required: ['first_name', 'last_name', 'email'],
+    },
+  },
 ]
 
 // ─── Tool handlers ───
 
 async function handleTool(
   db: D1Database,
+  env: Bindings,
   vendor: VendorProfile,
   name: string,
   args: Record<string, unknown>
@@ -278,6 +299,17 @@ async function handleTool(
       return { content: [{ type: 'text', text: JSON.stringify(rows.results, null, 2) }] }
     }
 
+    case 'submit_enquiry': {
+      const { contactData, formData } = processJsonSubmission(args as Record<string, unknown>)
+      const contact = await createEnquiry(env, vendor, { contactData, formData, source: 'agent' })
+      return {
+        content: [{
+          type: 'text',
+          text: `Created enquiry ${contact.id} for ${contact.first_name} ${contact.last_name} (${contact.email}). Status: ${contact.status}.`,
+        }],
+      }
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}`)
   }
@@ -334,7 +366,7 @@ mcp.post('/mcp', async (c) => {
         return c.json(rpcError(req.id, -32602, 'Missing tool name'))
       }
       try {
-        const result = await handleTool(c.env.DB, vendor, params.name, params.arguments ?? {})
+        const result = await handleTool(c.env.DB, c.env, vendor, params.name, params.arguments ?? {})
         return c.json(rpcResult(req.id, result))
       } catch (err: any) {
         return c.json(rpcError(req.id, -32000, err.message))

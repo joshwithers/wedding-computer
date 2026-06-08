@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   booking_form TEXT,
   ceremony_types TEXT,
   ical_token TEXT,
+  enquiry_key TEXT,
   anthropic_api_key TEXT,
   email_handle TEXT,
   storage_type TEXT DEFAULT 'r2',
@@ -492,6 +493,7 @@ CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice ON invoice_payments(invo
 CREATE INDEX IF NOT EXISTS idx_invoice_payments_vendor ON invoice_payments(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_invoice_payments_status ON invoice_payments(status, due_date);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_vendor_profiles_ical_token ON vendor_profiles(ical_token);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vendor_profiles_enquiry_key ON vendor_profiles(enquiry_key);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_vendor_email_handle ON vendor_profiles(email_handle);
 CREATE INDEX IF NOT EXISTS idx_emails_vendor ON emails(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_emails_contact ON emails(contact_id);

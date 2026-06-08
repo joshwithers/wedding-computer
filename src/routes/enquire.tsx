@@ -2,18 +2,11 @@ import { Hono } from 'hono'
 import type { Env } from '../types'
 import { SharedHead } from '../views/head'
 import { getVendorById } from '../db/vendors'
-import { createContact } from '../storage/contacts'
-import { getStorageWithSecrets } from '../storage'
-import { createActivity } from '../db/activities'
 import { verifyTurnstile } from '../services/turnstile'
-import { track } from '../services/analytics'
-import { draftEnquiryReply } from '../services/ai'
-import { resolveSecret } from '../services/secrets'
-import { getScoreForDate } from '../db/busyness'
 import { rateLimit } from '../middleware/rate-limit'
-import { isValidEmail } from '../lib/validation'
 import { parseFormConfig } from '../lib/form-schema'
-import type { FormConfig, FormField, ContactMapping } from '../lib/form-schema'
+import type { FormConfig, FormField } from '../lib/form-schema'
+import { processSubmission, createEnquiry } from '../services/enquiry'
 
 const enquire = new Hono<Env>()
 
@@ -86,73 +79,11 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
 
   try {
     const { contactData, formData } = processSubmission(config, body as Record<string, string>)
+    await createEnquiry(c.env, vendor, { contactData, formData, source: 'website' })
 
-    const storage = await getStorageWithSecrets(c.env, vendor)
-    const contact = await createContact(storage, c.env.DB, vendorId, {
-      ...contactData,
-      source: 'website',
-      form_data: Object.keys(formData).length > 0 ? JSON.stringify(formData) : null,
-    })
-
-    await createActivity(c.env.DB, contact.id, 'lead', 'Enquiry submitted via website form')
-
-    track(c.env.DB, vendorId, 'enquiry_received', {
-      contactId: contact.id,
-      metadata: { source: 'website' },
-    })
-
-    await c.env.EMAIL_QUEUE.send({
-      type: 'new_lead',
-      vendorId,
-      contactId: contact.id,
-    })
-
-    if (vendor.availability_sharing === 'ai_reply' && contactData.email) {
-      try {
-        const weddingDate = contactData.wedding_date ?? null
-        let isAvailable: boolean | null = null
-        let busynessScore: number | null = null
-
-        if (weddingDate) {
-          const events = await c.env.DB
-            .prepare('SELECT COUNT(*) as count FROM calendar_events WHERE vendor_id = ? AND date = ? AND type IN (\'booking\', \'blocked\')')
-            .bind(vendorId, weddingDate)
-            .first<{ count: number }>()
-          isAvailable = (events?.count ?? 0) === 0
-
-          const score = await getScoreForDate(c.env.DB, weddingDate, 'global', 'global')
-          busynessScore = score?.score ?? null
-        }
-
-        const anthropicKey = await resolveSecret(c.env.KV, vendor.anthropic_api_key)
-        const draft = await draftEnquiryReply(c.env.AI, {
-          vendorName: vendor.business_name,
-          vendorCategory: vendor.category,
-          contactName: `${contactData.first_name} ${contactData.last_name}`.trim(),
-          weddingDate,
-          weddingLocation: contactData.wedding_location ?? null,
-          isAvailable,
-          busynessScore,
-          notes: null,
-        }, anthropicKey)
-
-        if (draft) {
-          await c.env.DB.prepare(
-            `INSERT INTO emails (vendor_id, contact_id, direction, from_email, from_name, to_email, subject, body_text, status, is_system)
-             VALUES (?, ?, 'outbound', ?, ?, ?, ?, ?, 'draft', 1)`
-          ).bind(
-            vendorId,
-            contact.id,
-            vendor.email_handle ? `${vendor.email_handle}@wedding.computer` : 'noreply@wedding.computer',
-            vendor.business_name,
-            contactData.email,
-            `Re: Enquiry from ${contactData.first_name}`,
-            draft,
-          ).run()
-        }
-      } catch (e: any) {
-        console.error('[enquiry] AI auto-reply failed', e.message)
-      }
+    // Vendor-configured success URL (used by raw HTML forms on their own site).
+    if (config.redirectUrl && isValidRedirect(config.redirectUrl)) {
+      return c.redirect(config.redirectUrl)
     }
 
     return c.html(
@@ -177,75 +108,15 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
 
 export default enquire
 
-// ─── Submission Processing ───
-
-type ContactData = {
-  first_name: string
-  last_name: string
-  email: string | null
-  phone: string | null
-  partner_first_name: string | null
-  partner_last_name: string | null
-  wedding_date: string | null
-  wedding_location: string | null
-  notes: string | null
-}
-
-function processSubmission(
-  config: FormConfig,
-  body: Record<string, string>
-): { contactData: ContactData; formData: Record<string, string> } {
-  const mapped: Partial<Record<ContactMapping, string>> = {}
-  const formData: Record<string, string> = {}
-
-  for (const field of config.fields) {
-    if (field.type === 'heading') continue
-
-    const raw = body[field.id]
-    const value = typeof raw === 'string' ? raw.trim() : ''
-
-    if (field.required && !value) {
-      throw new Error(`${field.label} is required`)
-    }
-
-    if (!value) continue
-
-    if (value.length > 2000) {
-      throw new Error(`${field.label} is too long`)
-    }
-
-    // Store raw text (trimmed above). Output is escaped at render time by
-    // JSX (app UI) and by escapeHtml in email templates. Encoding here would
-    // double-encode (e.g. "O'Brien" → "O&#39;Brien") in the vendor's UI.
-    const clean = value
-
-    if (field.mapTo) {
-      if (field.mapTo === 'email' && !isValidEmail(value)) {
-        throw new Error('Please enter a valid email address')
-      }
-      mapped[field.mapTo] = field.mapTo === 'email' ? value.toLowerCase() : clean
-    } else {
-      formData[field.label] = clean
-    }
-  }
-
-  if (!mapped.first_name) throw new Error('First name is required')
-  if (!mapped.last_name) throw new Error('Last name is required')
-  if (!mapped.email) throw new Error('Email is required')
-
-  return {
-    contactData: {
-      first_name: mapped.first_name,
-      last_name: mapped.last_name,
-      email: mapped.email ?? null,
-      phone: mapped.phone ?? null,
-      partner_first_name: mapped.partner_first_name ?? null,
-      partner_last_name: mapped.partner_last_name ?? null,
-      wedding_date: mapped.wedding_date ?? null,
-      wedding_location: mapped.wedding_location ?? null,
-      notes: mapped.notes ?? null,
-    },
-    formData,
+// Only allow http(s) absolute URLs as the post-submit redirect target. The URL
+// is vendor-configured (stored in their form config), never read from the
+// request, so this is just a sanity guard, not open-redirect protection.
+function isValidRedirect(url: string): boolean {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' || u.protocol === 'http:'
+  } catch {
+    return false
   }
 }
 

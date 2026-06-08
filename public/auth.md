@@ -79,6 +79,52 @@ All agents using the old token will lose access.
 
 Token is self-service: [wedding.computer/app/settings](https://wedding.computer/app/settings) → Calendar & Sync section.
 
+## Enquiry Intake (lead capture)
+
+Send enquiries (leads) into a vendor's CRM programmatically — for webhooks, Zapier, and AI agents. This is **separate** from the read-only sync token above.
+
+### Credentials
+
+| | Sync token | Enquiry intake key |
+|--|------------|--------------------|
+| Purpose | Read data (MCP, CalDAV, CardDAV) | Create leads only (write-only) |
+| Where | Settings → Calendar & Sync | Settings → Enquiry form → API & webhooks |
+| Format | 32-char hex | `wc_intake_` + 48 hex |
+| Tier | Pro (MCP) | Pro |
+
+A leaked intake key cannot read any vendor data — it can only create a lead. Rotate or revoke it any time in Settings.
+
+### JSON API
+
+```
+POST https://wedding.computer/api/v1/enquiries
+Authorization: Bearer wc_intake_xxxxxxxx…
+Content-Type: application/json
+
+{
+  "first_name": "Sam",
+  "last_name": "Rivera",
+  "email": "sam@example.com",
+  "wedding_date": "2027-03-14",
+  "wedding_location": "Byron Bay",
+  "notes": "Looking for a celebrant for a beach elopement.",
+  "fields": { "How did you hear about us?": "Instagram" }
+}
+```
+
+Required: `first_name`, `last_name`, `email`. Optional: `phone`, `partner_first_name`, `partner_last_name`, `wedding_date`, `wedding_location`, `notes`, and a `fields` object of custom label/value pairs. Success returns `201 { "ok": true, "id": "…" }`.
+
+- `GET /api/v1` — public API index (no auth).
+- `GET /api/v1/form` — the fields configured on your enquiry form (auth).
+
+### Via MCP agent
+
+Agents connected to the MCP server (Bearer = sync token) can call the **`submit_enquiry`** tool with the same fields to create a lead conversationally.
+
+### Plain HTML
+
+Any website can post directly to `https://wedding.computer/enquire/{vendorId}` (the same endpoint the hosted form uses) — copy ready-made HTML from Settings → Enquiry form → HTML form code. This channel is free and uses a Cloudflare Turnstile captcha instead of a key.
+
 ## Discovery Endpoints
 
 | Endpoint | Description |

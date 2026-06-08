@@ -32,6 +32,7 @@ import carddav from './routes/carddav'
 import caldav from './routes/caldav'
 import stripe from './routes/stripe'
 import mcpRoute from './routes/mcp'
+import apiRoute from './routes/api'
 import publicRoutes from './routes/public'
 import formsRoute from './routes/vendor/forms'
 import referRoute from './routes/vendor/refer'
@@ -155,6 +156,13 @@ app.get('/.well-known/agent-skills/index.json', (c) =>
         sha256: '',
       },
       {
+        name: 'wedding-computer-enquiry-api',
+        type: 'openapi',
+        description: 'Send a lead/enquiry into a vendor\'s CRM via JSON (POST /api/v1/enquiries). For webhooks, Zapier, and agents. Bearer enquiry intake key; Pro.',
+        url: 'https://wedding.computer/api/v1',
+        sha256: '',
+      },
+      {
         name: 'wedding-computer-carddav',
         type: 'protocol',
         description: 'Sync wedding contacts to Apple Contacts, Google Contacts, or any CardDAV client.',
@@ -197,6 +205,12 @@ app.get('/.well-known/api-catalog', (c) => {
         status: [{ href: 'https://wedding.computer/health', type: 'application/json' }],
       },
       {
+        anchor: 'https://wedding.computer/api/v1/enquiries',
+        'service-desc': [{ href: 'https://wedding.computer/api/v1', type: 'application/json' }],
+        'service-doc': [{ href: 'https://wedding.computer/auth.md', type: 'text/markdown' }],
+        status: [{ href: 'https://wedding.computer/health', type: 'application/json' }],
+      },
+      {
         anchor: 'https://wedding.computer/.well-known/carddav',
         'service-doc': [{ href: 'https://wedding.computer/docs/plain-text', type: 'text/html' }],
         status: [{ href: 'https://wedding.computer/health', type: 'application/json' }],
@@ -223,7 +237,7 @@ app.get('/.well-known/oauth-protected-resource', (c) =>
     resource: 'https://wedding.computer',
     authorization_servers: ['https://wedding.computer'],
     bearer_methods_supported: ['header'],
-    scopes_supported: ['read'],
+    scopes_supported: ['read', 'enquiry:write'],
     resource_documentation: 'https://wedding.computer/auth.md',
     resource_signing_alg_values_supported: [],
   })
@@ -283,6 +297,7 @@ app.get('/.well-known/mcp/server-card.json', (c) =>
       { name: 'get_wedding_log', description: 'Get the activity changelog for a wedding.' },
       { name: 'get_wedding_credits', description: 'Get vendor credits for Instagram, markdown, or HTML.' },
       { name: 'get_upcoming_events', description: 'Get calendar events for the next N days.' },
+      { name: 'submit_enquiry', description: 'Create a new lead/enquiry in the CRM.' },
     ],
   })
 )
@@ -396,6 +411,7 @@ function calDavDiscoveryXml(href: string, authHeader: string | undefined, db: D1
 
 // MCP server
 app.route('/', mcpRoute)
+app.route('/', apiRoute)
 
 // Agent discovery (DNS-AID / well-known)
 app.get('/.well-known/agent', (c) =>
@@ -404,7 +420,8 @@ app.get('/.well-known/agent', (c) =>
     description: 'Wedding collaboration platform for vendors, venues, planners, and couples.',
     url: 'https://wedding.computer',
     protocols: {
-      mcp: { endpoint: '/mcp', description: 'Model Context Protocol — AI agent access to contacts, weddings, checklists, and calendar', auth: 'Bearer token' },
+      mcp: { endpoint: '/mcp', description: 'Model Context Protocol — AI agent access to contacts, weddings, checklists, calendar, and lead intake (submit_enquiry)', auth: 'Bearer token' },
+      enquiry_api: { endpoint: '/api/v1/enquiries', method: 'POST', description: 'Send a lead/enquiry into a vendor\'s CRM (JSON). For webhooks, Zapier, and agents.', auth: 'Bearer enquiry intake key', catalog: '/api/v1' },
       carddav: { endpoint: '/.well-known/carddav', description: 'Contact sync via CardDAV' },
       caldav: { endpoint: '/.well-known/caldav', description: 'Calendar sync via CalDAV' },
       ical: { endpoint: '/feed/{token}.ics', description: 'Read-only calendar feed (iCal)' },

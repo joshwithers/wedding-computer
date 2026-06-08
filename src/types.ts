@@ -74,6 +74,7 @@ export type VendorProfile = {
   booking_form: string | null
   ceremony_types: string | null
   ical_token: string | null
+  enquiry_key: string | null
   anthropic_api_key: string | null
   email_handle: string | null
   storage_type: string | null

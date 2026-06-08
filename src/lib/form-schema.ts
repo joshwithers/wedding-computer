@@ -77,6 +77,11 @@ export type FormConfig = {
   fields: FormField[]
   steps?: FormStep[]
   actions: FormActions
+  // Optional success URL. When set, a successful public submission redirects
+  // here instead of showing the hosted thank-you page — lets a raw HTML form
+  // on the vendor's own site keep the visitor on that site. Vendor-controlled
+  // (set in the editor), never taken from the request, so it's not an open redirect.
+  redirectUrl?: string
 }
 
 export const FIELD_TYPES: { value: FieldType; label: string }[] = [

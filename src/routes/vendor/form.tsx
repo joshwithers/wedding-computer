@@ -1,10 +1,12 @@
 import { Hono } from 'hono'
-import type { Env } from '../../types'
+import type { Env, VendorProfile } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
 import { updateVendor } from '../../db/vendors'
+import { isProVendor } from '../../db/subscriptions'
+import { generateToken } from '../../lib/crypto'
 import {
   parseFormConfig,
   validateFormConfig,
@@ -21,18 +23,50 @@ form.use('/app/*', requireAuth, csrf, requireVendor)
 
 // ─── Main editor page ───
 
-form.get('/app/form', (c) => {
+form.get('/app/form', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
   const config = parseFormConfig(vendor.enquiry_form)
   const saved = c.req.query('saved')
   const error = c.req.query('error')
+  const isPro = await isProVendor(c.env.DB, vendor.id)
 
   return c.html(
     <AppLayout title="Enquiry Form" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
-      <FormEditor config={config} vendorId={vendor.id} appUrl={c.env.APP_URL} csrfToken={c.get('csrfToken')} saved={!!saved} error={error} />
+      <FormEditor config={config} vendor={vendor} appUrl={c.env.APP_URL} siteKey={c.env.TURNSTILE_SITE_KEY} isPro={isPro} csrfToken={c.get('csrfToken')} saved={!!saved} error={error} />
     </AppLayout>
   )
+})
+
+// ─── Enquiry intake key management (Pro) ───
+
+function newEnquiryKey(token: string): string {
+  return `wc_intake_${token}`
+}
+
+form.post('/app/form/generate-key', async (c) => {
+  const vendor = c.get('vendor')!
+  const isPro = await isProVendor(c.env.DB, vendor.id)
+  if (!isPro) return c.redirect('/app/form?error=' + encodeURIComponent('The API requires a Pro subscription'))
+  // Don't clobber an existing key.
+  if (!vendor.enquiry_key) {
+    await updateVendor(c.env.DB, vendor.id, { enquiry_key: newEnquiryKey(await generateToken(24)) })
+  }
+  return c.redirect('/app/form#api')
+})
+
+form.post('/app/form/rotate-key', async (c) => {
+  const vendor = c.get('vendor')!
+  const isPro = await isProVendor(c.env.DB, vendor.id)
+  if (!isPro) return c.redirect('/app/form?error=' + encodeURIComponent('The API requires a Pro subscription'))
+  await updateVendor(c.env.DB, vendor.id, { enquiry_key: newEnquiryKey(await generateToken(24)) })
+  return c.redirect('/app/form#api')
+})
+
+form.post('/app/form/revoke-key', async (c) => {
+  const vendor = c.get('vendor')!
+  await updateVendor(c.env.DB, vendor.id, { enquiry_key: null })
+  return c.redirect('/app/form#api')
 })
 
 // ─── Save form config ───
@@ -200,6 +234,7 @@ function buildConfigFromBody(body: Record<string, string>): FormConfig {
   const title = (body.form_title ?? 'Get in touch').trim()
   const subtitle = (body.form_subtitle ?? '').trim() || undefined
   const submitLabel = (body.form_submit_label ?? 'Send enquiry').trim()
+  const redirectUrl = (body.form_redirect_url ?? '').trim() || undefined
 
   const fieldIds = (body.field_ids ?? '').split(',').filter(Boolean)
   const fields: FormField[] = []
@@ -238,6 +273,7 @@ function buildConfigFromBody(body: Record<string, string>): FormConfig {
     title,
     subtitle,
     submitLabel,
+    redirectUrl,
     fields,
     actions: {
       notifyVendor: body.action_notify !== 'off',
@@ -254,19 +290,24 @@ function buildConfigFromBody(body: Record<string, string>): FormConfig {
 
 function FormEditor({
   config,
-  vendorId,
+  vendor,
   appUrl,
+  siteKey,
+  isPro,
   csrfToken,
   saved,
   error,
 }: {
   config: FormConfig
-  vendorId: string
+  vendor: VendorProfile
   appUrl: string
+  siteKey: string
+  isPro: boolean
   csrfToken: string
   saved: boolean
   error?: string | null
 }) {
+  const vendorId = vendor.id
   const formUrl = `/enquire/${vendorId}`
   const fullFormUrl = `${appUrl}/enquire/${vendorId}`
 
@@ -372,6 +413,8 @@ function FormEditor({
         </details>
       </div>
 
+      <ShareChannels vendor={vendor} config={config} appUrl={appUrl} siteKey={siteKey} isPro={isPro} csrfToken={csrfToken} />
+
       {/* Main form editor */}
       <form method="post" action="/app/form">
         <input type="hidden" name="_csrf" value={csrfToken} />
@@ -414,6 +457,18 @@ function FormEditor({
               placeholder="Leave blank to show your business name automatically"
               class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
             />
+          </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-1.5" for="form_redirect_url">Redirect after submit <span class="font-normal text-gray-400">(optional)</span></label>
+            <input
+              type="url"
+              id="form_redirect_url"
+              name="form_redirect_url"
+              value={config.redirectUrl ?? ''}
+              placeholder="https://yoursite.com/thank-you"
+              class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+            />
+            <p class="text-xs text-gray-400 mt-1">Send people to your own thank-you page after they submit. Leave blank to show the built-in confirmation.</p>
           </div>
         </div>
 
@@ -508,6 +563,196 @@ function FormEditor({
       </form>
     </div>
   )
+}
+
+function UpgradePrompt({ feature }: { feature: string }) {
+  return (
+    <div class="mt-3 bg-horizon-50 border border-horizon-600/20 rounded-xl p-3">
+      <p class="text-xs text-gray-600">
+        {feature} is a Pro feature.{' '}
+        <a href="/app/subscription" class="font-bold text-horizon-700 hover:underline">Upgrade to Pro</a> to enable it.
+      </p>
+    </div>
+  )
+}
+
+function ShareChannels({
+  vendor,
+  config,
+  appUrl,
+  siteKey,
+  isPro,
+  csrfToken,
+}: {
+  vendor: VendorProfile
+  config: FormConfig
+  appUrl: string
+  siteKey: string
+  isPro: boolean
+  csrfToken: string
+}) {
+  const postUrl = `${appUrl}/enquire/${vendor.id}`
+  const apiUrl = `${appUrl}/api/v1/enquiries`
+  const htmlSnippet = buildHtmlSnippet(config, postUrl, siteKey)
+  const key = vendor.enquiry_key
+  const curl = `curl -X POST ${apiUrl} \\
+  -H "Authorization: Bearer ${key ?? 'YOUR_INTAKE_KEY'}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"first_name":"Sam","last_name":"Rivera","email":"sam@example.com","wedding_date":"2027-03-14","notes":"Beach elopement"}'`
+
+  return (
+    <div class="bg-white border border-gray-200 rounded-xl p-5 mb-6 space-y-3">
+      <div>
+        <h2 class="text-base font-bold mb-1">More ways to collect enquiries</h2>
+        <p class="text-xs text-gray-500">Embed raw HTML on your own site, or pipe leads in from other tools and AI agents.</p>
+      </div>
+
+      {/* HTML form code — free */}
+      <details class="border border-gray-100 rounded-xl p-4" id="html">
+        <summary class="flex items-center justify-between cursor-pointer text-sm font-bold text-gray-700">
+          <span>HTML form code</span>
+          <span class="text-xs font-normal text-green-600">Free</span>
+        </summary>
+        <p class="text-xs text-gray-500 mt-2 mb-2">
+          Paste this onto your own website. It posts straight to your CRM, includes a spam-protection captcha, and you can style it however you like.
+        </p>
+        <textarea
+          readonly
+          rows={10}
+          onclick="this.select()"
+          class="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-gray-50 font-mono"
+        >{htmlSnippet}</textarea>
+      </details>
+
+      {/* API & webhooks — Pro */}
+      <details class="border border-gray-100 rounded-xl p-4" id="api" open={!!key}>
+        <summary class="flex items-center justify-between cursor-pointer text-sm font-bold text-gray-700">
+          <span>API &amp; webhooks (Zapier)</span>
+          <span class="text-xs font-normal text-horizon-600">Pro</span>
+        </summary>
+        {isPro ? (
+          <div class="mt-3 space-y-3">
+            <p class="text-xs text-gray-500">
+              Send leads from Zapier, Make, or any webhook. Full <a href="/auth.md" target="_blank" class="underline hover:text-gray-700">API docs</a>.
+            </p>
+            <div>
+              <p class="text-xs font-bold text-gray-700 mb-1">Endpoint</p>
+              <code class="block text-xs bg-gray-50 rounded-lg px-3 py-2 text-gray-700 break-all">POST {apiUrl}</code>
+            </div>
+            <div>
+              <p class="text-xs font-bold text-gray-700 mb-1">
+                Your intake key <span class="font-normal text-gray-400">— write-only, only creates leads</span>
+              </p>
+              {key ? (
+                <div>
+                  <code class="block text-xs bg-gray-50 rounded-lg px-3 py-2 text-gray-700 break-all select-all">{key}</code>
+                  <div class="flex gap-3 mt-2">
+                    <form method="post" action="/app/form/rotate-key">
+                      <input type="hidden" name="_csrf" value={csrfToken} />
+                      <button type="submit" class="text-xs text-gray-500 hover:text-horizon-700" onclick="return confirm('Rotate key? Integrations using the old key will stop working.')">Rotate</button>
+                    </form>
+                    <form method="post" action="/app/form/revoke-key">
+                      <input type="hidden" name="_csrf" value={csrfToken} />
+                      <button type="submit" class="text-xs text-gray-500 hover:text-grapefruit-700" onclick="return confirm('Revoke key? The API will stop accepting leads until you generate a new one.')">Revoke</button>
+                    </form>
+                  </div>
+                </div>
+              ) : (
+                <form method="post" action="/app/form/generate-key">
+                  <input type="hidden" name="_csrf" value={csrfToken} />
+                  <button type="submit" class="bg-horizon-600 text-white py-2 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">Generate intake key</button>
+                </form>
+              )}
+            </div>
+            {key && (
+              <div>
+                <p class="text-xs font-bold text-gray-700 mb-1">Example</p>
+                <textarea readonly rows={5} onclick="this.select()" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-gray-50 font-mono">{curl}</textarea>
+              </div>
+            )}
+          </div>
+        ) : (
+          <UpgradePrompt feature="The enquiry API and webhooks" />
+        )}
+      </details>
+
+      {/* AI agents — Pro */}
+      <details class="border border-gray-100 rounded-xl p-4" id="agent">
+        <summary class="flex items-center justify-between cursor-pointer text-sm font-bold text-gray-700">
+          <span>AI agents (MCP)</span>
+          <span class="text-xs font-normal text-horizon-600">Pro</span>
+        </summary>
+        {isPro ? (
+          <div class="mt-3 space-y-2 text-xs text-gray-500">
+            <p>AI agents can create leads with the <code class="bg-gray-50 px-1 rounded text-gray-700">submit_enquiry</code> tool on your MCP server:</p>
+            <code class="block bg-gray-50 rounded-lg px-3 py-2 text-gray-700 break-all">{appUrl}/mcp</code>
+            <p>Authenticate with your sync token (Settings → Calendar &amp; Sync). Agents discover this automatically at <a href="/.well-known/agent" target="_blank" class="underline hover:text-gray-700">/.well-known/agent</a>.</p>
+          </div>
+        ) : (
+          <UpgradePrompt feature="AI agent lead capture" />
+        )}
+      </details>
+    </div>
+  )
+}
+
+// Build a self-contained, framework-agnostic HTML form the vendor can paste on
+// their own site. Posts to the same public endpoint as the hosted form, with a
+// honeypot + Turnstile captcha for spam protection. Output is shown in a
+// readonly textarea (JSX escapes it for display; the copied value is raw HTML).
+function buildHtmlSnippet(config: FormConfig, postUrl: string, siteKey: string): string {
+  const esc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const TYPE_MAP: Record<string, string> = {
+    text: 'text', email: 'email', tel: 'tel', date: 'date', number: 'number', address: 'text', country: 'text',
+  }
+  const opts = (field: FormField) =>
+    (field.options ?? []).map((o) => (typeof o === 'string' ? { value: o, label: o } : o))
+
+  const lines: string[] = []
+  lines.push(`<!-- Wedding Computer enquiry form. Style the elements however you like. -->`)
+  lines.push(`<form action="${esc(postUrl)}" method="post">`)
+  lines.push(`  <!-- Honeypot: leave this hidden -->`)
+  lines.push(`  <input type="text" name="website_url" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">`)
+
+  for (const f of config.fields) {
+    const req = f.required ? ' required' : ''
+    const star = f.required ? ' *' : ''
+    if (f.type === 'heading') {
+      lines.push(`  <h3>${esc(f.label)}</h3>`)
+      continue
+    }
+    if (f.type === 'checkbox') {
+      lines.push(`  <label><input type="checkbox" name="${esc(f.id)}" value="yes"${req}> ${esc(f.label)}</label>`)
+      continue
+    }
+    lines.push(`  <p>`)
+    lines.push(`    <label for="${esc(f.id)}">${esc(f.label)}${star}</label><br>`)
+    if (f.type === 'textarea') {
+      lines.push(`    <textarea id="${esc(f.id)}" name="${esc(f.id)}" rows="4" maxlength="2000"${req}></textarea>`)
+    } else if (f.type === 'select') {
+      lines.push(`    <select id="${esc(f.id)}" name="${esc(f.id)}"${req}>`)
+      lines.push(`      <option value="">${esc(f.placeholder ?? 'Select…')}</option>`)
+      for (const o of opts(f)) lines.push(`      <option value="${esc(o.value)}">${esc(o.label)}</option>`)
+      lines.push(`    </select>`)
+    } else if (f.type === 'radio') {
+      for (const o of opts(f)) {
+        lines.push(`    <label><input type="radio" name="${esc(f.id)}" value="${esc(o.value)}"${req}> ${esc(o.label)}</label>`)
+      }
+    } else {
+      const t = TYPE_MAP[f.type] ?? 'text'
+      const ph = f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : ''
+      lines.push(`    <input type="${t}" id="${esc(f.id)}" name="${esc(f.id)}"${ph}${req}>`)
+    }
+    lines.push(`  </p>`)
+  }
+
+  lines.push(`  <!-- Spam protection (Cloudflare Turnstile) -->`)
+  lines.push(`  <div class="cf-turnstile" data-sitekey="${esc(siteKey)}"></div>`)
+  lines.push(`  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>`)
+  lines.push(`  <button type="submit">${esc(config.submitLabel)}</button>`)
+  lines.push(`</form>`)
+  return lines.join('\n')
 }
 
 function FieldCard({
