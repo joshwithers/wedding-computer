@@ -513,13 +513,24 @@ contacts.get('/app/contacts/:id', async (c) => {
                   Create wedding
                 </a>
               )}
-              {contact.email && isPro && (
-                <a
-                  href={`/app/contacts/${contact.id}/email`}
-                  class="border border-horizon-600 text-horizon-600 px-3 py-1.5 rounded-xl text-sm font-bold hover:bg-horizon-50 transition-colors"
-                >
-                  Draft email
-                </a>
+              {contact.email && (
+                isPro ? (
+                  <a
+                    href={`/app/contacts/${contact.id}/email`}
+                    class="border border-horizon-600 text-horizon-600 px-3 py-1.5 rounded-xl text-sm font-bold hover:bg-horizon-50 transition-colors"
+                  >
+                    Draft email
+                  </a>
+                ) : (
+                  <a
+                    href="/app/subscription"
+                    title="AI email drafting is a Pro feature"
+                    class="border border-gray-200 text-gray-500 px-3 py-1.5 rounded-xl text-sm font-bold hover:bg-papaya-50 transition-colors"
+                  >
+                    Draft email{' '}
+                    <span class="ml-1 align-middle inline-block bg-horizon-100 text-horizon-700 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded">Pro</span>
+                  </a>
+                )
               )}
               <a
                 href={`/app/contacts/${contact.id}/edit`}
@@ -1086,6 +1097,11 @@ contacts.post('/app/contacts/:id/email/send', async (c) => {
   const vendor = c.get('vendor')!
   const user = c.get('user')
   const contactId = c.req.param('id')
+
+  // AI email drafting is a Pro feature.
+  if (!(await isProVendor(c.env.DB, vendor.id))) {
+    return c.redirect(`/app/contacts/${contactId}?error=` + encodeURIComponent('AI email drafting requires a Pro subscription'))
+  }
 
   try {
     let contact: Contact | null = null
