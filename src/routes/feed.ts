@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../types'
 import { getVendorByIcalToken } from '../db/vendors'
+import { isProVendor } from '../db/subscriptions'
 import { listEnrichedEventsByRange } from '../db/calendar'
 import { buildIcalFeed } from '../services/ical'
 
@@ -13,6 +14,11 @@ feed.get('/cal/:token', async (c) => {
 
   const vendor = await getVendorByIcalToken(c.env.DB, token)
   if (!vendor) return c.text('Not found', 404)
+
+  // Device/calendar sync is a Pro feature.
+  if (!(await isProVendor(c.env.DB, vendor.id))) {
+    return c.text('Calendar sync requires a Pro subscription.', 403)
+  }
 
   const now = new Date()
   const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`

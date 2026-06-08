@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Env, CalendarEvent } from '../types'
 import {
-  CALDAV_HEADERS, authenticateVendor, unauthorizedResponse, forbiddenResponse,
+  CALDAV_HEADERS, authenticateProVendor, unauthorizedResponse, forbiddenResponse,
   xmlResponse, escXml, makeCTag, makeETag, getDepth, parseHrefsFromBody, isMultiget,
 } from '../lib/dav'
 import { listAllEnrichedEvents, listEnrichedEventsByIds, getEnrichedEvent } from '../db/calendar'
@@ -20,7 +20,8 @@ const SUPPORTED_REPORT_SET = `<D:supported-report-set>
 </D:supported-report-set>`
 
 function auth(c: { req: { raw: Request }; env: { DB: D1Database } }) {
-  return authenticateVendor(c.env.DB, c.req.raw.headers.get('Authorization') ?? undefined)
+  // Pro-gated: non-Pro vendors resolve to null → 401.
+  return authenticateProVendor(c.env.DB, c.req.raw.headers.get('Authorization') ?? undefined)
 }
 
 function unauth() {

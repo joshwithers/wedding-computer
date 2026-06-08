@@ -5,6 +5,7 @@ import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
 import { updateVendor } from '../../db/vendors'
+import { isProVendor } from '../../db/subscriptions'
 import { deleteUser } from '../../db/users'
 import { VENDOR_CATEGORIES } from '../../types'
 import { trimOrNull, requireString } from '../../lib/validation'
@@ -21,11 +22,12 @@ const settings = new Hono<Env>()
 
 settings.use('/app/*', requireAuth, csrf, requireVendor)
 
-settings.get('/app/settings', (c) => {
+settings.get('/app/settings', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
   const saved = c.req.query('saved')
   const error = c.req.query('error')
+  const isPro = await isProVendor(c.env.DB, vendor.id)
 
   return c.html(
     <AppLayout title="Settings" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
@@ -394,25 +396,29 @@ settings.get('/app/settings', (c) => {
             <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
             <div class="space-y-3">
               {([
-                ['private', 'Private', 'Only you can see your availability'],
-                ['vendors_only', 'Vendors only', 'Other vendors on shared weddings can see your availability'],
-                ['public', 'Public', 'Anyone with your profile link can see available dates'],
-                ['ai_reply', 'AI auto-reply', 'AI includes your availability when replying to enquiries'],
-              ] as const).map(([value, label, desc]) => (
-                <label class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-gray-200 hover:border-horizon-300 transition-colors">
+                ['private', 'Private', 'Only you can see your availability', false],
+                ['vendors_only', 'Vendors only', 'Other vendors on shared weddings can see your availability', false],
+                ['public', 'Public', 'Anyone with your profile link can see available dates', false],
+                ['ai_reply', 'AI auto-reply', 'AI includes your availability when replying to enquiries', true],
+              ] as const).map(([value, label, desc, pro]) => {
+                const locked = pro && !isPro
+                return (
+                <label class={`flex items-start gap-3 p-3 rounded-xl border border-gray-200 transition-colors ${locked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-horizon-300'}`}>
                   <input
                     type="radio"
                     name="availability_sharing"
                     value={value}
                     checked={vendor.availability_sharing === value}
+                    disabled={locked}
                     class="mt-0.5 w-4 h-4 border-gray-300 text-horizon-600 focus:ring-horizon-600"
                   />
                   <div>
-                    <span class="text-sm font-bold text-gray-900">{label}</span>
-                    <p class="text-xs text-gray-500">{desc}</p>
+                    <span class="text-sm font-bold text-gray-900">{label} {pro && <ProBadge />}</span>
+                    <p class="text-xs text-gray-500">{desc}{locked ? ' — upgrade to Pro to enable.' : ''}</p>
                   </div>
                 </label>
-              ))}
+                )
+              })}
             </div>
             <button type="submit"
               class="mt-4 bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
@@ -451,7 +457,7 @@ settings.get('/app/settings', (c) => {
         </section>
 
         <section id="integrations" class="mt-10 pt-8 border-t border-gray-200 scroll-mt-24">
-          <h2 class="text-base font-bold mb-2">GitHub sync</h2>
+          <h2 class="text-base font-bold mb-2">GitHub sync <ProBadge /></h2>
           <p class="text-sm text-gray-500 mb-4">
             Sync your contacts and weddings to a private GitHub repository. Open your files in Obsidian, VS Code, or any text editor.
           </p>
@@ -493,6 +499,10 @@ settings.get('/app/settings', (c) => {
                   </div>
                 </div>
               )
+            }
+
+            if (!isPro) {
+              return <ProUpsell feature="GitHub sync" />
             }
 
             return (
@@ -577,11 +587,13 @@ settings.get('/app/settings', (c) => {
         </section>
 
         <section class="mt-10 pt-8 border-t border-gray-200">
-          <h2 class="text-base font-bold mb-2">Device sync</h2>
+          <h2 class="text-base font-bold mb-2">Device sync <ProBadge /></h2>
           <p class="text-sm text-gray-500 mb-4">
             Sync your contacts and calendar to your phone and computer. Works with Apple Contacts, Apple Calendar, and any CardDAV/CalDAV client.
           </p>
-          {vendor.ical_token ? (
+          {!isPro ? (
+            <ProUpsell feature="Device sync (CalDAV, CardDAV, and iCal)" />
+          ) : vendor.ical_token ? (
             <div class="space-y-4">
               <FeedUrl
                 label="CardDAV (contacts)"
@@ -860,6 +872,11 @@ settings.post('/app/settings/availability-sharing', async (c) => {
   const valid = ['private', 'vendors_only', 'public', 'ai_reply'] as const
   const value = valid.includes(sharing as any) ? sharing as typeof valid[number] : 'private'
 
+  // AI auto-reply is a Pro feature; other sharing modes are free.
+  if (value === 'ai_reply' && !(await isProVendor(c.env.DB, vendor.id))) {
+    return c.redirect('/app/settings?error=' + encodeURIComponent('AI auto-reply requires a Pro subscription'))
+  }
+
   await updateVendor(c.env.DB, vendor.id, { availability_sharing: value })
   return c.redirect('/app/settings?saved=1')
 })
@@ -897,6 +914,10 @@ settings.post('/app/settings/ai', async (c) => {
 
 settings.post('/app/settings/generate-sync-token', async (c) => {
   const vendor = c.get('vendor')!
+  // Device sync (CalDAV/CardDAV/iCal) is a Pro feature.
+  if (!(await isProVendor(c.env.DB, vendor.id))) {
+    return c.redirect('/app/settings?error=' + encodeURIComponent('Device sync requires a Pro subscription'))
+  }
   if (vendor.ical_token) return c.redirect('/app/settings')
 
   const bytes = new Uint8Array(16)
@@ -911,6 +932,10 @@ settings.post('/app/settings/generate-sync-token', async (c) => {
 
 settings.post('/app/settings/github/connect', async (c) => {
   const vendor = c.get('vendor')!
+  // GitHub sync is a Pro feature.
+  if (!(await isProVendor(c.env.DB, vendor.id))) {
+    return c.redirect('/app/settings?error=' + encodeURIComponent('GitHub sync requires a Pro subscription'))
+  }
   const body = await c.req.parseBody()
   const token = typeof body.github_token === 'string' ? body.github_token.trim() : ''
   const repoName = typeof body.github_repo === 'string' ? body.github_repo.trim() : ''
@@ -1003,6 +1028,10 @@ settings.post('/app/settings/github/disconnect', async (c) => {
 
 settings.post('/app/settings/github/sync', async (c) => {
   const vendor = c.get('vendor')!
+  // GitHub sync is a Pro feature.
+  if (!(await isProVendor(c.env.DB, vendor.id))) {
+    return c.redirect('/app/settings?error=' + encodeURIComponent('GitHub sync requires a Pro subscription'))
+  }
 
   let config: { git_repo?: string; git_access_token?: string; git_access_token_ref?: string } | null = null
   if (vendor.storage_config) {
@@ -1356,6 +1385,25 @@ settings.post('/app/settings/delete-account', async (c) => {
 })
 
 export default settings
+
+function ProBadge() {
+  return (
+    <span class="align-middle inline-block bg-horizon-100 text-horizon-700 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded">Pro</span>
+  )
+}
+
+function ProUpsell({ feature }: { feature: string }) {
+  return (
+    <div class="bg-horizon-50 border border-horizon-600/20 rounded-xl p-4">
+      <p class="text-sm text-gray-700 mb-2">
+        <strong>{feature}</strong> is a Pro feature.
+      </p>
+      <a href="/app/subscription" class="inline-block bg-horizon-600 text-white py-2 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
+        Upgrade to Pro
+      </a>
+    </div>
+  )
+}
 
 function FeedUrl({ label, url, description }: { label: string; url: string; description: string }) {
   return (

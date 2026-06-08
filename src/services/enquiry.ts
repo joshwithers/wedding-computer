@@ -6,6 +6,7 @@ import { track } from '../services/analytics'
 import { draftEnquiryReply } from '../services/ai'
 import { resolveSecret } from '../services/secrets'
 import { getScoreForDate } from '../db/busyness'
+import { isProVendor } from '../db/subscriptions'
 import { isValidEmail } from '../lib/validation'
 import type { FormConfig, ContactMapping } from '../lib/form-schema'
 
@@ -182,7 +183,8 @@ export async function createEnquiry(
     contactId: contact.id,
   })
 
-  if (vendor.availability_sharing === 'ai_reply' && contactData.email) {
+  // AI auto-reply is a Pro feature — only draft one for Pro vendors.
+  if (vendor.availability_sharing === 'ai_reply' && contactData.email && (await isProVendor(env.DB, vendor.id))) {
     try {
       await draftAvailabilityReply(env, vendor, contact.id, contactData)
     } catch (e: any) {

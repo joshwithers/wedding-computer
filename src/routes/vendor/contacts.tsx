@@ -18,6 +18,7 @@ import type { StorageBackend } from '../../storage/types'
 import { needsMigration, migrateContacts } from '../../storage/migrate'
 import { listActivities, createActivity } from '../../db/activities'
 import { getBestScoreForDate } from '../../db/busyness'
+import { isProVendor } from '../../db/subscriptions'
 import { describeDemand } from '../../lib/busyness'
 import { requireString, trimOrNull, sanitize } from '../../lib/validation'
 import { generateId } from '../../lib/crypto'
@@ -465,6 +466,8 @@ contacts.get('/app/contacts/:id', async (c) => {
       .all<{ title: string; booking_form_data: string }>()
       .then((r) => r.results)
 
+    const isPro = await isProVendor(c.env.DB, vendor.id)
+
     // Date demand for the contact's wedding date (only meaningful for an
     // upcoming date). Resolves the most location-specific score for the
     // vendor's area; null when no aggregation row exists yet.
@@ -478,9 +481,16 @@ contacts.get('/app/contacts/:id', async (c) => {
       }
     }
 
+    const error = c.req.query('error')
+
     return c.html(
       <AppLayout title={`${contact.first_name} ${contact.last_name}`} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
         <div class="max-w-3xl">
+          {error && (
+            <div class="bg-grapefruit-50 border border-grapefruit-200 text-grapefruit-700 text-sm rounded-xl p-3 mb-6">
+              {decodeURIComponent(error)}
+            </div>
+          )}
           {/* Header */}
           <div class="flex items-start justify-between mb-6">
             <div>
@@ -503,7 +513,7 @@ contacts.get('/app/contacts/:id', async (c) => {
                   Create wedding
                 </a>
               )}
-              {contact.email && (
+              {contact.email && isPro && (
                 <a
                   href={`/app/contacts/${contact.id}/email`}
                   class="border border-horizon-600 text-horizon-600 px-3 py-1.5 rounded-xl text-sm font-bold hover:bg-horizon-50 transition-colors"
@@ -896,6 +906,11 @@ contacts.get('/app/contacts/:id/email', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
 
+  // AI email drafting is a Pro feature.
+  if (!(await isProVendor(c.env.DB, vendor.id))) {
+    return c.redirect(`/app/contacts/${c.req.param('id')}?error=` + encodeURIComponent('AI email drafting requires a Pro subscription'))
+  }
+
   try {
     let contact: Contact | null = null
 
@@ -1011,6 +1026,11 @@ contacts.get('/app/contacts/:id/email', async (c) => {
 contacts.post('/app/contacts/:id/email/draft', async (c) => {
   const vendor = c.get('vendor')!
   const contactId = c.req.param('id')
+
+  // AI email drafting is a Pro feature.
+  if (!(await isProVendor(c.env.DB, vendor.id))) {
+    return c.redirect(`/app/contacts/${contactId}?error=` + encodeURIComponent('AI email drafting requires a Pro subscription'))
+  }
 
   try {
     let contact: Contact | null = null

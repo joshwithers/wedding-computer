@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Env, Contact, VendorProfile, Wedding } from '../types'
 import {
-  CARDDAV_HEADERS, authenticateVendor, unauthorizedResponse, forbiddenResponse,
+  CARDDAV_HEADERS, authenticateProVendor, unauthorizedResponse, forbiddenResponse,
   xmlResponse, escXml, escVCard, foldLine, toVCardRev, makeETag,
   getDepth, parseHrefsFromBody, isMultiget,
 } from '../lib/dav'
@@ -88,7 +88,8 @@ const SUPPORTED_REPORT_SET = `<D:supported-report-set>
 </D:supported-report-set>`
 
 function auth(c: { req: { raw: Request }; env: { DB: D1Database } }) {
-  return authenticateVendor(c.env.DB, c.req.raw.headers.get('Authorization') ?? undefined)
+  // Pro-gated: non-Pro vendors resolve to null → 401.
+  return authenticateProVendor(c.env.DB, c.req.raw.headers.get('Authorization') ?? undefined)
 }
 
 function unauth() {

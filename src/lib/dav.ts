@@ -1,5 +1,6 @@
 import type { VendorProfile } from '../types'
 import { getVendorByIcalToken } from '../db/vendors'
+import { isProVendor } from '../db/subscriptions'
 
 export const DAV_HEADERS = {
   'MS-Author-Via': 'DAV',
@@ -36,6 +37,18 @@ export async function authenticateVendor(
     console.error('[DAV AUTH]', e.message)
     return null
   }
+}
+
+// Like authenticateVendor, but additionally requires an active Pro subscription.
+// Device sync (CalDAV/CardDAV/iCal) is a Pro feature; non-Pro vendors resolve to
+// null (treated as unauthorized by the DAV handlers).
+export async function authenticateProVendor(
+  db: D1Database,
+  authHeader: string | undefined
+): Promise<VendorProfile | null> {
+  const vendor = await authenticateVendor(db, authHeader)
+  if (!vendor) return null
+  return (await isProVendor(db, vendor.id)) ? vendor : null
 }
 
 export function unauthorizedResponse(realm: string, headers: Record<string, string>): Response {
