@@ -79,7 +79,12 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
 
   try {
     const { contactData, formData } = processSubmission(config, body as Record<string, string>)
-    await createEnquiry(c.env, vendor, { contactData, formData, source: 'website' })
+    await createEnquiry(c.env, vendor, {
+      contactData,
+      formData,
+      source: 'website',
+      confirmation: config.actions.confirmationEmail,
+    })
 
     // Vendor-configured success URL (used by raw HTML forms on their own site).
     if (config.redirectUrl && isValidRedirect(config.redirectUrl)) {

@@ -159,7 +159,13 @@ function contactDataFromMapped(
 export async function createEnquiry(
   env: Bindings,
   vendor: VendorProfile,
-  input: { contactData: ContactData; formData: Record<string, string>; source: EnquirySource }
+  input: {
+    contactData: ContactData
+    formData: Record<string, string>
+    source: EnquirySource
+    // From the enquiry form's "Send confirmation email to enquirer" option.
+    confirmation?: { enabled: boolean; mode: 'ai' | 'template'; template?: string }
+  }
 ): Promise<Contact> {
   const { contactData, formData, source } = input
 
@@ -192,7 +198,60 @@ export async function createEnquiry(
     }
   }
 
+  // Confirmation email to the enquirer (if the vendor enabled it on the form).
+  if (input.confirmation?.enabled && contactData.email) {
+    try {
+      await sendEnquiryConfirmation(env, vendor, contactData, input.confirmation)
+    } catch (e: any) {
+      console.error('[enquiry] confirmation email failed', e.message)
+    }
+  }
+
   return contact
+}
+
+// Build and queue a confirmation email to the enquirer. The body is AI-written
+// for Pro vendors (mode 'ai'); otherwise (or if AI returns nothing) it falls
+// back to the vendor's template or a sensible default — so a ticked box always
+// sends something rather than silently doing nothing.
+async function sendEnquiryConfirmation(
+  env: Bindings,
+  vendor: VendorProfile,
+  contactData: ContactData,
+  conf: { enabled: boolean; mode: 'ai' | 'template'; template?: string }
+): Promise<void> {
+  let bodyText = ''
+
+  if (conf.mode === 'ai' && (await isProVendor(env.DB, vendor.id))) {
+    try {
+      const anthropicKey = await resolveSecret(env.KV, vendor.anthropic_api_key)
+      bodyText = await draftEnquiryReply(env.AI, {
+        vendorName: vendor.business_name,
+        vendorCategory: vendor.category,
+        contactName: `${contactData.first_name} ${contactData.last_name}`.trim(),
+        weddingDate: contactData.wedding_date,
+        weddingLocation: contactData.wedding_location,
+        isAvailable: null,
+        busynessScore: null,
+        notes: contactData.notes,
+      }, anthropicKey)
+    } catch (e: any) {
+      console.error('[enquiry] AI confirmation generation failed, using fallback', e.message)
+    }
+  }
+
+  if (!bodyText.trim()) {
+    bodyText = conf.template?.trim() ||
+      `Thanks so much for reaching out — we've received your enquiry and ${vendor.business_name} will be in touch with you very soon.`
+  }
+
+  await env.EMAIL_QUEUE.send({
+    type: 'enquiry_confirmation',
+    to: contactData.email,
+    vendorName: vendor.business_name,
+    contactName: contactData.first_name,
+    bodyText,
+  })
 }
 
 async function draftAvailabilityReply(

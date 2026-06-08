@@ -1082,6 +1082,12 @@ contacts.post('/app/contacts/:id/email/draft', async (c) => {
       anthropicKey,
     )
 
+    if (!draft.trim()) {
+      return c.redirect(
+        `/app/contacts/${contact.id}/email?error=${encodeURIComponent('The AI returned an empty draft. Please try again.')}`
+      )
+    }
+
     return c.redirect(
       `/app/contacts/${contact.id}/email?draft=${encodeURIComponent(draft)}`
     )

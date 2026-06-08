@@ -515,6 +515,28 @@ export function formNotificationEmail(data: {
 }
 
 // Confirmation back to the person who submitted the form
+// Confirmation sent to the enquirer when a vendor enables "Send confirmation
+// email to enquirer" on their enquiry form. bodyText is AI-written (Pro) or a
+// template/default; rendered as paragraphs in the branded shell.
+export function enquiryConfirmationEmail(data: {
+  vendorName: string
+  contactName: string
+  bodyText: string
+}): string {
+  const paras = data.bodyText
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p style="margin:0 0 16px;font-size:15px;color:#333;line-height:1.6;">${esc(p).replace(/\n/g, '<br>')}</p>`)
+    .join('')
+
+  return emailWrapper(`
+    <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#1a1a1a;">Hi ${esc(data.contactName)},</h1>
+    ${paras}
+    <p style="margin:24px 0 0;font-size:15px;color:#333;line-height:1.6;">— ${esc(data.vendorName)}</p>
+  `, { preheader: `Thanks for your enquiry with ${esc(data.vendorName)}` })
+}
+
 export function formConfirmationEmail(data: {
   formTitle: string
   vendorName: string

@@ -556,8 +556,8 @@ function FormEditor({
               value="on"
             />
             <div>
-              <span class="text-sm font-bold text-gray-700">Send AI confirmation email to enquirer</span>
-              <p class="text-xs text-gray-400">An AI-written email confirming their enquiry was received</p>
+              <span class="text-sm font-bold text-gray-700">Send a confirmation email to the enquirer</span>
+              <p class="text-xs text-gray-400">Reassures them you got it. AI-personalised on Pro; a friendly default otherwise.</p>
             </div>
           </label>
         </div>

@@ -43,7 +43,7 @@ import { getVendorWithEmail } from './db/vendors'
 import { getContact } from './storage/contacts'
 import { getStorageWithSecrets } from './storage'
 import { StorageConflictError } from './storage/conflicts'
-import { sendEmailMessage, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail, referralRewardEmail } from './services/email'
+import { sendEmailMessage, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail, enquiryConfirmationEmail, referralRewardEmail } from './services/email'
 import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, dailyDigest } from './services/notifications'
 import { aggregateBusynessScores } from './db/busyness'
@@ -651,6 +651,24 @@ export default {
             isSystem: true,
           })
           console.log('[QUEUE] form_confirmation email sent to', body.to)
+
+        } else if (body.type === 'enquiry_confirmation') {
+          // AI/template confirmation back to the enquirer (enquiry form option)
+          const html = enquiryConfirmationEmail({
+            vendorName: body.vendorName,
+            contactName: body.contactName,
+            bodyText: body.bodyText,
+          })
+          await sendEmailMessage({
+            db: env.DB,
+            resendApiKey: env.RESEND_API_KEY,
+            vendorId: null,
+            to: body.to,
+            subject: `Thanks for your enquiry — ${body.vendorName}`,
+            html,
+            isSystem: true,
+          })
+          console.log('[QUEUE] enquiry_confirmation email sent to', body.to)
 
         } else if (body.type === 'referral_reward') {
           // Notify a vendor that a referral converted and they earned a free month
