@@ -321,10 +321,22 @@ runSheet.get('/app/weddings/:weddingId/run-sheet', async (c) => {
   if (!membership) return c.text('Not authorised', 403)
 
   const items = await listRunSheetItems(c.env.DB, weddingId, vendor.id)
+  const generated = c.req.query('generated')
+  const error = c.req.query('error')
 
   return c.html(
     <AppLayout title={`Run Sheet — ${wedding.title}`} user={user} vendor={vendor} csrfToken={csrfToken}>
       <div class="max-w-3xl">
+        {generated && (
+          <div class="bg-green-50 border border-green-200 text-green-800 text-sm rounded-xl p-3 mb-4">
+            Added {generated} run-sheet item{generated === '1' ? '' : 's'} with AI. Review and tweak as needed.
+          </div>
+        )}
+        {error && (
+          <div class="bg-grapefruit-50 border border-grapefruit-200 text-grapefruit-700 text-sm rounded-xl p-3 mb-4">
+            {decodeURIComponent(error)}
+          </div>
+        )}
         <div class="mb-6">
           <p class="text-sm text-gray-500 mb-1">
             <a href={`/app/weddings/${weddingId}`} class="hover:text-gray-900">{wedding.title}</a> /
@@ -338,11 +350,15 @@ runSheet.get('/app/weddings/:weddingId/run-sheet', async (c) => {
               </p>
             </div>
             <div class="flex items-center gap-2">
-              <form method="post" action={`/app/weddings/${weddingId}/run-sheet/generate`}>
+              <form
+                method="post"
+                action={`/app/weddings/${weddingId}/run-sheet/generate`}
+                onsubmit="var b=this.querySelector('button'); b.disabled=true; b.innerHTML='Generating…'; b.classList.add('opacity-60','cursor-wait')"
+              >
                 <input type="hidden" name="_csrf" value={csrfToken} />
                 <button
                   type="submit"
-                  class="flex items-center gap-1.5 border border-horizon-200 text-horizon-700 px-3 py-2 rounded-xl text-sm font-medium hover:bg-horizon-50 transition-colors"
+                  class="flex items-center gap-1.5 border border-horizon-200 text-horizon-700 px-3 py-2 rounded-xl text-sm font-medium hover:bg-horizon-50 transition-colors disabled:opacity-60"
                 >
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -443,6 +459,102 @@ runSheet.post('/app/weddings/:weddingId/run-sheet', async (c) => {
   return c.redirect(`/app/weddings/${weddingId}/run-sheet`)
 })
 
+// ─── Reorder ───
+// NOTE: static routes (/reorder, /generate) must be registered BEFORE the
+// /:itemId route below, or Hono captures "reorder"/"generate" as an item id.
+
+runSheet.post('/app/weddings/:weddingId/run-sheet/reorder', async (c) => {
+  const vendor = c.get('vendor')!
+  const user = c.get('user')
+  const weddingId = c.req.param('weddingId')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership) return c.json({ error: 'Not found' }, 404)
+
+  const { ids } = await c.req.json<{ ids: string[] }>()
+  if (!Array.isArray(ids)) return c.json({ error: 'ids must be an array' }, 400)
+
+  await reorderRunSheetItems(c.env.DB, weddingId, vendor.id, ids)
+
+  return c.json({ ok: true })
+})
+
+// ─── AI generate ───
+
+runSheet.post('/app/weddings/:weddingId/run-sheet/generate', async (c) => {
+  const vendor = c.get('vendor')!
+  const weddingId = c.req.param('weddingId')
+
+  const wedding = await getWedding(c.env.DB, weddingId)
+  if (!wedding) return c.redirect('/app/weddings')
+
+  const membership = await getMembership(c.env.DB, weddingId, c.get('user').id)
+  if (!membership) return c.redirect('/app/weddings')
+
+  const base = `/app/weddings/${weddingId}/run-sheet`
+
+  try {
+    const anthropicKey = await resolveSecret(c.env.KV, vendor.anthropic_api_key)
+
+    const items = await generateRunSheet(c.env.AI, {
+      weddingDate: wedding.date,
+      weddingTime: wedding.time,
+      location: wedding.location,
+      ceremonyLocation: wedding.ceremony_location,
+      ceremonyType: wedding.ceremony_type,
+      receptionLocation: wedding.reception_location,
+      receptionTime: wedding.reception_time,
+      gettingReadyLocation: wedding.getting_ready_location,
+      gettingReadyTime: wedding.getting_ready_time,
+      gettingReady2Location: wedding.getting_ready_2_location,
+      gettingReady2Time: wedding.getting_ready_2_time,
+      portraitLocation: wedding.portrait_location,
+      portraitTime: wedding.portrait_time,
+      durationHours: wedding.duration_hours,
+      vendorCategory: vendor.category,
+      vendorName: vendor.business_name,
+      notes: wedding.notes,
+    }, anthropicKey)
+
+    if (items.length === 0) {
+      return c.redirect(
+        `${base}?error=${encodeURIComponent(
+          "The AI couldn't generate a run sheet this time. Add a few wedding details (ceremony time, locations) and try again — or add your own Anthropic API key in Settings for more reliable results."
+        )}`
+      )
+    }
+
+    const existing = await listRunSheetItems(c.env.DB, weddingId, vendor.id)
+    let sortOrder = existing.length
+
+    for (const item of items) {
+      const validCategories = ['getting_ready', 'ceremony', 'portraits', 'reception', 'other'] as const
+      const category = validCategories.includes(item.category as any)
+        ? item.category as typeof validCategories[number]
+        : 'other'
+      await createRunSheetItem(c.env.DB, {
+        wedding_id: weddingId,
+        vendor_id: vendor.id,
+        time: item.time || null,
+        end_time: item.end_time || null,
+        title: item.title || 'Untitled',
+        description: item.description || null,
+        location: item.location || null,
+        assigned_to: null,
+        category,
+        sort_order: sortOrder++,
+      })
+    }
+
+    return c.redirect(`${base}?generated=${items.length}`)
+  } catch (e: any) {
+    console.error('[run-sheet] AI generation failed', e?.message ?? e)
+    return c.redirect(
+      `${base}?error=${encodeURIComponent('AI generation failed. Please try again in a moment.')}`
+    )
+  }
+})
+
 // ─── Update ───
 
 runSheet.post('/app/weddings/:weddingId/run-sheet/:itemId', async (c) => {
@@ -502,81 +614,6 @@ runSheet.post('/app/weddings/:weddingId/run-sheet/:itemId/delete', async (c) => 
   if (c.req.header('hx-request')) {
     return c.html(<RunSheetList items={items} weddingId={weddingId} csrfToken={csrfToken} />)
   }
-  return c.redirect(`/app/weddings/${weddingId}/run-sheet`)
-})
-
-// ─── Reorder ───
-
-runSheet.post('/app/weddings/:weddingId/run-sheet/reorder', async (c) => {
-  const vendor = c.get('vendor')!
-  const user = c.get('user')
-  const weddingId = c.req.param('weddingId')
-
-  const membership = await getMembership(c.env.DB, weddingId, user.id)
-  if (!membership) return c.json({ error: 'Not found' }, 404)
-
-  const { ids } = await c.req.json<{ ids: string[] }>()
-  if (!Array.isArray(ids)) return c.json({ error: 'ids must be an array' }, 400)
-
-  await reorderRunSheetItems(c.env.DB, weddingId, vendor.id, ids)
-
-  return c.json({ ok: true })
-})
-
-runSheet.post('/app/weddings/:weddingId/run-sheet/generate', async (c) => {
-  const vendor = c.get('vendor')!
-  const weddingId = c.req.param('weddingId')
-
-  const wedding = await getWedding(c.env.DB, weddingId)
-  if (!wedding) return c.redirect('/app/weddings')
-
-  const membership = await getMembership(c.env.DB, weddingId, c.get('user').id)
-  if (!membership) return c.redirect('/app/weddings')
-
-  const anthropicKey = await resolveSecret(c.env.KV, vendor.anthropic_api_key)
-
-  const items = await generateRunSheet(c.env.AI, {
-    weddingDate: wedding.date,
-    weddingTime: wedding.time,
-    location: wedding.location,
-    ceremonyLocation: wedding.ceremony_location,
-    ceremonyType: wedding.ceremony_type,
-    receptionLocation: wedding.reception_location,
-    receptionTime: wedding.reception_time,
-    gettingReadyLocation: wedding.getting_ready_location,
-    gettingReadyTime: wedding.getting_ready_time,
-    gettingReady2Location: wedding.getting_ready_2_location,
-    gettingReady2Time: wedding.getting_ready_2_time,
-    portraitLocation: wedding.portrait_location,
-    portraitTime: wedding.portrait_time,
-    durationHours: wedding.duration_hours,
-    vendorCategory: vendor.category,
-    vendorName: vendor.business_name,
-    notes: wedding.notes,
-  }, anthropicKey)
-
-  const existing = await listRunSheetItems(c.env.DB, weddingId, vendor.id)
-  let sortOrder = existing.length
-
-  for (const item of items) {
-    const validCategories = ['getting_ready', 'ceremony', 'portraits', 'reception', 'other'] as const
-    const category = validCategories.includes(item.category as any)
-      ? item.category as typeof validCategories[number]
-      : 'other'
-    await createRunSheetItem(c.env.DB, {
-      wedding_id: weddingId,
-      vendor_id: vendor.id,
-      time: item.time || null,
-      end_time: item.end_time || null,
-      title: item.title || 'Untitled',
-      description: item.description || null,
-      location: item.location || null,
-      assigned_to: null,
-      category,
-      sort_order: sortOrder++,
-    })
-  }
-
   return c.redirect(`/app/weddings/${weddingId}/run-sheet`)
 })
 

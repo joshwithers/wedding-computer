@@ -129,16 +129,43 @@ ${context.gettingReady2Location ? `- Getting ready (party 2): ${context.gettingR
 - Portrait time: ${context.portraitTime ?? 'after ceremony'}
 ${context.notes ? `- Notes: ${context.notes}` : ''}
 
-Generate a detailed run sheet as a JSON array. Each item has: time (24h format "HH:MM"), end_time ("HH:MM"), title (short), description (1 sentence), location, category (one of: getting_ready, ceremony, portraits, reception, other).
+Generate a detailed run sheet as a JSON array. Each item is an object with exactly these keys: time (24h format "HH:MM"), end_time ("HH:MM"), title (short), description (1 sentence), location, category (one of: getting_ready, ceremony, portraits, reception, other).
 
-Include typical events for a ${context.vendorCategory}: arrivals, prep, ceremony, photos, reception key moments, pack-down. Use realistic Australian wedding timing. Return ONLY the JSON array, no other text.`
+Include typical events for a ${context.vendorCategory}: arrivals, prep, ceremony, photos, reception key moments, pack-down. Use realistic Australian wedding timing.
+
+Respond with ONLY the raw JSON array — start your reply with [ and end with ]. No markdown, no code fences, no commentary.`
 
   const raw = await generateWithAI(ai, anthropicKey, prompt, 2048)
+  return parseRunSheetItems(raw)
+}
+
+// Robustly extract a run-sheet array from an LLM response. Handles code fences,
+// surrounding prose, and a wrapping { "items": [...] } object. Returns [] only
+// when nothing usable can be parsed (the caller surfaces that to the user).
+export function parseRunSheetItems(
+  raw: string,
+): Array<{ time: string; end_time: string; title: string; description: string; location: string; category: string }> {
+  let txt = (raw || '').trim()
+  const fence = txt.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (fence) txt = fence[1].trim()
+
+  const start = txt.indexOf('[')
+  const end = txt.lastIndexOf(']')
+  if (start === -1 || end === -1 || end <= start) return []
 
   try {
-    const match = raw.match(/\[[\s\S]*\]/)
-    if (!match) return []
-    return JSON.parse(match[0])
+    const parsed = JSON.parse(txt.slice(start, end + 1))
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((x) => x && typeof x === 'object' && (x.title || x.time))
+      .map((x) => ({
+        time: typeof x.time === 'string' ? x.time : '',
+        end_time: typeof x.end_time === 'string' ? x.end_time : '',
+        title: typeof x.title === 'string' ? x.title : '',
+        description: typeof x.description === 'string' ? x.description : '',
+        location: typeof x.location === 'string' ? x.location : '',
+        category: typeof x.category === 'string' ? x.category : 'other',
+      }))
   } catch {
     return []
   }
