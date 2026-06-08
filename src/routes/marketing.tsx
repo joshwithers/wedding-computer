@@ -948,6 +948,88 @@ marketing.get('/pricing', (c) => {
           </div>
         </div>
 
+        {/* Live Pro for free — referral */}
+        <div class="max-w-3xl mx-auto mt-12 sm:mt-16">
+          <div class="bg-horizon-50 border border-horizon-600/20 rounded-2xl p-6 sm:p-10 text-center">
+            <div class="inline-block bg-horizon-600 text-white text-xs font-bold px-3 py-1 rounded-full mb-3">Refer &amp; earn</div>
+            <h2 class="text-xl sm:text-2xl font-bold mb-3">Live Pro for free</h2>
+            <p class="text-gray-600 max-w-xl mx-auto mb-5">
+              Love Wedding Computer? Share it. Every time someone you refer becomes a paying Pro member,
+              you <strong class="text-gray-900">both</strong> get a month of Pro free — and you can bank up to
+              <strong class="text-gray-900"> nine months</strong> at a time. Refer a handful of fellow vendors and
+              your Pro plan pays for itself, indefinitely.
+            </p>
+            <a
+              href="/login"
+              class="inline-block bg-horizon-600 text-white py-2.5 px-6 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors shadow-lg shadow-horizon/20"
+            >
+              Get your referral link
+            </a>
+          </div>
+        </div>
+
+        {/* Detailed feature comparison */}
+        <div class="max-w-3xl mx-auto mt-12 sm:mt-16">
+          <h2 class="text-xl sm:text-2xl font-bold text-center mb-2">Compare every feature</h2>
+          <p class="text-center text-gray-500 text-sm mb-6">All the core tools are free forever. Pro adds sync, analytics, and AI.</p>
+          <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="bg-gray-50 border-b border-gray-200">
+                  <th class="text-left py-3 px-4 font-bold text-gray-700">Feature</th>
+                  <th class="py-3 px-2 text-center font-bold text-gray-500 w-16 sm:w-24">Free</th>
+                  <th class="py-3 px-2 text-center font-bold text-horizon-700 w-16 sm:w-24">Pro</th>
+                </tr>
+              </thead>
+              <tbody>
+                <PlanGroup label="Leads & CRM" />
+                <PlanRow feature="CRM with 8-stage pipeline" free pro />
+                <PlanRow feature="Custom enquiry forms" free pro />
+                <PlanRow feature="Embeddable HTML form for your own site" free pro />
+                <PlanRow feature="Spam protection (captcha + honeypot)" free pro />
+                <PlanRow feature="Import from other CRMs" free pro />
+                <PlanRow feature="AI email drafting" free={false} pro />
+                <PlanRow feature="AI enquiry auto-replies" free={false} pro />
+                <PlanRow feature="Enquiry API, webhooks & Zapier" free={false} pro />
+                <PlanRow feature="AI agent lead capture (MCP)" free={false} pro />
+
+                <PlanGroup label="Calendar & availability" />
+                <PlanRow feature="Calendar & event management" free pro />
+                <PlanRow feature="Availability settings" free pro />
+                <PlanRow feature="Public availability calendar" free pro />
+                <PlanRow feature="Directory listing" free pro />
+                <PlanRow feature="CalDAV / iCal calendar sync" free={false} pro />
+                <PlanRow feature="CardDAV contact sync to your phone" free={false} pro />
+
+                <PlanGroup label="Money" />
+                <PlanRow feature="Invoicing with Stripe Connect" free pro />
+                <PlanRow feature="Quote calculator" free pro />
+                <PlanRow feature="Contracts" free pro />
+
+                <PlanGroup label="Weddings & collaboration" />
+                <PlanRow feature="Wedding workspaces" free pro />
+                <PlanRow feature="Day-of run sheet builder" free pro />
+                <PlanRow feature="Checklists & NOIM forms" free pro />
+                <PlanRow feature="Team & agency management" free pro />
+                <PlanRow feature="Couple planner dashboard" free pro />
+
+                <PlanGroup label="Your data" />
+                <PlanRow feature="Plain-text file access" free pro />
+                <PlanRow feature="Passkey sign-in" free pro />
+                <PlanRow feature="GitHub sync for your data" free={false} pro />
+
+                <PlanGroup label="Insights & AI" />
+                <PlanRow feature="Business analytics dashboard" free={false} pro />
+                <PlanRow feature="Revenue & source insights" free={false} pro />
+                <PlanRow feature="Business goals & targets" free={false} pro />
+                <PlanRow feature="Date demand scores" free={false} pro />
+                <PlanRow feature="Anonymised industry benchmarks" free={false} pro />
+                <PlanRow feature="MCP access for AI tools" free={false} pro />
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="text-center mt-8 sm:mt-12">
           <p class="text-sm text-gray-500">
             Couples always free. No credit card required to start. Cancel Pro anytime.
@@ -1656,6 +1738,30 @@ function PricingFeature({ text, bold }: { text: string; bold?: boolean }) {
       <svg class="w-4 h-4 text-horizon-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
       <span class={bold ? 'font-bold' : ''}>{text}</span>
     </li>
+  )
+}
+
+function PlanCheck() {
+  return (
+    <svg class="w-5 h-5 text-horizon-600 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" role="img" aria-label="Included"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+  )
+}
+
+function PlanRow({ feature, free, pro }: { feature: string; free?: boolean; pro?: boolean }) {
+  return (
+    <tr class="border-t border-gray-100">
+      <td class="py-3 px-4 text-gray-700">{feature}</td>
+      <td class="py-3 px-2 text-center">{free ? <PlanCheck /> : <span class="text-gray-300" aria-label="Not included">—</span>}</td>
+      <td class="py-3 px-2 text-center">{pro ? <PlanCheck /> : <span class="text-gray-300" aria-label="Not included">—</span>}</td>
+    </tr>
+  )
+}
+
+function PlanGroup({ label }: { label: string }) {
+  return (
+    <tr class="bg-papaya-50/60">
+      <td colspan={3} class="py-2 px-4 text-xs font-bold uppercase tracking-wide text-gray-500">{label}</td>
+    </tr>
   )
 }
 
