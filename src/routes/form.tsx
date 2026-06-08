@@ -1,11 +1,11 @@
 import { Hono } from 'hono'
 import type { Env } from '../types'
 import { SharedHead } from '../views/head'
-import { getFormByToken, createFormSubmission, incrementSubmissionCount } from '../db/forms'
+import { getFormByToken, createFormSubmission, incrementSubmissionCount, getFormSubmission } from '../db/forms'
 import { getVendorById } from '../db/vendors'
 import { verifyTurnstile } from '../services/turnstile'
 import { rateLimit } from '../middleware/rate-limit'
-import { sanitize, isValidEmail } from '../lib/validation'
+import { isValidEmail } from '../lib/validation'
 import { COUNTRIES } from '../forms/countries'
 import type { FormConfig, FormField, FormStep, FormAction, ContactMapping } from '../lib/form-schema'
 
@@ -77,17 +77,26 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
     )
   }
 
-  // Collect form data (sanitize all values)
+  // Collect form data. Store raw text (capped + trimmed) — output is escaped
+  // at render time by JSX (app UI) and escapeHtml in email templates. Encoding
+  // here would double-encode in the vendor's UI and the NOIM email/PDF.
   const formData: Record<string, string> = {}
   const allFields = config.steps ? config.steps.flatMap(s => s.fields) : config.fields
+  const fieldLabels: Record<string, string> = {}
 
   for (const field of allFields) {
     if (field.type === 'heading') continue
+    fieldLabels[field.id] = field.label
     const rawVal = body[field.id]
     if (rawVal !== undefined && rawVal !== '') {
-      formData[field.id] = sanitize(String(rawVal).slice(0, 2000))
+      formData[field.id] = String(rawVal).slice(0, 2000).trim()
     }
   }
+
+  // Label/value pairs for email notifications (raw values; escaped on render)
+  const submittedFields = allFields
+    .filter((f) => f.type !== 'heading' && formData[f.id])
+    .map((f) => ({ label: f.label, value: formData[f.id] }))
 
   // Store submission
   const submission = await createFormSubmission(c.env.DB, vendor.id, {
@@ -123,6 +132,7 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
         formId: formRecord.id,
         submissionId: submission.id,
         formTitle: config.title,
+        fields: submittedFields,
       })
     } catch (e: any) {
       console.error('[form] notify_vendor failed', e.message)
@@ -178,7 +188,7 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
           formTitle: config.title,
           vendorName: vendor.business_name,
           submissionId: submission.id,
-          formData,
+          fields: submittedFields,
         })
       } catch (e: any) {
         console.error('[form] email_recipient failed', e.message)
@@ -198,7 +208,7 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
           formTitle: config.title,
           vendorName: vendor.business_name,
           formType: formRecord.type,
-          formData,
+          fields: submittedFields,
         })
       } catch (e: any) {
         console.error('[form] email_submitter failed', e.message)
@@ -232,14 +242,27 @@ form.post('/form/:token/pdf', rateLimit(5, 60), async (c) => {
   if (!formRecord || formRecord.type !== 'noim') return c.text('Not found', 404)
 
   const body = await c.req.parseBody()
-  const dataStr = body._data as string
-  if (!dataStr) return c.text('Missing data', 400)
 
+  // Preferred: regenerate from the stored submission (the thank-you page no
+  // longer has the form in the DOM). Fall back to inline _data if provided.
   let data: Record<string, unknown>
-  try {
-    data = JSON.parse(dataStr)
-  } catch {
-    return c.text('Invalid data', 400)
+  const submissionId = typeof body.submission_id === 'string' ? body.submission_id : ''
+  if (submissionId) {
+    const submission = await getFormSubmission(c.env.DB, formRecord.vendor_id, submissionId)
+    if (!submission || submission.form_id !== formRecord.id) return c.text('Not found', 404)
+    try {
+      data = JSON.parse(submission.data)
+    } catch {
+      return c.text('Invalid data', 400)
+    }
+  } else {
+    const dataStr = body._data as string
+    if (!dataStr) return c.text('Missing data', 400)
+    try {
+      data = JSON.parse(dataStr)
+    } catch {
+      return c.text('Invalid data', 400)
+    }
   }
 
   const { generateNoimPdf } = await import('../forms/noim/pdf-generator')
@@ -388,6 +411,11 @@ function FormRenderer({
                   {step.fields.map((field) => (
                     <FieldRenderer field={field} value={values?.[field.id]} />
                   ))}
+                  {step.id === 'documents' && (
+                    <ul id="noim-doc-checklist" class="space-y-2 text-sm text-gray-800 list-none">
+                      <li class="text-gray-400">Complete the earlier steps to see your document list.</li>
+                    </ul>
+                  )}
                 </div>
                 <div class="flex justify-between mt-6">
                   {i > 0 && (
@@ -533,36 +561,19 @@ function ThankYou({ title, vendorName, formType, submissionId, token, showPdfLin
       <div class="text-4xl mb-4">&#10003;</div>
       <h2 class="text-xl font-bold text-gray-900 mb-2">Submitted successfully</h2>
       <p class="text-sm text-gray-600 mb-4">Thank you for completing the {title.toLowerCase()} form.</p>
-      {showPdfLink && token && (
+      {showPdfLink && token && submissionId && (
         <div class="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
           <p class="text-sm text-purple-800 mb-2 font-medium">Your NOIM PDF is ready to download.</p>
           <p class="text-xs text-purple-600 mb-3">Click below to generate and download your completed Notice of Intended Marriage.</p>
-          <button
-            type="button"
-            id="download-pdf-btn"
-            class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700"
-          >
-            Download NOIM PDF
-          </button>
-          <script dangerouslySetInnerHTML={{ __html: `
-            document.getElementById('download-pdf-btn').addEventListener('click', function() {
-              var formEl = document.getElementById('main-form');
-              if (!formEl) { alert('Form data not available. Please go back and resubmit.'); return; }
-              var formData = new FormData(formEl);
-              var data = {};
-              formData.forEach(function(v, k) { if (k !== 'cf-turnstile-response' && k !== 'website_url' && k !== '_csrf') data[k] = v; });
-              var pdfForm = document.createElement('form');
-              pdfForm.method = 'POST';
-              pdfForm.action = '/form/${token}/pdf';
-              var input = document.createElement('input');
-              input.type = 'hidden';
-              input.name = '_data';
-              input.value = JSON.stringify(data);
-              pdfForm.appendChild(input);
-              document.body.appendChild(pdfForm);
-              pdfForm.submit();
-            });
-          `}} />
+          <form method="post" action={`/form/${token}/pdf`}>
+            <input type="hidden" name="submission_id" value={submissionId} />
+            <button
+              type="submit"
+              class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700"
+            >
+              Download NOIM PDF
+            </button>
+          </form>
         </div>
       )}
       <p class="text-xs text-gray-400 mt-6">{vendorName}</p>
@@ -573,6 +584,30 @@ function ThankYou({ title, vendorName, formType, submissionId, token, showPdfLin
 function formLogicScript(): string {
   return `
 (function() {
+  // Build the NOIM document checklist client-side from the current answers.
+  // Mirrors buildDocumentChecklist() in forms/noim/pdf-generator.ts.
+  function populateDocChecklist(stepEl) {
+    var ul = stepEl && stepEl.querySelector('#noim-doc-checklist');
+    if (!ul) return;
+    function gv(name) { var el = document.querySelector('[name="'+name+'"]'); return el ? (el.value || '').trim() : ''; }
+    var p1c = gv('p1_conjugal_status'), p2c = gv('p2_conjugal_status');
+    var p1co = gv('p1_birth_country'), p2co = gv('p2_birth_country');
+    var docs = [];
+    docs.push(p1co === 'Australia' ? 'Official birth certificate (Party 1) — Australian' : 'Official birth certificate (Party 1) — from ' + (p1co || 'country of birth'));
+    docs.push(p2co === 'Australia' ? 'Official birth certificate (Party 2) — Australian' : 'Official birth certificate (Party 2) — from ' + (p2co || 'country of birth'));
+    docs.push('Government-issued photo ID for each party (passport, driver licence)');
+    if (p1c === 'divorced') docs.push('Divorce order/decree absolute (Party 1)');
+    if (p2c === 'divorced') docs.push('Divorce order/decree absolute (Party 2)');
+    if (p1c === 'widowed') docs.push('Death certificate of former spouse (Party 1)');
+    if (p2c === 'widowed') docs.push('Death certificate of former spouse (Party 2)');
+    if (p1co && p1co !== 'Australia') docs.push('Certified translation of any non-English documents (Party 1)');
+    if (p2co && p2co !== 'Australia') docs.push('Certified translation of any non-English documents (Party 2)');
+    function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    ul.innerHTML = docs.map(function(d) {
+      return '<li style="display:flex;gap:8px;align-items:flex-start"><span style="color:#16a34a;font-weight:700">✓</span><span>' + esc(d) + '</span></li>';
+    }).join('');
+  }
+
   // Multi-step navigation
   var steps = document.querySelectorAll('.form-step');
   if (steps.length > 1) {
@@ -595,7 +630,7 @@ function formLogicScript(): string {
         if (invalid) return;
         current.style.display = 'none';
         var next = document.querySelector('[data-step="'+(idx+1)+'"]');
-        if (next) next.style.display = '';
+        if (next) { next.style.display = ''; populateDocChecklist(next); }
         window.scrollTo(0,0);
       }
       if (e.target.classList.contains('step-prev')) {

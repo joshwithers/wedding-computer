@@ -252,7 +252,7 @@ invoices.get('/app/invoices/new', async (c) => {
           </section>
 
           {/* Tax & fee info */}
-          {(vendor.tax_rate > 0 || (vendor.card_fee_enabled && vendor.card_fee_percent > 0)) && (
+          {(vendor.tax_rate > 0 || (vendor.card_fee_enabled === 1 && vendor.card_fee_percent > 0)) && (
             <section class="bg-white border border-papaya-300/30 rounded-2xl p-5 space-y-4">
               <h3 class="text-sm font-bold">Tax &amp; fees</h3>
               {vendor.tax_rate > 0 && (
@@ -263,7 +263,7 @@ invoices.get('/app/invoices/new', async (c) => {
                   </span>
                 </div>
               )}
-              {vendor.card_fee_enabled && vendor.card_fee_percent > 0 && (
+              {vendor.card_fee_enabled === 1 && vendor.card_fee_percent > 0 && (
                 <label class="flex items-center gap-3 cursor-pointer">
                   <input type="checkbox" name="include_card_fee" value="1" checked={defaultCardFee}
                     class="w-4 h-4 rounded border-gray-300 text-horizon-600 focus:ring-horizon-600" />

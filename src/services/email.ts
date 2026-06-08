@@ -1,4 +1,10 @@
 import { createEmail, updateEmailStatus } from '../db/emails'
+import { sanitize } from '../lib/validation'
+
+// HTML-escape a value for safe interpolation into raw email HTML strings.
+// (sanitize performs HTML-entity encoding.) Form/contact data is now stored
+// raw, so it must be escaped here at the output boundary.
+const esc = (v: string | null | undefined): string => (v ? sanitize(v) : '')
 
 type SendEmailParams = {
   db: D1Database
@@ -128,25 +134,25 @@ export function newLeadEmail(data: {
   contactId: string
 }): string {
   const details = [
-    `<strong>Name:</strong> ${data.contactName}`,
-    `<strong>Email:</strong> ${data.contactEmail}`,
-    data.contactPhone ? `<strong>Phone:</strong> ${data.contactPhone}` : null,
-    data.partnerName ? `<strong>Partner:</strong> ${data.partnerName}` : null,
-    data.weddingDate ? `<strong>Wedding date:</strong> ${data.weddingDate}` : null,
-    data.weddingLocation ? `<strong>Location:</strong> ${data.weddingLocation}` : null,
+    `<strong>Name:</strong> ${esc(data.contactName)}`,
+    `<strong>Email:</strong> ${esc(data.contactEmail)}`,
+    data.contactPhone ? `<strong>Phone:</strong> ${esc(data.contactPhone)}` : null,
+    data.partnerName ? `<strong>Partner:</strong> ${esc(data.partnerName)}` : null,
+    data.weddingDate ? `<strong>Wedding date:</strong> ${esc(data.weddingDate)}` : null,
+    data.weddingLocation ? `<strong>Location:</strong> ${esc(data.weddingLocation)}` : null,
   ]
     .filter(Boolean)
     .join('<br>')
 
   return emailWrapper(`
-    <h1 style="margin:0 0 20px;font-size:20px;font-weight:700;color:#1a1a1a;">New enquiry from ${data.contactName}</h1>
+    <h1 style="margin:0 0 20px;font-size:20px;font-weight:700;color:#1a1a1a;">New enquiry from ${esc(data.contactName)}</h1>
     <div style="background:#faf5ef;border-radius:12px;padding:16px;margin-bottom:20px;line-height:1.8;font-size:14px;color:#333;">
       ${details}
     </div>
-    ${data.message ? `<div style="margin-bottom:20px;padding:14px;border-left:3px solid #be2f2f;font-size:14px;line-height:1.6;color:#333;">${data.message}</div>` : ''}
+    ${data.message ? `<div style="margin-bottom:20px;padding:14px;border-left:3px solid #be2f2f;font-size:14px;line-height:1.6;color:#333;white-space:pre-wrap;">${esc(data.message)}</div>` : ''}
     <a href="${data.appUrl}/app/contacts/${data.contactId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View contact</a>
     <p style="margin:20px 0 0;font-size:13px;color:#999;">Submitted via your enquiry form.</p>
-  `, { preheader: `New enquiry from ${data.contactName}` })
+  `, { preheader: `New enquiry from ${esc(data.contactName)}` })
 }
 
 export function coupleInviteEmail(data: {
@@ -444,10 +450,69 @@ export function emailChangeNotifyEmail(newEmail: string): string {
   return emailWrapper(`
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Email address changed</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 8px;">
-      Your Wedding Computer email address has been changed to <strong>${newEmail}</strong>.
+      Your Wedding Computer email address has been changed to <strong>${esc(newEmail)}</strong>.
     </p>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0;">
       If you didn't make this change, please contact us immediately.
     </p>
   `, { preheader: 'Your email address was changed' })
+}
+
+// Render a label/value table from form submission fields (values are raw → escaped here).
+function fieldsTable(fields: { label: string; value: string }[]): string {
+  if (!fields.length) return ''
+  const rows = fields
+    .map(
+      (f) => `
+      <tr>
+        <td style="padding:6px 12px;border-bottom:1px solid #f3f4f6;color:#6b7280;font-weight:600;vertical-align:top;white-space:nowrap;font-size:13px;">${esc(f.label)}</td>
+        <td style="padding:6px 12px;border-bottom:1px solid #f3f4f6;color:#1f2937;white-space:pre-wrap;font-size:13px;">${esc(f.value)}</td>
+      </tr>`
+    )
+    .join('')
+  return `<table style="width:100%;border-collapse:collapse;margin-bottom:20px;background:#faf5ef;border-radius:12px;overflow:hidden;">${rows}</table>`
+}
+
+// Vendor notification: "someone submitted your form"
+export function formSubmissionEmail(data: {
+  formTitle: string
+  fields: { label: string; value: string }[]
+  appUrl: string
+  formId: string
+  submissionId: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 20px;font-size:20px;font-weight:700;color:#1a1a1a;">New submission: ${esc(data.formTitle)}</h1>
+    ${fieldsTable(data.fields)}
+    <a href="${data.appUrl}/app/forms/${data.formId}/submissions/${data.submissionId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View submission</a>
+    <p style="margin:20px 0 0;font-size:13px;color:#999;">Submitted via your "${esc(data.formTitle)}" form.</p>
+  `, { preheader: `New submission to ${esc(data.formTitle)}` })
+}
+
+// Notification to a specific recipient configured on the form
+export function formNotificationEmail(data: {
+  formTitle: string
+  vendorName: string
+  fields: { label: string; value: string }[]
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">New submission: ${esc(data.formTitle)}</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">A new response was submitted via ${esc(data.vendorName)}.</p>
+    ${fieldsTable(data.fields)}
+  `, { preheader: `New submission to ${esc(data.formTitle)}` })
+}
+
+// Confirmation back to the person who submitted the form
+export function formConfirmationEmail(data: {
+  formTitle: string
+  vendorName: string
+  fields: { label: string; value: string }[]
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Thanks — we've received your submission</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      ${esc(data.vendorName)} has received your "${esc(data.formTitle)}" submission and will be in touch. Here's a copy for your records:
+    </p>
+    ${fieldsTable(data.fields)}
+  `, { preheader: `Your submission to ${esc(data.vendorName)}` })
 }

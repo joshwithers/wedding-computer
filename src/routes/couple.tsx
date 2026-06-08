@@ -404,12 +404,12 @@ couple.get('/wedding/:id', async (c) => {
                   <p class="font-medium">{wedding.dress_code}</p>
                 </div>
               )}
-              {wedding.guest_count && (
+              {wedding.guest_count ? (
                 <div>
                   <p class="text-xs text-gray-500">Guest count</p>
                   <p class="font-medium">{wedding.guest_count}</p>
                 </div>
-              )}
+              ) : null}
               <div>
                 <p class="text-xs text-gray-500">Status</p>
                 <p class="font-medium">{wedding.status.charAt(0).toUpperCase() + wedding.status.slice(1)}</p>

@@ -41,7 +41,7 @@ import { getVendorWithEmail } from './db/vendors'
 import { getContact } from './storage/contacts'
 import { getStorageWithSecrets } from './storage'
 import { StorageConflictError } from './storage/conflicts'
-import { sendEmailMessage, newLeadEmail } from './services/email'
+import { sendEmailMessage, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail } from './services/email'
 import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, dailyDigest } from './services/notifications'
 import { aggregateBusynessScores } from './db/busyness'
@@ -570,6 +570,68 @@ export default {
             JSON.parse(body.payload)
           )
           console.log('[QUEUE] notify_wedding_details_updated processed')
+
+        } else if (body.type === 'form_submission') {
+          // Notify the vendor that someone submitted one of their forms
+          const vendor = await getVendorWithEmail(env.DB, body.vendorId)
+          if (!vendor) {
+            console.error('[QUEUE] vendor not found', body.vendorId)
+            msg.ack()
+            continue
+          }
+          const html = formSubmissionEmail({
+            formTitle: body.formTitle,
+            fields: (body.fields as unknown as { label: string; value: string }[]) ?? [],
+            appUrl: env.APP_URL,
+            formId: body.formId,
+            submissionId: body.submissionId,
+          })
+          await sendEmailMessage({
+            db: env.DB,
+            resendApiKey: env.RESEND_API_KEY,
+            vendorId: body.vendorId,
+            to: vendor.user_email,
+            toName: vendor.user_name,
+            subject: `New submission: ${body.formTitle}`,
+            html,
+          })
+          console.log('[QUEUE] form_submission email sent to', vendor.user_email)
+
+        } else if (body.type === 'form_notification') {
+          // Notify a specific recipient configured on the form
+          const html = formNotificationEmail({
+            formTitle: body.formTitle,
+            vendorName: body.vendorName,
+            fields: (body.fields as unknown as { label: string; value: string }[]) ?? [],
+          })
+          await sendEmailMessage({
+            db: env.DB,
+            resendApiKey: env.RESEND_API_KEY,
+            vendorId: null,
+            to: body.to,
+            subject: `New submission: ${body.formTitle}`,
+            html,
+            isSystem: true,
+          })
+          console.log('[QUEUE] form_notification email sent to', body.to)
+
+        } else if (body.type === 'form_confirmation') {
+          // Confirmation back to the person who submitted the form
+          const html = formConfirmationEmail({
+            formTitle: body.formTitle,
+            vendorName: body.vendorName,
+            fields: (body.fields as unknown as { label: string; value: string }[]) ?? [],
+          })
+          await sendEmailMessage({
+            db: env.DB,
+            resendApiKey: env.RESEND_API_KEY,
+            vendorId: null,
+            to: body.to,
+            subject: `We've received your submission — ${body.vendorName}`,
+            html,
+            isSystem: true,
+          })
+          console.log('[QUEUE] form_confirmation email sent to', body.to)
 
         } else {
           console.log('[QUEUE] unknown message type', body.type)

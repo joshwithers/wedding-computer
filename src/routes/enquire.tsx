@@ -11,7 +11,7 @@ import { draftEnquiryReply } from '../services/ai'
 import { resolveSecret } from '../services/secrets'
 import { getScoreForDate } from '../db/busyness'
 import { rateLimit } from '../middleware/rate-limit'
-import { sanitize, isValidEmail } from '../lib/validation'
+import { isValidEmail } from '../lib/validation'
 import { parseFormConfig } from '../lib/form-schema'
 import type { FormConfig, FormField, ContactMapping } from '../lib/form-schema'
 
@@ -214,7 +214,10 @@ function processSubmission(
       throw new Error(`${field.label} is too long`)
     }
 
-    const clean = sanitize(value)
+    // Store raw text (trimmed above). Output is escaped at render time by
+    // JSX (app UI) and by escapeHtml in email templates. Encoding here would
+    // double-encode (e.g. "O'Brien" → "O&#39;Brien") in the vendor's UI.
+    const clean = value
 
     if (field.mapTo) {
       if (field.mapTo === 'email' && !isValidEmail(value)) {

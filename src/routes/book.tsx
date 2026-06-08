@@ -12,7 +12,6 @@ import { getContractByInvoice, signContract } from '../db/contracts'
 import { formatDate } from '../lib/date'
 import { parseBookingFormConfig } from '../lib/form-schema'
 import type { FormConfig, FormField } from '../lib/form-schema'
-import { sanitize } from '../lib/validation'
 import { verifyTurnstile } from '../services/turnstile'
 import { rateLimit } from '../middleware/rate-limit'
 
@@ -266,7 +265,8 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
 
       if (!value) continue
 
-      const clean = sanitize(value)
+      // Store raw text (trimmed). Escaped at render time by JSX / email templates.
+      const clean = value
 
       if (field.mapTo) {
         contactUpdates[field.mapTo] = clean
@@ -288,8 +288,8 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
     }
 
     await signContract(c.env.DB, contract.id, {
-      signed_by_name: sanitize(sigName),
-      signed_by_email: sanitize(sigEmail),
+      signed_by_name: sigName,
+      signed_by_email: sigEmail,
       signed_ip: ip ?? 'unknown',
     })
   }
