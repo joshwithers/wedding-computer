@@ -33,6 +33,39 @@ export async function getScoreForDate(
     .first<BusynessScore>()
 }
 
+// Resolve the most location-specific score available for a date, given a
+// vendor's location: try city, then state, then country, then global. Returns
+// the matched score plus which level it came from (so the UI can show scope),
+// or null if no aggregation row exists for that date at any level.
+export async function getBestScoreForDate(
+  db: D1Database,
+  date: string,
+  vendor: { location_city: string | null; location_state: string | null; location_country: string | null }
+): Promise<{ score: number; level: BusynessScore['level']; levelValue: string; enquiry_count: number; booking_count: number } | null> {
+  const tries: Array<[BusynessScore['level'], string | null]> = [
+    ['city', vendor.location_city],
+    ['state', vendor.location_state],
+    ['country', vendor.location_country],
+    ['global', 'global'],
+  ]
+
+  for (const [level, value] of tries) {
+    if (!value) continue
+    const row = await getScoreForDate(db, date, level, value)
+    if (row) {
+      return {
+        score: row.score,
+        level,
+        levelValue: value,
+        enquiry_count: row.enquiry_count,
+        booking_count: row.booking_count,
+      }
+    }
+  }
+
+  return null
+}
+
 export async function upsertScore(
   db: D1Database,
   date: string,

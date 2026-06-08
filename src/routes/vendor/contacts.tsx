@@ -17,6 +17,8 @@ import { getStorageWithSecrets } from '../../storage'
 import type { StorageBackend } from '../../storage/types'
 import { needsMigration, migrateContacts } from '../../storage/migrate'
 import { listActivities, createActivity } from '../../db/activities'
+import { getBestScoreForDate } from '../../db/busyness'
+import { describeDemand } from '../../lib/busyness'
 import { requireString, trimOrNull, sanitize } from '../../lib/validation'
 import { generateId } from '../../lib/crypto'
 import { formatDate } from '../../lib/date'
@@ -463,6 +465,19 @@ contacts.get('/app/contacts/:id', async (c) => {
       .all<{ title: string; booking_form_data: string }>()
       .then((r) => r.results)
 
+    // Date demand for the contact's wedding date (only meaningful for an
+    // upcoming date). Resolves the most location-specific score for the
+    // vendor's area; null when no aggregation row exists yet.
+    let demand: Awaited<ReturnType<typeof getBestScoreForDate>> = null
+    const today = new Date().toISOString().slice(0, 10)
+    if (contact.wedding_date && contact.wedding_date >= today) {
+      try {
+        demand = await getBestScoreForDate(c.env.DB, contact.wedding_date, vendor)
+      } catch (err) {
+        console.error('[contacts] demand lookup failed:', err)
+      }
+    }
+
     return c.html(
       <AppLayout title={`${contact.first_name} ${contact.last_name}`} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
         <div class="max-w-3xl">
@@ -583,6 +598,7 @@ contacts.get('/app/contacts/:id', async (c) => {
               {contact.partner_email && <DetailCard label="Partner email" value={contact.partner_email} href={`mailto:${contact.partner_email}`} />}
               {contact.partner_phone && <DetailCard label="Partner phone" value={contact.partner_phone} href={`tel:${contact.partner_phone}`} />}
               <DetailCard label="Wedding date" value={contact.wedding_date ? formatDate(contact.wedding_date) : null} />
+              {contact.wedding_date && contact.wedding_date >= today && <DemandCard demand={demand} />}
               <DetailCard label="Wedding location" value={contact.wedding_location} />
               <DetailCard label="Source" value={contact.source} />
               <DetailCard label="Added" value={formatDate(contact.created_at)} />
@@ -1234,6 +1250,42 @@ function DetailCard({
         <a href={href} class="text-sm text-gray-900 hover:underline">{value}</a>
       ) : (
         <p class="text-sm text-gray-900">{value}</p>
+      )}
+    </div>
+  )
+}
+
+function DemandCard({
+  demand,
+}: {
+  demand: { score: number; level: string; levelValue: string; enquiry_count: number; booking_count: number } | null
+}) {
+  const d = describeDemand(demand?.score ?? null)
+  const scope = !demand
+    ? null
+    : demand.level === 'global'
+      ? 'across the platform'
+      : `in ${demand.levelValue}`
+
+  return (
+    <div class="bg-white border border-papaya-300/30 rounded-2xl px-4 py-3">
+      <div class="flex items-center justify-between mb-1.5">
+        <p class="text-xs text-gray-500">Date demand</p>
+        <a href="/app/analytics" class="text-xs text-gray-400 hover:text-horizon-700">Details</a>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class={`w-2.5 h-2.5 rounded-full shrink-0 ${d.dotClass}`} />
+        <span class={`text-sm font-bold ${d.textClass}`}>{d.label}</span>
+      </div>
+      {demand ? (
+        <p class="text-xs text-gray-400 mt-1.5">
+          {demand.enquiry_count} {demand.enquiry_count === 1 ? 'enquiry' : 'enquiries'} · {demand.booking_count}{' '}
+          {demand.booking_count === 1 ? 'booking' : 'bookings'} {scope} for this date
+        </p>
+      ) : (
+        <p class="text-xs text-gray-400 mt-1.5">
+          How sought-after this date is for enquiries and bookings in your area. Updates daily.
+        </p>
       )}
     </div>
   )
