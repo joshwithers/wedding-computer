@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   referral_code TEXT,
   referred_by_vendor_id TEXT REFERENCES vendor_profiles(id),
   free_months INTEGER NOT NULL DEFAULT 0,
+  setup_dismissed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

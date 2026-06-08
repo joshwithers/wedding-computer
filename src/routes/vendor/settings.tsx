@@ -40,6 +40,18 @@ settings.get('/app/settings', (c) => {
             {decodeURIComponent(error)}
           </div>
         )}
+
+        <nav class="sticky top-0 z-10 py-2 mb-6 bg-papaya-50/95 backdrop-blur-sm overflow-x-auto">
+          <div class="flex gap-1 whitespace-nowrap text-sm">
+            <a href="#business" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Business</a>
+            <a href="#invoicing" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Payments &amp; invoicing</a>
+            <a href="#email" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Email</a>
+            <a href="#sharing" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Sharing</a>
+            <a href="#integrations" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Integrations</a>
+            <a href="#data" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Your data</a>
+          </div>
+        </nav>
+
         <form method="post" action="/app/settings" class="space-y-6">
           <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
 
@@ -58,7 +70,7 @@ settings.get('/app/settings', (c) => {
             </div>
           </section>
 
-          <section>
+          <section id="business" class="scroll-mt-24">
             <h2 class="text-base font-bold mb-4">Business details</h2>
             <div class="space-y-4">
               <Field label="Business name" name="business_name" value={vendor.business_name} required />
@@ -170,7 +182,7 @@ settings.get('/app/settings', (c) => {
           </p>
         </section>
 
-        <section class="mt-10 pt-8 border-t border-gray-200">
+        <section id="invoicing" class="mt-10 pt-8 border-t border-gray-200 scroll-mt-24">
           <h2 class="text-base font-bold mb-2">Payments</h2>
           <p class="text-sm text-gray-500 mb-4">
             Connect your Stripe account to accept online payments from clients.
@@ -333,7 +345,7 @@ settings.get('/app/settings', (c) => {
           <InvoiceDefaultsEditor vendor={vendor} csrfToken={c.get('csrfToken')} />
         </section>
 
-        <section class="mt-10 pt-8 border-t border-gray-200">
+        <section id="email" class="mt-10 pt-8 border-t border-gray-200 scroll-mt-24">
           <h2 class="text-base font-bold mb-2">Email</h2>
           <p class="text-sm text-gray-500 mb-4">
             Set your email handle to send and receive emails as <strong>handle@wedding.computer</strong>.
@@ -373,7 +385,7 @@ settings.get('/app/settings', (c) => {
           )}
         </section>
 
-        <section class="mt-10 pt-8 border-t border-gray-200">
+        <section id="sharing" class="mt-10 pt-8 border-t border-gray-200 scroll-mt-24">
           <h2 class="text-base font-bold mb-2">Availability sharing</h2>
           <p class="text-sm text-gray-500 mb-4">
             Control who can see your calendar availability.
@@ -438,7 +450,7 @@ settings.get('/app/settings', (c) => {
           </form>
         </section>
 
-        <section class="mt-10 pt-8 border-t border-gray-200">
+        <section id="integrations" class="mt-10 pt-8 border-t border-gray-200 scroll-mt-24">
           <h2 class="text-base font-bold mb-2">GitHub sync</h2>
           <p class="text-sm text-gray-500 mb-4">
             Sync your contacts and weddings to a private GitHub repository. Open your files in Obsidian, VS Code, or any text editor.
@@ -610,7 +622,7 @@ settings.get('/app/settings', (c) => {
           )}
         </section>
 
-        <section id="data" class="mt-10 pt-8 border-t border-gray-200">
+        <section id="data" class="mt-10 pt-8 border-t border-gray-200 scroll-mt-24">
           <h2 class="text-base font-bold mb-2">Your data</h2>
           <p class="text-sm text-gray-500 mb-1">
             Your contacts and weddings are stored as plain text Markdown files. Download them anytime.

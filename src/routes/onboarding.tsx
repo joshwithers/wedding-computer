@@ -3,11 +3,12 @@ import { getCookie, deleteCookie } from 'hono/cookie'
 import type { Env } from '../types'
 import { AuthLayout } from '../views/layouts/auth'
 import { requireAuth } from '../middleware/auth'
-import { getVendorByUserId, createVendor, getVendorByReferralCode } from '../db/vendors'
+import { getVendorByUserId, createVendor, getVendorByReferralCode, updateVendor } from '../db/vendors'
 import { createReferral } from '../db/referrals'
 import { getFirstCoupleWedding, createWedding, addWeddingMember } from '../db/weddings'
-import { requireString } from '../lib/validation'
+import { requireString, trimOrNull } from '../lib/validation'
 import { VENDOR_CATEGORIES } from '../types'
+import { categorySetup } from '../lib/onboarding'
 
 const onboarding = new Hono<Env>()
 
@@ -124,6 +125,7 @@ onboarding.get('/onboarding/business', async (c) => {
   return c.html(
     <AuthLayout title="Set up your business">
       <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">
+        <p class="text-xs font-bold text-horizon-700 mb-2">Step 1 of 3</p>
         <div class="flex items-center gap-2 mb-6">
           <a href="/onboarding" class="text-gray-400 hover:text-gray-600 transition-colors">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -268,10 +270,114 @@ onboarding.post('/onboarding/business', async (c) => {
       await createReferral(c.env.DB, referrerVendorId, vendor.id)
     }
     deleteCookie(c, 'wc_ref', { path: '/' })
-    return c.redirect('/app')
+    return c.redirect('/onboarding/profile')
   } catch (e: any) {
     return c.redirect(`/onboarding/business?error=${encodeURIComponent(e.message)}`)
   }
+})
+
+// ─── Step 2: profile details (optional) ───
+
+onboarding.get('/onboarding/profile', async (c) => {
+  const user = c.get('user')
+  const vendor = await getVendorByUserId(c.env.DB, user.id)
+  if (!vendor) return c.redirect('/onboarding/business')
+
+  return c.html(
+    <AuthLayout title="Your details">
+      <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">
+        <p class="text-xs font-bold text-horizon-700 mb-2">Step 2 of 3</p>
+        <h2 class="text-2xl font-bold mb-1">Add your details</h2>
+        <p class="text-sm text-gray-500 mb-6">
+          These show on your profile and enquiry form. You can skip and add them later.
+        </p>
+        <form method="post" action="/onboarding/profile">
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="phone">Phone</label>
+              <input type="tel" id="phone" name="phone" value={vendor.phone ?? ''}
+                class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent" />
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="location">Location</label>
+              <input type="text" id="location" name="location" value={vendor.location ?? ''} placeholder="City or region you serve"
+                class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent" />
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="website">Website</label>
+              <input type="url" id="website" name="website" value={vendor.website ?? ''} placeholder="https://"
+                class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent" />
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="instagram">Instagram</label>
+              <input type="text" id="instagram" name="instagram" value={vendor.instagram ?? ''} placeholder="@yourhandle"
+                class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent" />
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="bio">Short bio</label>
+              <textarea id="bio" name="bio" rows={3} placeholder="A sentence or two about what you do"
+                class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent">{vendor.bio ?? ''}</textarea>
+            </div>
+          </div>
+          <button type="submit"
+            class="mt-6 w-full bg-horizon-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
+            Continue
+          </button>
+          <a href="/onboarding/next" class="block text-center text-sm text-gray-400 hover:text-gray-600 mt-3">Skip for now</a>
+        </form>
+      </div>
+    </AuthLayout>
+  )
+})
+
+onboarding.post('/onboarding/profile', async (c) => {
+  const user = c.get('user')
+  const vendor = await getVendorByUserId(c.env.DB, user.id)
+  if (!vendor) return c.redirect('/onboarding/business')
+  const body = await c.req.parseBody()
+
+  await updateVendor(c.env.DB, vendor.id, {
+    phone: trimOrNull(body.phone),
+    location: trimOrNull(body.location),
+    website: trimOrNull(body.website),
+    instagram: trimOrNull(body.instagram),
+    bio: trimOrNull(body.bio),
+  })
+  return c.redirect('/onboarding/next')
+})
+
+// ─── Step 3: what to set up first (category-tailored, educational) ───
+
+onboarding.get('/onboarding/next', async (c) => {
+  const user = c.get('user')
+  const vendor = await getVendorByUserId(c.env.DB, user.id)
+  if (!vendor) return c.redirect('/onboarding/business')
+
+  const setup = categorySetup(vendor.category)
+
+  return c.html(
+    <AuthLayout title="You're all set">
+      <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">
+        <p class="text-xs font-bold text-horizon-700 mb-2">Step 3 of 3</p>
+        <h2 class="text-2xl font-bold mb-1">You're all set, {vendor.business_name}</h2>
+        <p class="text-sm text-gray-500 mb-6">{setup.blurb}</p>
+        <div class="space-y-2">
+          {setup.recommended.map((f) => (
+            <a href={f.href}
+              class="block border border-papaya-300/30 rounded-xl p-3 hover:border-horizon-600/40 hover:bg-papaya-50 transition-colors">
+              <p class="text-sm font-bold text-gray-900">{f.label}</p>
+              <p class="text-xs text-gray-500 mt-0.5">{f.desc}</p>
+            </a>
+          ))}
+        </div>
+        <a href="/app"
+          class="mt-6 block text-center bg-horizon-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
+          Go to your dashboard
+        </a>
+        <p class="text-xs text-gray-400 text-center mt-3">You'll find a setup checklist there to finish the basics.</p>
+      </div>
+    </AuthLayout>
+  )
 })
 
 // ─── Wedding setup ───

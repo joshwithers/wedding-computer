@@ -7,6 +7,8 @@ import { csrf } from '../../middleware/csrf'
 import { formatDate, daysUntil } from '../../lib/date'
 import { listWeddingTodosWithProgress } from '../../db/todos'
 import { todoStats } from '../../lib/todo-parser'
+import { buildSetupChecklist, categorySetup, type SetupChecklist, type CategorySetup } from '../../lib/onboarding'
+import { dismissSetup } from '../../db/vendors'
 
 const dashboard = new Hono<Env>()
 
@@ -29,9 +31,10 @@ dashboard.get('/app', async (c) => {
   let counts = { total: 0, new_leads: 0, booked: 0 }
   let upcomingEvents: { id: string; title: string; date: string; start_time: string | null; type: string }[] = []
   let todoProgress: { wedding_id: string; wedding_title: string; wedding_date: string | null; content: string }[] = []
+  let eventsCount = 0
 
   try {
-    const [weddings, contacts, overdue, revenueRow, contactCounts, events, todos] =
+    const [weddings, contacts, overdue, revenueRow, contactCounts, events, todos, eventsCountRow] =
       await Promise.all([
         db
           .prepare(
@@ -99,6 +102,11 @@ dashboard.get('/app', async (c) => {
           .then((r) => r.results),
 
         listWeddingTodosWithProgress(db, vendor.id),
+
+        db
+          .prepare('SELECT COUNT(*) AS total FROM calendar_events WHERE vendor_id = ?')
+          .bind(vendor.id)
+          .first<{ total: number }>(),
       ])
 
     upcomingWeddings = weddings
@@ -108,17 +116,23 @@ dashboard.get('/app', async (c) => {
     counts = contactCounts ?? { total: 0, new_leads: 0, booked: 0 }
     upcomingEvents = events
     todoProgress = todos
+    eventsCount = eventsCountRow?.total ?? 0
   } catch (err) {
     console.error('[dashboard] Failed to load dashboard data:', err)
   }
 
   const hasData = counts.total > 0 || upcomingWeddings.length > 0
+  const checklist = buildSetupChecklist(vendor, { contacts: counts.total, events: eventsCount })
+  const showChecklist = vendor.setup_dismissed !== 1 && checklist.percent < 100
+  const discovery = categorySetup(vendor.category)
 
   return c.html(
     <AppLayout title="Dashboard" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-4xl">
+        {showChecklist && <SetupCard checklist={checklist} />}
+
         {!hasData ? (
-          <GettingStarted userName={user.name} businessName={vendor.business_name} />
+          <DiscoveryGrid userName={user.name} discovery={discovery} />
         ) : (
           <div class="space-y-6">
             {/* Stats row */}
@@ -330,51 +344,64 @@ dashboard.get('/app', async (c) => {
   )
 })
 
+dashboard.post('/app/dashboard/dismiss-setup', async (c) => {
+  const vendor = c.get('vendor')
+  if (vendor) await dismissSetup(c.env.DB, vendor.id)
+  return c.body('') // htmx outerHTML swap removes the card
+})
+
 export default dashboard
 
-function GettingStarted({ userName, businessName }: { userName: string; businessName: string }) {
+function SetupCard({ checklist }: { checklist: SetupChecklist }) {
+  return (
+    <section id="setup-card" class="bg-white border border-papaya-300/30 rounded-2xl p-5 mb-6">
+      <div class="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <h3 class="text-sm font-bold text-gray-900">Get set up</h3>
+          <p class="text-xs text-gray-500 mt-0.5">{checklist.doneCount} of {checklist.total} done</p>
+        </div>
+        <button
+          type="button"
+          hx-post="/app/dashboard/dismiss-setup"
+          hx-target="#setup-card"
+          hx-swap="outerHTML"
+          class="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          Dismiss
+        </button>
+      </div>
+      <div class="w-full bg-gray-100 rounded-full h-1.5 mb-4">
+        <div
+          class={`h-1.5 rounded-full transition-all ${checklist.percent > 50 ? 'bg-horizon-600' : 'bg-papaya-400'}`}
+          style={`width: ${checklist.percent}%`}
+        />
+      </div>
+      <div class="space-y-0.5">
+        {checklist.items.map((it) => (
+          <a href={it.href} class="flex items-center gap-3 px-2 py-1.5 -mx-2 rounded-lg hover:bg-papaya-50 transition-colors">
+            {it.done ? (
+              <span class="w-5 h-5 rounded-full bg-horizon-600 text-white flex items-center justify-center text-xs flex-shrink-0">&#10003;</span>
+            ) : (
+              <span class="w-5 h-5 rounded-full border-2 border-gray-200 flex-shrink-0" />
+            )}
+            <span class={`text-sm ${it.done ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{it.label}</span>
+          </a>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function DiscoveryGrid({ userName, discovery }: { userName: string; discovery: CategorySetup }) {
   return (
     <div class="space-y-6">
-      <div class="bg-white border border-papaya-300/30 rounded-2xl p-8 text-center">
-        <h2 class="text-lg font-bold mb-2">Welcome, {userName}</h2>
-        <p class="text-sm text-gray-600 mb-6">
-          {"You're signed in as "}<strong>{businessName}</strong>. Here are some things to get started:
-        </p>
-        <div class="grid sm:grid-cols-3 gap-4">
-          <QuickLink href="/app/contacts" title="Add contacts" desc="Start tracking your leads and clients" />
-          <QuickLink href="/app/calendar" title="Set availability" desc="Block out dates and manage your calendar" />
-          <QuickLink href="/app/settings" title="Update profile" desc="Add your phone, website, and bio" />
-        </div>
-      </div>
-
-      <div class="bg-horizon-50 border border-horizon-600/20 rounded-2xl p-5">
-        <h3 class="text-sm font-bold text-horizon-700 mb-2">How Wedding Computer works</h3>
-        <p class="text-sm text-gray-700 mb-3">
-          Everything you store here — contacts, weddings, notes — is saved as plain text Markdown files.
-          This means your data is portable, human-readable, and yours forever, even if you stop using this app.
-        </p>
-        <div class="grid sm:grid-cols-2 gap-3 text-xs text-gray-600">
-          <div class="flex items-start gap-2">
-            <span class="text-horizon-600 mt-0.5 font-bold">1.</span>
-            <span>Add your contacts and weddings through the app</span>
-          </div>
-          <div class="flex items-start gap-2">
-            <span class="text-horizon-600 mt-0.5 font-bold">2.</span>
-            <span>We store them as Markdown files you can open in any text editor</span>
-          </div>
-          <div class="flex items-start gap-2">
-            <span class="text-horizon-600 mt-0.5 font-bold">3.</span>
-            <span>Connect GitHub in <a href="/app/settings#data" class="text-horizon-600 font-bold hover:underline">Settings</a> to auto-sync files to a private repo</span>
-          </div>
-          <div class="flex items-start gap-2">
-            <span class="text-horizon-600 mt-0.5 font-bold">4.</span>
-            <span>Clone the repo and open your files in Obsidian, VS Code, or any text editor</span>
-          </div>
-        </div>
-        <div class="mt-3 pt-3 border-t border-horizon-600/10">
-          <a href="/docs/plain-text" class="text-xs font-bold text-horizon-700 hover:underline">
-            Read more about our plain text data philosophy &rarr;
-          </a>
+      <div class="bg-white border border-papaya-300/30 rounded-2xl p-6">
+        <h2 class="text-lg font-bold mb-1">Welcome, {userName} &#128075;</h2>
+        <p class="text-sm text-gray-600 mb-5">{discovery.blurb}</p>
+        <div class="grid sm:grid-cols-2 gap-3">
+          {discovery.recommended.map((f) => (
+            <QuickLink href={f.href} title={f.label} desc={f.desc} />
+          ))}
         </div>
       </div>
     </div>

@@ -101,6 +101,7 @@ export type VendorProfile = {
   referral_code: string | null
   referred_by_vendor_id: string | null
   free_months: number
+  setup_dismissed: number
   created_at: string
   updated_at: string
 }

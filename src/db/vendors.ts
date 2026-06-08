@@ -51,6 +51,13 @@ export async function getVendorByReferralCode(
     .first<VendorProfile>()
 }
 
+export async function dismissSetup(db: D1Database, vendorId: string): Promise<void> {
+  await db
+    .prepare("UPDATE vendor_profiles SET setup_dismissed = 1, updated_at = datetime('now') WHERE id = ?")
+    .bind(vendorId)
+    .run()
+}
+
 export async function getVendorWithEmail(
   db: D1Database,
   vendorId: string
