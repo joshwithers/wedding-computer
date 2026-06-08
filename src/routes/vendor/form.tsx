@@ -382,10 +382,17 @@ function FormEditor({
         </form>
       </div>
 
-      {/* Share & Embed */}
+      {/* Share & Embed (hosted) */}
       <div class="bg-white border border-gray-200 rounded-xl p-5 mb-6">
-        <h2 class="text-base font-bold mb-1">Share your form</h2>
-        <p class="text-xs text-gray-500 mb-3">Share this link or embed the form on your website.</p>
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="text-base font-bold">Hosted link &amp; embed</h2>
+          <span class="text-xs font-bold text-green-600">Free</span>
+        </div>
+        <p class="text-xs text-gray-500 mb-3">
+          The quickest option — we host the form for you. Share the <strong>link</strong> anywhere (Instagram bio, email
+          signature, ads), or drop the <strong>embed code</strong> into your website to show the same form in a frame. No
+          setup; spam protection is built in.
+        </p>
         <div class="flex items-center gap-2 mb-3">
           <input
             type="text"
@@ -403,11 +410,12 @@ function FormEditor({
           </button>
         </div>
         <details class="text-xs">
-          <summary class="text-gray-500 cursor-pointer hover:text-gray-700">Embed code</summary>
+          <summary class="text-gray-500 cursor-pointer hover:text-gray-700">Embed code (iframe)</summary>
+          <p class="text-gray-500 mt-2 mb-1">Paste this into your site's HTML where you want the form to appear. Adjust <code class="bg-gray-50 px-1 rounded">height</code> to fit your form.</p>
           <textarea
             readonly
             rows={3}
-            class="mt-2 w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-gray-50 font-mono"
+            class="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-gray-50 font-mono"
             onclick="this.select()"
           >{`<iframe src="${fullFormUrl}?embed=1" width="100%" height="700" frameborder="0"></iframe>`}</textarea>
         </details>
@@ -599,29 +607,53 @@ function ShareChannels({
   -H "Authorization: Bearer ${key ?? 'YOUR_INTAKE_KEY'}" \\
   -H "Content-Type: application/json" \\
   -d '{"first_name":"Sam","last_name":"Rivera","email":"sam@example.com","wedding_date":"2027-03-14","notes":"Beach elopement"}'`
+  const mcpConfig = `{
+  "mcpServers": {
+    "wedding-computer": {
+      "url": "${appUrl}/mcp",
+      "headers": { "Authorization": "Bearer ${vendor.ical_token ?? 'YOUR_SYNC_TOKEN'}" }
+    }
+  }
+}`
 
   return (
     <div class="bg-white border border-gray-200 rounded-xl p-5 mb-6 space-y-3">
       <div>
         <h2 class="text-base font-bold mb-1">More ways to collect enquiries</h2>
-        <p class="text-xs text-gray-500">Embed raw HTML on your own site, or pipe leads in from other tools and AI agents.</p>
+        <p class="text-xs text-gray-500">
+          Every channel below drops leads straight into this CRM — same new-lead notification, AI reply, and analytics,
+          however they arrive. Pick whichever fits where your enquiries come from. Tap a section to expand it.
+        </p>
       </div>
 
       {/* HTML form code — free */}
       <details class="border border-gray-100 rounded-xl p-4" id="html">
         <summary class="flex items-center justify-between cursor-pointer text-sm font-bold text-gray-700">
-          <span>HTML form code</span>
+          <span>HTML form code — for your own website</span>
           <span class="text-xs font-normal text-green-600">Free</span>
         </summary>
-        <p class="text-xs text-gray-500 mt-2 mb-2">
-          Paste this onto your own website. It posts straight to your CRM, includes a spam-protection captcha, and you can style it however you like.
-        </p>
-        <textarea
-          readonly
-          rows={10}
-          onclick="this.select()"
-          class="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-gray-50 font-mono"
-        >{htmlSnippet}</textarea>
+        <div class="mt-3 space-y-3 text-xs text-gray-500">
+          <p>
+            <strong class="text-gray-700">How it works:</strong> a plain HTML form that posts directly to your CRM —
+            no iframe, no Wedding Computer branding. It already includes a hidden honeypot and a Cloudflare Turnstile
+            captcha to block spam.
+          </p>
+          <div>
+            <p class="font-bold text-gray-700 mb-1">Set it up</p>
+            <ol class="list-decimal list-inside space-y-1">
+              <li>Copy the code below.</li>
+              <li>Paste it into a page on your website (inside the <code class="bg-gray-50 px-1 rounded">&lt;body&gt;</code>).</li>
+              <li>Style the fields with your own CSS — they're standard form elements.</li>
+              <li>Optional: set <strong>Redirect after submit</strong> in Form settings above to send people to your own thank-you page.</li>
+            </ol>
+          </div>
+          <textarea
+            readonly
+            rows={10}
+            onclick="this.select()"
+            class="w-full border border-gray-200 rounded-xl px-3 py-2 text-gray-600 bg-gray-50 font-mono"
+          >{htmlSnippet}</textarea>
+        </div>
       </details>
 
       {/* API & webhooks — Pro */}
@@ -631,21 +663,23 @@ function ShareChannels({
           <span class="text-xs font-normal text-horizon-600">Pro</span>
         </summary>
         {isPro ? (
-          <div class="mt-3 space-y-3">
-            <p class="text-xs text-gray-500">
-              Send leads from Zapier, Make, or any webhook. Full <a href="/auth.md" target="_blank" class="underline hover:text-gray-700">API docs</a>.
+          <div class="mt-3 space-y-3 text-xs text-gray-500">
+            <p>
+              <strong class="text-gray-700">How it works:</strong> POST a JSON object to your endpoint with your intake
+              key as a Bearer token. Each call creates a lead and fires your usual new-lead email + AI reply. The key is
+              write-only — it can create leads but can never read your data.
             </p>
             <div>
-              <p class="text-xs font-bold text-gray-700 mb-1">Endpoint</p>
-              <code class="block text-xs bg-gray-50 rounded-lg px-3 py-2 text-gray-700 break-all">POST {apiUrl}</code>
+              <p class="font-bold text-gray-700 mb-1">Endpoint</p>
+              <code class="block bg-gray-50 rounded-lg px-3 py-2 text-gray-700 break-all">POST {apiUrl}</code>
             </div>
             <div>
-              <p class="text-xs font-bold text-gray-700 mb-1">
-                Your intake key <span class="font-normal text-gray-400">— write-only, only creates leads</span>
+              <p class="font-bold text-gray-700 mb-1">
+                Your intake key <span class="font-normal text-gray-400">— keep it secret; rotate if it leaks</span>
               </p>
               {key ? (
                 <div>
-                  <code class="block text-xs bg-gray-50 rounded-lg px-3 py-2 text-gray-700 break-all select-all">{key}</code>
+                  <code class="block bg-gray-50 rounded-lg px-3 py-2 text-gray-700 break-all select-all">{key}</code>
                   <div class="flex gap-3 mt-2">
                     <form method="post" action="/app/form/rotate-key">
                       <input type="hidden" name="_csrf" value={csrfToken} />
@@ -664,12 +698,36 @@ function ShareChannels({
                 </form>
               )}
             </div>
+            <div>
+              <p class="font-bold text-gray-700 mb-1">Fields</p>
+              <p>
+                <code class="bg-gray-50 px-1 rounded">first_name</code>, <code class="bg-gray-50 px-1 rounded">last_name</code> and{' '}
+                <code class="bg-gray-50 px-1 rounded">email</code> are required. Optional:{' '}
+                <code class="bg-gray-50 px-1 rounded">phone</code>, <code class="bg-gray-50 px-1 rounded">partner_first_name</code>,{' '}
+                <code class="bg-gray-50 px-1 rounded">partner_last_name</code>, <code class="bg-gray-50 px-1 rounded">wedding_date</code> (YYYY-MM-DD),{' '}
+                <code class="bg-gray-50 px-1 rounded">wedding_location</code>, <code class="bg-gray-50 px-1 rounded">notes</code>, and a{' '}
+                <code class="bg-gray-50 px-1 rounded">fields</code> object for any custom values.
+              </p>
+            </div>
+            <div>
+              <p class="font-bold text-gray-700 mb-1">Connect Zapier or Make</p>
+              <ol class="list-decimal list-inside space-y-1">
+                <li>Add a <strong>Webhooks by Zapier → POST</strong> action (or an HTTP module in Make).</li>
+                <li>URL: <code class="bg-gray-50 px-1 rounded break-all">{apiUrl}</code></li>
+                <li>Header <code class="bg-gray-50 px-1 rounded">Authorization</code> = <code class="bg-gray-50 px-1 rounded">Bearer {key ?? 'your-key'}</code></li>
+                <li>Payload type <strong>JSON</strong>; map your trigger's fields onto the field names above.</li>
+              </ol>
+            </div>
             {key && (
               <div>
-                <p class="text-xs font-bold text-gray-700 mb-1">Example</p>
-                <textarea readonly rows={5} onclick="this.select()" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-gray-50 font-mono">{curl}</textarea>
+                <p class="font-bold text-gray-700 mb-1">Test from a terminal</p>
+                <textarea readonly rows={5} onclick="this.select()" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-gray-600 bg-gray-50 font-mono">{curl}</textarea>
               </div>
             )}
+            <p>
+              Full reference in the <a href="/auth.md" target="_blank" class="underline hover:text-gray-700">API docs</a>.{' '}
+              <code class="bg-gray-50 px-1 rounded break-all">GET {appUrl}/api/v1/form</code> returns the exact fields on this form.
+            </p>
           </div>
         ) : (
           <UpgradePrompt feature="The enquiry API and webhooks" />
@@ -683,10 +741,26 @@ function ShareChannels({
           <span class="text-xs font-normal text-horizon-600">Pro</span>
         </summary>
         {isPro ? (
-          <div class="mt-3 space-y-2 text-xs text-gray-500">
-            <p>AI agents can create leads with the <code class="bg-gray-50 px-1 rounded text-gray-700">submit_enquiry</code> tool on your MCP server:</p>
-            <code class="block bg-gray-50 rounded-lg px-3 py-2 text-gray-700 break-all">{appUrl}/mcp</code>
-            <p>Authenticate with your sync token (Settings → Calendar &amp; Sync). Agents discover this automatically at <a href="/.well-known/agent" target="_blank" class="underline hover:text-gray-700">/.well-known/agent</a>.</p>
+          <div class="mt-3 space-y-3 text-xs text-gray-500">
+            <p>
+              <strong class="text-gray-700">How it works:</strong> connect any MCP-compatible AI tool (Claude Desktop,
+              Cursor, and others) to your account. The agent gets a <code class="bg-gray-50 px-1 rounded text-gray-700">submit_enquiry</code> tool
+              to create leads — handy for logging enquiries that arrive by phone or DM — plus read access to your contacts,
+              weddings, and calendar.
+            </p>
+            <div>
+              <p class="font-bold text-gray-700 mb-1">Set it up</p>
+              <ol class="list-decimal list-inside space-y-1 mb-2">
+                <li>Copy your <strong>sync token</strong> from Settings → Calendar &amp; Sync.</li>
+                <li>Add this to your MCP client's config (e.g. Claude Desktop's <code class="bg-gray-50 px-1 rounded">claude_desktop_config.json</code>):</li>
+              </ol>
+              <textarea readonly rows={9} onclick="this.select()" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-gray-600 bg-gray-50 font-mono">{mcpConfig}</textarea>
+            </div>
+            <p>
+              Agents can also discover the server automatically at{' '}
+              <a href="/.well-known/agent" target="_blank" class="underline hover:text-gray-700">/.well-known/agent</a>. Full
+              reference in the <a href="/auth.md" target="_blank" class="underline hover:text-gray-700">agent docs</a>.
+            </p>
           </div>
         ) : (
           <UpgradePrompt feature="AI agent lead capture" />
