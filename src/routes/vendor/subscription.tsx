@@ -39,6 +39,16 @@ subscription.get('/app/subscription', async (c) => {
           </div>
         )}
 
+        {vendor.free_months > 0 && (
+          <div class="bg-green-50 border border-green-200 text-green-800 text-sm rounded-xl p-3 mb-6 flex items-center justify-between gap-3">
+            <span>
+              <strong>{vendor.free_months} free month{vendor.free_months === 1 ? '' : 's'}</strong> banked
+              — applied automatically to your {isPro ? 'next' : 'first'} Pro invoice{vendor.free_months === 1 ? '' : 's'}.
+            </span>
+            <a href="/app/refer" class="font-bold underline whitespace-nowrap">Earn more</a>
+          </div>
+        )}
+
         {isPro ? (
           <div class="bg-white rounded-2xl p-5 sm:p-8">
             <div class="flex items-center gap-2 mb-4">

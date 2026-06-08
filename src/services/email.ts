@@ -155,6 +155,18 @@ export function newLeadEmail(data: {
   `, { preheader: `New enquiry from ${esc(data.contactName)}` })
 }
 
+export function referralRewardEmail(data: { appUrl: string }): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#1a1a1a;">You earned a free month 🎉</h1>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#333;">
+      Someone you referred just subscribed to Wedding Computer Pro — so you've earned a
+      <strong>free month</strong>. It's applied automatically as a credit to your next Pro invoice.
+    </p>
+    <a href="${data.appUrl}/app/refer" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View your referrals</a>
+    <p style="margin:20px 0 0;font-size:13px;color:#999;">Keep sharing your link to keep earning — up to 9 months at a time.</p>
+  `, { preheader: 'A referral subscribed — you earned a free month' })
+}
+
 export function coupleInviteEmail(data: {
   coupleName: string
   vendorName: string

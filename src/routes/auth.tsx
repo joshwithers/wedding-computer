@@ -22,6 +22,20 @@ const auth = new Hono<Env>()
 auth.get('/login', (c) => {
   const error = c.req.query('error')
   const sent = c.req.query('sent')
+  // Persist a referral code (?ref=) through the magic-link → onboarding flow
+  const ref = c.req.query('ref')
+  if (ref) {
+    const code = ref.replace(/[^a-zA-Z0-9]/g, '').slice(0, 32)
+    if (code) {
+      setCookie(c, 'wc_ref', code, {
+        path: '/',
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Lax',
+        maxAge: 60 * 60 * 24 * 30,
+      })
+    }
+  }
   return c.html(
     <AuthLayout title="Sign in">
       <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">

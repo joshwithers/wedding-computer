@@ -8,6 +8,10 @@ import { requireAdmin } from '../middleware/admin'
 import { csrf } from '../middleware/csrf'
 import { getTotalVendors, getTotalWeddings, getTotalCouples, getSignupsByMonth, countEventsGlobal, getRevenueGlobal, getAverageSpendPerWedding, getLocationBreakdown, getMonthlyEventCountsGlobal } from '../db/analytics'
 import { getActiveProCount, getMRR, getConversionRate } from '../db/subscriptions'
+import { getUserByEmail } from '../db/users'
+import { getVendorByUserId } from '../db/vendors'
+import { grantFreeMonths, listRecentGrants, FREE_MONTHS_CAP, type GrantRow } from '../db/referrals'
+import { auditLog } from '../middleware/audit'
 
 const admin = new Hono<Env>()
 
@@ -30,6 +34,8 @@ const AdminLayout: FC<PropsWithChildren<{ title?: string; user: User; csrfToken:
             Wedding Computer <span class="text-gray-400 font-normal ml-1">Admin</span>
           </a>
           <div class="flex items-center gap-4">
+            <a href="/admin" class="text-sm text-gray-400 hover:text-white">Dashboard</a>
+            <a href="/admin/gifts" class="text-sm text-gray-400 hover:text-white">Gifts</a>
             <a href="/app" class="text-sm text-gray-400 hover:text-white">Back to app</a>
             <span class="text-sm text-gray-500">{user.email}</span>
           </div>
@@ -276,6 +282,154 @@ admin.get('/admin', async (c) => {
         </section>
       </div>
     </AdminLayout>
+  )
+})
+
+// ─── Gift free months ───
+
+const GRANT_SOURCE_LABEL: Record<string, string> = {
+  referral_reward: 'Referral reward',
+  referred_signup: 'Signup reward',
+  admin_gift: 'Admin gift',
+}
+
+admin.get('/admin/gifts', async (c) => {
+  const user = c.get('user')
+  const csrfToken = c.get('csrfToken')
+  const grants = await listRecentGrants(c.env.DB, 25)
+
+  const granted = c.req.query('granted')
+  const grantedEmail = c.req.query('email')
+  const clamped = c.req.query('clamped') === '1'
+  const error = c.req.query('error')
+
+  return c.html(
+    <AdminLayout title="Gifts" user={user} csrfToken={csrfToken}>
+      <div class="space-y-8 max-w-3xl">
+        <div>
+          <h1 class="text-2xl font-bold">Gift free months</h1>
+          <p class="text-sm text-gray-500 mt-1">
+            Add free months to a vendor's Pro billing. Capped at {FREE_MONTHS_CAP} unredeemed months
+            per vendor (shared with referral rewards). Credits apply automatically to their next Pro invoices.
+          </p>
+        </div>
+
+        {granted && (
+          <div class="bg-green-50 border border-green-200 text-green-800 text-sm rounded-xl p-3">
+            Gifted {granted} free month{granted === '1' ? '' : 's'} to {grantedEmail}.
+            {clamped && ' (Reduced to stay within the 9-month cap.)'}
+          </div>
+        )}
+        {error && (
+          <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3">{error}</div>
+        )}
+
+        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-gray-200">
+          <form method="post" action="/admin/gift-months" class="space-y-4">
+            <input type="hidden" name="_csrf" value={csrfToken} />
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="email">User email</label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                required
+                placeholder="vendor@example.com"
+                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="months">Free months</label>
+              <input
+                type="number"
+                id="months"
+                name="months"
+                min="1"
+                max={String(FREE_MONTHS_CAP)}
+                value="1"
+                required
+                class="w-32 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="note">Note (optional)</label>
+              <input
+                type="text"
+                id="note"
+                name="note"
+                placeholder="Reason for the gift"
+                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+            <button type="submit" class="bg-gray-900 text-white rounded-xl px-6 py-2.5 text-sm font-bold hover:bg-gray-800 transition-colors">
+              Gift months
+            </button>
+          </form>
+        </div>
+
+        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-gray-200">
+          <h2 class="text-lg font-bold mb-4">Recent grants</h2>
+          {grants.length === 0 ? (
+            <p class="text-sm text-gray-400">No grants yet.</p>
+          ) : (
+            <div class="divide-y divide-gray-100">
+              {grants.map((g: GrantRow) => (
+                <div class="py-2.5 flex items-center justify-between gap-4 text-sm">
+                  <div class="min-w-0">
+                    <p class="font-medium text-gray-900 truncate">{g.business_name}</p>
+                    <p class="text-xs text-gray-400 truncate">{g.vendor_email}</p>
+                  </div>
+                  <div class="text-right shrink-0">
+                    <p class="font-bold text-gray-900">+{g.months} mo</p>
+                    <p class="text-xs text-gray-400">{GRANT_SOURCE_LABEL[g.source] ?? g.source}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </AdminLayout>
+  )
+})
+
+admin.post('/admin/gift-months', async (c) => {
+  const adminUser = c.get('user')
+  const body = await c.req.parseBody()
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+  const months = parseInt(String(body.months || '0'), 10)
+  const note = typeof body.note === 'string' && body.note.trim() ? body.note.trim() : null
+
+  if (!email || !Number.isFinite(months) || months < 1) {
+    return c.redirect('/admin/gifts?error=' + encodeURIComponent('Enter an email and a number of months (1 or more).'))
+  }
+
+  const recipient = await getUserByEmail(c.env.DB, email)
+  if (!recipient) {
+    return c.redirect('/admin/gifts?error=' + encodeURIComponent('No user found with that email.'))
+  }
+  const vendor = await getVendorByUserId(c.env.DB, recipient.id)
+  if (!vendor) {
+    return c.redirect('/admin/gifts?error=' + encodeURIComponent('That user is not a vendor, so they have no Pro billing to credit.'))
+  }
+
+  const result = await grantFreeMonths(c.env.DB, vendor.id, months, 'admin_gift', {
+    grantedByUserId: adminUser.id,
+    note,
+  })
+
+  await auditLog(c, 'gift_free_months', 'vendor', vendor.id, {
+    requested: months,
+    applied: result.applied,
+    balance: result.balance,
+  }).catch(() => {})
+
+  if (result.applied <= 0) {
+    return c.redirect('/admin/gifts?error=' + encodeURIComponent(`${vendor.business_name} is already at the ${FREE_MONTHS_CAP}-month cap.`))
+  }
+
+  return c.redirect(
+    `/admin/gifts?granted=${result.applied}&email=${encodeURIComponent(email)}&clamped=${result.clamped ? '1' : '0'}`
   )
 })
 

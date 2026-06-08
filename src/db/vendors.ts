@@ -1,4 +1,5 @@
 import type { VendorProfile } from '../types'
+import { generateToken } from '../lib/crypto'
 
 export async function getVendorByUserId(
   db: D1Database,
@@ -25,17 +26,29 @@ export async function createVendor(
   userId: string,
   businessName: string,
   category: string,
-  emailHandle?: string | null
+  emailHandle?: string | null,
+  referrerVendorId?: string | null
 ): Promise<VendorProfile> {
+  const referralCode = await generateToken(8)
   const result = await db
     .prepare(
-      `INSERT INTO vendor_profiles (user_id, business_name, category, email_handle)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO vendor_profiles (user_id, business_name, category, email_handle, referral_code, referred_by_vendor_id)
+       VALUES (?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
-    .bind(userId, businessName, category, emailHandle ?? null)
+    .bind(userId, businessName, category, emailHandle ?? null, referralCode, referrerVendorId ?? null)
     .first<VendorProfile>()
   return result!
+}
+
+export async function getVendorByReferralCode(
+  db: D1Database,
+  code: string
+): Promise<VendorProfile | null> {
+  return db
+    .prepare('SELECT * FROM vendor_profiles WHERE referral_code = ?')
+    .bind(code)
+    .first<VendorProfile>()
 }
 
 export async function getVendorWithEmail(

@@ -98,6 +98,9 @@ export type VendorProfile = {
   location_place_id: string | null
   availability_sharing: 'private' | 'vendors_only' | 'public' | 'ai_reply'
   directory_listed: number
+  referral_code: string | null
+  referred_by_vendor_id: string | null
+  free_months: number
   created_at: string
   updated_at: string
 }
@@ -514,6 +517,25 @@ export type Subscription = {
   cancel_at_period_end: number
   created_at: string
   updated_at: string
+}
+
+export type Referral = {
+  id: string
+  referrer_vendor_id: string
+  referred_vendor_id: string
+  status: 'pending' | 'converted'
+  created_at: string
+  converted_at: string | null
+}
+
+export type FreeMonthGrant = {
+  id: string
+  vendor_id: string
+  months: number
+  source: 'referral_reward' | 'referred_signup' | 'admin_gift'
+  granted_by_user_id: string | null
+  note: string | null
+  created_at: string
 }
 
 export const SEASONS = ['summer', 'autumn', 'winter', 'spring'] as const

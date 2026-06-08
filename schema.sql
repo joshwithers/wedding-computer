@@ -71,6 +71,9 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   location_place_id TEXT,
   availability_sharing TEXT NOT NULL DEFAULT 'private',
   directory_listed INTEGER NOT NULL DEFAULT 0,
+  referral_code TEXT,
+  referred_by_vendor_id TEXT REFERENCES vendor_profiles(id),
+  free_months INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -431,7 +434,34 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Referral relationships (one referrer per referred vendor)
+CREATE TABLE IF NOT EXISTS referrals (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  referrer_vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  referred_vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'converted')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  converted_at TEXT,
+  UNIQUE(referred_vendor_id)
+);
+
+-- Append-only ledger of free-month grants (audit + display)
+CREATE TABLE IF NOT EXISTS free_month_grants (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  months INTEGER NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('referral_reward', 'referred_signup', 'admin_gift')),
+  granted_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Indexes
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vendor_referral_code ON vendor_profiles(referral_code);
+CREATE INDEX IF NOT EXISTS idx_vendor_referred_by ON vendor_profiles(referred_by_vendor_id);
+CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_vendor_id);
+CREATE INDEX IF NOT EXISTS idx_referrals_referred ON referrals(referred_vendor_id);
+CREATE INDEX IF NOT EXISTS idx_free_month_grants_vendor ON free_month_grants(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_vendor_profiles_user_id ON vendor_profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_vendor_profiles_category ON vendor_profiles(category);
 CREATE INDEX IF NOT EXISTS idx_weddings_created_by ON weddings(created_by_user_id);

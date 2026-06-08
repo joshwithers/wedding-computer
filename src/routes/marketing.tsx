@@ -1,8 +1,24 @@
 import { Hono } from 'hono'
+import { setCookie } from 'hono/cookie'
 import type { Env } from '../types'
 import { MarketingLayout } from '../views/layouts/marketing'
 
 const marketing = new Hono<Env>()
+
+// Persist a referral code (?ref=) so it survives signup → onboarding.
+function captureReferral(c: any) {
+  const ref = c.req.query('ref')
+  if (!ref) return
+  const code = String(ref).replace(/[^a-zA-Z0-9]/g, '').slice(0, 32)
+  if (!code) return
+  setCookie(c, 'wc_ref', code, {
+    path: '/',
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Lax',
+    maxAge: 60 * 60 * 24 * 30,
+  })
+}
 
 // Markdown content negotiation — return markdown when agents request it
 const markdownPages: Record<string, string> = {
@@ -132,6 +148,7 @@ marketing.use('/', async (c, next) => {
 })
 
 marketing.get('/', (c) => {
+  captureReferral(c)
   return c.html(
     <MarketingLayout>
       <div class="max-w-5xl mx-auto px-4 sm:px-6">

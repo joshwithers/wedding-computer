@@ -34,6 +34,7 @@ import stripe from './routes/stripe'
 import mcpRoute from './routes/mcp'
 import publicRoutes from './routes/public'
 import formsRoute from './routes/vendor/forms'
+import referRoute from './routes/vendor/refer'
 import publicFormRoute from './routes/form'
 import { authenticateVendor, CARDDAV_HEADERS, CALDAV_HEADERS, xmlResponse, escXml } from './lib/dav'
 import { AuthLayout } from './views/layouts/auth'
@@ -41,7 +42,7 @@ import { getVendorWithEmail } from './db/vendors'
 import { getContact } from './storage/contacts'
 import { getStorageWithSecrets } from './storage'
 import { StorageConflictError } from './storage/conflicts'
-import { sendEmailMessage, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail } from './services/email'
+import { sendEmailMessage, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail, referralRewardEmail } from './services/email'
 import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, dailyDigest } from './services/notifications'
 import { aggregateBusynessScores } from './db/busyness'
@@ -317,6 +318,7 @@ app.route('/', importRoute)
 app.route('/', runSheetRoute)
 app.route('/', quotesRoute)
 app.route('/', formsRoute)
+app.route('/', referRoute)
 app.route('/', accountRoute)
 app.route('/', filesRoute)
 app.route('/', coupleRoute)
@@ -632,6 +634,25 @@ export default {
             isSystem: true,
           })
           console.log('[QUEUE] form_confirmation email sent to', body.to)
+
+        } else if (body.type === 'referral_reward') {
+          // Notify a vendor that a referral converted and they earned a free month
+          const vendor = await getVendorWithEmail(env.DB, body.vendorId)
+          if (!vendor) {
+            console.error('[QUEUE] referral_reward vendor not found', body.vendorId)
+            msg.ack()
+            continue
+          }
+          await sendEmailMessage({
+            db: env.DB,
+            resendApiKey: env.RESEND_API_KEY,
+            vendorId: body.vendorId,
+            to: vendor.user_email,
+            toName: vendor.user_name,
+            subject: 'You earned a free month 🎉',
+            html: referralRewardEmail({ appUrl: env.APP_URL }),
+          })
+          console.log('[QUEUE] referral_reward email sent to', vendor.user_email)
 
         } else {
           console.log('[QUEUE] unknown message type', body.type)

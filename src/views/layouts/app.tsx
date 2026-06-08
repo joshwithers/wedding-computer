@@ -63,6 +63,7 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <div class="border-t border-papaya-300/30 mt-2 pt-2">
               <MobileNavLink href="/app/analytics" label="Analytics" />
               <MobileNavLink href="/app/subscription" label="Subscription" />
+              <MobileNavLink href="/app/refer" label="Refer & earn" />
               <MobileNavLink href="/app/settings#data" label="Your Data" />
             </div>
             <div class="border-t border-papaya-300/30 mt-2 pt-2">
@@ -110,6 +111,7 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <div class="border-t border-white/10 mt-3 pt-3">
               <SidebarLink href="/app/analytics" label="Analytics" />
               <SidebarLink href="/app/subscription" label="Subscription" />
+              <SidebarLink href="/app/refer" label="Refer & earn" />
               <SidebarLink href="/app/settings#data" label="Your Data" />
             </div>
           </nav>

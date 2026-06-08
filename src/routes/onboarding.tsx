@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
+import { getCookie, deleteCookie } from 'hono/cookie'
 import type { Env } from '../types'
 import { AuthLayout } from '../views/layouts/auth'
 import { requireAuth } from '../middleware/auth'
-import { getVendorByUserId, createVendor } from '../db/vendors'
+import { getVendorByUserId, createVendor, getVendorByReferralCode } from '../db/vendors'
+import { createReferral } from '../db/referrals'
 import { getFirstCoupleWedding, createWedding, addWeddingMember } from '../db/weddings'
 import { requireString } from '../lib/validation'
 import { VENDOR_CATEGORIES } from '../types'
@@ -251,7 +253,21 @@ onboarding.post('/onboarding/business', async (c) => {
       }
     }
 
-    await createVendor(c.env.DB, user.id, businessName, category, emailHandle)
+    // Referral attribution: resolve a ?ref code captured at signup (cookie)
+    const refCode = getCookie(c, 'wc_ref')
+    let referrerVendorId: string | null = null
+    if (refCode) {
+      const referrer = await getVendorByReferralCode(c.env.DB, refCode)
+      if (referrer && referrer.user_id !== user.id) {
+        referrerVendorId = referrer.id
+      }
+    }
+
+    const vendor = await createVendor(c.env.DB, user.id, businessName, category, emailHandle, referrerVendorId)
+    if (referrerVendorId) {
+      await createReferral(c.env.DB, referrerVendorId, vendor.id)
+    }
+    deleteCookie(c, 'wc_ref', { path: '/' })
     return c.redirect('/app')
   } catch (e: any) {
     return c.redirect(`/onboarding/business?error=${encodeURIComponent(e.message)}`)
