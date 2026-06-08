@@ -60,7 +60,9 @@ form.post('/app/form', async (c) => {
 
 form.post('/app/form/add-field', async (c) => {
   const vendor = c.get('vendor')!
-  const config = parseFormConfig(vendor.enquiry_form)
+  const body = await c.req.parseBody()
+  // Build from the posted form so any in-progress edits are preserved.
+  const config = buildConfigFromBody(body as Record<string, string>)
 
   config.fields.push({
     id: generateFieldId(),
@@ -80,7 +82,8 @@ form.post('/app/form/add-field', async (c) => {
 
 form.post('/app/form/add-heading', async (c) => {
   const vendor = c.get('vendor')!
-  const config = parseFormConfig(vendor.enquiry_form)
+  const body = await c.req.parseBody()
+  const config = buildConfigFromBody(body as Record<string, string>)
 
   config.fields.push({
     id: generateFieldId(),
@@ -99,7 +102,9 @@ form.post('/app/form/add-heading', async (c) => {
 
 form.post('/app/form/move/:fieldId/:direction', async (c) => {
   const vendor = c.get('vendor')!
-  const config = parseFormConfig(vendor.enquiry_form)
+  const body = await c.req.parseBody()
+  // Built from the posted form so any in-progress edits are preserved.
+  const config = buildConfigFromBody(body as Record<string, string>)
   const fieldId = c.req.param('fieldId')
   const direction = c.req.param('direction')
 
@@ -124,7 +129,9 @@ form.post('/app/form/move/:fieldId/:direction', async (c) => {
 
 form.post('/app/form/delete/:fieldId', async (c) => {
   const vendor = c.get('vendor')!
-  const config = parseFormConfig(vendor.enquiry_form)
+  const body = await c.req.parseBody()
+  // Built from the posted form so any in-progress edits are preserved.
+  const config = buildConfigFromBody(body as Record<string, string>)
   const fieldId = c.req.param('fieldId')
 
   config.fields = config.fields.filter((f) => f.id !== fieldId)
@@ -435,30 +442,28 @@ function FormEditor({
 
         {/* Add buttons */}
         <div class="flex gap-2 mb-6">
-          <form method="post" action="/app/form/add-field" class="inline">
-            <input type="hidden" name="_csrf" value={csrfToken} />
-            <button
-              type="submit"
-              class="inline-flex items-center gap-1.5 bg-white border border-gray-200 text-gray-700 py-2 px-4 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
-            >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-              </svg>
-              Add field
-            </button>
-          </form>
-          <form method="post" action="/app/form/add-heading" class="inline">
-            <input type="hidden" name="_csrf" value={csrfToken} />
-            <button
-              type="submit"
-              class="inline-flex items-center gap-1.5 bg-white border border-gray-200 text-gray-700 py-2 px-4 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
-            >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8" />
-              </svg>
-              Add heading
-            </button>
-          </form>
+          <button
+            type="submit"
+            formaction="/app/form/add-field"
+            formnovalidate={true}
+            class="inline-flex items-center gap-1.5 bg-white border border-gray-200 text-gray-700 py-2 px-4 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Add field
+          </button>
+          <button
+            type="submit"
+            formaction="/app/form/add-heading"
+            formnovalidate={true}
+            class="inline-flex items-center gap-1.5 bg-white border border-gray-200 text-gray-700 py-2 px-4 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8" />
+            </svg>
+            Add heading
+          </button>
         </div>
 
         {/* Actions */}
@@ -525,24 +530,18 @@ function FieldCard({
         {/* Reorder + delete */}
         <div class="flex flex-col gap-1 pt-1 shrink-0">
           {index > 0 && (
-            <form method="post" action={`/app/form/move/${field.id}/up`} class="inline">
-              <input type="hidden" name="_csrf" value={csrfToken} />
-              <button type="submit" class="p-1 text-gray-300 hover:text-gray-600" title="Move up">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
-                </svg>
-              </button>
-            </form>
+            <button type="submit" formaction={`/app/form/move/${field.id}/up`} formnovalidate={true} class="p-1 text-gray-300 hover:text-gray-600" title="Move up">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+              </svg>
+            </button>
           )}
           {index < total - 1 && (
-            <form method="post" action={`/app/form/move/${field.id}/down`} class="inline">
-              <input type="hidden" name="_csrf" value={csrfToken} />
-              <button type="submit" class="p-1 text-gray-300 hover:text-gray-600" title="Move down">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-            </form>
+            <button type="submit" formaction={`/app/form/move/${field.id}/down`} formnovalidate={true} class="p-1 text-gray-300 hover:text-gray-600" title="Move down">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
           )}
         </div>
 
@@ -640,19 +639,18 @@ function FieldCard({
         </div>
 
         {/* Delete */}
-        <form method="post" action={`/app/form/delete/${field.id}`} class="shrink-0">
-          <input type="hidden" name="_csrf" value={csrfToken} />
-          <button
-            type="submit"
-            class="p-1.5 text-gray-300 hover:text-grapefruit-700 transition-colors"
-            title="Delete field"
-            onclick="return confirm('Delete this field?')"
-          >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </form>
+        <button
+          type="submit"
+          formaction={`/app/form/delete/${field.id}`}
+          formnovalidate={true}
+          class="p-1.5 text-gray-300 hover:text-grapefruit-700 transition-colors shrink-0"
+          title="Delete field"
+          onclick="return confirm('Delete this field?')"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
     </div>
   )
