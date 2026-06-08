@@ -58,16 +58,16 @@ export async function grantFreeMonths(
   return { applied, balance, clamped }
 }
 
-// Consume one free month (used when realizing a credit against a Stripe invoice).
-// Returns true if a month was actually consumed.
-export async function consumeFreeMonth(db: D1Database, vendorId: string): Promise<boolean> {
-  const res = await db
+// Consume up to n banked free months (e.g. after applying them as a checkout
+// trial or a Stripe credit). Never drops below zero.
+export async function consumeFreeMonths(db: D1Database, vendorId: string, n: number): Promise<void> {
+  if (n <= 0) return
+  await db
     .prepare(
-      "UPDATE vendor_profiles SET free_months = free_months - 1, updated_at = datetime('now') WHERE id = ? AND free_months > 0"
+      "UPDATE vendor_profiles SET free_months = MAX(0, free_months - ?), updated_at = datetime('now') WHERE id = ?"
     )
-    .bind(vendorId)
+    .bind(n, vendorId)
     .run()
-  return (res.meta?.changes ?? 0) > 0
 }
 
 // Record a pending referral. No-op on self-referral or if one already exists.

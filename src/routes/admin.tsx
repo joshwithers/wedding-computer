@@ -11,6 +11,7 @@ import { getActiveProCount, getMRR, getConversionRate } from '../db/subscription
 import { getUserByEmail } from '../db/users'
 import { getVendorByUserId } from '../db/vendors'
 import { grantFreeMonths, listRecentGrants, FREE_MONTHS_CAP, type GrantRow } from '../db/referrals'
+import { redeemBankedMonthsToStripe } from '../services/free-months'
 import { auditLog } from '../middleware/audit'
 
 const admin = new Hono<Env>()
@@ -417,6 +418,12 @@ admin.post('/admin/gift-months', async (c) => {
     grantedByUserId: adminUser.id,
     note,
   })
+
+  // If they're already an active subscriber, apply the months as a Stripe
+  // account credit now (otherwise they stay banked and redeem at next checkout).
+  await redeemBankedMonthsToStripe(c.env.STRIPE_SECRET_KEY, c.env.DB, vendor.id).catch((e) =>
+    console.error('[admin] redeem gifted months failed', e)
+  )
 
   await auditLog(c, 'gift_free_months', 'vendor', vendor.id, {
     requested: months,

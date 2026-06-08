@@ -144,27 +144,38 @@ subscription.post('/app/subscription/checkout', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
 
+  // Redeem banked free months (gifted or earned) as a free trial so the first
+  // N months aren't charged. They're consumed in the checkout.session.completed
+  // webhook once the subscription is created.
+  const freeMonths = Math.max(0, Math.min(9, vendor.free_months ?? 0))
+
+  const params: Record<string, string> = {
+    'mode': 'subscription',
+    'line_items[0][price_data][currency]': 'aud',
+    'line_items[0][price_data][product_data][name]': 'Wedding Computer Pro',
+    'line_items[0][price_data][product_data][description]': 'Analytics, insights, AI features, and business goals',
+    'line_items[0][price_data][unit_amount]': '2800',
+    'line_items[0][price_data][recurring][interval]': 'month',
+    'line_items[0][quantity]': '1',
+    'success_url': `${c.env.APP_URL}/app/subscription?success=1`,
+    'cancel_url': `${c.env.APP_URL}/app/subscription`,
+    'customer_email': user.email,
+    'client_reference_id': vendor.id,
+    'metadata[vendor_id]': vendor.id,
+    'metadata[user_id]': user.id,
+  }
+  if (freeMonths > 0) {
+    params['subscription_data[trial_period_days]'] = String(freeMonths * 30)
+    params['metadata[free_months_applied]'] = String(freeMonths)
+  }
+
   const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${c.env.STRIPE_SECRET_KEY}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams({
-      'mode': 'subscription',
-      'line_items[0][price_data][currency]': 'aud',
-      'line_items[0][price_data][product_data][name]': 'Wedding Computer Pro',
-      'line_items[0][price_data][product_data][description]': 'Analytics, insights, AI features, and business goals',
-      'line_items[0][price_data][unit_amount]': '2800',
-      'line_items[0][price_data][recurring][interval]': 'month',
-      'line_items[0][quantity]': '1',
-      'success_url': `${c.env.APP_URL}/app/subscription?success=1`,
-      'cancel_url': `${c.env.APP_URL}/app/subscription`,
-      'customer_email': user.email,
-      'client_reference_id': vendor.id,
-      'metadata[vendor_id]': vendor.id,
-      'metadata[user_id]': user.id,
-    }).toString(),
+    body: new URLSearchParams(params).toString(),
   })
 
   const session = (await response.json()) as { id: string; url: string }

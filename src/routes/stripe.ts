@@ -3,8 +3,8 @@ import type { Env } from '../types'
 import { updateVendor } from '../db/vendors'
 import { recordPayment, recalculateInvoiceStatus } from '../db/invoices'
 import { getSubscriptionByStripeId, createSubscription, updateSubscription } from '../db/subscriptions'
-import { getVendorById } from '../db/vendors'
-import { convertReferral, consumeFreeMonth } from '../db/referrals'
+import { convertReferral, consumeFreeMonths } from '../db/referrals'
+import { redeemBankedMonthsToStripe } from '../services/free-months'
 import { track } from '../services/analytics'
 
 const stripe = new Hono<Env>()
@@ -53,32 +53,46 @@ stripe.post('/webhooks/stripe', async (c) => {
         id: string
         subscription: string | null
         customer: string | null
-        metadata?: { vendor_id?: string; user_id?: string }
+        metadata?: { vendor_id?: string; user_id?: string; free_months_applied?: string }
         mode: string
       }
       if (session.mode === 'subscription' && session.subscription && session.metadata?.vendor_id) {
+        const vendorId = session.metadata.vendor_id
         const existing = await getSubscriptionByStripeId(c.env.DB, session.subscription)
         if (!existing) {
           await createSubscription(c.env.DB, {
-            vendor_id: session.metadata.vendor_id,
+            vendor_id: vendorId,
             stripe_customer_id: session.customer ?? null,
             stripe_subscription_id: session.subscription,
             plan: 'pro',
             status: 'active',
           })
-          console.log('[STRIPE] subscription created for vendor', session.metadata.vendor_id)
+          console.log('[STRIPE] subscription created for vendor', vendorId)
+
+          // Banked free months were redeemed as the checkout trial — consume them.
+          const applied = parseInt(session.metadata.free_months_applied ?? '0', 10)
+          if (applied > 0) {
+            await consumeFreeMonths(c.env.DB, vendorId, applied)
+            console.log('[STRIPE] consumed', applied, 'free months as trial for', vendorId)
+          }
 
           // Referral: a referred vendor just became a paying subscriber.
           // Reward both the new subscriber and their referrer (idempotent).
           try {
-            const conv = await convertReferral(c.env.DB, session.metadata.vendor_id)
+            const conv = await convertReferral(c.env.DB, vendorId)
             if (conv) {
               await c.env.EMAIL_QUEUE.send({ type: 'referral_reward', vendorId: conv.referrerVendorId })
               console.log('[STRIPE] referral converted, referrer rewarded', conv.referrerVendorId)
+              // The referrer may already be an active subscriber — credit them now.
+              await redeemBankedMonthsToStripe(c.env.STRIPE_SECRET_KEY, c.env.DB, conv.referrerVendorId)
             }
           } catch (e: any) {
             console.error('[STRIPE] referral conversion failed', e.message)
           }
+
+          // The new subscriber's reward (and any leftover banked months not used
+          // by the trial) become an account credit on their next invoices.
+          await redeemBankedMonthsToStripe(c.env.STRIPE_SECRET_KEY, c.env.DB, vendorId)
         }
       }
       break
@@ -124,62 +138,6 @@ stripe.post('/webhooks/stripe', async (c) => {
         })
         console.log('[STRIPE] subscription cancelled', sub.id)
       }
-      break
-    }
-
-    case 'invoice.created': {
-      // Realize banked free months as a billing credit: zero out one Pro
-      // invoice per free month and decrement the vendor's balance.
-      const invoice = event.data.object as {
-        id: string
-        subscription: string | null
-        customer: string | null
-        amount_due: number
-        currency: string
-      }
-      if (!invoice.subscription || !invoice.customer || invoice.amount_due <= 0) break
-
-      const sub = await getSubscriptionByStripeId(c.env.DB, invoice.subscription)
-      if (!sub || sub.plan !== 'pro') break
-      const vendor = await getVendorById(c.env.DB, sub.vendor_id)
-      if (!vendor || vendor.free_months <= 0) break
-
-      const authHeaders = {
-        'Authorization': `Bearer ${c.env.STRIPE_SECRET_KEY}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      }
-      // Idempotency: re-fetch the invoice; skip if we've already credited it
-      const fresh = (await fetch(`https://api.stripe.com/v1/invoices/${invoice.id}`, {
-        headers: { 'Authorization': `Bearer ${c.env.STRIPE_SECRET_KEY}` },
-      }).then((r) => r.json())) as { metadata?: Record<string, string> }
-      if (fresh?.metadata?.wc_free_month === '1') break
-
-      // Credit one month onto this draft invoice (negative invoice item)
-      const creditRes = await fetch('https://api.stripe.com/v1/invoiceitems', {
-        method: 'POST',
-        headers: authHeaders,
-        body: new URLSearchParams({
-          customer: invoice.customer,
-          invoice: invoice.id,
-          amount: String(-invoice.amount_due),
-          currency: invoice.currency,
-          description: 'Free month credit (Wedding Computer)',
-        }).toString(),
-      })
-      // Only consume the balance if the credit was actually applied — otherwise a
-      // transient Stripe error would burn a free month with nothing to show for it.
-      if (!creditRes.ok) {
-        console.error('[STRIPE] free month credit failed', invoice.id, await creditRes.text())
-        break
-      }
-      // Mark the invoice so webhook retries don't double-credit
-      await fetch(`https://api.stripe.com/v1/invoices/${invoice.id}`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: new URLSearchParams({ 'metadata[wc_free_month]': '1' }).toString(),
-      })
-      await consumeFreeMonth(c.env.DB, vendor.id)
-      console.log('[STRIPE] free month applied to invoice', invoice.id, 'vendor', vendor.id)
       break
     }
 
