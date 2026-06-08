@@ -107,7 +107,12 @@ export class GitHubStorageBackend implements StorageBackend {
     const data = (await res.json()) as GitHubFileResponse
     if (data.type !== 'file' || !data.content) return null
 
-    const content = atob(data.content.replace(/\n/g, ''))
+    // Decode base64 → bytes → UTF-8. atob() alone yields a Latin-1 "binary
+    // string", which corrupts multi-byte characters (accents, em-dashes,
+    // emoji). This mirrors the write encoding (encodeURIComponent/unescape).
+    const binary = atob(data.content.replace(/\n/g, ''))
+    const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0))
+    const content = new TextDecoder().decode(bytes)
 
     return {
       content,
