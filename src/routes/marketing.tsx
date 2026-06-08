@@ -109,6 +109,16 @@ Upgrade for analytics and AI-powered features:
 `,
 }
 
+// Public marketing pages that are safe to store in shared/CDN caches — tenant-independent,
+// no per-user content. This middleware is registered as use('*'), but because the marketing
+// router is mounted first at the root (app.route('/', marketing) in index.tsx), that wildcard
+// wraps EVERY request — including authenticated, tenant-specific pages mounted later under
+// /app/*, /account/*, /files/*, /wedding/*, /admin, /api/*. Emitting `public, s-maxage` on those
+// lets an edge/proxy cache store one user's response and serve it to another (cross-tenant leak),
+// and serves stale authenticated UI. So we only ever attach the shared-cache header to this
+// explicit allowlist; everything else is left untouched (private by default).
+const CACHEABLE_PUBLIC_PATHS = new Set(['/', '/about', '/pricing', '/standard', '/docs/plain-text'])
+
 // Cache marketing pages at the edge — content rarely changes
 marketing.use('*', async (c, next) => {
   // Check for markdown content negotiation before processing
@@ -129,7 +139,15 @@ marketing.use('*', async (c, next) => {
   }
 
   await next()
-  if (c.res.status === 200 && c.req.method === 'GET') {
+  // Only public marketing pages may be stored in shared caches. Never attach a public cache
+  // header to authenticated/tenant routes, and never override a Cache-Control a route set for
+  // itself (e.g. files.tsx serves private documents with `private, max-age=…`).
+  if (
+    c.req.method === 'GET' &&
+    c.res.status === 200 &&
+    CACHEABLE_PUBLIC_PATHS.has(c.req.path) &&
+    !c.res.headers.has('Cache-Control')
+  ) {
     c.res.headers.set('Cache-Control', 'public, max-age=300, s-maxage=3600')
     c.res.headers.set('Vary', 'Accept')
   }
