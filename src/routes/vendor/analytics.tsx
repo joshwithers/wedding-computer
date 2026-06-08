@@ -137,7 +137,7 @@ analytics.get('/app/analytics', async (c) => {
     // Benchmarks at geographic levels
     countEventsGlobal(db, 'enquiry_received', thirtyDaysAgo, today, { category: vendor.category }),
     countEventsGlobal(db, 'booking_confirmed', thirtyDaysAgo, today, { category: vendor.category }),
-    // Busyness heatmap (next 90 days)
+    // Date demand heatmap (next 90 days)
     vendor.location_city
       ? getDateHeatmap(db, today, new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10), 'city', vendor.location_city)
       : Promise.resolve([]),
@@ -403,10 +403,10 @@ analytics.get('/app/analytics', async (c) => {
           </div>
         </section>
 
-        {/* Date busyness heatmap */}
+        {/* Date demand heatmap */}
         <section class="bg-white rounded-2xl p-5 sm:p-6">
-          <h3 class="font-bold text-gray-900 mb-1">Date busyness</h3>
-          <p class="text-sm text-gray-500 mb-5">How busy upcoming dates are for enquiries and bookings</p>
+          <h3 class="font-bold text-gray-900 mb-1">Date demand</h3>
+          <p class="text-sm text-gray-500 mb-5">How in-demand upcoming dates are for enquiries and bookings</p>
 
           {globalHeatmap.length > 0 ? (
             <div class="space-y-6">
@@ -427,7 +427,7 @@ analytics.get('/app/analytics', async (c) => {
                 <HeatmapGrid data={globalHeatmap} />
               </div>
               <div class="flex items-center gap-2 text-xs text-gray-400">
-                <span>Quiet</span>
+                <span>Low</span>
                 <div class="flex gap-0.5">
                   <div class="w-4 h-4 rounded bg-gray-100" />
                   <div class="w-4 h-4 rounded bg-horizon-100" />
@@ -435,11 +435,11 @@ analytics.get('/app/analytics', async (c) => {
                   <div class="w-4 h-4 rounded bg-horizon-500" />
                   <div class="w-4 h-4 rounded bg-horizon-700" />
                 </div>
-                <span>Busy</span>
+                <span>High</span>
               </div>
             </div>
           ) : (
-            <p class="text-sm text-gray-400">Busyness data will appear after the first daily aggregation runs.</p>
+            <p class="text-sm text-gray-400">Demand data will appear after the first daily aggregation runs.</p>
           )}
         </section>
       </div>

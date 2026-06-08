@@ -40,7 +40,7 @@ The collaboration platform where vendors, venues, planners, and couples plan wed
 - **Day-of run sheet builder** — timeline planner with AI generation
 - **Wedding workspaces** — shared workspace for each wedding with all vendors and the couple
 - **Analytics & benchmarks** — anonymised industry data at city, state, country, and global levels
-- **Date busyness scores** — see how busy any date is for enquiries and bookings in your area
+- **Date demand scores** — see how in-demand any date is for enquiries and bookings in your area
 - **Import from other CRMs** — CSV/JSON import from Dubsado, Studio Ninja, HoneyBook, VSCO Workspace, or any spreadsheet, with AI-powered text extraction
 - **Team & agency management** — manage team rosters and assign members to weddings
 - **Couple planner** — vendor grid, budget tracker, booking forms
@@ -96,7 +96,7 @@ Upgrade for analytics and AI-powered features:
 
 - Business analytics and reporting
 - Anonymised industry benchmarks
-- Date busyness scores
+- Date demand scores
 - Goal tracking
 - AI-powered insights
 - AI enquiry auto-replies
@@ -292,8 +292,8 @@ marketing.get('/', (c) => {
             <FeatureCard
               color="horizon"
               icon="calendar"
-              title="Date busyness scores"
-              desc="See how busy upcoming dates are for enquiries and bookings — at your city, state, country, and global level. Know whether a date is popping off or likely to be quiet."
+              title="Date demand scores"
+              desc="See how in-demand upcoming dates are for enquiries and bookings — at your city, state, country, and global level. Know whether a date is in high demand or likely to be quiet."
             />
             <FeatureCard
               color="grapefruit"
@@ -934,7 +934,7 @@ marketing.get('/pricing', (c) => {
               <PricingFeature text="Revenue and source insights" />
               <PricingFeature text="Business goals and targets" />
               <PricingFeature text="AI email drafting" />
-              <PricingFeature text="Date busyness scores" />
+              <PricingFeature text="Date demand scores" />
               <PricingFeature text="Anonymised industry benchmarks" />
               <PricingFeature text="AI enquiry auto-replies" />
               <PricingFeature text="MCP access for AI tools" />
