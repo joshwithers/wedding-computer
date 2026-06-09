@@ -13,7 +13,7 @@ import { getVendorByUserId } from '../db/vendors'
 import { grantFreeMonths, listRecentGrants, FREE_MONTHS_CAP, type GrantRow } from '../db/referrals'
 import { redeemBankedMonthsToStripe } from '../services/free-months'
 import { getBroadcastRecipients, getBroadcastCountries } from '../db/broadcast'
-import { countWaitlist } from '../db/waitlist'
+import { countWaitlist, getWaitlistStats, getWaitlistCountryBreakdown, listWaitlist, listWaitlistForExport } from '../db/waitlist'
 import { broadcastEmail } from '../services/email'
 import { auditLog } from '../middleware/audit'
 
@@ -39,6 +39,7 @@ const AdminLayout: FC<PropsWithChildren<{ title?: string; user: User; csrfToken:
           </a>
           <div class="flex items-center gap-4">
             <a href="/admin" class="text-sm text-gray-400 hover:text-white">Dashboard</a>
+            <a href="/admin/waitlist" class="text-sm text-gray-400 hover:text-white">Waitlist</a>
             <a href="/admin/broadcast" class="text-sm text-gray-400 hover:text-white">Broadcast</a>
             <a href="/admin/gifts" class="text-sm text-gray-400 hover:text-white">Gifts</a>
             <a href="/app" class="text-sm text-gray-400 hover:text-white">Back to app</a>
@@ -445,6 +446,126 @@ admin.post('/admin/gift-months', async (c) => {
   return c.redirect(
     `/admin/gifts?granted=${result.applied}&email=${encodeURIComponent(email)}&clamped=${result.clamped ? '1' : '0'}`
   )
+})
+
+// ─── Waitlist ───
+
+function csvCell(v: string | null | undefined): string {
+  const s = v == null ? '' : String(v)
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+}
+
+admin.get('/admin/waitlist', async (c) => {
+  const user = c.get('user')
+  const [stats, countries, entries] = await Promise.all([
+    getWaitlistStats(c.env.DB),
+    getWaitlistCountryBreakdown(c.env.DB),
+    listWaitlist(c.env.DB, { limit: 500 }),
+  ])
+  const countryMax = Math.max(1, ...countries.map((x) => x.count))
+
+  return c.html(
+    <AdminLayout title="Waitlist" user={user} csrfToken={c.get('csrfToken')}>
+      <div class="space-y-6">
+        <div class="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 class="text-2xl font-bold">Waitlist</h1>
+            <p class="text-sm text-gray-500 mt-1">People who asked to be notified when Wedding Computer launches.</p>
+          </div>
+          <a href="/admin/waitlist/export" class="bg-gray-900 text-white rounded-xl px-5 py-2.5 text-sm font-bold hover:bg-gray-800 transition-colors shrink-0">
+            Export CSV
+          </a>
+        </div>
+
+        <div class="grid grid-cols-3 gap-4 max-w-lg">
+          <StatCard label="Subscribed" value={String(stats.subscribed)} />
+          <StatCard label="Unsubscribed" value={String(stats.unsubscribed)} />
+          <StatCard label="Total" value={String(stats.total)} />
+        </div>
+
+        {countries.length > 0 && (
+          <section class="bg-white rounded-2xl p-5 sm:p-6 border border-gray-200 max-w-lg">
+            <h2 class="text-sm font-bold text-gray-900 mb-4">By country (subscribed)</h2>
+            <div class="space-y-1.5">
+              {countries.map((row) => {
+                const pct = Math.round((row.count / countryMax) * 100)
+                return (
+                  <div class="flex items-center gap-2 text-xs">
+                    <span class="w-28 text-gray-500 text-right shrink-0 truncate" title={row.country}>{row.country}</span>
+                    <div class="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
+                      {pct > 0 && <div class="bg-gray-900 h-4 rounded-full" style={`width: ${pct}%`} />}
+                    </div>
+                    <span class="w-8 text-gray-700 font-medium text-right">{row.count}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
+        <section class="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          <div class="px-5 py-4 border-b border-gray-100">
+            <h2 class="text-sm font-bold text-gray-900">
+              {entries.length === 500 ? 'Most recent 500 signups' : `${entries.length} signup${entries.length === 1 ? '' : 's'}`}
+            </h2>
+          </div>
+          {entries.length === 0 ? (
+            <p class="text-sm text-gray-400 px-5 py-6">No signups yet.</p>
+          ) : (
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-gray-50 text-gray-500">
+                  <tr>
+                    <th class="text-left font-medium px-5 py-2.5">Email</th>
+                    <th class="text-left font-medium px-3 py-2.5">Name</th>
+                    <th class="text-left font-medium px-3 py-2.5">Country</th>
+                    <th class="text-left font-medium px-3 py-2.5">Status</th>
+                    <th class="text-left font-medium px-3 py-2.5">Source</th>
+                    <th class="text-left font-medium px-5 py-2.5">Joined</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  {entries.map((e) => (
+                    <tr>
+                      <td class="px-5 py-2.5 text-gray-900">{e.email}</td>
+                      <td class="px-3 py-2.5 text-gray-600">{e.name ?? '—'}</td>
+                      <td class="px-3 py-2.5 text-gray-600">{e.country ?? '—'}</td>
+                      <td class="px-3 py-2.5">
+                        {e.status === 'subscribed' ? (
+                          <span class="inline-block bg-green-50 text-green-700 text-xs font-medium px-2 py-0.5 rounded-full">Subscribed</span>
+                        ) : (
+                          <span class="inline-block bg-gray-100 text-gray-500 text-xs font-medium px-2 py-0.5 rounded-full">Unsubscribed</span>
+                        )}
+                      </td>
+                      <td class="px-3 py-2.5 text-gray-400 text-xs">{e.source ?? '—'}</td>
+                      <td class="px-5 py-2.5 text-gray-500 whitespace-nowrap">{(e.created_at ?? '').slice(0, 10)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+    </AdminLayout>
+  )
+})
+
+admin.get('/admin/waitlist/export', async (c) => {
+  const entries = await listWaitlistForExport(c.env.DB)
+  const header = ['email', 'name', 'country', 'status', 'source', 'created_at']
+  const rows = entries.map((e) =>
+    [e.email, e.name, e.country, e.status, e.source, e.created_at].map(csvCell).join(',')
+  )
+  const csv = [header.join(','), ...rows].join('\r\n')
+  const date = new Date().toISOString().slice(0, 10)
+  return new Response(csv, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="waitlist-${date}.csv"`,
+      'Cache-Control': 'no-store',
+    },
+  })
 })
 
 // ─── Broadcast email ───

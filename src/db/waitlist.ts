@@ -55,3 +55,68 @@ export async function countWaitlist(db: D1Database): Promise<number> {
     .first<{ count: number }>()
   return row?.count ?? 0
 }
+
+export async function getWaitlistStats(
+  db: D1Database
+): Promise<{ total: number; subscribed: number; unsubscribed: number }> {
+  const row = await db
+    .prepare(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN status = 'subscribed' THEN 1 ELSE 0 END) AS subscribed,
+         SUM(CASE WHEN status = 'unsubscribed' THEN 1 ELSE 0 END) AS unsubscribed
+       FROM waitlist`
+    )
+    .first<{ total: number; subscribed: number; unsubscribed: number }>()
+  return {
+    total: row?.total ?? 0,
+    subscribed: row?.subscribed ?? 0,
+    unsubscribed: row?.unsubscribed ?? 0,
+  }
+}
+
+export async function getWaitlistCountryBreakdown(
+  db: D1Database
+): Promise<{ country: string; count: number }[]> {
+  const res = await db
+    .prepare(
+      `SELECT COALESCE(NULLIF(TRIM(country), ''), 'Unknown') AS country, COUNT(*) AS count
+       FROM waitlist
+       WHERE status = 'subscribed'
+       GROUP BY COALESCE(NULLIF(TRIM(country), ''), 'Unknown')
+       ORDER BY count DESC, country ASC`
+    )
+    .all<{ country: string; count: number }>()
+  return res.results
+}
+
+// Recent entries for the admin list view (capped). `status` 'all' returns both
+// subscribed and unsubscribed.
+export async function listWaitlist(
+  db: D1Database,
+  opts: { status?: 'subscribed' | 'unsubscribed' | 'all'; limit?: number } = {}
+): Promise<WaitlistEntry[]> {
+  const status = opts.status ?? 'all'
+  const limit = Math.min(opts.limit ?? 500, 2000)
+  if (status === 'all') {
+    return (
+      await db
+        .prepare(`SELECT * FROM waitlist ORDER BY created_at DESC LIMIT ?`)
+        .bind(limit)
+        .all<WaitlistEntry>()
+    ).results
+  }
+  return (
+    await db
+      .prepare(`SELECT * FROM waitlist WHERE status = ? ORDER BY created_at DESC LIMIT ?`)
+      .bind(status, limit)
+      .all<WaitlistEntry>()
+  ).results
+}
+
+// Every entry, for CSV export.
+export async function listWaitlistForExport(db: D1Database): Promise<WaitlistEntry[]> {
+  return (
+    await db.prepare(`SELECT * FROM waitlist ORDER BY created_at DESC`).all<WaitlistEntry>()
+  ).results
+}
