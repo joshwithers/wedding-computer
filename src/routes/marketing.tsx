@@ -24,7 +24,16 @@ function captureReferral(c: any) {
 const markdownPages: Record<string, string> = {
   '/': `# Wedding Computer
 
-The collaboration platform where vendors, venues, planners, and couples plan weddings together — with shared timelines, calendars, and files that keep everyone on the same page.
+The collaboration platform where vendors, venues, planners, and couples plan weddings together — with shared timelines, calendars, and files that keep everyone on the same page. Vendors get a full CRM; couples get a real planning dashboard; and every wedding is a shared workspace so details are entered once and seen by everyone.
+
+## Why it's different
+
+A wedding is a dozen people working toward one day — yet most tools treat each vendor as an island, and the big marketplaces rent you back your own data. Wedding Computer is built on four ideas the rest of the industry forgot:
+
+- **Built for collaboration, not silos** — set the ceremony time once and it lands in every vendor's calendar; update the run sheet and the whole team sees it instantly. No re-keying the same details into a dozen forms.
+- **Your data, in plain text, forever** — every contact and wedding is a markdown file synced live to your own GitHub, editable in Obsidian or any text editor. A living mirror you control, not a CSV export. No lock-in, ever.
+- **AI-native, by design** — connect Claude, ChatGPT, or Cursor straight to your data over MCP. Because your data is open text, you (or any AI you trust) can read and write it directly.
+- **Know your market** — anonymised demand scores show how in-demand any date is for enquiries and bookings in your area, so you can decide which dates to chase and what to charge.
 
 ## Features
 
@@ -75,6 +84,15 @@ All data is stored as plain text markdown files, synced live to GitHub. Access y
   '/about': `# About Wedding Computer
 
 Wedding Computer is a collaboration platform for the wedding industry. It started as a vendor CRM and evolved into a multi-party tool where vendors, venues, planners, and couples coordinate on shared wedding entities.
+
+A wedding is one of the most collaborative events there is, yet most software treats every vendor as an island and the big marketplaces rent vendors back their own data. Wedding Computer is the opposite.
+
+## What makes it different
+
+- **Built for collaboration, not silos** — the wedding itself is the shared object. Enter the date, timeline, and run sheet once; every vendor and the couple work from the same source of truth.
+- **Your data in plain text, owned by you** — every contact and wedding is a markdown file synced live to your own GitHub, editable in Obsidian or any text editor. A living mirror you control, not an export. No lock-in.
+- **AI-native through MCP** — connect Claude, ChatGPT, Cursor, or your own agent directly to your data. Your open-text data is readable and writable by you and any AI you trust.
+- **Market intelligence built in** — anonymised demand scores show how in-demand any date is for enquiries and bookings, so vendors can decide which dates to chase and what to charge.
 
 Built on Cloudflare Workers. Open source under AGPL-3.0.
 
@@ -173,17 +191,17 @@ marketing.get('/', (c) => {
         {/* Hero */}
         <section class="py-12 sm:py-16 lg:py-24 text-center">
           <div class="inline-block bg-horizon-50 text-horizon-700 font-semibold text-sm px-4 py-1.5 rounded-full mb-4 sm:mb-6">
-            Free
+            Free forever · Open source
           </div>
           <h1 class="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] mb-4 sm:mb-6">
-            <span class="block">Excel as a wedding creative</span>
-            <span class="block">without running your business</span>
-            <span class="block text-horizon-700">from a spreadsheet</span>
+            <span class="block">Everyone working on a wedding,</span>
+            <span class="block text-horizon-700">finally on the same page</span>
           </h1>
-          <p class="text-base sm:text-lg text-gray-600 max-w-xl mx-auto mb-6 sm:mb-10 leading-relaxed">
-            The platform where vendors, venues, planners, and couples
-            plan weddings together — with a real CRM, shared timelines,
-            and files that keep everyone on the same page.
+          <p class="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto mb-6 sm:mb-10 leading-relaxed">
+            Vendors get a full CRM — leads, calendar, invoicing, email. Couples get a real
+            planning dashboard. And every wedding is a shared workspace, so the date, the timeline,
+            and the run sheet are entered <strong class="text-gray-900">once</strong> and seen by
+            everyone — instead of re-typed into a dozen different forms.
           </p>
           <div class="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <a
@@ -198,6 +216,43 @@ marketing.get('/', (c) => {
             >
               See how it works
             </a>
+          </div>
+          <p class="text-xs text-gray-400 mt-5">
+            Free for couples and vendors. No credit card. Your data in plain text you own forever.
+          </p>
+        </section>
+
+        {/* Why it's different */}
+        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
+          <div class="max-w-3xl mx-auto text-center mb-10 sm:mb-12">
+            <h2 class="text-2xl sm:text-3xl font-bold mb-4">Not just another wedding CRM</h2>
+            <p class="text-gray-600 leading-relaxed">
+              A wedding is a dozen people working toward one day — yet most tools treat each vendor
+              as an island, and the big marketplaces rent you back your own data. Wedding Computer is
+              built on four ideas the rest of the industry forgot.
+            </p>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 max-w-4xl mx-auto">
+            <Pillar color="horizon" icon="workspace" title="Built for collaboration, not silos">
+              The wedding itself is the shared thing. Set the ceremony time once and it lands in
+              every vendor's calendar. Update the run sheet and the whole team sees it instantly —
+              no re-keying, no stale PDFs, no midnight group chats.
+            </Pillar>
+            <Pillar color="grapefruit" icon="plaintext" title="Your data, in plain text, forever">
+              Everything is stored as plain text files synced live to your own GitHub — open them in
+              Obsidian or any text editor. Not a CSV export button: a living mirror you control. If
+              you ever leave, your data is already on your computer. No lock-in, ever.
+            </Pillar>
+            <Pillar color="horizon" icon="mcp" title="AI-native, by design">
+              Connect Claude, ChatGPT, or Cursor straight to your data over MCP. AI drafts your
+              enquiry replies and builds your run sheets. Because your data is open text, you — or
+              any AI you trust — can read and write it directly.
+            </Pillar>
+            <Pillar color="grapefruit" icon="analytics" title="Know your market">
+              Anonymised demand scores show how in-demand any date is for enquiries and bookings in
+              your area — the kind of intelligence hotels and airlines have always had. Decide which
+              dates to chase, and what to charge for them.
+            </Pillar>
           </div>
         </section>
 
@@ -233,7 +288,7 @@ marketing.get('/', (c) => {
         {/* Features */}
         <section class="py-10 sm:py-16">
           <h2 class="text-xl sm:text-2xl font-bold text-center mb-3">Everything you need to run your wedding business</h2>
-          <p class="text-center text-gray-500 text-sm mb-8 sm:mb-12 max-w-lg mx-auto">For vendors, couples, and everyone in between.</p>
+          <p class="text-center text-gray-500 text-sm mb-8 sm:mb-12 max-w-lg mx-auto">For vendors, couples, and everyone in between — and the core is free forever.</p>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
             <FeatureCard
               color="horizon"
@@ -615,9 +670,10 @@ marketing.get('/', (c) => {
         {/* CTA */}
         <section class="py-8 sm:py-16">
           <div class="bg-horizon-600 rounded-2xl sm:rounded-3xl p-6 sm:p-12 text-center text-white">
-            <h2 class="text-2xl sm:text-3xl font-bold mb-4">Ready to simplify your wedding business?</h2>
+            <h2 class="text-2xl sm:text-3xl font-bold mb-4">Ready to get everyone on the same page?</h2>
             <p class="text-white mb-6 sm:mb-8 max-w-md mx-auto">
-              Join vendors who are already managing their leads, weddings, and invoices in one place.
+              Whether you're a vendor running your business or a couple planning your day — start free,
+              keep your data forever, and bring the whole wedding team with you.
             </p>
             <a
               href="/login"
@@ -638,23 +694,49 @@ marketing.get('/about', (c) => {
       <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
         {/* Intro */}
         <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6">The wedding industry deserves better software</h1>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-10">
           <p>
-            Most wedding professionals run their business across a dozen disconnected tools — a CRM here,
-            a spreadsheet there, invoices in one app, calendar in another, and a group chat holding it all together with
-            duct tape. Couples get an even worse deal: a shared Google Sheet and a prayer.
+            A wedding is one of the most collaborative events there is — a couple plus a celebrant, a
+            photographer, a florist, a venue, a planner, a band, a caterer, all working toward a single
+            day. Yet the software they use pretends none of them know each other. The couple re-types
+            the same details into a dozen intake forms. Every vendor re-keys it into their own CRM. The
+            run sheet lives in a PDF that's out of date the moment it's emailed.
           </p>
           <p>
-            Wedding Computer replaces all of that with one platform purpose-built for how weddings actually work.
-            Vendors manage their entire business — leads, calendar, invoices, emails — from a single dashboard. Couples
-            get a planning hub where they track their vendors, budget, and timeline. And when a booking happens, both
-            sides share a workspace so nothing falls through the cracks.
+            And the tools that dominate the industry are lead-gen marketplaces — the vendor is the
+            product, and the client relationship and the data are owned by the platform and rented back.
+            Couples get an even worse deal: a shared Google Sheet and a prayer.
           </p>
           <p>
-            It's free to start, open source, and built by people who work in weddings.
-            Couples use it free forever. Vendors get a generous free tier with all the core tools,
-            and can unlock analytics, benchmarking, and AI features with a Pro plan for $28/month.
+            Wedding Computer is the opposite of all that. Vendors run their entire business — leads,
+            calendar, invoices, email — from one dashboard. Couples get a real planning hub. And every
+            wedding is a shared workspace, so the people working on it actually work together. Your data
+            is stored as plain text files you own forever, and you can plug your own AI into it. It's
+            free to start, open source, and built by people who work in weddings — couples free forever,
+            vendors free for the core tools, with analytics and AI on a Pro plan for $28/month.
           </p>
+        </div>
+
+        {/* What makes it different */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-2">What makes it different</h2>
+        <p class="text-gray-500 text-sm mb-6">Four ideas the rest of the industry forgot.</p>
+        <div class="space-y-3 mb-12">
+          <AboutFeature
+            title="Built for collaboration, not silos"
+            desc="A wedding is a team effort, so the wedding itself is the shared object. Set the ceremony time once and it lands in every vendor's calendar. Update the run sheet and the whole team sees it instantly. Enter the couple's details once and every connected vendor has them. No re-keying, no stale PDFs, no chasing updates over text."
+          />
+          <AboutFeature
+            title="Your data in plain text, owned by you"
+            desc="Every contact and wedding is a plain text markdown file, synced live to your own private GitHub repo and editable in Obsidian or any text editor. It's not an export you have to request — it's a living mirror of your data that you control. If you ever stop using Wedding Computer, everything is already on your computer in files that will still open in 50 years. No lock-in, ever."
+          />
+          <AboutFeature
+            title="AI-native through MCP"
+            desc="Connect Claude, ChatGPT, Cursor, or your own agent directly to your data over the Model Context Protocol. Because your data is open text, both you and any AI you trust can read and write it — draft enquiry replies, build run sheets, query your pipeline from your own AI workflow. We haven't seen another wedding platform offer this."
+          />
+          <AboutFeature
+            title="Market intelligence built in"
+            desc="Anonymised demand scores show how in-demand any date is for enquiries and bookings at your city, state, country, and global level — the kind of intelligence hotels and airlines have always had, brought to an industry that mostly flat-prices a wildly seasonal product. Decide which dates to chase and what to charge for them."
+          />
         </div>
 
         {/* For Vendors */}
@@ -752,6 +834,13 @@ marketing.get('/about', (c) => {
           <p>
             When a vendor books a lead, a shared wedding workspace is created. They invite
             the couple (who get the couple dashboard) and other vendors (who get scoped access to the wedding).
+          </p>
+          <p>
+            This is the single source of truth for the wedding. Set the date, venue, ceremony and
+            reception times, and run sheet once — in the workspace — and everyone draws from the same
+            copy. When something changes, it changes for everyone at the same moment. No more "actually,
+            we moved the ceremony to the garden" emails landing with half the team, and no vendor working
+            off a timeline that's three versions old.
           </p>
           <p>
             Roles control who sees what. Managers (vendors, planners, or couples with the manage permission) have full control. Vendors see details relevant to their service.
@@ -1837,6 +1926,20 @@ function RoleCollab({ children }: { children: any }) {
     <div class="sm:col-span-2 bg-horizon-50 border border-horizon-600/10 rounded-xl p-4">
       <p class="text-xs font-bold text-horizon-700 mb-1">How collaboration makes it better</p>
       <p class="text-xs text-gray-700 leading-relaxed">{children}</p>
+    </div>
+  )
+}
+
+function Pillar({ color, icon, title, children }: { color: 'horizon' | 'grapefruit'; icon: string; title: string; children: any }) {
+  const iconBg = color === 'horizon' ? 'bg-horizon-100' : 'bg-grapefruit-100'
+  const iconColor = color === 'horizon' ? 'text-horizon-600' : 'text-grapefruit-600'
+  return (
+    <div class="bg-white border border-papaya-300/30 rounded-2xl sm:rounded-3xl p-6 sm:p-8">
+      <div class={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl ${iconBg} flex items-center justify-center mb-4`}>
+        <div class={`w-6 h-6 ${iconColor}`} dangerouslySetInnerHTML={{ __html: featureIcons[icon] }} />
+      </div>
+      <h3 class="text-lg font-bold text-gray-900 mb-2">{title}</h3>
+      <p class="text-sm text-gray-600 leading-relaxed">{children}</p>
     </div>
   )
 }
