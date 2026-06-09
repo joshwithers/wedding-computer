@@ -140,6 +140,7 @@ export async function updateVendor(
       | 'location_lat'
       | 'location_lng'
       | 'location_place_id'
+      | 'logo_r2_key'
       | 'availability_sharing'
       | 'directory_listed'
     >

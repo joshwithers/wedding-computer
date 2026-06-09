@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   location_lat REAL,
   location_lng REAL,
   location_place_id TEXT,
+  logo_r2_key TEXT,
   availability_sharing TEXT NOT NULL DEFAULT 'private',
   directory_listed INTEGER NOT NULL DEFAULT 0,
   referral_code TEXT,

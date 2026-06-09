@@ -427,6 +427,97 @@ settings.get('/app/settings', async (c) => {
           </form>
         </section>
 
+        <section class="mt-10 pt-8 border-t border-gray-200" id="logo-section" data-csrf={c.get('csrfToken')}>
+          <h2 class="text-base font-bold mb-2">Logo / icon</h2>
+          <p class="text-sm text-gray-500 mb-4">
+            A square logo or icon for your business — shown around Wedding Computer and on your public
+            directory listing. Upload any image and crop it to a square.
+          </p>
+          <div class="flex items-center gap-4">
+            <div class="w-20 h-20 rounded-2xl bg-gray-100 overflow-hidden flex items-center justify-center shrink-0">
+              {vendor.logo_r2_key ? (
+                <img src={`/vendor-logo/${vendor.id}`} alt="Business logo" class="w-full h-full object-cover" />
+              ) : (
+                <span class="text-gray-400 text-xs">No logo</span>
+              )}
+            </div>
+            <div class="flex items-center gap-2">
+              <label class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors cursor-pointer">
+                {vendor.logo_r2_key ? 'Replace logo' : 'Upload logo'}
+                <input type="file" id="logo-file" accept="image/png,image/jpeg,image/webp" class="hidden" />
+              </label>
+              {vendor.logo_r2_key && (
+                <form method="post" action="/app/settings/logo/remove">
+                  <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                  <button type="submit" class="border border-gray-300 text-gray-700 py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors">
+                    Remove
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+
+          {/* Cropper — revealed after a file is chosen */}
+          <div id="logo-cropper" class="hidden mt-5">
+            <p class="text-sm text-gray-600 mb-2">Drag to reposition, slide to zoom.</p>
+            <canvas id="logo-canvas" width="280" height="280" class="rounded-2xl bg-gray-50 border border-gray-200 cursor-move touch-none"></canvas>
+            <input type="range" id="logo-zoom" min="1" max="3" step="0.01" value="1" class="block w-[280px] max-w-full mt-3 accent-horizon-600" />
+            <div class="flex items-center gap-2 mt-3">
+              <button id="logo-save" type="button" class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">Save logo</button>
+              <button id="logo-cancel" type="button" class="border border-gray-300 text-gray-700 py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors">Cancel</button>
+              <span id="logo-status" class="text-xs text-gray-400"></span>
+            </div>
+          </div>
+          <script dangerouslySetInnerHTML={{ __html: `
+(function(){
+  var root=document.getElementById('logo-section'); if(!root) return;
+  var csrf=root.getAttribute('data-csrf');
+  var fileInput=document.getElementById('logo-file');
+  var cropper=document.getElementById('logo-cropper');
+  var canvas=document.getElementById('logo-canvas');
+  var zoom=document.getElementById('logo-zoom');
+  var saveBtn=document.getElementById('logo-save');
+  var cancelBtn=document.getElementById('logo-cancel');
+  var statusEl=document.getElementById('logo-status');
+  if(!fileInput||!canvas) return;
+  var ctx=canvas.getContext('2d');
+  var VP=280, img=null, baseScale=1, scale=1, ox=0, oy=0, dragging=false, lastX=0, lastY=0;
+  function clamp(){ var w=img.width*scale, h=img.height*scale; ox=Math.min(0,Math.max(VP-w,ox)); oy=Math.min(0,Math.max(VP-h,oy)); }
+  function draw(){ ctx.clearRect(0,0,VP,VP); ctx.drawImage(img,ox,oy,img.width*scale,img.height*scale); }
+  function applyZoom(z){ var prev=scale; scale=baseScale*z; var c=VP/2; ox=c-(c-ox)*(scale/prev); oy=c-(c-oy)*(scale/prev); clamp(); draw(); }
+  fileInput.addEventListener('change',function(e){
+    var f=e.target.files&&e.target.files[0]; if(!f) return;
+    if(f.size>5*1024*1024){ alert('Image is too large (max 5MB).'); fileInput.value=''; return; }
+    var url=URL.createObjectURL(f);
+    img=new Image();
+    img.onload=function(){ baseScale=Math.max(VP/img.width,VP/img.height); scale=baseScale; zoom.value='1'; ox=(VP-img.width*scale)/2; oy=(VP-img.height*scale)/2; clamp(); draw(); cropper.classList.remove('hidden'); URL.revokeObjectURL(url); };
+    img.onerror=function(){ alert('Could not read that image.'); };
+    img.src=url;
+  });
+  zoom.addEventListener('input',function(){ if(img) applyZoom(parseFloat(zoom.value)); });
+  canvas.addEventListener('pointerdown',function(e){ if(!img) return; dragging=true; lastX=e.clientX; lastY=e.clientY; try{canvas.setPointerCapture(e.pointerId);}catch(_){} });
+  canvas.addEventListener('pointermove',function(e){ if(!dragging) return; ox+=(e.clientX-lastX); oy+=(e.clientY-lastY); lastX=e.clientX; lastY=e.clientY; clamp(); draw(); });
+  canvas.addEventListener('pointerup',function(){ dragging=false; });
+  canvas.addEventListener('pointercancel',function(){ dragging=false; });
+  cancelBtn.addEventListener('click',function(){ cropper.classList.add('hidden'); fileInput.value=''; img=null; statusEl.textContent=''; });
+  saveBtn.addEventListener('click',function(){
+    if(!img) return;
+    var out=document.createElement('canvas'); out.width=512; out.height=512;
+    var octx=out.getContext('2d'); var sf=512/VP;
+    octx.drawImage(img,ox*sf,oy*sf,img.width*scale*sf,img.height*scale*sf);
+    statusEl.textContent='Uploading...'; saveBtn.disabled=true;
+    out.toBlob(function(blob){
+      var fd=new FormData(); fd.append('logo',blob,'logo.png');
+      fetch('/app/settings/logo',{method:'POST',headers:{'x-csrf-token':csrf},body:fd})
+        .then(function(r){ if(!r.ok) throw new Error('upload'); return r.json(); })
+        .then(function(){ window.location.reload(); })
+        .catch(function(){ statusEl.textContent='Upload failed. Please try again.'; saveBtn.disabled=false; });
+    },'image/png');
+  });
+})();
+` }} />
+        </section>
+
         <section class="mt-10 pt-8 border-t border-gray-200">
           <h2 class="text-base font-bold mb-2">Directory listing</h2>
           <p class="text-sm text-gray-500 mb-4">
@@ -889,6 +980,44 @@ settings.post('/app/settings/directory-listing', async (c) => {
   const listed = body.directory_listed === '1' ? 1 : 0
 
   await updateVendor(c.env.DB, vendor.id, { directory_listed: listed })
+  return c.redirect('/app/settings?saved=1')
+})
+
+// ─── Logo / icon (square, cropped client-side, stored in R2) ───
+
+settings.post('/app/settings/logo', async (c) => {
+  const vendor = c.get('vendor')!
+  const body = await c.req.parseBody()
+  const file = body.logo
+
+  if (!file || !(file instanceof File) || file.size === 0) {
+    return c.json({ error: 'No file uploaded' }, 400)
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    return c.json({ error: 'Image is too large (max 5MB)' }, 400)
+  }
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+    return c.json({ error: 'Invalid file type' }, 400)
+  }
+  if (!c.env.STORAGE) {
+    return c.json({ error: 'File storage not configured' }, 500)
+  }
+
+  const r2Key = `vendor-logos/${vendor.id}.png`
+  await c.env.STORAGE.put(r2Key, file.stream(), {
+    httpMetadata: { contentType: file.type },
+  })
+  await updateVendor(c.env.DB, vendor.id, { logo_r2_key: r2Key })
+  await auditLog(c, 'update_logo', 'vendor', vendor.id).catch(() => {})
+  return c.json({ ok: true })
+})
+
+settings.post('/app/settings/logo/remove', async (c) => {
+  const vendor = c.get('vendor')!
+  if (vendor.logo_r2_key && c.env.STORAGE) {
+    await c.env.STORAGE.delete(vendor.logo_r2_key).catch(() => {})
+  }
+  await updateVendor(c.env.DB, vendor.id, { logo_r2_key: null })
   return c.redirect('/app/settings?saved=1')
 })
 

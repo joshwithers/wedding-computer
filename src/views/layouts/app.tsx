@@ -133,7 +133,9 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             <div class="text-lg font-bold text-gray-900">{title ?? 'Dashboard'}</div>
             <a href="/account" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <span class="text-sm font-medium text-gray-600">{vendor?.business_name ?? user.name}</span>
-              {user.avatar_r2_key ? (
+              {vendor?.logo_r2_key ? (
+                <img src={`/vendor-logo/${vendor.id}`} alt={vendor.business_name} class="w-8 h-8 rounded-lg object-cover" />
+              ) : user.avatar_r2_key ? (
                 <img src={`/avatar/${user.id}`} alt={user.name} class="w-8 h-8 rounded-full object-cover" />
               ) : (
                 <div class="w-8 h-8 bg-grapefruit-100 rounded-full flex items-center justify-center text-xs font-bold text-grapefruit-700">

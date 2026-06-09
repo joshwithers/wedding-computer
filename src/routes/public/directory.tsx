@@ -70,7 +70,7 @@ directory.get('/api/directory/vendors', async (c) => {
   // Fetch page
   const result = await c.env.DB
     .prepare(
-      `SELECT vp.id, vp.business_name, vp.category, vp.location_city, vp.location_state, vp.location_country, vp.bio, vp.website, vp.instagram, u.avatar_url
+      `SELECT vp.id, vp.business_name, vp.category, vp.location_city, vp.location_state, vp.location_country, vp.bio, vp.website, vp.instagram, vp.logo_r2_key, u.avatar_url
        FROM vendor_profiles vp
        JOIN users u ON u.id = vp.user_id
        WHERE ${where}
@@ -88,11 +88,18 @@ directory.get('/api/directory/vendors', async (c) => {
       bio: string | null
       website: string | null
       instagram: string | null
+      logo_r2_key: string | null
       avatar_url: string | null
     }>()
 
+  const appUrl = c.env.APP_URL
+  const vendors = result.results.map(({ logo_r2_key, ...v }) => ({
+    ...v,
+    logo_url: logo_r2_key ? `${appUrl}/vendor-logo/${v.id}` : null,
+  }))
+
   return c.json({
-    vendors: result.results,
+    vendors,
     total,
     page,
     limit,
@@ -104,9 +111,9 @@ directory.get('/api/directory/vendors', async (c) => {
 directory.get('/api/directory/vendors/:id', async (c) => {
   const id = c.req.param('id')
 
-  const vendor = await c.env.DB
+  const row = await c.env.DB
     .prepare(
-      `SELECT vp.id, vp.business_name, vp.category, vp.location_city, vp.location_state, vp.location_country, vp.bio, vp.website, vp.instagram, vp.phone, vp.ceremony_types, u.avatar_url
+      `SELECT vp.id, vp.business_name, vp.category, vp.location_city, vp.location_state, vp.location_country, vp.bio, vp.website, vp.instagram, vp.phone, vp.ceremony_types, vp.logo_r2_key, u.avatar_url
        FROM vendor_profiles vp
        JOIN users u ON u.id = vp.user_id
        WHERE vp.id = ? AND vp.directory_listed = 1`
@@ -124,14 +131,21 @@ directory.get('/api/directory/vendors/:id', async (c) => {
       instagram: string | null
       phone: string | null
       ceremony_types: string | null
+      logo_r2_key: string | null
       avatar_url: string | null
     }>()
 
-  if (!vendor) {
+  if (!row) {
     return c.json({ error: 'Vendor not found' }, 404)
   }
 
-  return c.json({ vendor })
+  const { logo_r2_key, ...vendor } = row
+  return c.json({
+    vendor: {
+      ...vendor,
+      logo_url: logo_r2_key ? `${c.env.APP_URL}/vendor-logo/${vendor.id}` : null,
+    },
+  })
 })
 
 // ─── GET /api/directory/categories — Category counts ───
@@ -176,6 +190,25 @@ directory.get('/api/directory/locations', async (c) => {
       count: r.count,
     })),
   })
+})
+
+// ─── GET /vendor-logo/:id — public square logo/icon (used by the app and the
+// wedding.institute directory). Served like /avatar/:id: public, by id, no auth. ───
+
+directory.get('/vendor-logo/:id', async (c) => {
+  const id = c.req.param('id')
+  if (!c.env.STORAGE) return c.notFound()
+  const row = await c.env.DB
+    .prepare('SELECT logo_r2_key FROM vendor_profiles WHERE id = ?')
+    .bind(id)
+    .first<{ logo_r2_key: string | null }>()
+  if (!row?.logo_r2_key) return c.notFound()
+  const object = await c.env.STORAGE.get(row.logo_r2_key)
+  if (!object) return c.notFound()
+  const headers = new Headers()
+  headers.set('Content-Type', object.httpMetadata?.contentType ?? 'image/png')
+  headers.set('Cache-Control', 'public, max-age=3600')
+  return new Response(object.body, { headers })
 })
 
 export default directory
