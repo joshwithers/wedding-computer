@@ -12,6 +12,9 @@ import { getUserByEmail } from '../db/users'
 import { getVendorByUserId } from '../db/vendors'
 import { grantFreeMonths, listRecentGrants, FREE_MONTHS_CAP, type GrantRow } from '../db/referrals'
 import { redeemBankedMonthsToStripe } from '../services/free-months'
+import { getBroadcastRecipients, getBroadcastCountries } from '../db/broadcast'
+import { countWaitlist } from '../db/waitlist'
+import { broadcastEmail } from '../services/email'
 import { auditLog } from '../middleware/audit'
 
 const admin = new Hono<Env>()
@@ -36,6 +39,7 @@ const AdminLayout: FC<PropsWithChildren<{ title?: string; user: User; csrfToken:
           </a>
           <div class="flex items-center gap-4">
             <a href="/admin" class="text-sm text-gray-400 hover:text-white">Dashboard</a>
+            <a href="/admin/broadcast" class="text-sm text-gray-400 hover:text-white">Broadcast</a>
             <a href="/admin/gifts" class="text-sm text-gray-400 hover:text-white">Gifts</a>
             <a href="/app" class="text-sm text-gray-400 hover:text-white">Back to app</a>
             <span class="text-sm text-gray-500">{user.email}</span>
@@ -110,6 +114,7 @@ admin.get('/admin', async (c) => {
     locationRows,
     monthlyEnquiryRows,
     monthlyBookingRows,
+    waitlistCount,
   ] = await Promise.all([
     getTotalVendors(db),
     getTotalWeddings(db),
@@ -125,6 +130,7 @@ admin.get('/admin', async (c) => {
     getLocationBreakdown(db, null, yearStart, yearEnd),
     getMonthlyEventCountsGlobal(db, 'enquiry_received', 12),
     getMonthlyEventCountsGlobal(db, 'booking_confirmed', 12),
+    countWaitlist(db),
   ])
 
   const bookingRate = enquiriesThisYear > 0
@@ -154,6 +160,7 @@ admin.get('/admin', async (c) => {
           <StatCard label="Total vendors" value={String(totalVendors)} />
           <StatCard label="Total weddings" value={String(totalWeddings)} />
           <StatCard label="Total couples" value={String(totalCouples)} />
+          <StatCard label="Waitlist" value={String(waitlistCount)} />
           <StatCard label="Active Pro subscribers" value={String(activeProCount)} />
           <StatCard label="MRR" value={formatCents(mrr)} sub={`${activeProCount} x $28/mo`} />
           <StatCard label="Pro conversion rate" value={formatPercent(conversionRate)} />
@@ -438,6 +445,193 @@ admin.post('/admin/gift-months', async (c) => {
   return c.redirect(
     `/admin/gifts?granted=${result.applied}&email=${encodeURIComponent(email)}&clamped=${result.clamped ? '1' : '0'}`
   )
+})
+
+// ─── Broadcast email ───
+
+type BroadcastValues = {
+  vendors: boolean
+  couples: boolean
+  waitlist: boolean
+  country: string
+  subject: string
+  body: string
+}
+
+function renderBroadcast(opts: {
+  user: User
+  csrfToken: string
+  countries: string[]
+  values: BroadcastValues
+  preview?: { count: number } | null
+  sentCount?: number | null
+  error?: string | null
+}) {
+  const { user, csrfToken, countries, values, preview, sentCount, error } = opts
+  return (
+    <AdminLayout title="Broadcast" user={user} csrfToken={csrfToken}>
+      <div class="space-y-6 max-w-2xl">
+        <div>
+          <h1 class="text-2xl font-bold">Broadcast email</h1>
+          <p class="text-sm text-gray-500 mt-1">
+            Send an announcement to vendors, couples, and the waitlist. Pick an audience, preview the
+            recipient count, then send. Recipients are de-duplicated by email and delivered via the queue.
+          </p>
+        </div>
+
+        {sentCount != null && (
+          <div class="bg-green-50 border border-green-200 text-green-800 text-sm rounded-xl p-3">
+            Queued {sentCount} email{sentCount === 1 ? '' : 's'} for delivery.
+          </div>
+        )}
+        {error && (
+          <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3">{error}</div>
+        )}
+
+        <form method="post" action="/admin/broadcast" class="bg-white rounded-2xl p-5 sm:p-6 border border-gray-200 space-y-5">
+          <input type="hidden" name="_csrf" value={csrfToken} />
+
+          <div>
+            <p class="block text-sm font-medium text-gray-700 mb-2">Audience</p>
+            <div class="space-y-2">
+              <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" name="vendors" value="1" checked={values.vendors} class="rounded border-gray-300" /> All vendors
+              </label>
+              <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" name="couples" value="1" checked={values.couples} class="rounded border-gray-300" /> All couples
+              </label>
+              <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" name="waitlist" value="1" checked={values.waitlist} class="rounded border-gray-300" /> Waitlist
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="country">Country filter</label>
+            <select id="country" name="country" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+              <option value="">All countries</option>
+              {countries.map((ct) => (
+                <option value={ct} selected={values.country === ct}>{ct}</option>
+              ))}
+            </select>
+            <p class="text-xs text-gray-400 mt-1">Matched against vendor business country, couple profile country, and waitlist country.</p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="subject">Subject</label>
+            <input type="text" id="subject" name="subject" required value={values.subject} placeholder="Wedding Computer is live!" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="body">Message</label>
+            <textarea id="body" name="body" rows={10} required placeholder="Write your announcement…" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">{values.body}</textarea>
+            <p class="text-xs text-gray-400 mt-1">Plain text — leave a blank line between paragraphs. A branded header/footer is added automatically, plus an unsubscribe link for waitlist recipients.</p>
+          </div>
+
+          <div class="flex items-center gap-3 flex-wrap pt-1">
+            <button type="submit" name="action" value="preview" class="bg-white border border-gray-300 text-gray-700 rounded-xl px-5 py-2.5 text-sm font-bold hover:bg-gray-50 transition-colors">
+              Preview recipients
+            </button>
+            {preview && preview.count > 0 && (
+              <button type="submit" name="action" value="send" class="bg-gray-900 text-white rounded-xl px-6 py-2.5 text-sm font-bold hover:bg-gray-800 transition-colors">
+                Send to {preview.count} recipient{preview.count === 1 ? '' : 's'}
+              </button>
+            )}
+          </div>
+
+          {preview && (
+            <p class="text-sm text-gray-600">
+              {preview.count === 0
+                ? 'No recipients match this selection.'
+                : `${preview.count} unique recipient${preview.count === 1 ? '' : 's'} match this selection. Review, then click Send.`}
+            </p>
+          )}
+        </form>
+      </div>
+    </AdminLayout>
+  )
+}
+
+admin.get('/admin/broadcast', async (c) => {
+  const user = c.get('user')
+  const countries = await getBroadcastCountries(c.env.DB)
+  const sent = c.req.query('sent')
+  return c.html(
+    renderBroadcast({
+      user,
+      csrfToken: c.get('csrfToken'),
+      countries,
+      values: { vendors: false, couples: false, waitlist: true, country: '', subject: '', body: '' },
+      sentCount: sent != null ? parseInt(sent, 10) || 0 : null,
+    })
+  )
+})
+
+admin.post('/admin/broadcast', async (c) => {
+  const user = c.get('user')
+  const form = await c.req.parseBody()
+  const values: BroadcastValues = {
+    vendors: form.vendors === '1',
+    couples: form.couples === '1',
+    waitlist: form.waitlist === '1',
+    country: typeof form.country === 'string' ? form.country.trim() : '',
+    subject: typeof form.subject === 'string' ? form.subject.trim() : '',
+    body: typeof form.body === 'string' ? form.body : '',
+  }
+  const action = form.action === 'send' ? 'send' : 'preview'
+  const countries = await getBroadcastCountries(c.env.DB)
+
+  const rerender = (extra: { preview?: { count: number } | null; error?: string | null }) =>
+    c.html(renderBroadcast({ user, csrfToken: c.get('csrfToken'), countries, values, ...extra }))
+
+  if (!values.vendors && !values.couples && !values.waitlist) {
+    return rerender({ error: 'Select at least one audience.' })
+  }
+  if (!values.subject) return rerender({ error: 'Enter a subject.' })
+  if (!values.body.trim()) return rerender({ error: 'Enter a message.' })
+
+  const recipients = await getBroadcastRecipients(c.env.DB, {
+    vendors: values.vendors,
+    couples: values.couples,
+    waitlist: values.waitlist,
+    country: values.country || null,
+  })
+
+  if (action === 'preview') {
+    return rerender({ preview: { count: recipients.length } })
+  }
+
+  if (recipients.length === 0) {
+    return rerender({ preview: { count: 0 }, error: 'No recipients match — nothing was sent.' })
+  }
+
+  // Fan out via the email queue — chunked into batches of 100 sends.
+  const messages = recipients.map((r) => ({
+    body: {
+      type: 'broadcast_email',
+      to: r.email,
+      toName: r.name ?? '',
+      subject: values.subject,
+      html: broadcastEmail({
+        bodyText: values.body,
+        unsubscribeUrl: r.unsubscribeToken
+          ? `${c.env.APP_URL}/notify/unsubscribe?token=${r.unsubscribeToken}`
+          : null,
+      }),
+    },
+  }))
+  for (let i = 0; i < messages.length; i += 100) {
+    await c.env.EMAIL_QUEUE.sendBatch(messages.slice(i, i + 100))
+  }
+
+  await auditLog(c, 'broadcast_email', 'broadcast', undefined, {
+    audiences: { vendors: values.vendors, couples: values.couples, waitlist: values.waitlist },
+    country: values.country || null,
+    subject: values.subject,
+    count: recipients.length,
+  }).catch(() => {})
+
+  return c.redirect(`/admin/broadcast?sent=${recipients.length}`)
 })
 
 export default admin

@@ -728,3 +728,20 @@ CREATE TABLE IF NOT EXISTS quote_calculators (
 
 CREATE INDEX IF NOT EXISTS idx_quote_calculators_vendor ON quote_calculators(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_quote_calculators_token ON quote_calculators(public_token);
+
+-- Waitlist (people interested ahead of launch — not yet vendors or couples)
+CREATE TABLE IF NOT EXISTS waitlist (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  email TEXT NOT NULL UNIQUE,
+  name TEXT,
+  country TEXT,
+  status TEXT NOT NULL DEFAULT 'subscribed'
+    CHECK (status IN ('subscribed','unsubscribed')),
+  unsubscribe_token TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))),
+  source TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_waitlist_status ON waitlist(status);
+CREATE INDEX IF NOT EXISTS idx_waitlist_country ON waitlist(country);

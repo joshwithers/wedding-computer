@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Env } from './types'
 import marketing from './routes/marketing'
 import auth from './routes/auth'
+import notify from './routes/notify'
 import onboarding from './routes/onboarding'
 import enquire from './routes/enquire'
 import dashboard from './routes/vendor/dashboard'
@@ -305,6 +306,7 @@ app.get('/.well-known/mcp/server-card.json', (c) =>
 // Public routes
 app.route('/', marketing)
 app.route('/', auth)
+app.route('/', notify)
 app.route('/', onboarding)
 app.route('/', enquire)
 app.route('/', bookRoute)
@@ -688,6 +690,20 @@ export default {
             html: referralRewardEmail({ appUrl: env.APP_URL }),
           })
           console.log('[QUEUE] referral_reward email sent to', vendor.user_email)
+
+        } else if (body.type === 'broadcast_email') {
+          // One recipient of an admin broadcast (fanned out from /admin/broadcast).
+          await sendEmailMessage({
+            db: env.DB,
+            resendApiKey: env.RESEND_API_KEY,
+            vendorId: null,
+            to: body.to,
+            toName: body.toName || undefined,
+            subject: body.subject,
+            html: body.html,
+            isSystem: true,
+          })
+          console.log('[QUEUE] broadcast_email sent to', body.to)
 
         } else {
           console.log('[QUEUE] unknown message type', body.type)

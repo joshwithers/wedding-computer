@@ -550,3 +550,37 @@ export function formConfirmationEmail(data: {
     ${fieldsTable(data.fields)}
   `, { preheader: `Your submission to ${esc(data.vendorName)}` })
 }
+
+// ─── Waitlist + broadcast ───
+
+// Confirmation sent when someone joins the "notify me when it's live" waitlist.
+export function waitlistWelcomeEmail(data: { name?: string | null; unsubscribeUrl?: string | null }): string {
+  const greeting = data.name ? `Hi ${esc(data.name)},` : 'Hi there,'
+  const unsub = data.unsubscribeUrl
+    ? `<p style="margin:24px 0 0;font-size:12px;color:#999;line-height:1.5;">You're receiving this because you asked to be notified when Wedding Computer launches. <a href="${data.unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a>.</p>`
+    : ''
+  return emailWrapper(`
+    <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#1a1a1a;">You're on the list 🎉</h1>
+    <p style="margin:0 0 16px;font-size:15px;color:#333;line-height:1.6;">${greeting} thanks for your interest in Wedding Computer. We'll email you the moment it's live.</p>
+    <p style="margin:0 0 24px;font-size:15px;color:#333;line-height:1.6;">In the meantime, you can read more about what we're building.</p>
+    <a href="https://wedding.computer/about" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">Learn more</a>
+    ${unsub}
+  `, { preheader: "You're on the Wedding Computer waitlist — we'll let you know when it's live." })
+}
+
+// An admin broadcast / announcement. bodyText is admin-authored plain text:
+// blank lines become paragraphs, single newlines become <br>, and everything is
+// HTML-escaped at this output boundary.
+export function broadcastEmail(data: { bodyText: string; unsubscribeUrl?: string | null }): string {
+  const paras = data.bodyText
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p style="margin:0 0 16px;font-size:15px;color:#333;line-height:1.6;">${esc(p).replace(/\n/g, '<br>')}</p>`)
+    .join('')
+  const unsub = data.unsubscribeUrl
+    ? `<p style="margin:24px 0 0;font-size:12px;color:#999;line-height:1.5;">You're receiving this because you signed up for updates from Wedding Computer. <a href="${data.unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a>.</p>`
+    : ''
+  const preheader = data.bodyText.replace(/\s+/g, ' ').trim().slice(0, 110)
+  return emailWrapper(`${paras}${unsub}`, { preheader: esc(preheader) })
+}

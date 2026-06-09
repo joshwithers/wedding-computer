@@ -6,7 +6,7 @@ import { isValidEmail } from '../lib/validation'
 import { sendMagicLink, verifyMagicLink, findOrCreateUser, createUserSession, destroySession } from '../services/auth'
 import { getVendorByUserId } from '../db/vendors'
 import { getFirstCoupleWedding } from '../db/weddings'
-import { getUserById } from '../db/users'
+import { getUserById, getUserByEmail } from '../db/users'
 import { hasPasskeys } from '../db/passkeys'
 import { rateLimit } from '../middleware/rate-limit'
 import { auditLog } from '../middleware/audit'
@@ -36,64 +36,40 @@ auth.get('/login', (c) => {
       })
     }
   }
-  return c.html(
-    <AuthLayout title="Sign in">
-      <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">
-        <h2 class="text-2xl font-bold mb-1">Sign in</h2>
-        <p class="text-sm text-gray-500 mb-6">Enter your email and we'll send you a magic link.</p>
-        {error && <p class="text-sm text-grapefruit-700 font-medium mb-4">{error}</p>}
-        {sent && (
-          <div class="bg-horizon-50 text-horizon-700 text-sm font-medium rounded-xl p-4 mb-4">
-            Check your email for the sign-in link.
-          </div>
-        )}
-        <form method="post" action="/login">
-          <label class="block text-sm font-bold text-gray-700 mb-1.5" for="email">
-            Email address
-          </label>
-          <input
-            type="email"
-            id="email"
-            name="email"
-            required
-            autofocus
-            class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-            placeholder="you@example.com"
-          />
-          <button
-            type="submit"
-            class="mt-4 w-full bg-horizon-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
-          >
-            Send magic link
-          </button>
-        </form>
-        <div class="mt-4 text-center">
-          <div class="relative mb-4">
-            <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-200"></div></div>
-            <div class="relative flex justify-center"><span class="bg-white px-3 text-xs text-gray-400">or</span></div>
-          </div>
-          <button
-            id="passkey-login-btn"
-            type="button"
-            class="w-full border border-gray-200 py-3 px-4 rounded-xl text-sm font-bold text-gray-700 hover:bg-papaya-50 transition-colors flex items-center justify-center gap-2"
-          >
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
-            Sign in with passkey
-          </button>
-          <p id="passkey-error" class="text-sm text-grapefruit-700 font-medium mt-2 hidden"></p>
-        </div>
-        {PasskeyLoginScript()}
-      </div>
-    </AuthLayout>
-  )
+  return c.html(renderLoginPage({ error, sent: !!sent, gateOn: signupGateActive(c.env) }))
 })
 
 auth.post('/login', rateLimit(5, 60), async (c) => {
   const body = await c.req.parseBody()
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+  const inviteCode = typeof body.invite_code === 'string' ? body.invite_code.trim() : ''
+
+  const requiredCode = c.env.SIGNUP_INVITE_CODE?.trim()
+  const gateOn = !!requiredCode
 
   if (!isValidEmail(email)) {
-    return c.redirect('/login?error=Please+enter+a+valid+email+address')
+    return c.html(
+      renderLoginPage({ error: 'Please enter a valid email address.', gateOn, email }),
+      400
+    )
+  }
+
+  // Invite gate: only brand-new self-signups need a code. Existing users are
+  // unaffected, and anyone arriving via an invite (couples/vendors receive a
+  // pre-issued magic-link token that lands on /login/verify, never here) bypasses
+  // this entirely. Unset/empty SIGNUP_INVITE_CODE = open signups.
+  if (gateOn) {
+    const existing = await getUserByEmail(c.env.DB, email)
+    if (!existing) {
+      const valid = inviteCode.toLowerCase() === requiredCode!.toLowerCase()
+      if (!valid) {
+        console.warn('[AUTH] signup blocked: invalid/missing invite code')
+        const msg = inviteCode
+          ? 'That invite code isn’t valid.'
+          : 'Wedding Computer is invite-only right now — enter your invite code to create an account.'
+        return c.html(renderLoginPage({ error: msg, gateOn, email }), 400)
+      }
+    }
   }
 
   try {
@@ -255,6 +231,91 @@ auth.post('/auth/passkey/login/verify', rateLimit(10, 60), async (c) => {
   if (coupleWedding) return c.json({ redirect: `/wedding/${coupleWedding.wedding_id}` })
   return c.json({ redirect: '/onboarding' })
 })
+
+// ─── Login page rendering ───
+
+// Signup gate is active only when SIGNUP_INVITE_CODE is set to a non-empty value.
+function signupGateActive(env: Env['Bindings']): boolean {
+  return !!env.SIGNUP_INVITE_CODE?.trim()
+}
+
+function renderLoginPage(opts: { error?: string; sent?: boolean; gateOn?: boolean; email?: string }) {
+  const { error, sent, gateOn, email } = opts
+  return (
+    <AuthLayout title="Sign in">
+      <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">
+        <h2 class="text-2xl font-bold mb-1">Sign in</h2>
+        <p class="text-sm text-gray-500 mb-6">Enter your email and we'll send you a magic link.</p>
+        {error && <p class="text-sm text-grapefruit-700 font-medium mb-4">{error}</p>}
+        {sent && (
+          <div class="bg-horizon-50 text-horizon-700 text-sm font-medium rounded-xl p-4 mb-4">
+            Check your email for the sign-in link.
+          </div>
+        )}
+        <form method="post" action="/login">
+          <label class="block text-sm font-bold text-gray-700 mb-1.5" for="email">
+            Email address
+          </label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            required
+            autofocus
+            value={email ?? ''}
+            class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+            placeholder="you@example.com"
+          />
+          {gateOn && (
+            <div class="mt-4">
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="invite_code">
+                Invite code
+              </label>
+              <input
+                type="text"
+                id="invite_code"
+                name="invite_code"
+                autocomplete="off"
+                class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                placeholder="Enter your invite code"
+              />
+              <p class="text-xs text-gray-500 mt-1.5">
+                Wedding Computer is invite-only right now. New here? Enter your invite code.
+                Already have an account? Leave this blank.
+              </p>
+            </div>
+          )}
+          <button
+            type="submit"
+            class="mt-4 w-full bg-horizon-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
+          >
+            Send magic link
+          </button>
+        </form>
+        <div class="mt-4 text-center">
+          <div class="relative mb-4">
+            <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-200"></div></div>
+            <div class="relative flex justify-center"><span class="bg-white px-3 text-xs text-gray-400">or</span></div>
+          </div>
+          <button
+            id="passkey-login-btn"
+            type="button"
+            class="w-full border border-gray-200 py-3 px-4 rounded-xl text-sm font-bold text-gray-700 hover:bg-papaya-50 transition-colors flex items-center justify-center gap-2"
+          >
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+            Sign in with passkey
+          </button>
+          <p id="passkey-error" class="text-sm text-grapefruit-700 font-medium mt-2 hidden"></p>
+        </div>
+        <p class="text-center text-xs text-gray-500 mt-5">
+          Not signed up yet?{' '}
+          <a href="/notify" class="text-horizon-700 font-bold hover:underline">Get notified when we launch →</a>
+        </p>
+        {PasskeyLoginScript()}
+      </div>
+    </AuthLayout>
+  )
+}
 
 // ─── Passkey login script ───
 

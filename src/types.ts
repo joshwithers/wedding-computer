@@ -17,6 +17,10 @@ export type Bindings = {
   TURNSTILE_SECRET_KEY: string
   TURNSTILE_SITE_KEY: string
   GOOGLE_MAPS_API_KEY?: string
+  // When set (non-empty), new self-signups via the public login form must supply
+  // this invite code. Existing users and invite-link arrivals are unaffected.
+  // Unset/empty = open signups. Set via: wrangler secret put SIGNUP_INVITE_CODE
+  SIGNUP_INVITE_CODE?: string
   APP_URL: string
 }
 
@@ -688,4 +692,25 @@ export type FormSubmission = {
   ip_address: string | null
   user_agent: string | null
   created_at: string
+}
+
+export type WaitlistEntry = {
+  id: string
+  email: string
+  name: string | null
+  country: string | null
+  status: 'subscribed' | 'unsubscribed'
+  unsubscribe_token: string
+  source: string | null
+  created_at: string
+  updated_at: string
+}
+
+// A resolved broadcast recipient (deduped across vendors / couples / waitlist).
+export type BroadcastRecipient = {
+  email: string
+  name: string | null
+  country: string | null
+  audience: 'vendor' | 'couple' | 'waitlist'
+  unsubscribeToken: string | null
 }
