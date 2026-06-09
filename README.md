@@ -71,8 +71,40 @@ Set via `wrangler secret put <NAME>`:
 | `APPLE_CLIENT_ID` | Apple Sign-In |
 | `APPLE_CLIENT_SECRET` | Apple Sign-In (JWT) |
 | `TURNSTILE_SECRET_KEY` | CAPTCHA verification |
+| `SIGNUP_INVITE_CODE` | Optional — gates new signups behind an invite code when set (see [Invite-only signups](#invite-only-signups)) |
 
 Public vars are in `wrangler.toml`: `TURNSTILE_SITE_KEY`, `APP_URL`.
+
+### Invite-only signups
+
+New self-signups via the public `/login` page can be gated behind a shared invite code.
+The feature is always deployed in the app; it switches **on** whenever the
+`SIGNUP_INVITE_CODE` secret is set to a non-empty value, and **off** when the secret
+is unset. No redeploy is needed either way — setting the secret rolls a new Worker
+version automatically.
+
+**Turn it on / set the code:**
+
+```bash
+wrangler secret put SIGNUP_INVITE_CODE   # type the code at the prompt
+```
+
+Takes effect within seconds. Open `/login` to confirm the **Invite code** field appears.
+
+**Change the code:** run `wrangler secret put SIGNUP_INVITE_CODE` again (it overwrites).
+
+**Turn it off (reopen signups):**
+
+```bash
+wrangler secret delete SIGNUP_INVITE_CODE
+```
+
+Behaviour:
+
+- One shared code, matched case-insensitively.
+- Existing users sign in as normal — no code required.
+- Invited couples and vendors bypass the gate (their magic link lands on `/login/verify`, not the public form).
+- Visitors without a code are pointed to the `/notify` waitlist.
 
 ### Deploy
 
