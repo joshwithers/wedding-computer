@@ -1,10 +1,11 @@
 import { Hono } from 'hono'
 import type { Env, Contact, VendorProfile, Wedding } from '../types'
 import {
-  CARDDAV_HEADERS, authenticateProVendor, unauthorizedResponse, forbiddenResponse,
+  CARDDAV_HEADERS, authenticateProVendor, basicAuthToken, unauthorizedResponse, forbiddenResponse,
   xmlResponse, escXml, escVCard, foldLine, toVCardRev, makeETag,
   getDepth, parseHrefsFromBody, isMultiget,
 } from '../lib/dav'
+import { isAuthThrottled, recordAuthFailure } from '../middleware/rate-limit'
 
 const carddav = new Hono<Env>()
 
@@ -87,9 +88,22 @@ const SUPPORTED_REPORT_SET = `<D:supported-report-set>
   <D:supported-report><D:report><C:addressbook-query/></D:report></D:supported-report>
 </D:supported-report-set>`
 
-function auth(c: { req: { raw: Request }; env: { DB: D1Database } }) {
+async function auth(c: { req: { raw: Request }; env: { DB: D1Database; KV: KVNamespace } }) {
   // Pro-gated: non-Pro vendors resolve to null → 401.
-  return authenticateProVendor(c.env.DB, c.req.raw.headers.get('Authorization') ?? undefined)
+  const header = c.req.raw.headers.get('Authorization') ?? undefined
+  if (!header) return null
+
+  const ip = c.req.raw.headers.get('cf-connecting-ip') ?? 'unknown'
+  if (await isAuthThrottled(c.env.KV, ip)) return null
+
+  const vendor = await authenticateProVendor(c.env.DB, header)
+  if (!vendor) await recordAuthFailure(c.env.KV, ip)
+  return vendor
+}
+
+/** The client's own raw token, for building hrefs it can navigate to. */
+function reqToken(c: { req: { raw: Request } }): string {
+  return basicAuthToken(c.req.raw.headers.get('Authorization') ?? undefined) ?? ''
 }
 
 function unauth() {
@@ -125,7 +139,7 @@ carddav.on('PROPFIND', '/', async (c) => {
   </D:response>
 </D:multistatus>`, 207, { ...CARDDAV_HEADERS, 'WWW-Authenticate': 'Basic realm="CardDAV"' })
   }
-  const token = vendor.ical_token
+  const token = reqToken(c)
   return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
   <D:response>
@@ -146,7 +160,7 @@ carddav.on('PROPFIND', '/', async (c) => {
 carddav.on('PROPFIND', '/principals/:token/', async (c) => {
   const vendor = await auth(c)
   if (!vendor) return unauth()
-  const token = vendor.ical_token!
+  const token = reqToken(c)
   const base = `/carddav`
   return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
@@ -170,7 +184,7 @@ carddav.on('PROPFIND', '/principals/:token/', async (c) => {
 carddav.on('PROPFIND', '/addressbooks/:token/', async (c) => {
   const vendor = await auth(c)
   if (!vendor) return unauth()
-  const token = vendor.ical_token!
+  const token = reqToken(c)
   const base = `/carddav`
   const ctag = await contactsCTag(c.env.DB, vendor.id)
 
@@ -208,7 +222,7 @@ carddav.on('PROPFIND', '/addressbooks/:token/', async (c) => {
 carddav.on('PROPFIND', '/addressbooks/:token/contacts/', async (c) => {
   const vendor = await auth(c)
   if (!vendor) return unauth()
-  const token = vendor.ical_token!
+  const token = reqToken(c)
   const base = `/carddav`
   const depth = getDepth(c.req.raw)
   const ctag = await contactsCTag(c.env.DB, vendor.id)
@@ -267,7 +281,7 @@ carddav.on('PROPFIND', '/addressbooks/:token/contacts/', async (c) => {
 carddav.on('REPORT', '/addressbooks/:token/contacts/', async (c) => {
   const vendor = await auth(c)
   if (!vendor) return unauth()
-  const token = vendor.ical_token!
+  const token = reqToken(c)
   const base = `/carddav`
   const body = await c.req.text()
 

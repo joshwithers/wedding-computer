@@ -30,7 +30,7 @@ const checklists = new Hono<Env>()
 
 checklists.use('/app/*', requireAuth, csrf, requireVendor)
 
-import { pushAllWeddingFiles } from './weddings'
+import { pushAllWeddingFiles } from '../../services/storage-push'
 
 // ─── Template list ───
 
@@ -269,7 +269,7 @@ checklists.post('/app/weddings/:weddingId/todos/deploy', async (c) => {
   await upsertWeddingTodo(c.env.DB, vendor.id, weddingId, content, templateId || null)
 
   // Push to storage (best-effort)
-  pushAllWeddingFiles(c.env, vendor, weddingId).catch(() => {})
+  c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
 
   // Return the full updated todo section
   const todo = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
@@ -301,7 +301,7 @@ checklists.post('/app/weddings/:weddingId/todos/toggle', async (c) => {
   // Push to storage (best-effort)
   const { getWedding } = await import('../../db/weddings')
   const wedding = await getWedding(c.env.DB, weddingId)
-  if (wedding) pushAllWeddingFiles(c.env, vendor, weddingId).catch(() => {})
+  if (wedding) c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
 
   // Return updated todo section
   const refreshed = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
@@ -334,7 +334,7 @@ checklists.post('/app/weddings/:weddingId/todos/add', async (c) => {
 
   const { getWedding } = await import('../../db/weddings')
   const wedding = await getWedding(c.env.DB, weddingId)
-  if (wedding) pushAllWeddingFiles(c.env, vendor, weddingId).catch(() => {})
+  if (wedding) c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
 
   const refreshed = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
   const templates = await listTemplates(c.env.DB, vendor.id)
@@ -364,7 +364,7 @@ checklists.post('/app/weddings/:weddingId/todos/remove', async (c) => {
 
   const { getWedding } = await import('../../db/weddings')
   const wedding = await getWedding(c.env.DB, weddingId)
-  if (wedding) pushAllWeddingFiles(c.env, vendor, weddingId).catch(() => {})
+  if (wedding) c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
 
   const refreshed = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
   const templates = await listTemplates(c.env.DB, vendor.id)
@@ -389,7 +389,7 @@ checklists.post('/app/weddings/:weddingId/todos/save', async (c) => {
 
   const { getWedding } = await import('../../db/weddings')
   const wedding = await getWedding(c.env.DB, weddingId)
-  if (wedding) pushAllWeddingFiles(c.env, vendor, weddingId).catch(() => {})
+  if (wedding) c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
 
   const refreshed = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
   const templates = await listTemplates(c.env.DB, vendor.id)

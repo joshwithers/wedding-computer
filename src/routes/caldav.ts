@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
 import type { Env, CalendarEvent } from '../types'
 import {
-  CALDAV_HEADERS, authenticateProVendor, unauthorizedResponse, forbiddenResponse,
+  CALDAV_HEADERS, authenticateProVendor, basicAuthToken, unauthorizedResponse, forbiddenResponse,
   xmlResponse, escXml, makeCTag, makeETag, getDepth, parseHrefsFromBody, isMultiget,
 } from '../lib/dav'
+import { isAuthThrottled, recordAuthFailure } from '../middleware/rate-limit'
 import { listAllEnrichedEvents, listEnrichedEventsByIds, getEnrichedEvent } from '../db/calendar'
 import { buildVevent } from '../services/ical'
 
@@ -19,9 +20,22 @@ const SUPPORTED_REPORT_SET = `<D:supported-report-set>
   <D:supported-report><D:report><C:calendar-query/></D:report></D:supported-report>
 </D:supported-report-set>`
 
-function auth(c: { req: { raw: Request }; env: { DB: D1Database } }) {
+async function auth(c: { req: { raw: Request }; env: { DB: D1Database; KV: KVNamespace } }) {
   // Pro-gated: non-Pro vendors resolve to null → 401.
-  return authenticateProVendor(c.env.DB, c.req.raw.headers.get('Authorization') ?? undefined)
+  const header = c.req.raw.headers.get('Authorization') ?? undefined
+  if (!header) return null
+
+  const ip = c.req.raw.headers.get('cf-connecting-ip') ?? 'unknown'
+  if (await isAuthThrottled(c.env.KV, ip)) return null
+
+  const vendor = await authenticateProVendor(c.env.DB, header)
+  if (!vendor) await recordAuthFailure(c.env.KV, ip)
+  return vendor
+}
+
+/** The client's own raw token, for building hrefs it can navigate to. */
+function reqToken(c: { req: { raw: Request } }): string {
+  return basicAuthToken(c.req.raw.headers.get('Authorization') ?? undefined) ?? ''
 }
 
 function unauth() {
@@ -69,7 +83,7 @@ caldav.on('PROPFIND', '/', async (c) => {
   </D:response>
 </D:multistatus>`, 207, { ...CALDAV_HEADERS, 'WWW-Authenticate': 'Basic realm="CalDAV"' })
   }
-  const token = vendor.ical_token
+  const token = reqToken(c)
   return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
   <D:response>
@@ -90,7 +104,7 @@ caldav.on('PROPFIND', '/', async (c) => {
 caldav.on('PROPFIND', '/principals/:token/', async (c) => {
   const vendor = await auth(c)
   if (!vendor) return unauth()
-  const token = vendor.ical_token!
+  const token = reqToken(c)
   const base = `/caldav`
   return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
@@ -114,7 +128,7 @@ caldav.on('PROPFIND', '/principals/:token/', async (c) => {
 caldav.on('PROPFIND', '/calendars/:token/', async (c) => {
   const vendor = await auth(c)
   if (!vendor) return unauth()
-  const token = vendor.ical_token!
+  const token = reqToken(c)
   const base = `/caldav`
   const ctag = await makeCTag(c.env.DB, 'calendar_events', 'vendor_id', vendor.id)
 
@@ -154,7 +168,7 @@ caldav.on('PROPFIND', '/calendars/:token/', async (c) => {
 caldav.on('PROPFIND', '/calendars/:token/bookings/', async (c) => {
   const vendor = await auth(c)
   if (!vendor) return unauth()
-  const token = vendor.ical_token!
+  const token = reqToken(c)
   const base = `/caldav`
   const depth = getDepth(c.req.raw)
   const ctag = await makeCTag(c.env.DB, 'calendar_events', 'vendor_id', vendor.id)
@@ -213,7 +227,7 @@ caldav.on('PROPFIND', '/calendars/:token/bookings/', async (c) => {
 caldav.on('REPORT', '/calendars/:token/bookings/', async (c) => {
   const vendor = await auth(c)
   if (!vendor) return unauth()
-  const token = vendor.ical_token!
+  const token = reqToken(c)
   const base = `/caldav`
   const body = await c.req.text()
   const tz = vendor.timezone || 'Australia/Sydney'

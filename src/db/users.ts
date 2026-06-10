@@ -105,6 +105,43 @@ export async function updateUserEmail(
 }
 
 export async function deleteUser(db: D1Database, userId: string): Promise<void> {
+  // weddings.created_by_user_id has no ON DELETE action and FK enforcement is
+  // on, so deleting a user who created a wedding would otherwise fail. Hand
+  // each such wedding to another active member where one exists (preserves a
+  // valid owner); weddings with no other active member are the departing
+  // user's alone and are removed with the account.
+  await db
+    .prepare(
+      `UPDATE weddings SET created_by_user_id = (
+         SELECT wm.user_id FROM wedding_members wm
+         WHERE wm.wedding_id = weddings.id AND wm.user_id != ?1 AND wm.status = 'active'
+         ORDER BY wm.created_at LIMIT 1
+       )
+       WHERE created_by_user_id = ?1
+         AND EXISTS (
+           SELECT 1 FROM wedding_members wm
+           WHERE wm.wedding_id = weddings.id AND wm.user_id != ?1 AND wm.status = 'active'
+         )`
+    )
+    .bind(userId)
+    .run()
+
+  // Solo weddings (still created_by this user): clear the nullable no-action
+  // child references so the wedding can be deleted, then delete it. Every
+  // other table referencing weddings is ON DELETE CASCADE or SET NULL
+  // (verified across schema.sql + all migrations); these four are the only
+  // RESTRICT references.
+  for (const table of ['contacts', 'invoices', 'calendar_events', 'service_contracts']) {
+    await db
+      .prepare(
+        `UPDATE ${table} SET wedding_id = NULL
+         WHERE wedding_id IN (SELECT id FROM weddings WHERE created_by_user_id = ?1)`
+      )
+      .bind(userId)
+      .run()
+  }
+  await db.prepare('DELETE FROM weddings WHERE created_by_user_id = ?1').bind(userId).run()
+
   await db
     .prepare(`UPDATE audit_log SET user_id = NULL, ip_address = NULL WHERE user_id = ?`)
     .bind(userId)

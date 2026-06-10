@@ -34,6 +34,9 @@ queue = "wedding-computer-emails"
 queue = "wedding-computer-emails"
 max_batch_size = 10
 max_retries = 3
+# Exhausted messages land here for inspection instead of vanishing silently.
+# Create once with: wrangler queues create wedding-computer-emails-dlq
+dead_letter_queue = "wedding-computer-emails-dlq"
 
 [vars]
 APP_URL = "https://wedding.computer"

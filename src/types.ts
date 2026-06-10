@@ -7,6 +7,9 @@ export type Bindings = {
   SEND_EMAIL: SendEmail
   SESSION_SECRET: string
   RESEND_API_KEY: string
+  // Svix signing secret for the Resend delivery webhook (POST /webhooks/resend).
+  // Set via: wrangler secret put RESEND_WEBHOOK_SECRET
+  RESEND_WEBHOOK_SECRET?: string
   ANTHROPIC_API_KEY?: string
   STRIPE_SECRET_KEY: string
   STRIPE_WEBHOOK_SECRET: string
@@ -21,6 +24,11 @@ export type Bindings = {
   // this invite code. Existing users and invite-link arrivals are unaffected.
   // Unset/empty = open signups. Set via: wrangler secret put SIGNUP_INVITE_CODE
   SIGNUP_INVITE_CODE?: string
+  // Enables the /dev/login/:email session-minting bypass. MUST be unset in
+  // any deployed environment — set to 'true' only in local .dev.vars. The
+  // route 404s unless this is exactly 'true', so production and self-hosted
+  // installs are safe by default regardless of proxy/header behaviour.
+  ENABLE_DEV_LOGIN?: string
   APP_URL: string
 }
 

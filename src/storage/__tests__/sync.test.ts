@@ -78,7 +78,7 @@ async function seedContactFile(storage: MockStorageBackend, contact: Contact) {
 async function seedWeddingFile(storage: MockStorageBackend, wedding: Wedding) {
   const doc = weddingToMarkdown(wedding)
   const content = serializeMarkdown(doc)
-  return storage.write(`weddings/${wedding.id}.md`, content)
+  return storage.write(`weddings/${wedding.date}-${wedding.id}/wedding.md`, content)
 }
 
 describe('syncVendor', () => {
@@ -256,6 +256,60 @@ describe('syncVendor', () => {
 
     expect(result.indexed).toBe(3)
     expect(db.getTable('file_index')).toHaveLength(3)
+  })
+
+  it('ignores legacy flat wedding files instead of resurrecting stale data', async () => {
+    // Old-format flat file with stale data sitting next to the folder format
+    const stale = makeWedding({ date: '2027-02-20', location: 'Byron Bay' })
+    const doc = weddingToMarkdown(stale)
+    await storage.write('weddings/sarah-james.md', serializeMarkdown(doc))
+
+    const current = makeWedding() // same id, current data
+    await seedWeddingFile(storage, current)
+    db.seed('vendor_profiles', [
+      { id: VENDOR_ID, user_id: 'user-vendor', category: 'celebrant' },
+    ])
+
+    const result = await syncVendor(
+      storage,
+      db as unknown as D1Database,
+      VENDOR_ID
+    )
+
+    expect(result.errors).toBe(0)
+    // Only the folder-format file was applied
+    expect(db.getTable('weddings')).toHaveLength(1)
+    expect(db.getTable('weddings')[0].date).toBe('2026-12-15')
+    expect(db.getTable('weddings')[0].location).toBe('Sydney')
+  })
+
+  it('pulls todo.md edits into wedding_todos', async () => {
+    const wedding = makeWedding()
+    await seedWeddingFile(storage, wedding)
+    await storage.write(
+      `weddings/${wedding.date}-${wedding.id}/todo.md`,
+      '---\nwedding: Sarah & James\nwedding_id: wedding-001\n---\n\n- [x] Book celebrant\n- [ ] Order flowers\n'
+    )
+    db.seed('vendor_profiles', [
+      { id: VENDOR_ID, user_id: 'user-vendor', category: 'celebrant' },
+    ])
+    db.seed('wedding_members', [
+      { wedding_id: 'wedding-001', user_id: 'user-vendor', status: 'active' },
+    ])
+
+    const result = await syncVendor(
+      storage,
+      db as unknown as D1Database,
+      VENDOR_ID
+    )
+
+    expect(result.errors).toBe(0)
+    const todos = db.getTable('wedding_todos')
+    expect(todos).toHaveLength(1)
+    expect(todos[0].content).toContain('- [x] Book celebrant')
+    // Both wedding.md and todo.md indexed
+    const types = db.getTable('file_index').map((r) => r.entity_type).sort()
+    expect(types).toEqual(['todo', 'wedding'])
   })
 
   it('continues syncing weddings even if contacts sync fails (Promise.allSettled)', async () => {

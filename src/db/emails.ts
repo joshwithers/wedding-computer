@@ -49,6 +49,34 @@ export async function getEmailByMessageId(
     .first<Email>()
 }
 
+// ─── Suppression list (hard bounces + spam complaints) ───
+
+/** True if this address should not be emailed (hard-bounced or complained). */
+export async function isEmailSuppressed(db: D1Database, email: string): Promise<boolean> {
+  const row = await db
+    .prepare('SELECT 1 FROM email_suppressions WHERE email = ?')
+    .bind(email.trim().toLowerCase())
+    .first()
+  return !!row
+}
+
+/** Add (or refresh) a suppression. Idempotent on the email PK. */
+export async function suppressEmail(
+  db: D1Database,
+  email: string,
+  reason: 'bounce' | 'complaint' | 'manual',
+  detail?: string | null
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO email_suppressions (email, reason, detail)
+       VALUES (?, ?, ?)
+       ON CONFLICT(email) DO UPDATE SET reason = excluded.reason, detail = excluded.detail`
+    )
+    .bind(email.trim().toLowerCase(), reason, detail ?? null)
+    .run()
+}
+
 export async function createEmail(
   db: D1Database,
   email: {

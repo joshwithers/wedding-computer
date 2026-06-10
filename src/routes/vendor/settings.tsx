@@ -6,7 +6,7 @@ import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
 import { updateVendor } from '../../db/vendors'
 import { isProVendor } from '../../db/subscriptions'
-import { deleteUser } from '../../db/users'
+import { purgeAccount } from '../../services/account'
 import { VENDOR_CATEGORIES } from '../../types'
 import { trimOrNull, requireString } from '../../lib/validation'
 import { auditLog } from '../../middleware/audit'
@@ -14,7 +14,7 @@ import { listContacts } from '../../storage/contacts'
 import { listInvoices } from '../../db/invoices'
 import { deleteCookie } from 'hono/cookie'
 import { destroySession } from '../../services/auth'
-import { verifyGitHubToken, createGitHubRepo } from '../../storage/github'
+import { verifyGitHubToken, createGitHubRepo, ensureGitHubWebhook } from '../../storage/github'
 import { deleteVendorSecret, putVendorSecret, resolveSecret } from '../../services/secrets'
 import { redactedVendorProfile } from '../../lib/redaction'
 
@@ -28,6 +28,16 @@ settings.get('/app/settings', async (c) => {
   const saved = c.req.query('saved')
   const error = c.req.query('error')
   const isPro = await isProVendor(c.env.DB, vendor.id)
+
+  // One-time sync token reveal: the generate handler stashes the new
+  // token in KV under a single-use id; we show it once and delete it.
+  const revealId = c.req.query('reveal')
+  let revealedToken: string | null = null
+  if (revealId && /^[0-9a-f]{32}$/.test(revealId)) {
+    const revealKey = `token_reveal:${vendor.id}:${revealId}`
+    revealedToken = await c.env.KV.get(revealKey)
+    if (revealedToken) await c.env.KV.delete(revealKey)
+  }
 
   return c.html(
     <AppLayout title="Settings" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
@@ -565,7 +575,7 @@ settings.get('/app/settings', async (c) => {
             Sync your contacts and weddings to a private GitHub repository. Open your files in Obsidian, VS Code, or any text editor.
           </p>
           {(() => {
-            let gitConfig: { git_repo?: string; git_access_token?: string; git_access_token_ref?: string } | null = null
+            let gitConfig: { git_repo?: string; git_access_token?: string; git_access_token_ref?: string; git_webhook_active?: boolean } | null = null
             if (vendor.storage_config) {
               try { gitConfig = JSON.parse(vendor.storage_config) } catch { /* ignore */ }
             }
@@ -583,7 +593,13 @@ settings.get('/app/settings', async (c) => {
                       Repository: <a href={`https://github.com/${gitConfig!.git_repo}`} class="font-medium text-horizon-600 hover:underline" target="_blank" rel="noopener">{gitConfig!.git_repo}</a>
                     </p>
                     <p class="text-xs text-gray-500 mt-1">
-                      Changes to contacts and weddings are automatically pushed to your repo.
+                      Two-way sync: changes you make here are pushed to your repo, and edits you make
+                      in the repo (Obsidian, VS Code, GitHub) are pulled back in.
+                    </p>
+                    <p class="text-xs text-gray-500 mt-1">
+                      {gitConfig!.git_webhook_active
+                        ? 'Repo edits sync back within seconds (webhook active).'
+                        : 'Repo edits sync back within 5 minutes. For instant sync, use a token with webhook (admin:repo_hook) permission and press "Sync all files now".'}
                     </p>
                   </div>
                   <div class="flex gap-3">
@@ -696,44 +712,112 @@ settings.get('/app/settings', async (c) => {
           </p>
           {!isPro ? (
             <ProUpsell feature="Device sync (CalDAV, CardDAV, and iCal)" />
-          ) : vendor.ical_token ? (
-            <div class="space-y-4">
-              <FeedUrl
-                label="CardDAV (contacts)"
-                url={`${c.env.APP_URL}/carddav`}
-                description="Add as a CardDAV account. Username and password are both your sync token."
-              />
-              <FeedUrl
-                label="CalDAV (calendar)"
-                url={`${c.env.APP_URL}/caldav`}
-                description="Add as a CalDAV account. Username and password are both your sync token."
-              />
-              <FeedUrl
-                label="iCal feed (read-only)"
-                url={`${c.env.APP_URL}/cal/${vendor.ical_token}`}
-                description="Subscribe to this URL in any calendar app for a read-only feed."
-              />
-              <div class="bg-gray-50 rounded-xl p-4">
-                <p class="text-xs font-bold text-gray-700 mb-1">Your sync token</p>
-                <code class="text-xs text-gray-600 break-all select-all">{vendor.ical_token}</code>
-                <p class="text-xs text-gray-400 mt-2">
-                  Use this as both the username and password when adding a CardDAV or CalDAV account.
-                </p>
-              </div>
-            </div>
           ) : (
-            <form method="post" action="/app/settings/generate-sync-token">
-              <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-              <button
-                type="submit"
-                class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
-              >
-                Generate sync token
-              </button>
-              <p class="text-xs text-gray-400 mt-2">
-                This creates a unique token for syncing your contacts and calendar to personal devices.
-              </p>
-            </form>
+            <div class="space-y-4">
+              {revealedToken && (
+                <div class="bg-horizon-50 border border-horizon-600/20 rounded-xl p-4">
+                  <p class="text-sm font-bold text-horizon-700 mb-1">Your new sync token</p>
+                  <code class="text-sm text-gray-700 break-all select-all">{revealedToken}</code>
+                  <p class="text-xs text-gray-500 mt-2">
+                    Copy it now — it's stored hashed and can't be shown again. Use it as both the
+                    username and password for CardDAV/CalDAV, and as the token in the Obsidian plugin.
+                  </p>
+                  <p class="text-xs text-gray-500 mt-2">
+                    Your iCal feed URL:{' '}
+                    <code class="break-all select-all">{`${c.env.APP_URL}/cal/${revealedToken}`}</code>
+                  </p>
+                </div>
+              )}
+              {vendor.ical_token ? (
+                <>
+                  <FeedUrl
+                    label="CardDAV (contacts)"
+                    url={`${c.env.APP_URL}/carddav`}
+                    description="Add as a CardDAV account. Username and password are both your sync token."
+                  />
+                  <FeedUrl
+                    label="CalDAV (calendar)"
+                    url={`${c.env.APP_URL}/caldav`}
+                    description="Add as a CalDAV account. Username and password are both your sync token."
+                  />
+                  <FeedUrl
+                    label="iCal feed (read-only)"
+                    url={`${c.env.APP_URL}/cal/<your-sync-token>`}
+                    description="Replace <your-sync-token> with your token and subscribe in any calendar app."
+                  />
+                  <div class="bg-gray-50 rounded-xl p-4">
+                    <p class="text-xs font-bold text-gray-700 mb-1">Obsidian (markdown vault)</p>
+                    <p class="text-xs text-gray-500">
+                      Install the official{' '}
+                      <a
+                        href="https://community.obsidian.md/plugins/wedding-computer-sync"
+                        target="_blank"
+                        rel="noopener"
+                        class="font-medium text-horizon-600 hover:underline"
+                      >
+                        Wedding Computer Sync plugin
+                      </a>{' '}
+                      from Obsidian's community directory (in Obsidian: Settings → Community plugins →
+                      Browse → "Wedding Computer Sync") and paste your sync token. Your contacts,
+                      weddings, and checklists become editable markdown files — changes sync both ways
+                      on desktop and mobile.
+                    </p>
+                  </div>
+                  {!revealedToken && (
+                    <div class="bg-gray-50 rounded-xl p-4">
+                      <p class="text-xs font-bold text-gray-700 mb-1">Sync token</p>
+                      <p class="text-xs text-gray-500">
+                        Active. For security the token is stored hashed and was shown only once when
+                        generated. Lost it? Regenerate below — devices using the old token will need
+                        the new one.
+                      </p>
+                    </div>
+                  )}
+                  <div class="flex gap-3">
+                    <form
+                      method="post"
+                      action="/app/settings/generate-sync-token"
+                      onsubmit="return confirm('Regenerate your sync token? Devices using the current token will stop syncing until you give them the new one.')"
+                    >
+                      <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                      <button
+                        type="submit"
+                        class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
+                      >
+                        Regenerate token
+                      </button>
+                    </form>
+                    <form
+                      method="post"
+                      action="/app/settings/revoke-sync-token"
+                      onsubmit="return confirm('Revoke your sync token? CalDAV, CardDAV, iCal, and Obsidian sync will all stop immediately.')"
+                    >
+                      <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                      <button
+                        type="submit"
+                        class="border border-gray-200 text-gray-600 py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
+                      >
+                        Revoke
+                      </button>
+                    </form>
+                  </div>
+                </>
+              ) : (
+                <form method="post" action="/app/settings/generate-sync-token">
+                  <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                  <button
+                    type="submit"
+                    class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
+                  >
+                    Generate sync token
+                  </button>
+                  <p class="text-xs text-gray-400 mt-2">
+                    Creates a unique token for syncing to personal devices. It's shown once — store it
+                    somewhere safe.
+                  </p>
+                </form>
+              )}
+            </div>
           )}
         </section>
 
@@ -1055,17 +1139,35 @@ settings.post('/app/settings/ai', async (c) => {
 
 settings.post('/app/settings/generate-sync-token', async (c) => {
   const vendor = c.get('vendor')!
-  // Device sync (CalDAV/CardDAV/iCal) is a Pro feature.
+  // Device sync (CalDAV/CardDAV/iCal/vault) is a Pro feature.
   if (!(await isProVendor(c.env.DB, vendor.id))) {
     return c.redirect('/app/settings?error=' + encodeURIComponent('Device sync requires a Pro subscription'))
   }
-  if (vendor.ical_token) return c.redirect('/app/settings')
 
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  const token = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+  const { generateToken, sha256Hex } = await import('../../lib/crypto')
 
-  await updateVendor(c.env.DB, vendor.id, { ical_token: token })
+  // Generating always rotates: only the hash is stored, the raw token is
+  // shown exactly once via a short-lived single-use KV stash.
+  const token = await generateToken(16)
+  await updateVendor(c.env.DB, vendor.id, { ical_token: `sha256:${await sha256Hex(token)}` })
+
+  const revealId = await generateToken(16)
+  await c.env.KV.put(`token_reveal:${vendor.id}:${revealId}`, token, { expirationTtl: 300 })
+
+  await auditLog(
+    c,
+    vendor.ical_token ? 'sync_token_rotated' : 'sync_token_generated',
+    'vendor',
+    vendor.id
+  ).catch(() => {})
+
+  return c.redirect(`/app/settings?reveal=${revealId}`)
+})
+
+settings.post('/app/settings/revoke-sync-token', async (c) => {
+  const vendor = c.get('vendor')!
+  await updateVendor(c.env.DB, vendor.id, { ical_token: null })
+  await auditLog(c, 'sync_token_revoked', 'vendor', vendor.id).catch(() => {})
   return c.redirect('/app/settings?saved=1')
 })
 
@@ -1121,6 +1223,11 @@ settings.post('/app/settings/github/connect', async (c) => {
 
     const tokenRef = await putVendorSecret(c.env.KV, vendor.id, 'github_access_token', token)
 
+    // Register a push webhook for instant pull of external edits.
+    // Needs hook permission on the token — when missing, the 5-minute
+    // background sync still picks changes up.
+    const webhookActive = await registerGitHubWebhook(c.env, vendor.id, token, repoFullName)
+
     // Save the config
     const config = JSON.stringify({
       type: 'git',
@@ -1129,6 +1236,7 @@ settings.post('/app/settings/github/connect', async (c) => {
       git_branch: 'main',
       git_path: '',
       git_access_token_ref: tokenRef,
+      git_webhook_active: webhookActive,
     })
 
     await updateVendor(c.env.DB, vendor.id, {
@@ -1157,6 +1265,7 @@ settings.post('/app/settings/github/disconnect', async (c) => {
   const vendor = c.get('vendor')!
 
   await deleteVendorSecret(c.env.KV, vendor.id, 'github_access_token')
+  await deleteVendorSecret(c.env.KV, vendor.id, 'github_webhook_secret')
 
   await updateVendor(c.env.DB, vendor.id, {
     storage_type: 'r2',
@@ -1185,6 +1294,18 @@ settings.post('/app/settings/github/sync', async (c) => {
   }
 
   try {
+    // Re-attempt webhook registration — picks up token permission changes
+    const webhookActive = await registerGitHubWebhook(c.env, vendor.id, token, config.git_repo)
+    if (vendor.storage_config) {
+      try {
+        const fullConfig = JSON.parse(vendor.storage_config)
+        if (fullConfig.git_webhook_active !== webhookActive) {
+          fullConfig.git_webhook_active = webhookActive
+          await updateVendor(c.env.DB, vendor.id, { storage_config: JSON.stringify(fullConfig) })
+        }
+      } catch { /* leave config as-is */ }
+    }
+
     const result = await initialGitHubSync(c.env.DB, vendor, token, config.git_repo)
     return c.redirect(`/app/settings?saved=1&synced=${result.pushed}`)
   } catch (err: any) {
@@ -1194,9 +1315,36 @@ settings.post('/app/settings/github/sync', async (c) => {
 })
 
 /**
- * Push all existing contacts and weddings from D1 to a GitHub repo.
- * This is the "initial sync" that runs when a user first connects,
- * and can be re-run via the "Sync all files now" button.
+ * Generate (or reuse) the per-vendor webhook secret and make sure the
+ * repo has a push webhook pointing at /webhooks/github. Returns whether
+ * the webhook is in place.
+ */
+async function registerGitHubWebhook(
+  env: Env['Bindings'],
+  vendorId: string,
+  token: string,
+  repo: string
+): Promise<boolean> {
+  try {
+    const { vendorSecretKey } = await import('../../services/secrets')
+    let secret = await env.KV.get(vendorSecretKey(vendorId, 'github_webhook_secret'))
+    if (!secret) {
+      const bytes = new Uint8Array(32)
+      crypto.getRandomValues(bytes)
+      secret = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+      await putVendorSecret(env.KV, vendorId, 'github_webhook_secret', secret)
+    }
+    return await ensureGitHubWebhook(token, repo, `${env.APP_URL}/webhooks/github`, secret)
+  } catch (err) {
+    console.error('[github] webhook registration failed:', err)
+    return false
+  }
+}
+
+/**
+ * Full reconciliation against a GitHub repo: pull external edits in,
+ * then push all contacts and weddings (wedding.md, todo.md, log.md) out.
+ * Runs when a user first connects and via the "Sync all files now" button.
  */
 async function initialGitHubSync(
   db: D1Database,
@@ -1206,9 +1354,11 @@ async function initialGitHubSync(
 ): Promise<{ pushed: number; skipped: number }> {
   const { GitHubStorageBackend } = await import('../../storage/github')
   const { contactToMarkdown } = await import('../../storage/contacts')
-  const { writeWeddingFile } = await import('../../storage/weddings')
+  const { cleanupLegacyWeddingFile } = await import('../../storage/weddings')
   const { serializeMarkdown } = await import('../../storage/markdown')
   const { contactFilename } = await import('../../storage/slug')
+  const { pushWeddingFiles } = await import('../../services/storage-push')
+  const { syncVendor } = await import('../../storage/sync')
 
   const github = new GitHubStorageBackend({ token, repo, branch: 'main', path: '' })
 
@@ -1221,6 +1371,13 @@ async function initialGitHubSync(
         console.log(`[github-sync] Deleted ${junkFile} from repo`)
       }
     } catch { /* ignore — file might not exist or delete might fail */ }
+  }
+
+  // Pull external edits first so the push below doesn't fight them
+  try {
+    await syncVendor(github, db, vendor.id)
+  } catch (err) {
+    console.error('[github-sync] Pull phase failed:', err)
   }
 
   // Get all contacts from D1
@@ -1265,7 +1422,8 @@ async function initialGitHubSync(
 
   for (const w of weddings) {
     try {
-      await writeWeddingFile(github, db, vendor.id, w)
+      await pushWeddingFiles(db, github, vendor.id, w)
+      await cleanupLegacyWeddingFile(github, w).catch(() => false)
       pushed++
     } catch (err) {
       console.error(`[github-sync] Failed to push wedding ${w.id}:`, err)
@@ -1516,7 +1674,8 @@ settings.post('/app/settings/delete-account', async (c) => {
   const sessionId = (await import('hono/cookie')).getCookie(c, 'wc_session')
 
   await auditLog(c, 'account_deleted', 'user', user.id).catch(() => {})
-  await deleteUser(c.env.DB, user.id)
+  // Purge R2 (avatar, logo, storage tree), KV (sessions, secrets), and D1.
+  await purgeAccount(c.env, user)
 
   if (sessionId) {
     await destroySession(c.env.DB, c.env.KV, sessionId).catch(() => {})

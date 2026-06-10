@@ -9,6 +9,7 @@ Wedding Computer is a SaaS platform for the wedding industry. It starts as a ven
 **Live URL:** `weddingcomputer.com`
 **License:** AGPL-3.0
 **Repo:** `github.com/joshwithers/wedding-computer`
+**Obsidian plugin:** `github.com/joshwithers/wedding-computer-sync` — first-party vault sync plugin in its own repo (releases built by its CI on version tags), live in the Obsidian community directory at `community.obsidian.md/plugins/wedding-computer-sync`. It talks to this app's vault API (`src/routes/vault-api.ts`), authenticated with the device-sync token.
 
 ---
 

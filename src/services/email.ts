@@ -1,5 +1,17 @@
-import { createEmail, updateEmailStatus } from '../db/emails'
+import { createEmail, updateEmailStatus, isEmailSuppressed } from '../db/emails'
 import { sanitize } from '../lib/validation'
+
+/**
+ * Raised when Resend rejects a send. `retryable` is true for transient
+ * failures (rate limiting, 5xx, network) that a queue consumer should retry,
+ * and false for permanent ones (invalid address, 4xx) that never will.
+ */
+export class EmailSendError extends Error {
+  constructor(message: string, readonly status: number, readonly retryable: boolean) {
+    super(message)
+    this.name = 'EmailSendError'
+  }
+}
 
 // HTML-escape a value for safe interpolation into raw email HTML strings.
 // (sanitize performs HTML-entity encoding.) Form/contact data is now stored
@@ -28,6 +40,23 @@ type SendEmailParams = {
    * can offer native one-click unsubscribe.
    */
   unsubscribe?: { manageUrl: string; unsubscribeUrl: string }
+  /**
+   * Sets only the RFC 8058 List-Unsubscribe headers (no body footer). For
+   * bulk mail (broadcasts, waitlist) that already renders its own unsubscribe
+   * link in the body but still needs the native one-click header.
+   */
+  listUnsubscribeUrl?: string
+  /**
+   * Stable key for Resend's Idempotency-Key header so a retried send (same
+   * queue message) does not deliver twice. Omit for one-shot sends.
+   */
+  idempotencyKey?: string
+  /**
+   * Skip the suppression-list check. Reserved for critical transactional mail
+   * (magic links) that must always attempt delivery even to a suppressed
+   * address. Defaults to false — everything else respects suppression.
+   */
+  bypassSuppression?: boolean
 }
 
 // Appended to notification emails so every preference-gated email carries its
@@ -45,9 +74,39 @@ function unsubscribeFooter(manageUrl: string, unsubscribeUrl: string): string {
   </table>`
 }
 
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 export async function sendEmailMessage(params: SendEmailParams): Promise<string> {
   const fromAddr = params.from ?? 'hello@wedding.computer'
   const fromName = params.fromName ?? 'Wedding Computer'
+
+  // Don't re-mail addresses that hard-bounced or complained — it wastes the
+  // send and erodes the shared domain's reputation. Critical auth mail
+  // (magic links) bypasses this so a user is never locked out.
+  if (!params.bypassSuppression && (await isEmailSuppressed(params.db, params.to))) {
+    const record = await createEmail(params.db, {
+      vendor_id: params.vendorId,
+      contact_id: params.contactId ?? null,
+      direction: 'outbound',
+      from_email: fromAddr,
+      from_name: fromName,
+      to_email: params.to,
+      to_name: params.toName ?? null,
+      reply_to: params.replyTo ?? null,
+      subject: params.subject,
+      body_text: params.text ?? null,
+      body_html: params.html,
+      message_id: `<${crypto.randomUUID()}@wedding.computer>`,
+      status: 'failed',
+      is_system: params.isSystem ? 1 : 0,
+    })
+    await updateEmailStatus(params.db, record.id, 'failed', 'suppressed (bounced/complained)')
+    console.warn('[EMAIL] suppressed send to', params.to)
+    return record.id
+  }
 
   if (params.unsubscribe) {
     const footer = unsubscribeFooter(params.unsubscribe.manageUrl, params.unsubscribe.unsubscribeUrl)
@@ -86,18 +145,29 @@ export async function sendEmailMessage(params: SendEmailParams): Promise<string>
       headers['In-Reply-To'] = params.inReplyTo
       headers['References'] = params.inReplyTo
     }
-    if (params.unsubscribe) {
-      // RFC 8058 one-click unsubscribe — mail clients show a native button.
-      headers['List-Unsubscribe'] = `<${params.unsubscribe.unsubscribeUrl}>`
+    // RFC 8058 one-click unsubscribe — mail clients show a native button.
+    const listUnsub = params.unsubscribe?.unsubscribeUrl ?? params.listUnsubscribeUrl
+    if (listUnsub) {
+      headers['List-Unsubscribe'] = `<${listUnsub}>`
       headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click'
     }
 
+    const reqHeaders: Record<string, string> = {
+      'Authorization': `Bearer ${params.resendApiKey}`,
+      'Content-Type': 'application/json',
+    }
+    // Resend dedupes sends with the same Idempotency-Key for 24h, so a queue
+    // retry of the same message can't deliver twice. Defaulting to a hash of
+    // the recipient + content makes EVERY send idempotent within Resend's 24h
+    // window: a retry re-sends identical content → same key → deduped, with no
+    // key threaded through callers. (Distinct emails vary by token/date/name,
+    // so legitimate sends get distinct keys.)
+    reqHeaders['Idempotency-Key'] =
+      params.idempotencyKey ?? (await sha256Hex(`${params.to}\n${params.subject}\n${params.html}`))
+
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${params.resendApiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: reqHeaders,
       body: JSON.stringify({
         from: `${fromName} <${fromAddr}>`,
         to: params.toName ? `${params.toName} <${params.to}>` : params.to,
@@ -111,13 +181,19 @@ export async function sendEmailMessage(params: SendEmailParams): Promise<string>
 
     if (!res.ok) {
       const body = await res.text()
-      throw new Error(`Resend API error ${res.status}: ${body}`)
+      // 429 (rate limited) and 5xx are transient; 4xx (bad address, etc.) are
+      // permanent and should not be retried.
+      const retryable = res.status === 429 || res.status >= 500
+      throw new EmailSendError(`Resend API error ${res.status}: ${body}`, res.status, retryable)
     }
 
     await updateEmailStatus(params.db, record.id, 'sent')
   } catch (e: any) {
     await updateEmailStatus(params.db, record.id, 'failed', e.message)
-    throw e
+    // Network/transport errors (fetch threw, not an HTTP response) are
+    // transient — surface them as retryable so the queue consumer retries.
+    if (e instanceof EmailSendError) throw e
+    throw new EmailSendError(e?.message ?? 'send failed', 0, true)
   }
 
   return record.id

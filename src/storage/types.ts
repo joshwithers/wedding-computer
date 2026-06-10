@@ -64,7 +64,7 @@ export interface StorageBackend {
   /** Delete a file. No-op if not found. */
   delete(path: string): Promise<void>
 
-  /** List files in a directory (non-recursive). */
+  /** List all files under a prefix (recursive, R2-style). */
   list(prefix: string, cursor?: string): Promise<ListResult>
 
   /** Check if a file exists and return its metadata. */
@@ -102,7 +102,7 @@ export type MarkdownDocument<T extends Record<string, unknown> = Record<string, 
 export type FileIndexRow = {
   id: string
   vendor_id: string
-  entity_type: 'contact' | 'wedding'
+  entity_type: 'contact' | 'wedding' | 'todo' | 'log'
   entity_id: string
   file_path: string
   etag: string

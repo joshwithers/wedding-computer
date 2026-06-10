@@ -16,8 +16,9 @@
 import type { Wedding } from '../types'
 import type { StorageBackend, MarkdownDocument } from './types'
 import { parseMarkdown, serializeMarkdown } from './markdown'
-import { weddingFolderName, deduplicateFilename } from './slug'
+import { weddingFolderName, slugify, deduplicateFilename } from './slug'
 import { recordWriteConflict } from './conflicts'
+import { gitBlobSha } from './etag'
 
 /** Frontmatter fields for a wedding markdown file */
 type WeddingFrontmatter = {
@@ -240,6 +241,19 @@ export async function writeWeddingFile(
 
   const oldPath = indexRow.file_path
   const oldFolder = oldPath.substring(0, oldPath.lastIndexOf('/') + 1)
+
+  // No-op guard: if the content matches what we last synced and the
+  // folder is unchanged, there is nothing to write. This keeps the
+  // 5-minute background sweep and webhook round-trips from generating
+  // empty commits. (Only ever matches for git backends — R2 etags use
+  // a different scheme and fall through to a normal write.)
+  if (oldFolder === desiredFolder) {
+    const contentSha = await gitBlobSha(content)
+    if (contentSha === indexRow.etag) {
+      return oldFolder
+    }
+  }
+
   const remoteFile = await storage.read(oldPath)
   if (remoteFile && remoteFile.meta.etag !== indexRow.etag) {
     await recordWriteConflict(
@@ -279,8 +293,16 @@ export async function writeWeddingFile(
     try {
       const oldCompanion = await storage.read(oldFolder + companion)
       if (oldCompanion) {
-        await storage.write(desiredFolder + companion, oldCompanion.content)
+        const newEtag = await storage.write(desiredFolder + companion, oldCompanion.content)
         await storage.delete(oldFolder + companion)
+        // Keep the sync index pointing at the new location
+        await db
+          .prepare(
+            `UPDATE file_index SET file_path = ?, etag = ?, last_synced_at = datetime('now')
+             WHERE vendor_id = ? AND file_path = ?`
+          )
+          .bind(desiredFolder + companion, newEtag, vendorId, oldFolder + companion)
+          .run()
       }
     } catch { /* non-fatal: companion files are regenerated on next push */ }
   }
@@ -317,7 +339,39 @@ export async function writeWeddingFile(
   // 5. Delete old wedding.md — D1 is already updated, safe to clean up
   try { await storage.delete(oldPath) } catch { /* orphaned old file is acceptable */ }
 
+  // 6. Clean up the pre-folder flat file (weddings/<title-slug>.md) if
+  // one is still lying around from the legacy format
+  try { await cleanupLegacyWeddingFile(storage, wedding) } catch { /* best effort */ }
+
   return desiredFolder
+}
+
+/**
+ * Delete the legacy flat-format file (weddings/<title-slug>.md) for a
+ * wedding, if it exists and actually belongs to this wedding. These
+ * files predate the folder layout and confuse anyone browsing the repo
+ * because they show stale data.
+ */
+export async function cleanupLegacyWeddingFile(
+  storage: StorageBackend,
+  wedding: Wedding
+): Promise<boolean> {
+  const legacyPath = WEDDINGS_DIR + slugify(wedding.title) + '.md'
+  const file = await storage.read(legacyPath)
+  if (!file) return false
+
+  // Only delete when the frontmatter id matches — never touch a file we
+  // cannot positively identify as this wedding's old copy.
+  try {
+    const doc = parseMarkdown(file.content)
+    if (doc.frontmatter.id !== wedding.id) return false
+  } catch {
+    return false
+  }
+
+  await storage.delete(legacyPath)
+  console.log(`[storage] Removed legacy flat file ${legacyPath}`)
+  return true
 }
 
 /**
@@ -379,19 +433,22 @@ export async function deleteWeddingFile(
     .first<{ file_path: string }>()
 
   if (indexRow) {
-    // Delete D1 index first, then storage file.
-    // If storage delete fails, orphaned file is harmless and
+    // Delete D1 index first, then storage files.
+    // If a storage delete fails, the orphaned file is harmless and
     // cleaned up on next sync. The reverse would leave a dangling index.
     await db
       .prepare(
-        'DELETE FROM file_index WHERE vendor_id = ? AND entity_type = ? AND entity_id = ?'
+        "DELETE FROM file_index WHERE vendor_id = ? AND entity_type IN ('wedding', 'todo', 'log') AND entity_id = ?"
       )
-      .bind(vendorId, 'wedding', weddingId)
+      .bind(vendorId, weddingId)
       .run()
-    try {
-      await storage.delete(indexRow.file_path)
-    } catch (err) {
-      console.error(`[weddings] Failed to delete file ${indexRow.file_path}, orphaned:`, err)
+    const folder = indexRow.file_path.substring(0, indexRow.file_path.lastIndexOf('/') + 1)
+    for (const path of [indexRow.file_path, folder + 'todo.md', folder + 'log.md']) {
+      try {
+        await storage.delete(path)
+      } catch (err) {
+        console.error(`[weddings] Failed to delete file ${path}, orphaned:`, err)
+      }
     }
   }
 }

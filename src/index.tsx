@@ -32,23 +32,26 @@ import feed from './routes/feed'
 import carddav from './routes/carddav'
 import caldav from './routes/caldav'
 import stripe from './routes/stripe'
+import webhooks from './routes/webhooks'
+import vaultApi from './routes/vault-api'
 import mcpRoute from './routes/mcp'
 import apiRoute from './routes/api'
 import publicRoutes from './routes/public'
 import formsRoute from './routes/vendor/forms'
 import referRoute from './routes/vendor/refer'
 import publicFormRoute from './routes/form'
-import { authenticateVendor, CARDDAV_HEADERS, CALDAV_HEADERS, xmlResponse, escXml } from './lib/dav'
+import { authenticateVendor, basicAuthToken, CARDDAV_HEADERS, CALDAV_HEADERS, xmlResponse, escXml } from './lib/dav'
 import { AuthLayout } from './views/layouts/auth'
-import { getVendorWithEmail } from './db/vendors'
+import { getVendorWithEmail, getVendorById } from './db/vendors'
 import { getContact } from './storage/contacts'
 import { getStorageWithSecrets } from './storage'
 import { StorageConflictError } from './storage/conflicts'
-import { sendEmailMessage, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail, enquiryConfirmationEmail, referralRewardEmail } from './services/email'
+import { sendEmailMessage, EmailSendError, broadcastEmail, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail, enquiryConfirmationEmail, referralRewardEmail } from './services/email'
+import { getBroadcast } from './db/broadcast'
 import { handleInboundEmail } from './services/inbound-email'
-import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, sendPaymentReminders, dailyDigest, deliver, type NotifyEnv } from './services/notifications'
+import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
 import { aggregateBusynessScores } from './db/busyness'
-import { syncStorageBackground } from './services/storage-sync'
+import { syncVendorStorage } from './services/storage-sync'
 
 const app = new Hono<Env>()
 
@@ -314,6 +317,8 @@ app.route('/', publicRoutes)
 app.route('/', publicFormRoute)
 app.route('/', feed)
 app.route('/', stripe)
+app.route('/', webhooks)
+app.route('/', vaultApi)
 
 // Authenticated vendor routes
 app.route('/', dashboard)
@@ -346,7 +351,8 @@ app.route('/', adminRoute)
 function cardDavDiscoveryXml(href: string, authHeader: string | undefined, db: D1Database) {
   return (async () => {
     const vendor = await authenticateVendor(db, authHeader)
-    if (!vendor || !vendor.ical_token) {
+    const rawToken = basicAuthToken(authHeader)
+    if (!vendor || !rawToken) {
       return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
   <D:response>
@@ -360,7 +366,7 @@ function cardDavDiscoveryXml(href: string, authHeader: string | undefined, db: D
   </D:response>
 </D:multistatus>`, 207, CARDDAV_HEADERS)
     }
-    const token = vendor.ical_token
+    const token = rawToken
     return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
   <D:response>
@@ -380,7 +386,8 @@ function cardDavDiscoveryXml(href: string, authHeader: string | undefined, db: D
 function calDavDiscoveryXml(href: string, authHeader: string | undefined, db: D1Database) {
   return (async () => {
     const vendor = await authenticateVendor(db, authHeader)
-    if (!vendor || !vendor.ical_token) {
+    const rawToken = basicAuthToken(authHeader)
+    if (!vendor || !rawToken) {
       return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
   <D:response>
@@ -394,7 +401,7 @@ function calDavDiscoveryXml(href: string, authHeader: string | undefined, db: D1
   </D:response>
 </D:multistatus>`, 207, CALDAV_HEADERS)
     }
-    const token = vendor.ical_token
+    const token = rawToken
     return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
   <D:response>
@@ -486,6 +493,46 @@ app.notFound((c) =>
 
 function notifyEnv(env: Env['Bindings']): NotifyEnv {
   return { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL, sessionSecret: env.SESSION_SECRET }
+}
+
+// Git vendors are swept across this many consecutive 5-minute ticks, so the
+// background sync is a ~30-minute backstop (immediate pushes + GitHub
+// webhooks handle real-time). This keeps per-tick fan-out volume ~1/N of the
+// fleet. The shard for a tick is (tickIndex % N); a vendor's shard is a
+// stable function of its id, so every vendor is covered exactly once per
+// cycle regardless of N.
+const SYNC_SHARD_COUNT = 6
+
+/** Enqueue messages in batches of 100 (the sendBatch limit) so the cron's
+ *  own subrequest budget isn't blown fanning out thousands of vendors. */
+async function enqueueInBatches(env: Env['Bindings'], messages: { body: Record<string, string> }[]): Promise<void> {
+  for (let i = 0; i < messages.length; i += 100) {
+    await env.EMAIL_QUEUE.sendBatch(messages.slice(i, i + 100))
+  }
+}
+
+async function enqueueStorageSyncJobs(env: Env['Bindings'], scheduledTime: number): Promise<number> {
+  const shard = Math.floor(scheduledTime / 300000) % SYNC_SHARD_COUNT
+  const vendors = await env.DB
+    .prepare(
+      `SELECT id FROM vendor_profiles
+       WHERE storage_type = 'git' AND storage_config IS NOT NULL
+         AND (unicode(substr(id, -1, 1)) % ?) = ?`
+    )
+    .bind(SYNC_SHARD_COUNT, shard)
+    .all<{ id: string }>()
+    .then((r) => r.results)
+  await enqueueInBatches(env, vendors.map((v) => ({ body: { type: 'sync_vendor', vendorId: v.id } })))
+  return vendors.length
+}
+
+async function enqueueVendorDailyJobs(env: Env['Bindings']): Promise<number> {
+  const vendors = await env.DB
+    .prepare('SELECT id FROM vendor_profiles')
+    .all<{ id: string }>()
+    .then((r) => r.results)
+  await enqueueInBatches(env, vendors.map((v) => ({ body: { type: 'vendor_digest', vendorId: v.id } })))
+  return vendors.length
 }
 
 export default {
@@ -705,18 +752,52 @@ export default {
           console.log('[QUEUE] referral_reward email', sent ? 'sent to' : 'skipped for', vendor.user_email)
 
         } else if (body.type === 'broadcast_email') {
-          // One recipient of an admin broadcast (fanned out from /admin/broadcast).
+          // One recipient of an admin broadcast. New messages carry a
+          // broadcastId (body stored once); older in-flight messages may still
+          // carry inline subject/html — handle both.
+          let subject = body.subject
+          let html = body.html
+          if (body.broadcastId) {
+            const broadcast = await getBroadcast(env.DB, body.broadcastId)
+            if (!broadcast) {
+              console.error('[QUEUE] broadcast not found', body.broadcastId)
+              msg.ack()
+              continue
+            }
+            subject = broadcast.subject
+            html = broadcastEmail({ bodyText: broadcast.body, unsubscribeUrl: body.unsub || null })
+          }
           await sendEmailMessage({
             db: env.DB,
             resendApiKey: env.RESEND_API_KEY,
             vendorId: null,
             to: body.to,
             toName: body.toName || undefined,
-            subject: body.subject,
-            html: body.html,
+            subject,
+            html,
             isSystem: true,
+            listUnsubscribeUrl: body.unsub || undefined,
+            idempotencyKey: msg.id,
           })
           console.log('[QUEUE] broadcast_email sent to', body.to)
+
+        } else if (body.type === 'sync_vendor') {
+          // One vendor's storage sync, fanned out from the */5 cron so each
+          // message stays well under the per-invocation subrequest budget.
+          // syncVendorStorage handles its own per-vendor lock and errors;
+          // swallow here so a transient failure just waits for the next
+          // sweep instead of re-running (and re-pushing) on retry.
+          try {
+            const vendor = await getVendorById(env.DB, body.vendorId)
+            if (vendor) await syncVendorStorage(env, vendor)
+          } catch (e: any) {
+            console.error('[QUEUE] sync_vendor failed', body.vendorId, e.message)
+          }
+
+        } else if (body.type === 'vendor_digest') {
+          // One vendor's daily digest + payment reminders, fanned out from
+          // the 0 20 cron. runVendorDailyJobs never throws.
+          await runVendorDailyJobs(notifyEnv(env), body.vendorId)
 
         } else {
           console.log('[QUEUE] unknown message type', body.type)
@@ -725,7 +806,16 @@ export default {
         msg.ack()
       } catch (e: any) {
         console.error('[QUEUE] failed', msg.id, e.message)
-        msg.retry()
+        if (e instanceof EmailSendError && !e.retryable) {
+          // Permanent failure (bad address, other 4xx) — retrying will never
+          // succeed, so ack it. The failure is recorded on the email row.
+          msg.ack()
+        } else {
+          // Transient (rate limit, 5xx, network) — back off before retrying so
+          // we don't hammer Resend. After max_retries the dead-letter queue
+          // captures the message for inspection.
+          msg.retry({ delaySeconds: 30 })
+        }
       }
     }
   },
@@ -738,20 +828,17 @@ export default {
     console.log('[CRON] triggered', event.cron)
 
     if (event.cron === '0 20 * * *') {
-      // Daily digest — 8pm UTC
+      // Daily digest + payment reminders — fanned out one job per vendor so
+      // a single invocation never iterates every vendor (which blows the
+      // subrequest/CPU budget and Resend rate limit past a few hundred).
       try {
-        await dailyDigest(notifyEnv(env))
+        const n = await enqueueVendorDailyJobs(env)
+        console.log(`[CRON] enqueued ${n} vendor_digest jobs`)
       } catch (e: any) {
-        console.error('[CRON] daily digest failed', e.message)
+        console.error('[CRON] enqueue daily jobs failed', e.message)
       }
 
-      // Payment reminders — due in 3 days / overdue by 1 day
-      try {
-        await sendPaymentReminders(notifyEnv(env))
-      } catch (e: any) {
-        console.error('[CRON] payment reminders failed', e.message)
-      }
-
+      // Busyness aggregation is a single query — fine to run inline.
       try {
         await aggregateBusynessScores(env.DB)
       } catch (e: any) {
@@ -760,14 +847,14 @@ export default {
     }
 
     if (event.cron === '*/5 * * * *') {
-      // Storage sync — every 5 minutes
+      // Storage sync — fan out one job per git vendor, sharded across ticks
+      // so each message handles a single vendor (bounded subrequests) and no
+      // single invocation iterates the whole fleet.
       try {
-        const result = await syncStorageBackground(env)
-        if (result.weddingsSynced > 0 || result.errors > 0) {
-          console.log(`[CRON] storage sync: ${result.vendorsChecked} vendors, ${result.weddingsSynced} weddings synced, ${result.errors} errors`)
-        }
+        const n = await enqueueStorageSyncJobs(env, event.scheduledTime)
+        if (n > 0) console.log(`[CRON] enqueued ${n} sync_vendor jobs`)
       } catch (e: any) {
-        console.error('[CRON] storage sync failed', e.message)
+        console.error('[CRON] enqueue storage sync failed', e.message)
       }
     }
   },

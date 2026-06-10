@@ -7,7 +7,8 @@ import { MarketingLayout } from '../views/layouts/marketing'
 import { requireAuth } from '../middleware/auth'
 import { csrf } from '../middleware/csrf'
 import { rateLimit } from '../middleware/rate-limit'
-import { updateUser, updateUserEmail, getUserByEmail, getUserById, deleteUser, updateNotificationPrefs } from '../db/users'
+import { updateUser, updateUserEmail, getUserByEmail, getUserById, updateNotificationPrefs } from '../db/users'
+import { purgeAccount } from '../services/account'
 import { getVendorByUserId } from '../db/vendors'
 import { getFirstCoupleWedding } from '../db/weddings'
 import {
@@ -762,13 +763,9 @@ account.post('/account/delete', async (c) => {
   const user = c.get('user')
   const sessionId = getCookie(c, 'wc_session')
 
-  // Delete avatar from R2
-  if (user.avatar_r2_key && c.env.STORAGE) {
-    await c.env.STORAGE.delete(user.avatar_r2_key).catch(() => {})
-  }
-
   await auditLog(c, 'account_deleted', 'user', user.id).catch(() => {})
-  await deleteUser(c.env.DB, user.id)
+  // Purge R2 (avatar, logo, storage tree), KV (sessions, secrets), and D1.
+  await purgeAccount(c.env, user)
 
   if (sessionId) {
     await destroySession(c.env.DB, c.env.KV, sessionId).catch(() => {})

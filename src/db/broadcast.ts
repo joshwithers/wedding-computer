@@ -1,5 +1,31 @@
 import type { BroadcastRecipient } from '../types'
 
+/** Store a broadcast body once so per-recipient queue jobs can reference it by
+ *  id instead of each carrying the full rendered HTML. Returns the new id. */
+export async function createBroadcast(
+  db: D1Database,
+  data: { subject: string; body: string; createdByUserId?: string | null; recipientCount: number }
+): Promise<string> {
+  const row = await db
+    .prepare(
+      `INSERT INTO broadcasts (subject, body, created_by_user_id, recipient_count)
+       VALUES (?, ?, ?, ?) RETURNING id`
+    )
+    .bind(data.subject, data.body, data.createdByUserId ?? null, data.recipientCount)
+    .first<{ id: string }>()
+  return row!.id
+}
+
+export async function getBroadcast(
+  db: D1Database,
+  id: string
+): Promise<{ id: string; subject: string; body: string } | null> {
+  return db
+    .prepare('SELECT id, subject, body FROM broadcasts WHERE id = ?')
+    .bind(id)
+    .first<{ id: string; subject: string; body: string }>()
+}
+
 export type AudienceSelection = {
   vendors: boolean
   couples: boolean

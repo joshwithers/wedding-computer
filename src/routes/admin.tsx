@@ -12,9 +12,8 @@ import { getUserByEmail } from '../db/users'
 import { getVendorByUserId } from '../db/vendors'
 import { grantFreeMonths, listRecentGrants, FREE_MONTHS_CAP, type GrantRow } from '../db/referrals'
 import { redeemBankedMonthsToStripe } from '../services/free-months'
-import { getBroadcastRecipients, getBroadcastCountries } from '../db/broadcast'
+import { getBroadcastRecipients, getBroadcastCountries, createBroadcast } from '../db/broadcast'
 import { countWaitlist, getWaitlistStats, getWaitlistCountryBreakdown, listWaitlist, listWaitlistForExport } from '../db/waitlist'
-import { broadcastEmail } from '../services/email'
 import { makeUnsubscribeToken, unsubscribeUrl } from '../services/notification-prefs'
 import { auditLog } from '../middleware/audit'
 
@@ -727,12 +726,20 @@ admin.post('/admin/broadcast', async (c) => {
     return rerender({ preview: { count: 0 }, error: 'No recipients match — nothing was sent.' })
   }
 
-  // Fan out via the email queue — chunked into batches of 100 sends.
+  // Store the body once and fan out small per-recipient messages that
+  // reference it by id. Embedding full HTML in every message overruns the
+  // 256KB queue-batch limit (partial enqueue) and re-sends on resubmit.
   // Platform users get a signed one-click link that disables the
   // 'announcements' preference; waitlist-only recipients keep their
   // waitlist unsubscribe token.
+  const broadcastId = await createBroadcast(c.env.DB, {
+    subject: values.subject,
+    body: values.body,
+    createdByUserId: user.id,
+    recipientCount: recipients.length,
+  })
   const messages = await Promise.all(recipients.map(async (r) => {
-    let unsub: string | null = null
+    let unsub = ''
     if (r.userId) {
       unsub = unsubscribeUrl(c.env.APP_URL, await makeUnsubscribeToken(c.env.SESSION_SECRET, r.userId, 'announcements'))
     } else if (r.unsubscribeToken) {
@@ -741,10 +748,10 @@ admin.post('/admin/broadcast', async (c) => {
     return {
       body: {
         type: 'broadcast_email',
+        broadcastId,
         to: r.email,
         toName: r.name ?? '',
-        subject: values.subject,
-        html: broadcastEmail({ bodyText: values.body, unsubscribeUrl: unsub }),
+        unsub,
       },
     }
   }))

@@ -53,6 +53,7 @@ export function isIgnoredPath(path: string): boolean {
   const filename = path.split('/').pop() ?? ''
   if (IGNORED_FILES.has(filename)) return true
   if (filename.startsWith('.')) return true  // dotfiles
+  if (filename.endsWith('.conflict.md')) return true  // sync conflict copies
   for (const dir of IGNORED_DIRS) {
     if (path.includes(dir)) return true
   }
@@ -229,27 +230,43 @@ export class GitHubStorageBackend implements StorageBackend {
   }
 
   async list(prefix: string, _cursor?: string): Promise<ListResult> {
-    const fullPrefix = this.fullPath(prefix.replace(/\/$/, ''))
-    const res = await this.api(`${fullPrefix}?ref=${this.config.branch}`)
+    // The Contents API only lists one directory level, but callers expect
+    // R2-style recursive prefix listing (weddings/ must surface
+    // weddings/<folder>/wedding.md). The Git Trees API returns the whole
+    // tree in a single call.
+    const url = `https://api.github.com/repos/${this.config.repo}/git/trees/${this.config.branch}?recursive=1`
+    const res = await this.api(url)
 
     if (res.status === 404) return { files: [] }
     if (!res.ok) {
       const body = await res.text()
-      console.error(`[github] list ${fullPrefix}: ${res.status} ${body}`)
+      console.error(`[github] list tree: ${res.status} ${body}`)
       throw new Error(`GitHub API error on list: ${res.status}`)
     }
 
-    const items = (await res.json()) as GitHubFileResponse[]
-    if (!Array.isArray(items)) return { files: [] }
+    const data = (await res.json()) as {
+      tree: { path: string; type: 'blob' | 'tree' | 'commit'; sha: string; size?: number }[]
+      truncated?: boolean
+    }
+    if (!Array.isArray(data.tree)) return { files: [] }
+    if (data.truncated) {
+      // The tree is incomplete. Returning it would make the sync engine
+      // treat every omitted file as deleted and purge it from the index
+      // (and, downstream, from the app). Fail the listing instead so the
+      // sync aborts and nothing is destroyed.
+      console.error(`[github] tree listing truncated for ${this.config.repo} — repo too large for a single tree fetch; aborting list`)
+      throw new Error('GitHub tree listing truncated — repository too large to sync safely')
+    }
 
-    const files: FileMeta[] = items
-      .filter((item) => item.type === 'file' && item.name.endsWith('.md') && !isIgnoredPath(item.path))
+    const fullPrefix = this.fullPath(prefix)
+    const files: FileMeta[] = data.tree
+      .filter((item) => item.type === 'blob' && item.path.startsWith(fullPrefix) && !isIgnoredPath(item.path))
       .map((item) => ({
         path: this.config.path
           ? item.path.slice(this.config.path.length + 1)
           : item.path,
         etag: item.sha,
-        size: item.size,
+        size: item.size ?? 0,
         lastModified: new Date(),
       }))
 
@@ -332,6 +349,72 @@ export async function createGitHubRepo(
   } catch (err) {
     console.error('[github] createRepo error:', err)
     return null
+  }
+}
+
+/**
+ * Make sure the repo has a push webhook pointing at our endpoint, with
+ * the given secret. Returns true when the webhook is in place.
+ *
+ * Requires the token to have hook admin permission (`admin:repo_hook`
+ * for classic PATs, "Webhooks" for fine-grained). Plain `repo` scope
+ * cannot manage hooks — in that case this returns false and sync falls
+ * back to the 5-minute background pull.
+ */
+export async function ensureGitHubWebhook(
+  token: string,
+  repo: string,
+  webhookUrl: string,
+  secret: string
+): Promise<boolean> {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json',
+    'User-Agent': 'WeddingComputer/1.0',
+  }
+
+  try {
+    const listRes = await fetch(`https://api.github.com/repos/${repo}/hooks`, { headers })
+    if (!listRes.ok) {
+      // 404 is what GitHub returns when the token lacks hook permission
+      console.log(`[github] cannot manage webhooks on ${repo}: ${listRes.status}`)
+      return false
+    }
+
+    const hooks = (await listRes.json()) as { id: number; config?: { url?: string } }[]
+    const existing = Array.isArray(hooks)
+      ? hooks.find((h) => h.config?.url === webhookUrl)
+      : undefined
+
+    const config = {
+      url: webhookUrl,
+      content_type: 'json',
+      secret,
+    }
+
+    if (existing) {
+      // Re-set the secret so a regenerated secret takes effect
+      const patchRes = await fetch(`https://api.github.com/repos/${repo}/hooks/${existing.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ config, events: ['push'], active: true }),
+      })
+      return patchRes.ok
+    }
+
+    const createRes = await fetch(`https://api.github.com/repos/${repo}/hooks`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: 'web', config, events: ['push'], active: true }),
+    })
+    if (!createRes.ok) {
+      console.log(`[github] webhook create failed on ${repo}: ${createRes.status}`)
+    }
+    return createRes.ok
+  } catch (err) {
+    console.error('[github] ensureGitHubWebhook error:', err)
+    return false
   }
 }
 

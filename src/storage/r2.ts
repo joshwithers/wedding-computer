@@ -71,7 +71,6 @@ export class R2StorageBackend implements StorageBackend {
     })
 
     const files: FileMeta[] = result.objects
-      .filter((obj) => obj.key.endsWith('.md'))
       .map((obj) => ({
         path: obj.key.slice(this.prefix.length),
         etag: obj.etag,

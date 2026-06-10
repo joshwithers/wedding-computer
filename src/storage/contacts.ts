@@ -688,7 +688,8 @@ export async function syncToContactsTable(
          tags = excluded.tags,
          form_data = excluded.form_data,
          last_contacted_at = excluded.last_contacted_at,
-         updated_at = excluded.updated_at`
+         updated_at = excluded.updated_at
+       WHERE contacts.vendor_id = excluded.vendor_id`
     )
     .bind(
       contact.id,

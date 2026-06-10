@@ -9,6 +9,7 @@ import { sendEmailMessage } from '../../services/email'
 import { formatDate } from '../../lib/date'
 import { sanitize, sanitizeHtml } from '../../lib/validation'
 import { auditLog } from '../../middleware/audit'
+import { consumeRateLimit } from '../../middleware/rate-limit'
 
 const emails = new Hono<Env>()
 
@@ -238,6 +239,19 @@ emails.post('/app/emails/send', async (c) => {
 
   if (!to || !subject || !text) {
     return c.redirect('/app/emails/compose?error=All+fields+are+required')
+  }
+
+  // Abuse/cost guard: every account sends from the shared @wedding.computer
+  // domain, so an unthrottled free signup is an open relay that can poison
+  // the domain reputation magic-link auth depends on. Cap per-minute bursts
+  // and total daily volume per vendor. (KV counters are approximate.)
+  const burstOk = await consumeRateLimit(c.env.KV, `email-send-burst:${vendor.id}`, 10, 60)
+  const dailyOk = burstOk && (await consumeRateLimit(c.env.KV, `email-send-day:${vendor.id}`, 100, 86400))
+  if (!burstOk || !dailyOk) {
+    return c.redirect(
+      '/app/emails/compose?error=' +
+        encodeURIComponent("You've reached your email sending limit for now. Please try again later.")
+    )
   }
 
   const html = `<div style="font-family: -apple-system, system-ui, sans-serif; line-height: 1.6; color: #333; max-width: 600px;">

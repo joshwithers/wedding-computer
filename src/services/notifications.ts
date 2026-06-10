@@ -1,5 +1,6 @@
 import {
   sendEmailMessage,
+  EmailSendError,
   invoiceSentEmail,
   vendorAddedEmail,
   vendorJoinedWeddingEmail,
@@ -102,6 +103,9 @@ export async function deliver(
     return true
   } catch (e: any) {
     console.error(`[NOTIFY] ${key} to user ${recipient.id} failed:`, e.message)
+    // Transient failures bubble up so the queue consumer retries the message;
+    // permanent failures and opt-outs are swallowed (return false).
+    if (e instanceof EmailSendError && e.retryable) throw e
     return false
   }
 }
@@ -283,8 +287,8 @@ export async function notifyPaymentReceived(env: NotifyEnv, data: {
  * Payers (couple members + invoice contacts) get the reminder; the vendor gets
  * an overdue alert so they can chase it up. All user sends gated by payment_reminders.
  */
-export async function sendPaymentReminders(env: NotifyEnv): Promise<void> {
-  const duePayments = await env.db
+export async function sendPaymentReminders(env: NotifyEnv, vendorId?: string): Promise<void> {
+  const stmt = env.db
     .prepare(
       `SELECT ip.id AS payment_id, ip.label, ip.amount_cents, ip.due_date,
               i.id AS invoice_id, i.title AS invoice_title, i.currency, i.vendor_id,
@@ -294,8 +298,10 @@ export async function sendPaymentReminders(env: NotifyEnv): Promise<void> {
        JOIN invoices i ON i.id = ip.invoice_id
        WHERE ip.status IN ('pending', 'overdue')
          AND i.status NOT IN ('draft', 'paid', 'cancelled', 'refunded')
-         AND (ip.due_date = date('now', '+3 days') OR ip.due_date = date('now', '-1 day'))`
+         AND (ip.due_date = date('now', '+3 days') OR ip.due_date = date('now', '-1 day'))
+         ${vendorId ? 'AND i.vendor_id = ?' : ''}`
     )
+  const duePayments = await (vendorId ? stmt.bind(vendorId) : stmt)
     .all<{
       payment_id: string
       label: string
@@ -693,24 +699,71 @@ export async function notifyAdminSignup(env: NotifyEnv, data: {
 
 // ─── Daily digest ───
 
-export async function dailyDigest(env: NotifyEnv): Promise<void> {
-  const today = new Date().toISOString().split('T')[0]
-  const weekFromNow = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
+type DigestVendorRow = {
+  id: string
+  business_name: string
+  user_id: string
+  email: string
+  name: string
+  notification_prefs: string
+}
 
+const DIGEST_VENDOR_SELECT =
+  `SELECT vp.id, vp.business_name, u.id AS user_id, u.email, u.name, u.notification_prefs
+   FROM vendor_profiles vp
+   JOIN users u ON u.id = vp.user_id`
+
+export async function dailyDigest(env: NotifyEnv): Promise<void> {
   // Get all active vendors (with prefs so opted-out vendors skip the heavy queries)
   const vendors = await env.db
-    .prepare(
-      `SELECT vp.id, vp.business_name, u.id AS user_id, u.email, u.name, u.notification_prefs
-       FROM vendor_profiles vp
-       JOIN users u ON u.id = vp.user_id`
-    )
-    .all<{ id: string; business_name: string; user_id: string; email: string; name: string; notification_prefs: string }>()
+    .prepare(DIGEST_VENDOR_SELECT)
+    .all<DigestVendorRow>()
     .then((r) => r.results)
 
   let sentCount = 0
   for (const vendor of vendors) {
-    if (!isNotificationEnabled(vendor.notification_prefs, 'daily_digest')) continue
+    if (await digestForVendor(env, vendor)) sentCount++
+  }
 
+  console.log('[DIGEST] sent', sentCount, 'of', vendors.length, 'vendors')
+}
+
+/**
+ * Per-vendor daily work, run from the queue (one message per vendor) so a
+ * single cron invocation never iterates every vendor and blows the
+ * subrequest/CPU budget. Handles the digest email and that vendor's payment
+ * reminders. Never throws — failures are logged so the message still acks
+ * (the next day's cron retries; we don't want a retry to duplicate sends).
+ */
+export async function runVendorDailyJobs(env: NotifyEnv, vendorId: string): Promise<void> {
+  try {
+    const vendor = await env.db
+      .prepare(`${DIGEST_VENDOR_SELECT} WHERE vp.id = ?`)
+      .bind(vendorId)
+      .first<DigestVendorRow>()
+    if (vendor) await digestForVendor(env, vendor)
+  } catch (e: any) {
+    console.error('[DIGEST] vendor', vendorId, 'failed', e.message)
+  }
+
+  try {
+    await sendPaymentReminders(env, vendorId)
+  } catch (e: any) {
+    console.error('[REMINDERS] vendor', vendorId, 'failed', e.message)
+  }
+}
+
+/**
+ * Build and send one vendor's daily digest. Returns true if an email was
+ * sent (false if opted out or nothing to report).
+ */
+export async function digestForVendor(env: NotifyEnv, vendor: DigestVendorRow): Promise<boolean> {
+  if (!isNotificationEnabled(vendor.notification_prefs, 'daily_digest')) return false
+
+  const today = new Date().toISOString().split('T')[0]
+  const weekFromNow = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
+
+  {
     // Upcoming weddings in next 7 days
     const upcomingWeddings = await env.db
       .prepare(
@@ -766,7 +819,7 @@ export async function dailyDigest(env: NotifyEnv): Promise<void> {
 
     // Skip if nothing to report
     if (upcomingWeddings.length === 0 && newContacts.length === 0 && duePayments.length === 0 && upcomingEvents.length === 0) {
-      continue
+      return false
     }
 
     const html = dailyDigestEmail({
@@ -801,8 +854,6 @@ export async function dailyDigest(env: NotifyEnv): Promise<void> {
       html,
       vendorId: vendor.id,
     })
-    if (ok) sentCount++
+    return ok
   }
-
-  console.log('[DIGEST] sent', sentCount, 'of', vendors.length, 'vendors')
 }

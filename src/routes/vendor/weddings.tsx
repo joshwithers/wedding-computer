@@ -17,7 +17,7 @@ import { listDocumentsForWedding } from '../../db/documents'
 import { listInvoicesForWedding, type InvoiceWithPaymentSummary } from '../../db/invoices'
 import { getContact, updateContact } from '../../storage/contacts'
 import { getStorageWithSecrets } from '../../storage'
-import { writeWeddingFile } from '../../storage/weddings'
+import { pushAllWeddingFiles } from '../../services/storage-push'
 import { createActivity } from '../../db/activities'
 import type { Bindings, VendorProfile, Wedding } from '../../types'
 import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
@@ -29,7 +29,7 @@ import { track } from '../../services/analytics'
 import { getWeddingTodo, upsertWeddingTodo } from '../../db/todos'
 import { listTemplates, getDefaultTemplate } from '../../db/todos'
 import { TodoSection } from './checklists'
-import { appendWeddingLog, listWeddingLog, exportWeddingLogMarkdown } from '../../db/wedding-log'
+import { appendWeddingLog, listWeddingLog } from '../../db/wedding-log'
 import { listCoupleVendors } from '../../db/couple-vendors'
 import { buildCredits, formatInstagramCredits, formatWebCredits, formatHtmlCredits } from '../../services/wedding-credits'
 
@@ -306,58 +306,6 @@ const weddings = new Hono<Env>()
 
 weddings.use('/app/*', requireAuth, csrf, requireVendor)
 
-/** Safe storage getter — returns null if storage unavailable */
-async function tryGetStorage(env: Bindings, vendor: VendorProfile) {
-  try { return await getStorageWithSecrets(env, vendor) } catch { return null }
-}
-
-/**
- * Push ALL wedding files to storage (GitHub/R2): wedding.md, todo.md, log.md.
- * Best-effort — never blocks the response. Call this after any wedding data change.
- */
-export async function pushAllWeddingFiles(env: Bindings, vendor: VendorProfile, weddingId: string) {
-  const storage = await tryGetStorage(env, vendor)
-  if (!storage) {
-    console.log(`[storage] No storage backend for vendor ${vendor.id} (type=${vendor.storage_type ?? 'none'})`)
-    return
-  }
-
-  const wedding = await getWedding(env.DB, weddingId)
-  if (!wedding) return
-
-  // 1. wedding.md — also handles folder rename if date/title changed
-  let folder: string
-  try {
-    folder = await writeWeddingFile(storage, env.DB, vendor.id, wedding)
-  } catch (err: any) {
-    console.error(`[storage] FAILED push wedding.md ${weddingId}:`, err.message)
-    return // can't continue without knowing the folder
-  }
-
-  // 2. todo.md — the checklist (if one exists)
-  try {
-    const todo = await getWeddingTodo(env.DB, vendor.id, weddingId)
-    if (todo) {
-      const now = new Date().toISOString()
-      const md = `---\nwedding: ${wedding.title}\nwedding_id: ${weddingId}\nupdated_at: ${now}\n---\n\n${todo.content}\n`
-      await storage.write(`${folder}todo.md`, md)
-    }
-  } catch (err: any) {
-    console.error(`[storage] FAILED push todo.md ${weddingId}:`, err.message)
-  }
-
-  // 3. log.md — the changelog
-  try {
-    const md = await exportWeddingLogMarkdown(env.DB, weddingId, wedding.title)
-    if (md.split('\n').length > 2) {
-      await storage.write(`${folder}log.md`, md)
-    }
-  } catch (err: any) {
-    console.error(`[storage] FAILED push log.md ${weddingId}:`, err.message)
-  }
-
-  console.log(`[storage] Pushed wedding files ${weddingId} → ${folder}`)
-}
 
 // ─── Wedding list ───
 weddings.get('/app/weddings', async (c) => {
@@ -482,15 +430,17 @@ weddings.post('/app/weddings/new', async (c) => {
       metadata: { ceremony_type: trimOrNull(body.ceremony_type) ?? 'wedding' },
     })
 
-    // Push wedding file to storage (GitHub/R2) — best-effort, don't block
-    appendWeddingLog(c.env.DB, wedding.id, user.id, 'Wedding created').catch(() => {})
-    pushAllWeddingFiles(c.env, vendor, wedding.id).catch(() => {})
+    await appendWeddingLog(c.env.DB, wedding.id, user.id, 'Wedding created').catch(() => {})
 
     // Auto-deploy default checklist template if one exists
     const defaultTemplate = await getDefaultTemplate(c.env.DB, vendor.id)
     if (defaultTemplate) {
       await upsertWeddingTodo(c.env.DB, vendor.id, wedding.id, defaultTemplate.content, defaultTemplate.id)
     }
+
+    // Push wedding files to storage (GitHub/R2) — keeps running after the
+    // response is sent; without waitUntil the runtime may cancel it
+    c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, wedding.id))
 
     // Link contact and auto-invite couple
     const contactId = trimOrNull(body.contact_id)
@@ -1452,8 +1402,9 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       console.error('[weddings] Failed to sync bump events:', bumpErr)
     }
 
-    // Push all wedding files to storage (GitHub/R2)
-    pushAllWeddingFiles(c.env, vendor, weddingId).catch(() => {})
+    // Push all wedding files to storage (GitHub/R2) — waitUntil keeps the
+    // push alive after the redirect is sent
+    c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
 
     if (newStatus === 'confirmed' && oldWedding?.status !== 'confirmed') {
       track(c.env.DB, c.get('vendor')!.id, 'booking_confirmed', { weddingId })

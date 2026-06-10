@@ -1,4 +1,4 @@
-type VendorSecretName = 'github_access_token' | 'anthropic_api_key'
+type VendorSecretName = 'github_access_token' | 'github_webhook_secret' | 'anthropic_api_key'
 
 const REF_PREFIX = 'kv:'
 

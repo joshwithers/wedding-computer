@@ -55,6 +55,7 @@ A wedding is a dozen people working toward one day — yet most tools treat each
 - **Couple planner** — vendor grid, budget tracker, booking forms
 - **Directory listing** — opt in to the wedding.institute vendor directory
 - **GitHub sync** — contacts and weddings sync to a private repo as plain text markdown
+- **Obsidian plugin** — official two-way sync plugin in the [Obsidian community directory](https://community.obsidian.md/plugins/wedding-computer-sync)
 - **Plain text files** — every file is portable, human-readable, and never locked in
 - **Open source** — AGPL-3.0, self-hostable on Cloudflare Workers
 
@@ -671,7 +672,7 @@ marketing.get('/', (c) => {
                 <div class="text-center">
                   <div class="text-lg mb-1">💎</div>
                   <p class="text-xs font-bold text-gray-700">Obsidian</p>
-                  <p class="text-[10px] text-gray-500">Open as a vault</p>
+                  <p class="text-[10px] text-gray-500">Official plugin</p>
                 </div>
                 <div class="text-center">
                   <div class="text-lg mb-1">📝</div>
@@ -1660,7 +1661,7 @@ Budget: $3,000 - $5,000`}</code></pre>
             />
             <AboutFeature
               title="Works with Obsidian"
-              desc={"Obsidian (a free note-taking app) can open your GitHub repo directly using the Obsidian Git plugin. Your contacts and weddings show up as browsable, searchable notes with all the structured data visible as properties. It's a beautiful way to work with your CRM data."}
+              desc={"Our official Wedding Computer Sync plugin is in the Obsidian community directory. Your contacts and weddings show up as browsable, searchable notes with all the structured data visible as properties — editable in both directions, on desktop and mobile."}
             />
             <AboutFeature
               title="Works offline"
@@ -1692,18 +1693,23 @@ Budget: $3,000 - $5,000`}</code></pre>
 
         {/* Method 3: Obsidian */}
         <h2 class="text-xl sm:text-2xl font-bold mb-3">Use with Obsidian</h2>
-        <p class="text-gray-500 text-sm mb-6">A beautiful way to browse your CRM data.</p>
+        <p class="text-gray-500 text-sm mb-6">Two-way sync with our official plugin.</p>
         <div class="space-y-4 text-gray-600 leading-relaxed mb-6">
           <p>
             <a href="https://obsidian.md/" class="text-horizon-700 font-bold hover:underline">Obsidian</a> is
             a free app for reading and writing markdown files. It runs on Mac, Windows, Linux, iPhone,
-            iPad, and Android. Since your Wedding Computer data is markdown, Obsidian reads it perfectly.
+            iPad, and Android. Since your Wedding Computer data is markdown, Obsidian reads it perfectly —
+            and our official{' '}
+            <a href="https://community.obsidian.md/plugins/wedding-computer-sync" class="text-horizon-700 font-bold hover:underline" rel="noopener">
+              Wedding Computer Sync plugin
+            </a>{' '}
+            keeps a vault in two-way sync with your account.
           </p>
         </div>
         <div class="space-y-3 mb-12">
           <AboutFeature
-            title="With GitHub sync (easiest)"
-            desc={"If you've connected GitHub, install the free Obsidian Git plugin. Point it at your repo and your CRM data appears as an Obsidian vault. Search contacts, browse weddings, and see all your notes — with live sync in both directions."}
+            title="Official plugin (easiest)"
+            desc={"In Obsidian, open Settings → Community plugins → Browse and search for \"Wedding Computer Sync\". Install it, paste your sync token from Settings → Device sync, and your contacts, weddings, and checklists appear as editable notes. Changes sync both ways within seconds — no GitHub or git required, and it works on mobile."}
           />
           <AboutFeature
             title="With a downloaded export"

@@ -524,7 +524,7 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe ON subscriptions(stripe_subs
 CREATE TABLE IF NOT EXISTS file_index (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
   vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
-  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding')),
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding', 'todo', 'log')),
   entity_id TEXT NOT NULL,
   file_path TEXT NOT NULL,
   etag TEXT NOT NULL,
@@ -749,3 +749,22 @@ CREATE TABLE IF NOT EXISTS waitlist (
 
 CREATE INDEX IF NOT EXISTS idx_waitlist_status ON waitlist(status);
 CREATE INDEX IF NOT EXISTS idx_waitlist_country ON waitlist(country);
+
+-- Email deliverability (migration 039) ──────────────────────────────────────
+-- Addresses that hard-bounced or complained; checked before every send.
+CREATE TABLE IF NOT EXISTS email_suppressions (
+  email TEXT PRIMARY KEY,                 -- always stored lowercased
+  reason TEXT NOT NULL,                   -- 'bounce' | 'complaint' | 'manual'
+  detail TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Broadcast bodies stored once, referenced by id from per-recipient queue jobs.
+CREATE TABLE IF NOT EXISTS broadcasts (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_by_user_id TEXT REFERENCES users(id),
+  recipient_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

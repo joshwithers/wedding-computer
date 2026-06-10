@@ -10,6 +10,12 @@
  * 3. File in storage AND in index, etags differ → re-parse, update index
  * 4. Index entry but NO file in storage → deleted externally, remove from index
  *
+ * The weddings/ directory holds one folder per wedding:
+ *   weddings/2026-07-12-sarah-james/wedding.md   → weddings table
+ *   weddings/2026-07-12-sarah-james/todo.md      → wedding_todos table
+ *   weddings/2026-07-12-sarah-james/log.md       → push-only (derived changelog, never pulled)
+ *   weddings/<flat>.md                           → legacy format, ignored
+ *
  * Conflict detection happens at write time: if we try to write and
  * the file's etag doesn't match what we last saw, we record a conflict
  * instead of overwriting.
@@ -21,6 +27,7 @@ import { parseMarkdown, ParseError } from './markdown'
 import { markdownToContact, contactCachedData, syncToContactsTable } from './contacts'
 import { markdownToWedding, weddingCachedData } from './weddings'
 import { isIgnoredPath } from './github'
+import { getWeddingTodo } from '../db/todos'
 export { checkForExternalChange, recordConflict } from './conflicts'
 
 export type SyncResult = {
@@ -29,6 +36,38 @@ export type SyncResult = {
   removed: number    // index entries for deleted files
   errors: number     // files that failed to parse
   skipped: number    // unchanged files (etag match)
+}
+
+function emptyResult(): SyncResult {
+  return { indexed: 0, updated: 0, removed: 0, errors: 0, skipped: 0 }
+}
+
+function mergeInto(target: SyncResult, source: SyncResult): void {
+  target.indexed += source.indexed
+  target.updated += source.updated
+  target.removed += source.removed
+  target.errors += source.errors
+  target.skipped += source.skipped
+}
+
+/**
+ * Classify a path under weddings/ so the engine knows how to treat it.
+ */
+export function classifyWeddingPath(
+  path: string
+): 'wedding' | 'todo' | 'log' | 'legacy' | 'other' {
+  if (!path.startsWith('weddings/')) return 'other'
+  const parts = path.slice('weddings/'.length).split('/')
+  if (parts.length === 1) {
+    // Flat file directly under weddings/ — pre-folder legacy format
+    return parts[0].endsWith('.md') ? 'legacy' : 'other'
+  }
+  if (parts.length === 2) {
+    if (parts[1] === 'wedding.md') return 'wedding'
+    if (parts[1] === 'todo.md') return 'todo'
+    if (parts[1] === 'log.md') return 'log'
+  }
+  return 'other' // files/ uploads, deeper nesting
 }
 
 /**
@@ -41,28 +80,18 @@ export async function syncVendor(
   db: D1Database,
   vendorId: string
 ): Promise<SyncResult> {
-  const result: SyncResult = {
-    indexed: 0,
-    updated: 0,
-    removed: 0,
-    errors: 0,
-    skipped: 0,
-  }
+  const result = emptyResult()
 
   // Run contact and wedding syncs independently — one failing
   // should not prevent the other from completing.
   const results = await Promise.allSettled([
-    syncEntityType(storage, db, vendorId, 'contact', 'contacts/'),
-    syncEntityType(storage, db, vendorId, 'wedding', 'weddings/'),
+    syncContacts(storage, db, vendorId),
+    syncWeddingsDir(storage, db, vendorId),
   ])
 
   for (const r of results) {
     if (r.status === 'fulfilled') {
-      result.indexed += r.value.indexed
-      result.updated += r.value.updated
-      result.removed += r.value.removed
-      result.errors += r.value.errors
-      result.skipped += r.value.skipped
+      mergeInto(result, r.value)
     } else {
       console.error('[sync] Entity type sync failed:', r.reason)
       result.errors++
@@ -72,125 +101,432 @@ export async function syncVendor(
   return result
 }
 
+export type ApplyOutcome =
+  | { applied: 'contact' | 'wedding' | 'todo'; entityId: string }
+  | { applied: 'ignored'; reason: string }
+
 /**
- * Sync one entity type (contacts or weddings) for a vendor.
+ * Ingest a single pulled file into D1 and the file index. Shared by the
+ * directory scans below and the vault API's PUT endpoint (which ingests
+ * the file it just wrote so the app reflects the edit immediately).
+ *
+ * Throws on unparseable content — callers decide whether that is a
+ * counted error (scan) or a client error (API).
  */
-async function syncEntityType(
-  storage: StorageBackend,
+export async function applyPulledFile(
   db: D1Database,
   vendorId: string,
-  entityType: 'contact' | 'wedding',
-  prefix: string
-): Promise<SyncResult> {
-  const result: SyncResult = {
-    indexed: 0,
-    updated: 0,
-    removed: 0,
-    errors: 0,
-    skipped: 0,
+  path: string,
+  content: string,
+  etag: string,
+  opts: { resolveWeddingFolder?: (folder: string) => string | undefined } = {}
+): Promise<ApplyOutcome> {
+  if (path.startsWith('contacts/')) {
+    const doc = parseMarkdown(content)
+    const contact = markdownToContact(doc, vendorId)
+    await syncToContactsTable(db, contact)
+    await upsertIndexRow(db, vendorId, 'contact', contact.id, path, etag, contactCachedData(contact))
+    return { applied: 'contact', entityId: contact.id }
   }
 
-  // Get all files from storage (with pagination)
-  const storageFiles = await listAllFiles(storage, prefix)
+  const kind = classifyWeddingPath(path)
 
-  // Get all index entries for this entity type
+  if (kind === 'wedding') {
+    const doc = parseMarkdown(content)
+    const wedding = markdownToWedding(doc)
+
+    // SECURITY: the wedding id comes from vendor-controlled frontmatter and
+    // the weddings table is shared across all tenants. Without this gate a
+    // crafted wedding.md could overwrite another couple's wedding and
+    // self-grant a managing membership. Only allow the write when the
+    // wedding is new (this vendor is creating it) or this vendor is already
+    // an active member.
+    const access = await weddingWriteAccess(db, vendorId, wedding.id)
+    if (access === 'forbidden') {
+      return { applied: 'ignored', reason: 'wedding belongs to another account' }
+    }
+
+    await syncToWeddingsTable(db, wedding)
+    if (access === 'new') {
+      await ensureSyncedWeddingMembership(db, vendorId, wedding)
+    }
+    await upsertIndexRow(db, vendorId, 'wedding', wedding.id, path, etag, weddingCachedData(wedding))
+    return { applied: 'wedding', entityId: wedding.id }
+  }
+
+  if (kind === 'todo') {
+    const doc = parseMarkdown(content)
+    const folder = folderOf(path)
+    const fmWeddingId =
+      typeof doc.frontmatter.wedding_id === 'string' ? doc.frontmatter.wedding_id : null
+    let weddingId = fmWeddingId ?? opts.resolveWeddingFolder?.(folder) ?? null
+
+    if (!weddingId) {
+      const row = await db
+        .prepare('SELECT entity_id FROM file_index WHERE vendor_id = ? AND file_path = ?')
+        .bind(vendorId, folder + 'wedding.md')
+        .first<{ entity_id: string }>()
+      weddingId = row?.entity_id ?? null
+    }
+    if (!weddingId) return { applied: 'ignored', reason: 'todo.md has no resolvable wedding' }
+
+    const vendorUser = await db
+      .prepare('SELECT user_id FROM vendor_profiles WHERE id = ?')
+      .bind(vendorId)
+      .first<{ user_id: string }>()
+    const isMember = vendorUser?.user_id
+      ? await db
+          .prepare(
+            "SELECT id FROM wedding_members WHERE wedding_id = ? AND user_id = ? AND status = 'active'"
+          )
+          .bind(weddingId, vendorUser.user_id)
+          .first()
+      : null
+    if (!isMember) return { applied: 'ignored', reason: 'not a member of that wedding' }
+
+    const body = doc.body.trim()
+    const existing = await getWeddingTodo(db, vendorId, weddingId)
+    if (!existing || existing.content.trim() !== body) {
+      await db
+        .prepare(
+          `INSERT INTO wedding_todos (vendor_id, wedding_id, content)
+           VALUES (?, ?, ?)
+           ON CONFLICT(vendor_id, wedding_id) DO UPDATE SET
+             content = excluded.content,
+             updated_at = datetime('now')`
+        )
+        .bind(vendorId, weddingId, body)
+        .run()
+    }
+    await upsertIndexRow(db, vendorId, 'todo', weddingId, path, etag, null)
+    return { applied: 'todo', entityId: weddingId }
+  }
+
+  if (kind === 'log') return { applied: 'ignored', reason: 'log.md is generated by the app' }
+  if (kind === 'legacy') return { applied: 'ignored', reason: 'legacy flat file' }
+  return { applied: 'ignored', reason: 'not a syncable file' }
+}
+
+/**
+ * Check whether a file would be accepted by applyPulledFile, without
+ * writing anything. Used by the vault API to reject junk before it
+ * lands in storage.
+ */
+export function validatePulledFile(
+  path: string,
+  content: string
+): { ok: true } | { ok: false; error: string } {
+  try {
+    if (path.startsWith('contacts/')) {
+      markdownToContact(parseMarkdown(content), 'validation')
+      return { ok: true }
+    }
+    const kind = classifyWeddingPath(path)
+    if (kind === 'wedding') {
+      markdownToWedding(parseMarkdown(content))
+      return { ok: true }
+    }
+    if (kind === 'todo') {
+      parseMarkdown(content)
+      return { ok: true }
+    }
+    if (kind === 'log') {
+      return { ok: false, error: 'log.md is generated by Wedding Computer and is read-only' }
+    }
+    return { ok: false, error: 'Not a syncable path. Files live under contacts/ or weddings/<folder>/.' }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Could not parse file' }
+  }
+}
+
+/**
+ * Sync the contacts/ directory.
+ */
+async function syncContacts(
+  storage: StorageBackend,
+  db: D1Database,
+  vendorId: string
+): Promise<SyncResult> {
+  const result = emptyResult()
+
+  const storageFiles = await listAllFiles(storage, 'contacts/')
+  const storageByPath = new Map(storageFiles.map((f) => [f.path, f]))
+
   const indexRows = await db
     .prepare(
-      'SELECT entity_id, file_path, etag FROM file_index WHERE vendor_id = ? AND entity_type = ?'
+      "SELECT entity_id, file_path, etag, last_synced_at FROM file_index WHERE vendor_id = ? AND entity_type = 'contact'"
     )
-    .bind(vendorId, entityType)
-    .all<{ entity_id: string; file_path: string; etag: string }>()
+    .bind(vendorId)
+    .all<{ entity_id: string; file_path: string; etag: string; last_synced_at: string }>()
+  const indexByPath = new Map(indexRows.results.map((r) => [r.file_path, r]))
 
-  const indexByPath = new Map(
-    indexRows.results.map((r) => [r.file_path, r])
-  )
-  const storageByPath = new Map(
-    storageFiles.map((f) => [f.path, f])
-  )
-
-  // Process files that exist in storage (skip non-data files)
   for (const [path, fileMeta] of storageByPath) {
-    if (isIgnoredPath(path)) {
-      result.skipped++
-      continue
-    }
     const indexEntry = indexByPath.get(path)
-
     if (indexEntry && indexEntry.etag === fileMeta.etag) {
-      // Etags match — file unchanged
       result.skipped++
       continue
     }
 
-    // File is new or changed — read and parse it
+    // The file changed externally. If D1 has its own unpushed edit since
+    // the last sync, applying the file would silently destroy it — defer
+    // and let the push-side conflict detection surface the divergence.
+    if (
+      indexEntry &&
+      (await localDiverged(db, 'contacts', indexEntry.entity_id, indexEntry.last_synced_at))
+    ) {
+      console.warn(`[sync] Deferring external change to ${path} for vendor ${vendorId} — unpushed local edit pending`)
+      result.skipped++
+      continue
+    }
+
     try {
       const file = await storage.read(path)
       if (!file) continue
 
-      const doc = parseMarkdown(file.content)
-      let entityId: string
-      let cachedData: string
+      await applyPulledFile(db, vendorId, path, file.content, file.meta.etag)
 
-      if (entityType === 'contact') {
-        const contact = markdownToContact(doc, vendorId)
-        entityId = contact.id
-        cachedData = contactCachedData(contact)
-        await syncToContactsTable(db, contact)
-      } else {
-        const wedding = markdownToWedding(doc)
-        entityId = wedding.id
-        cachedData = weddingCachedData(wedding)
-        await syncToWeddingsTable(db, wedding)
-        await ensureSyncedWeddingMembership(db, vendorId, wedding)
-      }
-
-      // Upsert the index row
-      await db
-        .prepare(
-          `INSERT INTO file_index (vendor_id, entity_type, entity_id, file_path, etag, cached_data, last_synced_at)
-           VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-           ON CONFLICT(vendor_id, file_path) DO UPDATE SET
-             entity_id = excluded.entity_id,
-             etag = excluded.etag,
-             cached_data = excluded.cached_data,
-             last_synced_at = datetime('now')`
-        )
-        .bind(vendorId, entityType, entityId, path, file.meta.etag, cachedData)
-        .run()
-
-      if (indexEntry) {
-        result.updated++
-      } else {
-        result.indexed++
-      }
+      if (indexEntry) result.updated++
+      else result.indexed++
     } catch (err) {
-      if (err instanceof ParseError) {
-        console.error(`[sync] Failed to parse ${path}: ${err.message}`)
-      } else {
-        console.error(`[sync] Error processing ${path}:`, err)
-      }
+      logFileError(path, err)
       result.errors++
     }
   }
 
   // Remove index entries for files that no longer exist in storage
-  for (const [path, indexEntry] of indexByPath) {
-    if (!storageByPath.has(path)) {
+  const toRemove = [...indexByPath.keys()].filter((path) => !storageByPath.has(path))
+  if (safeToPruneIndex(storageByPath.size, toRemove.length, indexByPath.size)) {
+    for (const path of toRemove) {
       await db
         .prepare(
-          'DELETE FROM file_index WHERE vendor_id = ? AND entity_type = ? AND file_path = ?'
+          "DELETE FROM file_index WHERE vendor_id = ? AND entity_type = 'contact' AND file_path = ?"
         )
-        .bind(vendorId, entityType, path)
+        .bind(vendorId, path)
         .run()
       result.removed++
     }
+  } else if (toRemove.length > 0) {
+    console.error(
+      `[sync] Refusing to prune ${toRemove.length}/${indexByPath.size} contact index rows for vendor ${vendorId} — storage listing looks incomplete`
+    )
+    result.errors++
   }
 
   return result
 }
 
 /**
- * List all .md files under a prefix, handling pagination.
+ * Sync the weddings/ directory: wedding.md and todo.md files are pulled
+ * into D1; log.md is push-only bookkeeping; legacy flat files are ignored.
+ */
+async function syncWeddingsDir(
+  storage: StorageBackend,
+  db: D1Database,
+  vendorId: string
+): Promise<SyncResult> {
+  const result = emptyResult()
+
+  const storageFiles = await listAllFiles(storage, 'weddings/')
+  const storageByPath = new Map(storageFiles.map((f) => [f.path, f]))
+
+  const allIndexRows = await db
+    .prepare(
+      'SELECT entity_id, entity_type, file_path, etag, last_synced_at FROM file_index WHERE vendor_id = ?'
+    )
+    .bind(vendorId)
+    .all<{ entity_id: string; entity_type: string; file_path: string; etag: string; last_synced_at: string }>()
+  const weddingScoped = allIndexRows.results.filter((r) =>
+    r.entity_type === 'wedding' || r.entity_type === 'todo' || r.entity_type === 'log'
+  )
+  const indexByPath = new Map(weddingScoped.map((r) => [r.file_path, r]))
+
+  // Folder → wedding id map, for resolving todo.md files. Seed it from
+  // already-indexed wedding files; pass 1 adds newly discovered ones.
+  const folderToWeddingId = new Map<string, string>()
+  for (const row of weddingScoped) {
+    if (row.entity_type === 'wedding') {
+      folderToWeddingId.set(folderOf(row.file_path), row.entity_id)
+    }
+  }
+
+  // ── Pass 1: wedding.md files ──
+  for (const [path, fileMeta] of storageByPath) {
+    if (classifyWeddingPath(path) !== 'wedding') continue
+
+    const indexEntry = indexByPath.get(path)
+    if (indexEntry && indexEntry.etag === fileMeta.etag) {
+      result.skipped++
+      continue
+    }
+
+    // External change to a wedding we already track. If the D1 row has an
+    // unpushed local edit, defer rather than overwrite it — the push phase
+    // will detect the divergence and record a conflict to resolve.
+    if (
+      indexEntry &&
+      (await localDiverged(db, 'weddings', indexEntry.entity_id, indexEntry.last_synced_at))
+    ) {
+      console.warn(`[sync] Deferring external change to ${path} for vendor ${vendorId} — unpushed local wedding edit pending`)
+      result.skipped++
+      continue
+    }
+
+    try {
+      const file = await storage.read(path)
+      if (!file) continue
+
+      const outcome = await applyPulledFile(db, vendorId, path, file.content, file.meta.etag)
+      if (outcome.applied === 'wedding') {
+        folderToWeddingId.set(folderOf(path), outcome.entityId)
+      }
+
+      if (indexEntry) result.updated++
+      else result.indexed++
+    } catch (err) {
+      logFileError(path, err)
+      result.errors++
+    }
+  }
+
+  // ── Pass 2: todo.md files ──
+  for (const [path, fileMeta] of storageByPath) {
+    if (classifyWeddingPath(path) !== 'todo') continue
+
+    const indexEntry = indexByPath.get(path)
+    if (indexEntry && indexEntry.etag === fileMeta.etag) {
+      result.skipped++
+      continue
+    }
+
+    try {
+      const file = await storage.read(path)
+      if (!file) continue
+
+      const outcome = await applyPulledFile(db, vendorId, path, file.content, file.meta.etag, {
+        resolveWeddingFolder: (folder) => folderToWeddingId.get(folder),
+      })
+
+      if (outcome.applied === 'ignored') {
+        result.skipped++
+      } else if (indexEntry) {
+        result.updated++
+      } else {
+        result.indexed++
+      }
+    } catch (err) {
+      logFileError(path, err)
+      result.errors++
+    }
+  }
+
+  // ── Pass 3: remove index entries for deleted files ──
+  const toRemove = [...indexByPath.entries()].filter(([path]) => !storageByPath.has(path))
+  if (safeToPruneIndex(storageByPath.size, toRemove.length, indexByPath.size)) {
+    for (const [path, indexEntry] of toRemove) {
+      await db
+        .prepare(
+          'DELETE FROM file_index WHERE vendor_id = ? AND entity_type = ? AND file_path = ?'
+        )
+        .bind(vendorId, indexEntry.entity_type, path)
+        .run()
+      result.removed++
+    }
+  } else if (toRemove.length > 0) {
+    console.error(
+      `[sync] Refusing to prune ${toRemove.length}/${indexByPath.size} wedding index rows for vendor ${vendorId} — storage listing looks incomplete`
+    )
+    result.errors++
+  }
+
+  return result
+}
+
+function folderOf(path: string): string {
+  return path.substring(0, path.lastIndexOf('/') + 1)
+}
+
+/**
+ * Guard against a transient or partial storage listing wiping the index.
+ * The deletion passes infer "file was deleted externally" from absence in
+ * the listing — but an empty or truncated listing (network blip, backend
+ * error, GitHub tree truncation) would then purge real data. Returns true
+ * only when the prune looks like a genuine, bounded deletion.
+ */
+export function safeToPruneIndex(
+  storageCount: number,
+  removeCount: number,
+  indexCount: number
+): boolean {
+  if (removeCount === 0) return true
+  // An empty listing against a sizable index is almost always a failed list
+  // call rather than a real mass-deletion. (A small index legitimately
+  // emptying — e.g. a vendor deleting their last file — is allowed; the
+  // index is a cache and re-indexes on the next successful sync anyway.)
+  if (storageCount === 0 && indexCount > 10) return false
+  // Refuse to prune a large fraction of a sizable index in one pass. A real
+  // bulk deletion can still be reconciled with an explicit rebuildIndex().
+  if (removeCount > 10 && removeCount >= indexCount * 0.5) return false
+  return true
+}
+
+/**
+ * Has the D1 entity been edited since we last synced its file? Used to
+ * detect the case where an external file edit and an unpushed local edit
+ * race, so the pull can defer instead of silently overwriting local work.
+ *
+ * `table` is a fixed internal literal ('contacts' | 'weddings'), never user
+ * input, so interpolating it into the query is safe.
+ */
+async function localDiverged(
+  db: D1Database,
+  table: 'contacts' | 'weddings',
+  entityId: string,
+  lastSyncedAt: string | null
+): Promise<boolean> {
+  if (!lastSyncedAt) return false
+  const row = await db
+    .prepare(`SELECT updated_at FROM ${table} WHERE id = ?`)
+    .bind(entityId)
+    .first<{ updated_at: string }>()
+  if (!row?.updated_at) return false
+  return row.updated_at > lastSyncedAt
+}
+
+function logFileError(path: string, err: unknown): void {
+  if (err instanceof ParseError) {
+    console.error(`[sync] Failed to parse ${path}: ${err.message}`)
+  } else {
+    console.error(`[sync] Error processing ${path}:`, err)
+  }
+}
+
+async function upsertIndexRow(
+  db: D1Database,
+  vendorId: string,
+  entityType: 'contact' | 'wedding' | 'todo' | 'log',
+  entityId: string,
+  filePath: string,
+  etag: string,
+  cachedData: string | null
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO file_index (vendor_id, entity_type, entity_id, file_path, etag, cached_data, last_synced_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(vendor_id, file_path) DO UPDATE SET
+         entity_type = excluded.entity_type,
+         entity_id = excluded.entity_id,
+         etag = excluded.etag,
+         cached_data = excluded.cached_data,
+         last_synced_at = datetime('now')`
+    )
+    .bind(vendorId, entityType, entityId, filePath, etag, cachedData)
+    .run()
+}
+
+/**
+ * List all .md files under a prefix, handling pagination and
+ * skipping editor/config junk.
  */
 async function listAllFiles(
   storage: StorageBackend,
@@ -205,7 +541,7 @@ async function listAllFiles(
     cursor = result.cursor
   } while (cursor)
 
-  return allFiles
+  return allFiles.filter((f) => f.path.endsWith('.md') && !isIgnoredPath(f.path))
 }
 
 // ────────────────────────────────────────────
@@ -426,6 +762,46 @@ async function syncToWeddingsTable(
       wedding.updated_at
     )
     .run()
+}
+
+/**
+ * Decide whether a vendor-supplied wedding.md may write to the shared
+ * weddings table:
+ *
+ *   'new'       → no such wedding exists; safe to create + grant membership
+ *   'member'    → wedding exists and this vendor is already an active
+ *                 member; safe to update (no new membership granted)
+ *   'forbidden' → wedding exists and this vendor is not a member; reject
+ *
+ * This is the guard that keeps a crafted/foreign wedding id from
+ * overwriting another account's wedding or self-granting access. A vendor
+ * removed from a wedding falls into 'forbidden', so a stale wedding.md can
+ * never re-add them.
+ */
+async function weddingWriteAccess(
+  db: D1Database,
+  vendorId: string,
+  weddingId: string
+): Promise<'new' | 'member' | 'forbidden'> {
+  const existing = await db
+    .prepare('SELECT id FROM weddings WHERE id = ?')
+    .bind(weddingId)
+    .first<{ id: string }>()
+  if (!existing) return 'new'
+
+  const vendor = await db
+    .prepare('SELECT user_id FROM vendor_profiles WHERE id = ?')
+    .bind(vendorId)
+    .first<{ user_id: string }>()
+  if (!vendor?.user_id) return 'forbidden'
+
+  const member = await db
+    .prepare(
+      "SELECT id FROM wedding_members WHERE wedding_id = ? AND user_id = ? AND status = 'active'"
+    )
+    .bind(weddingId, vendor.user_id)
+    .first<{ id: string }>()
+  return member ? 'member' : 'forbidden'
 }
 
 async function ensureSyncedWeddingMembership(

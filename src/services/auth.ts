@@ -29,6 +29,8 @@ export async function sendMagicLink(
     subject: 'Sign in to Wedding Computer',
     html: magicLinkEmail(url),
     isSystem: true,
+    // Auth must always attempt delivery — never suppress the login path.
+    bypassSuppression: true,
   })
 }
 

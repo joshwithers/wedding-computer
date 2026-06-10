@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../types'
 import { getVendorByIcalToken } from '../db/vendors'
+import { clientIp, isAuthThrottled, recordAuthFailure } from '../middleware/rate-limit'
 import { isProVendor } from '../db/subscriptions'
 import { listEnrichedEventsByRange } from '../db/calendar'
 import { buildIcalFeed } from '../services/ical'
@@ -12,8 +13,14 @@ feed.get('/cal/:token', async (c) => {
   if (token.endsWith('.ics')) token = token.slice(0, -4)
   if (!token || token.length < 32) return c.text('Not found', 404)
 
+  const ip = clientIp(c)
+  if (await isAuthThrottled(c.env.KV, ip)) return c.text('Too many requests', 429)
+
   const vendor = await getVendorByIcalToken(c.env.DB, token)
-  if (!vendor) return c.text('Not found', 404)
+  if (!vendor) {
+    await recordAuthFailure(c.env.KV, ip)
+    return c.text('Not found', 404)
+  }
 
   // Device/calendar sync is a Pro feature.
   if (!(await isProVendor(c.env.DB, vendor.id))) {

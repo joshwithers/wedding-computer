@@ -73,14 +73,48 @@ export async function getVendorWithEmail(
     .first()
 }
 
+/**
+ * Resolve a vendor by their device-sync token.
+ *
+ * Tokens are stored hashed (`sha256:<hex>`). Rows created before hashing
+ * hold the raw token — those still authenticate and are upgraded to the
+ * hashed form in place on first use.
+ */
 export async function getVendorByIcalToken(
   db: D1Database,
   token: string
 ): Promise<VendorProfile | null> {
-  return db
+  if (!token || token.length < 32) return null
+
+  const { sha256Hex } = await import('../lib/crypto')
+  const hashed = `sha256:${await sha256Hex(token)}`
+
+  const byHash = await db
+    .prepare('SELECT * FROM vendor_profiles WHERE ical_token = ?')
+    .bind(hashed)
+    .first<VendorProfile>()
+  if (byHash) return byHash
+
+  // Legacy plaintext row — accept and upgrade to the hashed form.
+  // Raw tokens are bare hex; anything carrying a hash prefix must never
+  // match here, or a leaked column value would become a credential.
+  if (token.includes(':')) return null
+  const legacy = await db
     .prepare('SELECT * FROM vendor_profiles WHERE ical_token = ?')
     .bind(token)
     .first<VendorProfile>()
+  if (legacy) {
+    try {
+      await db
+        .prepare('UPDATE vendor_profiles SET ical_token = ? WHERE id = ?')
+        .bind(hashed, legacy.id)
+        .run()
+      legacy.ical_token = hashed
+    } catch (err) {
+      console.error('[vendors] Failed to upgrade legacy sync token:', err)
+    }
+  }
+  return legacy
 }
 
 // Resolve a vendor by their write-only enquiry intake key (API/webhook channel).

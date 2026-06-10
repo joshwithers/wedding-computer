@@ -135,6 +135,7 @@ notify.post('/notify', rateLimit(10, 60), async (c) => {
           unsubscribeUrl: `${c.env.APP_URL}/notify/unsubscribe?token=${entry.unsubscribe_token}`,
         }),
         isSystem: true,
+        listUnsubscribeUrl: `${c.env.APP_URL}/notify/unsubscribe?token=${entry.unsubscribe_token}`,
       })
     } catch (e) {
       console.error('[NOTIFY] welcome email failed', e)

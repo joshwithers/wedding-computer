@@ -39,6 +39,33 @@ async function authenticateMcp(db: D1Database, authHeader: string | undefined): 
   return null
 }
 
+/**
+ * Is the authenticated vendor an active member of this wedding? The by-id
+ * wedding tools must check this — the weddings table is shared across all
+ * tenants, so a valid token alone must not expose another couple's wedding,
+ * its activity log, or its members' contact details. A vendor removed from
+ * a wedding loses access here too.
+ */
+export async function vendorCanAccessWedding(
+  db: D1Database,
+  vendorId: string,
+  weddingId: string
+): Promise<boolean> {
+  if (!weddingId) return false
+  const vendor = await db
+    .prepare('SELECT user_id FROM vendor_profiles WHERE id = ?')
+    .bind(vendorId)
+    .first<{ user_id: string }>()
+  if (!vendor?.user_id) return false
+  const row = await db
+    .prepare(
+      "SELECT id FROM wedding_members WHERE wedding_id = ? AND user_id = ? AND status = 'active' LIMIT 1"
+    )
+    .bind(weddingId, vendor.user_id)
+    .first()
+  return !!row
+}
+
 // ─── JSON-RPC types ───
 
 type JsonRpcRequest = {
@@ -225,6 +252,9 @@ async function handleTool(
 
     case 'get_wedding': {
       const id = String(args.id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, id))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
       const wedding = await db
         .prepare('SELECT * FROM weddings WHERE id = ?')
         .bind(id)
@@ -246,6 +276,9 @@ async function handleTool(
 
     case 'get_wedding_log': {
       const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
       const { exportWeddingLogMarkdown } = await import('../db/wedding-log')
       const wedding = await db.prepare('SELECT title FROM weddings WHERE id = ?').bind(weddingId).first<{ title: string }>()
       const md = await exportWeddingLogMarkdown(db, weddingId, wedding?.title ?? 'Wedding')
@@ -254,6 +287,9 @@ async function handleTool(
 
     case 'get_wedding_credits': {
       const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
       const format = String(args.format ?? 'markdown')
       const { getWeddingMembers } = await import('../db/weddings')
       const { listCoupleVendors } = await import('../db/couple-vendors')
