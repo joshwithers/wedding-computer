@@ -45,6 +45,14 @@ export async function verifyMagicLink(
   return email
 }
 
+// The cookie holds a raw 32-byte token; at rest (KV key suffix + D1
+// sessions.id) we store only its SHA-256, so a leak of KV or D1 yields
+// hashes, not usable session tokens.
+async function hashSession(token: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 export async function createUserSession(
   db: D1Database,
   kv: KVNamespace,
@@ -52,17 +60,18 @@ export async function createUserSession(
   ip: string | null,
   ua: string | null
 ): Promise<string> {
-  const sessionId = await generateToken(32)
+  const token = await generateToken(32)
+  const keyId = await hashSession(token)
   const expiresAt = new Date(Date.now() + SESSION_TTL * 1000).toISOString()
 
   await kv.put(
-    `session:${sessionId}`,
+    `session:${keyId}`,
     JSON.stringify({ userId: user.id, expiresAt }),
     { expirationTtl: SESSION_TTL }
   )
 
   const session: Session = {
-    id: sessionId,
+    id: keyId,
     user_id: user.id,
     expires_at: expiresAt,
     ip_address: ip,
@@ -71,14 +80,17 @@ export async function createUserSession(
   }
   await createSession(db, session)
 
-  return sessionId
+  return token
 }
 
 export async function resolveSession(
   kv: KVNamespace,
-  sessionId: string
+  token: string
 ): Promise<{ userId: string } | null> {
-  const data = await kv.get(`session:${sessionId}`)
+  const keyId = await hashSession(token)
+  // Legacy fallback: sessions issued before hashing was keyed by the raw
+  // token. Those expire within the 30-day TTL, after which this can go.
+  const data = (await kv.get(`session:${keyId}`)) ?? (await kv.get(`session:${token}`))
   if (!data) return null
   const { userId, expiresAt } = JSON.parse(data) as {
     userId: string
@@ -91,11 +103,15 @@ export async function resolveSession(
 export async function destroySession(
   db: D1Database,
   kv: KVNamespace,
-  sessionId: string
+  token: string
 ): Promise<void> {
-  await kv.delete(`session:${sessionId}`)
+  const keyId = await hashSession(token)
   const { deleteSession } = await import('../db/sessions')
-  await deleteSession(db, sessionId)
+  // Clear both the hashed and any legacy raw-keyed entries.
+  await kv.delete(`session:${keyId}`)
+  await kv.delete(`session:${token}`)
+  await deleteSession(db, keyId)
+  await deleteSession(db, token)
 }
 
 export async function sendCoupleInvite(

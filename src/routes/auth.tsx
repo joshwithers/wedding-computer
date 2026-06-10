@@ -3,7 +3,7 @@ import { setCookie, deleteCookie, getCookie } from 'hono/cookie'
 import type { Env } from '../types'
 import { AuthLayout } from '../views/layouts/auth'
 import { isValidEmail } from '../lib/validation'
-import { sendMagicLink, verifyMagicLink, findOrCreateUser, createUserSession, destroySession } from '../services/auth'
+import { sendMagicLink, verifyMagicLink, findOrCreateUser, createUserSession, destroySession, resolveSession } from '../services/auth'
 import { getVendorByUserId } from '../db/vendors'
 import { getFirstCoupleWedding } from '../db/weddings'
 import { getUserById, getUserByEmail } from '../db/users'
@@ -154,10 +154,9 @@ auth.get('/dev/login/:email', async (c) => {
 auth.post('/auth/passkey/register/options', async (c) => {
   const sessionId = getCookie(c, 'wc_session')
   if (!sessionId) return c.json({ error: 'Not authenticated' }, 401)
-  const sessionData = await c.env.KV.get(`session:${sessionId}`)
-  if (!sessionData) return c.json({ error: 'Session expired' }, 401)
-  const { userId } = JSON.parse(sessionData)
-  const user = await getUserById(c.env.DB, userId)
+  const session = await resolveSession(c.env.KV, sessionId)
+  if (!session) return c.json({ error: 'Session expired' }, 401)
+  const user = await getUserById(c.env.DB, session.userId)
   if (!user) return c.json({ error: 'User not found' }, 404)
 
   const options = await generateRegistrationOptions(
@@ -172,9 +171,9 @@ auth.post('/auth/passkey/register/options', async (c) => {
 auth.post('/auth/passkey/register/verify', async (c) => {
   const sessionId = getCookie(c, 'wc_session')
   if (!sessionId) return c.json({ error: 'Not authenticated' }, 401)
-  const sessionData = await c.env.KV.get(`session:${sessionId}`)
-  if (!sessionData) return c.json({ error: 'Session expired' }, 401)
-  const { userId } = JSON.parse(sessionData)
+  const session = await resolveSession(c.env.KV, sessionId)
+  if (!session) return c.json({ error: 'Session expired' }, 401)
+  const userId = session.userId
 
   const body = await c.req.json()
   const result = await verifyRegistration(

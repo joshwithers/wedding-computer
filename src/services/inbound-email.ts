@@ -1,6 +1,9 @@
 import type { Bindings } from '../types'
 import { parseRawEmail } from '../lib/mime'
 import { createEmail, findVendorByEmailHandle, findContactByEmail, getEmailByMessageId } from '../db/emails'
+import { consumeRateLimit } from '../middleware/rate-limit'
+
+const MAX_INBOUND_BYTES = 2_000_000 // 2MB — bound memory + D1 storage per message
 
 export async function handleInboundEmail(
   message: ForwardableEmailMessage,
@@ -18,6 +21,20 @@ export async function handleInboundEmail(
   if (!vendor) {
     console.log('[EMAIL] no vendor for handle', handle)
     message.setReject('Unknown recipient')
+    return
+  }
+
+  // Bound how much unauthenticated mail one handle can store.
+  if (!(await consumeRateLimit(env.KV, `inbound:${vendor.id}`, 120, 3600))) {
+    console.warn('[EMAIL] inbound rate limit hit for vendor', vendor.id)
+    message.setReject('Rate limited')
+    return
+  }
+
+  // Reject oversized mail before buffering it into memory.
+  if (typeof message.rawSize === 'number' && message.rawSize > MAX_INBOUND_BYTES) {
+    console.warn('[EMAIL] inbound too large', message.rawSize, 'for vendor', vendor.id)
+    message.setReject('Message too large')
     return
   }
 
@@ -54,7 +71,12 @@ export async function handleInboundEmail(
     }
   }
 
-  const contact = await findContactByEmail(env.DB, vendor.id, parsed.from)
+  // Only attribute mail to a known contact when the sender domain actually
+  // authenticates (DMARC pass) — otherwise a spoofed From could impersonate
+  // the vendor's real client. Unverified mail is still stored, just unlinked.
+  const authResults = message.headers.get('authentication-results') ?? ''
+  const dmarcPass = /dmarc=pass/i.test(authResults)
+  const contact = dmarcPass ? await findContactByEmail(env.DB, vendor.id, parsed.from) : null
 
   await createEmail(env.DB, {
     vendor_id: vendor.id,

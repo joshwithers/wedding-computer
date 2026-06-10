@@ -25,16 +25,17 @@ import { isProVendor } from '../db/subscriptions'
 import { getStorageWithSecrets } from '../storage'
 import { applyPulledFile, validatePulledFile } from '../storage/sync'
 import { isIgnoredPath } from '../storage/github'
-import { clientIp, isAuthThrottled, recordAuthFailure, rateLimitByName } from '../middleware/rate-limit'
+import { clientIp, isAuthThrottled, recordAuthFailure, rateLimitByName, consumeRateLimit } from '../middleware/rate-limit'
 import { auditLog } from '../middleware/audit'
 
 const MAX_FILE_BYTES = 1_000_000 // 1MB — markdown files are tiny; this is a safety net
 
 const vaultApi = new Hono<Env>()
 
-// One counter per IP across the whole vault surface. Generous enough for
-// an initial full pull (one GET per file), tight enough to bound abuse.
-vaultApi.use('/vault/*', rateLimitByName('vault', 300, 60))
+// Loose per-IP backstop for the unauthenticated surface (failed tokens are
+// separately throttled). The real per-account bound is keyed on the vendor
+// below, so clients sharing a NAT/proxy IP aren't lumped together.
+vaultApi.use('/vault/*', rateLimitByName('vault', 1200, 60))
 
 /**
  * Authenticate the request's sync token, with failed-attempt throttling.
@@ -67,6 +68,11 @@ async function requireVaultVendor(c: Context<Env>): Promise<VendorProfile | Resp
   if (!allowed) {
     if (header) await recordAuthFailure(c.env.KV, ip)
     return c.json({ error: 'Invalid or missing sync token' }, 401)
+  }
+
+  // Per-vendor budget so one token spread across many IPs can't exceed it.
+  if (!(await consumeRateLimit(c.env.KV, `vault:${allowed.id}`, 600, 60))) {
+    return c.json({ error: 'Too many requests' }, 429)
   }
   return allowed
 }

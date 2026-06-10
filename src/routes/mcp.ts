@@ -23,6 +23,7 @@ import type { Env, Bindings, VendorProfile } from '../types'
 import { getVendorByIcalToken } from '../db/vendors'
 import { isProVendor } from '../db/subscriptions'
 import { processJsonSubmission, createEnquiry } from '../services/enquiry'
+import { clientIp, isAuthThrottled, recordAuthFailure, consumeRateLimit } from '../middleware/rate-limit'
 
 const mcp = new Hono<Env>()
 
@@ -354,14 +355,25 @@ async function handleTool(
 // ─── MCP endpoint ───
 
 mcp.post('/mcp', async (c) => {
+  const ip = clientIp(c)
+  if (await isAuthThrottled(c.env.KV, ip)) {
+    return c.json(rpcError(null, -32000, 'Too many failed attempts. Try again later.'), 429)
+  }
+
   const vendor = await authenticateMcp(c.env.DB, c.req.header('Authorization'))
   if (!vendor) {
+    if (c.req.header('Authorization')) await recordAuthFailure(c.env.KV, ip)
     return c.json(rpcError(null, -32000, 'Unauthorized — use Bearer token from Settings > Calendar & Sync'), 401)
   }
 
   const pro = await isProVendor(c.env.DB, vendor.id)
   if (!pro) {
     return c.json(rpcError(null, -32001, 'MCP access requires a Pro subscription — upgrade at wedding.computer/pricing'), 403)
+  }
+
+  // Per-vendor call budget so a valid token can't hammer D1/AI.
+  if (!(await consumeRateLimit(c.env.KV, `mcp:${vendor.id}`, 120, 60))) {
+    return c.json(rpcError(null, -32002, 'Rate limit exceeded — slow down.'), 429)
   }
 
   let body: JsonRpcRequest | JsonRpcRequest[]

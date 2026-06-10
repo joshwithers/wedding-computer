@@ -363,7 +363,7 @@ export async function createContact(
     contact.partner_first_name,
     contact.partner_last_name
   )
-  const existing = await listExistingFilenames(storage)
+  const existing = await listExistingFilenames(db, vendorId)
   const filename = deduplicateFilename(desiredFilename, existing)
   const filePath = CONTACTS_DIR + filename
 
@@ -455,7 +455,7 @@ export async function updateContact(
     )
     const desiredPath = CONTACTS_DIR + desiredFilename
     if (desiredPath !== filePath) {
-      const existing = await listExistingFilenames(storage)
+      const existing = await listExistingFilenames(db, vendorId)
       // Don't conflict with current filename (it's being replaced)
       const currentFilename = filePath.slice(CONTACTS_DIR.length)
       existing.delete(currentFilename)
@@ -640,15 +640,24 @@ async function deleteIndex(
 // ────────────────────────────────────────────
 
 /**
- * List existing filenames in the contacts directory.
- * Used for deduplication when creating/renaming files.
+ * Existing contact filenames for a vendor, used to deduplicate when
+ * creating/renaming files. Sourced from the D1 file_index (complete, cheap)
+ * rather than storage.list(), which caps at 1000 objects — past that, a
+ * collision would silently overwrite an existing contact's file.
  */
 async function listExistingFilenames(
-  storage: StorageBackend
+  db: D1Database,
+  vendorId: string
 ): Promise<Set<string>> {
-  const result = await storage.list(CONTACTS_DIR)
+  const rows = await db
+    .prepare("SELECT file_path FROM file_index WHERE vendor_id = ? AND entity_type = 'contact'")
+    .bind(vendorId)
+    .all<{ file_path: string }>()
   return new Set(
-    result.files.map((f) => f.path.slice(CONTACTS_DIR.length))
+    rows.results
+      .map((r) => r.file_path)
+      .filter((p) => p.startsWith(CONTACTS_DIR))
+      .map((p) => p.slice(CONTACTS_DIR.length))
   )
 }
 
