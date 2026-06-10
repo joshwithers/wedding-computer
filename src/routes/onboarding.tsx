@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/auth'
 import { getVendorByUserId, createVendor, getVendorByReferralCode, updateVendor } from '../db/vendors'
 import { createReferral } from '../db/referrals'
 import { getFirstCoupleWedding, createWedding, addWeddingMember } from '../db/weddings'
+import { linkPendingInvites } from '../db/couple-vendors'
 import { requireString, trimOrNull } from '../lib/validation'
 import { VENDOR_CATEGORIES } from '../types'
 import { categorySetup } from '../lib/onboarding'
@@ -269,6 +270,11 @@ onboarding.post('/onboarding/business', async (c) => {
     if (referrerVendorId) {
       await createReferral(c.env.DB, referrerVendorId, vendor.id)
     }
+    // If this vendor was invited to weddings before they had a profile, link
+    // their fresh profile onto those waiting memberships so they auto-join.
+    await linkPendingInvites(c.env.DB, user.id, vendor.id).catch((e: any) =>
+      console.error('[ONBOARDING] linkPendingInvites failed', e.message)
+    )
     deleteCookie(c, 'wc_ref', { path: '/' })
     await c.env.EMAIL_QUEUE.send({
       type: 'notify_admin_signup',

@@ -2,7 +2,7 @@ import { generateToken } from '../lib/crypto'
 import type { User, Session } from '../types'
 import { getUserByEmail, createUser } from '../db/users'
 import { createSession } from '../db/sessions'
-import { sendEmailMessage, magicLinkEmail, coupleInviteEmail } from './email'
+import { sendEmailMessage, magicLinkEmail, coupleInviteEmail, vendorInviteEmail } from './email'
 
 const MAGIC_LINK_TTL = 60 * 15 // 15 minutes
 const SESSION_TTL = 60 * 60 * 24 * 30 // 30 days
@@ -112,6 +112,48 @@ export async function destroySession(
   await kv.delete(`session:${token}`)
   await deleteSession(db, keyId)
   await deleteSession(db, token)
+}
+
+/**
+ * Invite a vendor (by email) to sign up, create a profile, and join a wedding.
+ * Mints the same 15-min magic-link token sendCoupleInvite uses, so the invitee
+ * is auto-signed-in and bypasses the SIGNUP_INVITE_CODE gate. The wedding
+ * membership is created separately (waiting on vendor_profile_id); this is
+ * just the email.
+ */
+export async function sendVendorInvite(
+  db: D1Database,
+  kv: KVNamespace,
+  resendApiKey: string,
+  appUrl: string,
+  data: {
+    email: string
+    coupleName: string
+    weddingTitle: string
+    weddingDate: string | null
+  }
+): Promise<void> {
+  const token = await generateToken(32)
+  await kv.put(
+    `magic:${token}`,
+    JSON.stringify({ email: data.email.toLowerCase() }),
+    { expirationTtl: MAGIC_LINK_TTL }
+  )
+  const loginUrl = `${appUrl}/login/verify?token=${token}`
+  await sendEmailMessage({
+    db,
+    resendApiKey,
+    vendorId: null,
+    to: data.email,
+    subject: `You've been invited to ${data.weddingTitle} on Wedding Computer`,
+    html: vendorInviteEmail({
+      coupleName: data.coupleName,
+      weddingTitle: data.weddingTitle,
+      weddingDate: data.weddingDate,
+      loginUrl,
+    }),
+    isSystem: true,
+  })
 }
 
 export async function sendCoupleInvite(

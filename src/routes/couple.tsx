@@ -6,9 +6,14 @@ import { SharedHead } from '../views/head'
 import { Logo } from '../views/logo'
 import { requireAuth } from '../middleware/auth'
 import { csrf } from '../middleware/csrf'
-import { getWedding, getWeddingMembers, getMembership, updateWedding } from '../db/weddings'
+import { getWedding, getWeddingMembers, getMembership, getAnyMembership, addWeddingMember, updateWedding } from '../db/weddings'
 import { updateUser } from '../db/users'
-import { listCoupleVendors, getCoupleVendor, getCoupleVendorByProfileId, createCoupleVendor, updateCoupleVendor, deleteCoupleVendor, syncPlatformVendors } from '../db/couple-vendors'
+import { listCoupleVendors, getCoupleVendor, getCoupleVendorByProfileId, createCoupleVendor, updateCoupleVendor, deleteCoupleVendor, syncPlatformVendors, findCoupleVendorByEmail } from '../db/couple-vendors'
+import { getVendorByUserId } from '../db/vendors'
+import { findOrCreateUser, sendVendorInvite } from '../services/auth'
+import { isValidEmail } from '../lib/validation'
+import { consumeRateLimit } from '../middleware/rate-limit'
+import { auditLog } from '../middleware/audit'
 import { listDocumentsForWedding, type DocumentWithUploader } from '../db/documents'
 import { formatDate, formatDateTime, daysUntil } from '../lib/date'
 
@@ -263,6 +268,9 @@ couple.get('/wedding/:id', async (c) => {
                         {isLinked && (
                           <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">On platform</span>
                         )}
+                        {!isLinked && v.email && v.status === 'contacted' && (
+                          <span class="text-[10px] text-grapefruit-700 font-bold bg-grapefruit-50 px-1.5 py-0.5 rounded">Invited</span>
+                        )}
                         {v.notes && (
                           <span class="text-[10px] text-gray-400">Has notes</span>
                         )}
@@ -514,6 +522,49 @@ couple.get('/wedding/:id', async (c) => {
 
 // ─── Add vendor ───
 
+function InviteVendorForm({ action, csrfToken, error }: { action: string; csrfToken: string; error?: string }) {
+  return (
+    <form method="post" action={action} class="space-y-4">
+      <input type="hidden" name="_csrf" value={csrfToken} />
+      {error && (
+        <p class="text-sm text-grapefruit-700 font-medium bg-grapefruit-50 rounded-xl px-4 py-3">{error}</p>
+      )}
+      <div>
+        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="email">Vendor's email</label>
+        <input
+          type="email"
+          id="email"
+          name="email"
+          required
+          autofocus
+          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+          placeholder="vendor@example.com"
+        />
+      </div>
+      <div>
+        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="category">Vendor type</label>
+        <select
+          id="category"
+          name="category"
+          required
+          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
+        >
+          <option value="">Choose a type…</option>
+          {COUPLE_VENDOR_CATEGORIES.map((cat) => (
+            <option value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+          ))}
+        </select>
+      </div>
+      <button
+        type="submit"
+        class="w-full bg-grapefruit-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-grapefruit-700 transition-colors"
+      >
+        Send invite
+      </button>
+    </form>
+  )
+}
+
 couple.get('/wedding/:id/vendors/add', async (c) => {
   const user = c.get('user')
   if (!user) return c.redirect('/login')
@@ -525,6 +576,8 @@ couple.get('/wedding/:id/vendors/add', async (c) => {
   const wedding = await getWedding(c.env.DB, weddingId)
   if (!wedding) return c.redirect('/login')
 
+  const error = c.req.query('error') ? decodeURIComponent(c.req.query('error')!) : undefined
+
   return c.html(
     <CoupleLayout title="Add vendor" user={user} wedding={wedding} csrfToken={c.get('csrfToken')}>
       <div class="max-w-xl mx-auto space-y-6">
@@ -534,13 +587,12 @@ couple.get('/wedding/:id/vendors/add', async (c) => {
 
         <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 sm:p-8">
           <h1 class="text-xl font-bold mb-1">Add a vendor</h1>
-          <p class="text-sm text-gray-500 mb-6">Track any vendor — even if they're not on Wedding Computer yet.</p>
+          <p class="text-sm text-gray-500 mb-6">
+            Enter their email and what they do. We'll invite them to set up a profile and join your
+            wedding — or if they're already on Wedding Computer, they'll be added straight away.
+          </p>
 
-          <CoupleVendorForm
-            action={`/wedding/${weddingId}/vendors/add`}
-            csrfToken={c.get('csrfToken')}
-            submitLabel="Add vendor"
-          />
+          <InviteVendorForm action={`/wedding/${weddingId}/vendors/add`} csrfToken={c.get('csrfToken')} error={error} />
         </div>
       </div>
     </CoupleLayout>
@@ -555,25 +607,85 @@ couple.post('/wedding/:id/vendors/add', async (c) => {
   const membership = await getMembership(c.env.DB, weddingId, user.id)
   if (!membership || membership.role !== 'couple') return c.text('Forbidden', 403)
 
+  const wedding = await getWedding(c.env.DB, weddingId)
+  if (!wedding) return c.redirect(`/wedding/${weddingId}`)
+
   const body = await c.req.parseBody()
-  const name = typeof body.name === 'string' ? body.name.trim() : ''
-  if (!name) return c.redirect(`/wedding/${weddingId}/vendors/add`)
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+  const category = typeof body.category === 'string' ? body.category.trim().toLowerCase() : ''
 
-  const category = typeof body.category === 'string' && body.category.trim() ? body.category.trim().toLowerCase() : null
-  const email = typeof body.email === 'string' && body.email.trim() ? body.email.trim().toLowerCase() : null
-  const phone = typeof body.phone === 'string' && body.phone.trim() ? body.phone.trim() : null
-  const website = typeof body.website === 'string' && body.website.trim() ? body.website.trim() : null
-  const instagram = typeof body.instagram === 'string' && body.instagram.trim() ? body.instagram.trim() : null
-  const notes = typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null
-  const priceStr = typeof body.expected_price === 'string' ? body.expected_price.trim() : ''
-  const expected_price_cents = priceStr ? Math.round(parseFloat(priceStr) * 100) : null
-  const status = typeof body.status === 'string' && ['considering', 'contacted', 'booked'].includes(body.status) ? body.status : 'considering'
+  const back = (msg: string) => c.redirect(`/wedding/${weddingId}/vendors/add?error=${encodeURIComponent(msg)}`)
 
-  await createCoupleVendor(c.env.DB, weddingId, {
-    name, category, email, phone, website, instagram, notes, expected_price_cents, status,
+  if (!isValidEmail(email)) return back('Please enter a valid email address.')
+  if (!(COUPLE_VENDOR_CATEGORIES as readonly string[]).includes(category)) return back('Please choose a vendor type.')
+  if (email === user.email.toLowerCase()) return back("That's your own email — add someone else.")
+
+  // Each invite mints a user row + sends an email; cap per couple per day.
+  if (!(await consumeRateLimit(c.env.KV, `vendor-invite:${user.id}`, 20, 86400))) {
+    return back("You've sent a lot of invites today — please try again tomorrow.")
+  }
+
+  const vendorUser = await findOrCreateUser(c.env.DB, email)
+
+  // Guard against the role-flip / resurrection foot-guns: never overwrite an
+  // existing non-vendor member, silently re-activate a removed vendor, or
+  // duplicate an active one.
+  const existing = await getAnyMembership(c.env.DB, weddingId, vendorUser.id)
+  if (existing) {
+    if (existing.role !== 'vendor') {
+      return back('That email already belongs to someone on this wedding.')
+    }
+    if (existing.status === 'removed') {
+      return back('This vendor was removed from your wedding earlier and can\'t be re-added here.')
+    }
+    return c.redirect(`/wedding/${weddingId}?info=${encodeURIComponent('That vendor is already on your wedding.')}`)
+  }
+
+  const vendorProfile = await getVendorByUserId(c.env.DB, vendorUser.id)
+
+  await addWeddingMember(c.env.DB, {
+    wedding_id: weddingId,
+    user_id: vendorUser.id,
+    role: 'vendor',
+    vendor_profile_id: vendorProfile?.id ?? null,
+    vendor_role: category,
+    can_manage: false,
+    is_financial_party: false,
   })
 
-  return c.redirect(`/wedding/${weddingId}`)
+  if (vendorProfile) {
+    // Already on the platform — notify them; syncPlatformVendors surfaces the
+    // 'On platform' row on the couple's next dashboard load.
+    await c.env.EMAIL_QUEUE.send({
+      type: 'notify_vendor_added_to_wedding',
+      payload: JSON.stringify({
+        weddingId,
+        vendorEmail: email,
+        vendorName: vendorProfile.business_name,
+        addedBy: user.name,
+      }),
+    })
+  } else {
+    // Not on the platform yet — show a pending row and email a sign-up invite.
+    const existingRow = await findCoupleVendorByEmail(c.env.DB, weddingId, email)
+    if (existingRow) {
+      await updateCoupleVendor(c.env.DB, weddingId, existingRow.id, { category, status: 'contacted' })
+    } else {
+      await createCoupleVendor(c.env.DB, weddingId, { name: email.split('@')[0], category, email, status: 'contacted' })
+    }
+    await sendVendorInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
+      email,
+      coupleName: user.name,
+      weddingTitle: wedding.title,
+      weddingDate: wedding.date,
+    }).catch((e: any) => console.error('[couple] vendor invite send failed', e.message))
+  }
+
+  await auditLog(c, 'vendor_invited', 'wedding', weddingId, { email, category, onPlatform: !!vendorProfile }).catch(() => {})
+
+  return c.redirect(
+    `/wedding/${weddingId}?info=${encodeURIComponent(vendorProfile ? 'Vendor added to your wedding.' : 'Invite sent.')}`
+  )
 })
 
 // ─── Manual vendor detail & edit ───

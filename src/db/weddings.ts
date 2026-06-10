@@ -165,3 +165,38 @@ export async function getMembership(
     .bind(weddingId, userId)
     .first<WeddingMember>()
 }
+
+/**
+ * Membership of ANY status (including 'removed'/'invited'). The couple
+ * add-vendor flow needs this to guard against silently flipping an existing
+ * couple/guest member into a vendor, or resurrecting a removed vendor —
+ * getMembership only returns active rows and would miss both.
+ */
+export async function getAnyMembership(
+  db: D1Database,
+  weddingId: string,
+  userId: string
+): Promise<WeddingMember | null> {
+  return db
+    .prepare('SELECT * FROM wedding_members WHERE wedding_id = ? AND user_id = ?')
+    .bind(weddingId, userId)
+    .first<WeddingMember>()
+}
+
+/**
+ * Does this user have a waiting vendor invite — an active vendor membership
+ * with no vendor_profile yet? Used to deep-link a just-signed-in invitee
+ * into vendor onboarding.
+ */
+export async function hasPendingVendorInvite(
+  db: D1Database,
+  userId: string
+): Promise<boolean> {
+  const row = await db
+    .prepare(
+      "SELECT 1 FROM wedding_members WHERE user_id = ? AND role = 'vendor' AND vendor_profile_id IS NULL AND status = 'active' LIMIT 1"
+    )
+    .bind(userId)
+    .first()
+  return !!row
+}

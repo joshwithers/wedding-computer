@@ -299,6 +299,25 @@ export function coupleInviteEmail(data: {
   `, { preheader: `${data.vendorName} has added you to Wedding Computer` })
 }
 
+export function vendorInviteEmail(data: {
+  coupleName: string
+  weddingTitle: string
+  weddingDate: string | null
+  loginUrl: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">You've been invited to a wedding</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 24px;">
+      ${esc(data.coupleName)} has added you as a vendor on ${esc(data.weddingTitle)}${data.weddingDate ? ` on ${esc(data.weddingDate)}` : ''} on Wedding Computer.
+      Set up your free vendor profile and you'll be connected to this wedding automatically — share details, send invoices, and stay in touch all in one place.
+    </p>
+    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">Set up your profile</a>
+    <p style="margin:24px 0 0;font-size:13px;color:#999;line-height:1.5;">
+      This link signs you in and expires in 15 minutes. If you didn't expect this email, you can safely ignore it.
+    </p>
+  `, { preheader: `${esc(data.coupleName)} invited you to join their wedding on Wedding Computer` })
+}
+
 export function magicLinkEmail(url: string): string {
   return emailWrapper(`
     <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#1a1a1a;">Sign in to Wedding Computer</h1>

@@ -5,7 +5,8 @@ import { AuthLayout } from '../views/layouts/auth'
 import { isValidEmail } from '../lib/validation'
 import { sendMagicLink, verifyMagicLink, findOrCreateUser, createUserSession, destroySession, resolveSession } from '../services/auth'
 import { getVendorByUserId } from '../db/vendors'
-import { getFirstCoupleWedding } from '../db/weddings'
+import { getFirstCoupleWedding, hasPendingVendorInvite } from '../db/weddings'
+import { linkPendingInvites } from '../db/couple-vendors'
 import { getUserById, getUserByEmail } from '../db/users'
 import { hasPasskeys } from '../db/passkeys'
 import { rateLimit } from '../middleware/rate-limit'
@@ -108,9 +109,16 @@ auth.get('/login/verify', async (c) => {
   await auditLog(c, 'login', 'user', user.id, { method: 'magic_link' }).catch(() => {})
 
   const vendor = await getVendorByUserId(c.env.DB, user.id)
-  if (vendor) return c.redirect('/app')
+  if (vendor) {
+    // Link any weddings they were invited to before they had a profile.
+    await linkPendingInvites(c.env.DB, user.id, vendor.id).catch(() => {})
+    return c.redirect('/app')
+  }
   const coupleWedding = await getFirstCoupleWedding(c.env.DB, user.id)
   if (coupleWedding) return c.redirect(`/wedding/${coupleWedding.wedding_id}`)
+  // A brand-new user with a waiting vendor invite goes straight to vendor
+  // setup rather than the generic "couple or vendor?" chooser.
+  if (await hasPendingVendorInvite(c.env.DB, user.id)) return c.redirect('/onboarding/business')
   return c.redirect('/onboarding')
 })
 

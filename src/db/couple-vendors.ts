@@ -39,6 +39,55 @@ export async function getCoupleVendorByProfileId(
     .first<CoupleVendor>()
 }
 
+/**
+ * Find an existing (non-removed) couple_vendors row for an email in a wedding.
+ * Keeps the invite flow idempotent — don't create a second pending row (or
+ * re-send an invite) for a vendor already tracked/invited.
+ */
+export async function findCoupleVendorByEmail(
+  db: D1Database,
+  weddingId: string,
+  email: string
+): Promise<CoupleVendor | null> {
+  return db
+    .prepare(
+      "SELECT * FROM couple_vendors WHERE wedding_id = ? AND lower(email) = lower(?) AND status != 'removed' LIMIT 1"
+    )
+    .bind(weddingId, email)
+    .first<CoupleVendor>()
+}
+
+/**
+ * When an invited vendor finishes creating their vendor profile (or signs in
+ * already having one), back-fill the membership rows that were waiting on a
+ * profile, and reconcile the couple's pending tracking rows so
+ * syncPlatformVendors doesn't insert a duplicate 'booked' row.
+ */
+export async function linkPendingInvites(
+  db: D1Database,
+  userId: string,
+  vendorProfileId: string
+): Promise<void> {
+  await db
+    .prepare(
+      "UPDATE wedding_members SET vendor_profile_id = ?2 WHERE user_id = ?1 AND role = 'vendor' AND vendor_profile_id IS NULL"
+    )
+    .bind(userId, vendorProfileId)
+    .run()
+
+  await db
+    .prepare(
+      `UPDATE couple_vendors SET vendor_profile_id = ?2, status = 'booked'
+       WHERE vendor_profile_id IS NULL
+         AND lower(email) = (SELECT lower(email) FROM users WHERE id = ?1)
+         AND wedding_id IN (
+           SELECT wedding_id FROM wedding_members WHERE user_id = ?1 AND vendor_profile_id = ?2
+         )`
+    )
+    .bind(userId, vendorProfileId)
+    .run()
+}
+
 export async function createCoupleVendor(
   db: D1Database,
   weddingId: string,
