@@ -17,6 +17,7 @@ import type { Env, VendorProfile } from '../types'
 import { vendorSecretKey } from '../services/secrets'
 import { syncVendorStorage } from '../services/storage-sync'
 import { suppressEmail } from '../db/emails'
+import { APP_COMMIT_EMAIL } from '../storage/github'
 
 const webhooks = new Hono<Env>()
 
@@ -27,7 +28,11 @@ webhooks.post('/webhooks/github', async (c) => {
 
   if (!signature) return c.json({ error: 'Missing signature' }, 401)
 
-  let payload: { ref?: string; repository?: { full_name?: string } }
+  let payload: {
+    ref?: string
+    repository?: { full_name?: string }
+    commits?: { committer?: { email?: string } }[]
+  }
   try {
     payload = JSON.parse(body)
   } catch {
@@ -36,6 +41,13 @@ webhooks.post('/webhooks/github', async (c) => {
 
   const repo = payload.repository?.full_name
   if (!repo) return c.json({ error: 'Missing repository' }, 400)
+
+  // Skip pushes that are entirely our own bot commits — re-pulling them would
+  // be a no-op (etags already match) but still burns GitHub API + D1 calls.
+  const commits = payload.commits ?? []
+  if (commits.length > 0 && commits.every((cm) => cm.committer?.email === APP_COMMIT_EMAIL)) {
+    return c.json({ ok: true, skipped: 'self-commit' })
+  }
 
   // A repo can in principle back more than one vendor profile
   const vendors = await c.env.DB

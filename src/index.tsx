@@ -551,38 +551,60 @@ export default {
             continue
           }
 
-          const storage = await getStorageWithSecrets(env, vendor)
-          const contactResult = await getContact(storage, env.DB, body.vendorId, body.contactId)
-          if (!contactResult) {
-            console.error('[QUEUE] contact not found', body.contactId)
-            msg.ack()
-            continue
+          let lead: {
+            contactName: string
+            contactEmail: string
+            contactPhone: string | null
+            partnerName: string | null
+            weddingDate: string | null
+            weddingLocation: string | null
+            message: string | null
           }
-          const contact = contactResult.contact
-
-          const partnerName = [contact.partner_first_name, contact.partner_last_name]
-            .filter(Boolean)
-            .join(' ') || null
+          if (body.contactFirst !== undefined) {
+            // New format: fields embedded in the message (storage-independent).
+            lead = {
+              contactName: `${body.contactFirst} ${body.contactLast ?? ''}`.trim(),
+              contactEmail: body.contactEmail || '',
+              contactPhone: body.contactPhone || null,
+              partnerName: [body.partnerFirst, body.partnerLast].filter(Boolean).join(' ') || null,
+              weddingDate: body.weddingDate || null,
+              weddingLocation: body.weddingLocation || null,
+              message: body.message || null,
+            }
+          } else {
+            // Legacy in-flight message: read the contact from storage.
+            const storage = await getStorageWithSecrets(env, vendor)
+            const contactResult = await getContact(storage, env.DB, body.vendorId, body.contactId)
+            if (!contactResult) {
+              console.error('[QUEUE] contact not found', body.contactId)
+              msg.ack()
+              continue
+            }
+            const contact = contactResult.contact
+            lead = {
+              contactName: `${contact.first_name} ${contact.last_name}`,
+              contactEmail: contact.email ?? '',
+              contactPhone: contact.phone,
+              partnerName: [contact.partner_first_name, contact.partner_last_name].filter(Boolean).join(' ') || null,
+              weddingDate: contact.wedding_date,
+              weddingLocation: contact.wedding_location,
+              message: contact.notes,
+            }
+          }
 
           const html = newLeadEmail({
-            contactName: `${contact.first_name} ${contact.last_name}`,
-            contactEmail: contact.email ?? '',
-            contactPhone: contact.phone,
-            partnerName,
-            weddingDate: contact.wedding_date,
-            weddingLocation: contact.wedding_location,
-            message: contact.notes,
+            ...lead,
             appUrl: env.APP_URL,
-            contactId: contact.id,
+            contactId: body.contactId,
           })
 
           const sent = await deliver(notifyEnv(env), {
             key: 'enquiries',
             recipient: { id: vendor.user_id, email: vendor.user_email, name: vendor.user_name, notification_prefs: vendor.user_notification_prefs },
-            subject: `New enquiry from ${contact.first_name} ${contact.last_name}`,
+            subject: `New enquiry from ${lead.contactName}`,
             html,
             vendorId: body.vendorId,
-            contactId: contact.id,
+            contactId: body.contactId,
           })
 
           console.log('[QUEUE] new_lead email', sent ? 'sent to' : 'skipped for', vendor.user_email)

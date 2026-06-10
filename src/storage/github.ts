@@ -15,6 +15,12 @@
 
 import type { StorageBackend, StorageFile, ListResult, FileMeta } from './types'
 
+// Stamp app-authored commits so the GitHub push webhook can recognise and skip
+// resyncing changes we just made ourselves (avoids the write-amplification
+// feedback loop where every vault write triggers a full re-pull).
+export const APP_COMMIT_EMAIL = 'bot@wedding.computer'
+const APP_COMMITTER = { name: 'Wedding Computer', email: APP_COMMIT_EMAIL }
+
 type GitHubConfig = {
   token: string       // Personal Access Token or OAuth token
   repo: string        // "owner/repo"
@@ -141,6 +147,7 @@ export class GitHubStorageBackend implements StorageBackend {
       message: sha ? `Update ${path}` : `Add ${path}`,
       content: btoa(unescape(encodeURIComponent(content))),
       branch: this.config.branch,
+      committer: APP_COMMITTER,
     }
     if (sha) {
       body.sha = sha
@@ -184,6 +191,7 @@ export class GitHubStorageBackend implements StorageBackend {
       message: sha ? `Update ${path}` : `Add ${path}`,
       content: base64Content,
       branch: this.config.branch,
+      committer: APP_COMMITTER,
     }
     if (sha) {
       body.sha = sha
@@ -219,6 +227,7 @@ export class GitHubStorageBackend implements StorageBackend {
         message: `Delete ${path}`,
         sha: data.sha,
         branch: this.config.branch,
+        committer: APP_COMMITTER,
       }),
     })
 

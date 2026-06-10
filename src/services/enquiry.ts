@@ -187,6 +187,17 @@ export async function createEnquiry(
     type: 'new_lead',
     vendorId: vendor.id,
     contactId: contact.id,
+    // Embed display fields so the notification doesn't depend on a storage
+    // (GitHub) read at delivery time — a storage outage must not drop alerts.
+    contactFirst: contact.first_name,
+    contactLast: contact.last_name,
+    contactEmail: contact.email ?? '',
+    contactPhone: contact.phone ?? '',
+    partnerFirst: contact.partner_first_name ?? '',
+    partnerLast: contact.partner_last_name ?? '',
+    weddingDate: contact.wedding_date ?? '',
+    weddingLocation: contact.wedding_location ?? '',
+    message: contact.notes ?? '',
   })
 
   // AI auto-reply is a Pro feature — only draft one for Pro vendors.

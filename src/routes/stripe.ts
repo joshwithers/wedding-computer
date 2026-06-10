@@ -18,6 +18,15 @@ stripe.post('/webhooks/stripe', async (c) => {
   const event = await verifyWebhook(body, sig, c.env.STRIPE_WEBHOOK_SECRET)
   if (!event) return c.json({ error: 'Invalid signature' }, 400)
 
+  // Idempotency: Stripe redelivers events (retries up to ~3 days). Process
+  // each event id once so a redelivery can't double-record a payment or
+  // re-send the "payment received" notification.
+  const eventId = (event as { id?: string }).id
+  const dedupeKey = eventId ? `stripe_evt:${eventId}` : null
+  if (dedupeKey && (await c.env.KV.get(dedupeKey))) {
+    return c.json({ received: true, duplicate: true })
+  }
+
   switch (event.type) {
     case 'account.updated': {
       const account = event.data.object as {
@@ -147,6 +156,12 @@ stripe.post('/webhooks/stripe', async (c) => {
 
     default:
       console.log('[STRIPE] unhandled event', event.type)
+  }
+
+  // Mark processed only after the handler ran without throwing, so a failed
+  // event is still retried by Stripe.
+  if (dedupeKey) {
+    await c.env.KV.put(dedupeKey, '1', { expirationTtl: 60 * 60 * 24 * 3 }).catch(() => {})
   }
 
   return c.json({ received: true })

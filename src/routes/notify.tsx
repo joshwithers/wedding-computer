@@ -5,10 +5,11 @@ import { isValidEmail } from '../lib/validation'
 import { rateLimit } from '../middleware/rate-limit'
 import { addToWaitlist, getWaitlistByToken, unsubscribeWaitlist } from '../db/waitlist'
 import { sendEmailMessage, waitlistWelcomeEmail } from '../services/email'
+import { verifyTurnstile } from '../services/turnstile'
 
 const notify = new Hono<Env>()
 
-function NotifyForm({ error }: { error?: string }) {
+function NotifyForm({ error, siteKey }: { error?: string; siteKey: string }) {
   return (
     <div class="max-w-md mx-auto px-4 sm:px-6 py-12 sm:py-20">
       <div class="text-center mb-8">
@@ -59,6 +60,7 @@ function NotifyForm({ error }: { error?: string }) {
             class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
             placeholder="e.g. Australia"
           />
+          <div class="cf-turnstile mt-5" data-sitekey={siteKey} data-theme="light"></div>
           <button
             type="submit"
             class="mt-5 w-full bg-horizon-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
@@ -66,6 +68,7 @@ function NotifyForm({ error }: { error?: string }) {
             Notify me
           </button>
         </form>
+        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
         <p class="text-xs text-gray-400 mt-4 text-center">
           No spam — just one email when we launch. Already have an invite? <a href="/login" class="text-horizon-700 font-medium hover:underline">Sign in</a>.
         </p>
@@ -94,7 +97,7 @@ notify.get('/notify', (c) => {
   const error = c.req.query('error') ? "Please enter a valid email address." : undefined
   return c.html(
     <MarketingLayout title="Be notified when it's live">
-      <NotifyForm error={error} />
+      <NotifyForm error={error} siteKey={c.env.TURNSTILE_SITE_KEY} />
     </MarketingLayout>
   )
 })
@@ -108,6 +111,17 @@ notify.post('/notify', rateLimit(10, 60), async (c) => {
 
   // Honeypot tripped — silently pretend success so bots don't learn anything.
   if (honeypot) return c.redirect('/notify?joined=1')
+
+  // Turnstile — block botnet signup spam (each signup triggers a Resend send).
+  const turnstileToken = typeof body['cf-turnstile-response'] === 'string' ? body['cf-turnstile-response'] : ''
+  const turnstileOk = await verifyTurnstile(
+    c.env.TURNSTILE_SECRET_KEY,
+    turnstileToken,
+    c.req.header('cf-connecting-ip') ?? null
+  )
+  if (!turnstileOk) {
+    return c.redirect('/notify?error=1')
+  }
 
   if (!isValidEmail(email)) {
     return c.redirect('/notify?error=1')
