@@ -123,10 +123,10 @@ export async function addWeddingMember(
 export async function getWeddingMembers(
   db: D1Database,
   weddingId: string
-): Promise<(WeddingMember & { user_name: string; user_email: string; business_name: string | null; vendor_instagram: string | null; vendor_website: string | null })[]> {
+): Promise<(WeddingMember & { user_name: string; user_email: string; user_notification_prefs: string; business_name: string | null; vendor_instagram: string | null; vendor_website: string | null })[]> {
   return db
     .prepare(
-      `SELECT wm.*, u.name as user_name, u.email as user_email,
+      `SELECT wm.*, u.name as user_name, u.email as user_email, u.notification_prefs as user_notification_prefs,
               vp.business_name, vp.instagram as vendor_instagram, vp.website as vendor_website
        FROM wedding_members wm
        JOIN users u ON u.id = wm.user_id
@@ -135,7 +135,7 @@ export async function getWeddingMembers(
        ORDER BY wm.role, wm.created_at`
     )
     .bind(weddingId)
-    .all<WeddingMember & { user_name: string; user_email: string; business_name: string | null; vendor_instagram: string | null; vendor_website: string | null }>()
+    .all<WeddingMember & { user_name: string; user_email: string; user_notification_prefs: string; business_name: string | null; vendor_instagram: string | null; vendor_website: string | null }>()
     .then((r) => r.results)
 }
 

@@ -54,6 +54,8 @@ export type User = {
   avatar_r2_key: string | null
   email_verified: number
   is_admin: number
+  /** JSON { [notificationKey]: boolean }; missing key = enabled. See services/notification-prefs.ts. */
+  notification_prefs: string
   created_at: string
   updated_at: string
 }
@@ -714,4 +716,6 @@ export type BroadcastRecipient = {
   country: string | null
   audience: 'vendor' | 'couple' | 'waitlist'
   unsubscribeToken: string | null
+  /** Platform user id when the recipient is a user (vendor/couple audiences). */
+  userId: string | null
 }

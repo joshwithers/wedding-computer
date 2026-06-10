@@ -43,6 +43,10 @@ stripe.post('/webhooks/stripe', async (c) => {
       if (meta?.payment_id && meta?.vendor_id && meta?.invoice_id) {
         await recordPayment(c.env.DB, meta.vendor_id, meta.payment_id, 'stripe')
         await recalculateInvoiceStatus(c.env.DB, meta.vendor_id, meta.invoice_id)
+        await c.env.EMAIL_QUEUE.send({
+          type: 'notify_payment_received',
+          payload: JSON.stringify({ vendorId: meta.vendor_id, paymentId: meta.payment_id, source: 'stripe' }),
+        })
         console.log('[STRIPE] payment recorded', meta.payment_id)
       }
       break

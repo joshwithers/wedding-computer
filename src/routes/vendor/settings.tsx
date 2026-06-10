@@ -385,6 +385,18 @@ settings.get('/app/settings', async (c) => {
               Your email: {vendor.email_handle}@wedding.computer
             </p>
           )}
+          <div class="mt-6 pt-4 border-t border-gray-100">
+            <h3 class="text-sm font-bold text-gray-700 mb-1">Email notifications</h3>
+            <p class="text-sm text-gray-500 mb-3">
+              Choose what Wedding Computer emails you about — enquiries, payments, daily summaries, and more.
+            </p>
+            <a
+              href="/account/notifications"
+              class="inline-block bg-white border border-gray-200 text-gray-700 py-2 px-4 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
+            >
+              Manage notifications
+            </a>
+          </div>
         </section>
 
         <section id="sharing" class="mt-10 pt-8 border-t border-gray-200 scroll-mt-24">

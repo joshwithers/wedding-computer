@@ -15,6 +15,7 @@ import { redeemBankedMonthsToStripe } from '../services/free-months'
 import { getBroadcastRecipients, getBroadcastCountries } from '../db/broadcast'
 import { countWaitlist, getWaitlistStats, getWaitlistCountryBreakdown, listWaitlist, listWaitlistForExport } from '../db/waitlist'
 import { broadcastEmail } from '../services/email'
+import { makeUnsubscribeToken, unsubscribeUrl } from '../services/notification-prefs'
 import { auditLog } from '../middleware/audit'
 
 const admin = new Hono<Env>()
@@ -727,19 +728,25 @@ admin.post('/admin/broadcast', async (c) => {
   }
 
   // Fan out via the email queue — chunked into batches of 100 sends.
-  const messages = recipients.map((r) => ({
-    body: {
-      type: 'broadcast_email',
-      to: r.email,
-      toName: r.name ?? '',
-      subject: values.subject,
-      html: broadcastEmail({
-        bodyText: values.body,
-        unsubscribeUrl: r.unsubscribeToken
-          ? `${c.env.APP_URL}/notify/unsubscribe?token=${r.unsubscribeToken}`
-          : null,
-      }),
-    },
+  // Platform users get a signed one-click link that disables the
+  // 'announcements' preference; waitlist-only recipients keep their
+  // waitlist unsubscribe token.
+  const messages = await Promise.all(recipients.map(async (r) => {
+    let unsub: string | null = null
+    if (r.userId) {
+      unsub = unsubscribeUrl(c.env.APP_URL, await makeUnsubscribeToken(c.env.SESSION_SECRET, r.userId, 'announcements'))
+    } else if (r.unsubscribeToken) {
+      unsub = `${c.env.APP_URL}/notify/unsubscribe?token=${r.unsubscribeToken}`
+    }
+    return {
+      body: {
+        type: 'broadcast_email',
+        to: r.email,
+        toName: r.name ?? '',
+        subject: values.subject,
+        html: broadcastEmail({ bodyText: values.body, unsubscribeUrl: unsub }),
+      },
+    }
   }))
   for (let i = 0; i < messages.length; i += 100) {
     await c.env.EMAIL_QUEUE.sendBatch(messages.slice(i, i + 100))

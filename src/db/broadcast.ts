@@ -8,7 +8,11 @@ export type AudienceSelection = {
   country?: string | null
 }
 
-type Row = { email: string | null; name: string | null; country: string | null; token?: string | null }
+type Row = { email: string | null; name: string | null; country: string | null; token?: string | null; user_id?: string | null }
+
+// Users who disabled the 'announcements' notification preference are excluded.
+// Missing key = enabled (opt-out model), so COALESCE(..., 1).
+const ANNOUNCEMENTS_ENABLED = `COALESCE(json_extract(u.notification_prefs, '$.announcements'), 1) != 0`
 
 // Resolve the deduped set of recipients for a broadcast. A person who appears in
 // more than one selected audience (e.g. a vendor who also joined the waitlist) is
@@ -29,8 +33,10 @@ export async function getBroadcastRecipients(
       const existing = byEmail.get(email)
       if (existing) {
         // Already queued from an earlier audience — keep it, but retain an
-        // unsubscribe token if this source has one (waitlist).
+        // unsubscribe token if this source has one (waitlist) and a user id
+        // if this source is a platform user.
         if (!existing.unsubscribeToken && r.token) existing.unsubscribeToken = r.token
+        if (!existing.userId && r.user_id) existing.userId = r.user_id
         continue
       }
       byEmail.set(email, {
@@ -39,24 +45,26 @@ export async function getBroadcastRecipients(
         country: r.country?.trim() || null,
         audience,
         unsubscribeToken: r.token ?? null,
+        userId: r.user_id ?? null,
       })
     }
   }
 
   if (sel.vendors) {
     const sql =
-      `SELECT u.email AS email, u.name AS name, vp.location_country AS country
-       FROM vendor_profiles vp JOIN users u ON u.id = vp.user_id` +
-      (country ? ` WHERE LOWER(vp.location_country) = LOWER(?)` : '')
+      `SELECT u.id AS user_id, u.email AS email, u.name AS name, vp.location_country AS country
+       FROM vendor_profiles vp JOIN users u ON u.id = vp.user_id
+       WHERE ${ANNOUNCEMENTS_ENABLED}` +
+      (country ? ` AND LOWER(vp.location_country) = LOWER(?)` : '')
     const stmt = country ? db.prepare(sql).bind(country) : db.prepare(sql)
     add((await stmt.all<Row>()).results, 'vendor')
   }
 
   if (sel.couples) {
     const sql =
-      `SELECT DISTINCT u.email AS email, u.name AS name, u.country AS country
+      `SELECT DISTINCT u.id AS user_id, u.email AS email, u.name AS name, u.country AS country
        FROM wedding_members wm JOIN users u ON u.id = wm.user_id
-       WHERE wm.role = 'couple' AND wm.status != 'removed'` +
+       WHERE wm.role = 'couple' AND wm.status != 'removed' AND ${ANNOUNCEMENTS_ENABLED}` +
       (country ? ` AND LOWER(u.country) = LOWER(?)` : '')
     const stmt = country ? db.prepare(sql).bind(country) : db.prepare(sql)
     add((await stmt.all<Row>()).results, 'couple')

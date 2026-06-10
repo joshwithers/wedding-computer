@@ -61,10 +61,10 @@ export async function dismissSetup(db: D1Database, vendorId: string): Promise<vo
 export async function getVendorWithEmail(
   db: D1Database,
   vendorId: string
-): Promise<(VendorProfile & { user_email: string; user_name: string }) | null> {
+): Promise<(VendorProfile & { user_email: string; user_name: string; user_notification_prefs: string }) | null> {
   return db
     .prepare(
-      `SELECT vp.*, u.email AS user_email, u.name AS user_name
+      `SELECT vp.*, u.email AS user_email, u.name AS user_name, u.notification_prefs AS user_notification_prefs
        FROM vendor_profiles vp
        JOIN users u ON u.id = vp.user_id
        WHERE vp.id = ?`

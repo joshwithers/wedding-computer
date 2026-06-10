@@ -1,13 +1,137 @@
-import { sendEmailMessage, invoiceSentEmail, vendorAddedEmail, coupleJoinedEmail, visibilityChangedEmail, bookingConfirmedEmail, paymentReceivedEmail, vendorRemovedAdminEmail, vendorBookedEmail, weddingDetailsUpdatedEmail, dailyDigestEmail } from './email'
+import {
+  sendEmailMessage,
+  invoiceSentEmail,
+  vendorAddedEmail,
+  vendorJoinedWeddingEmail,
+  coupleJoinedEmail,
+  visibilityChangedEmail,
+  bookingConfirmedEmail,
+  paymentReceivedEmail,
+  paymentReceiptEmail,
+  paymentDueSoonEmail,
+  paymentOverdueEmail,
+  clientPaymentOverdueEmail,
+  vendorRemovedAdminEmail,
+  vendorBookedEmail,
+  weddingDetailsUpdatedEmail,
+  adminSignupEmail,
+  dailyDigestEmail,
+} from './email'
 import { getWedding, getWeddingMembers } from '../db/weddings'
 import { getVendorWithEmail } from '../db/vendors'
 import { formatDate } from '../lib/date'
+import {
+  isNotificationEnabled,
+  makeUnsubscribeToken,
+  unsubscribeUrl,
+  MANAGE_PREFS_PATH,
+  type NotificationKey,
+} from './notification-prefs'
 
-type NotifyEnv = {
+export type NotifyEnv = {
   db: D1Database
   resendApiKey: string
   appUrl: string
+  sessionSecret: string
 }
+
+// ─── Delivery core ───
+//
+// Every notification to a platform user goes through deliver(): it checks the
+// recipient's notification_prefs (opt-out model — missing key = enabled),
+// attaches a signed one-click unsubscribe link for exactly this notification
+// type, and never throws. Emails to people WITHOUT an account (e.g. invoice
+// contacts) are transactional and sent ungated via sendEmailMessage directly.
+
+export type Recipient = {
+  id: string
+  email: string
+  name: string
+  notification_prefs: string | null
+}
+
+async function recipientById(db: D1Database, userId: string): Promise<Recipient | null> {
+  return db
+    .prepare('SELECT id, email, name, notification_prefs FROM users WHERE id = ?')
+    .bind(userId)
+    .first<Recipient>()
+}
+
+async function recipientByEmail(db: D1Database, email: string): Promise<Recipient | null> {
+  return db
+    .prepare('SELECT id, email, name, notification_prefs FROM users WHERE email = ?')
+    .bind(email.toLowerCase())
+    .first<Recipient>()
+}
+
+/**
+ * Send a preference-gated notification to a platform user.
+ * Returns true if sent, false if skipped (opted out) or failed. Never throws.
+ */
+export async function deliver(
+  env: NotifyEnv,
+  params: {
+    key: NotificationKey
+    recipient: Recipient
+    subject: string
+    html: string
+    vendorId?: string | null
+    contactId?: string | null
+  }
+): Promise<boolean> {
+  const { key, recipient } = params
+  if (!isNotificationEnabled(recipient.notification_prefs, key)) return false
+
+  try {
+    const token = await makeUnsubscribeToken(env.sessionSecret, recipient.id, key)
+    await sendEmailMessage({
+      db: env.db,
+      resendApiKey: env.resendApiKey,
+      vendorId: params.vendorId ?? null,
+      contactId: params.contactId ?? null,
+      to: recipient.email,
+      toName: recipient.name,
+      subject: params.subject,
+      html: params.html,
+      isSystem: true,
+      unsubscribe: {
+        manageUrl: `${env.appUrl}${MANAGE_PREFS_PATH}`,
+        unsubscribeUrl: unsubscribeUrl(env.appUrl, token),
+      },
+    })
+    return true
+  } catch (e: any) {
+    console.error(`[NOTIFY] ${key} to user ${recipient.id} failed:`, e.message)
+    return false
+  }
+}
+
+/** Ungated transactional send to an email with no account. Never throws. */
+async function sendTransactional(
+  env: NotifyEnv,
+  params: { to: string; toName?: string; subject: string; html: string; vendorId?: string | null; contactId?: string | null }
+): Promise<void> {
+  await sendEmailMessage({
+    db: env.db,
+    resendApiKey: env.resendApiKey,
+    vendorId: params.vendorId ?? null,
+    contactId: params.contactId ?? null,
+    to: params.to,
+    toName: params.toName,
+    subject: params.subject,
+    html: params.html,
+    isSystem: true,
+  }).catch((e) => console.error('[NOTIFY] transactional send failed:', e.message))
+}
+
+function formatAmount(cents: number, currency: string): string {
+  return (cents / 100).toLocaleString('en-AU', {
+    style: 'currency',
+    currency: currency.toUpperCase(),
+  })
+}
+
+// ─── Invoices & payments ───
 
 export async function notifyInvoiceSent(env: NotifyEnv, data: {
   weddingId: string
@@ -22,69 +146,326 @@ export async function notifyInvoiceSent(env: NotifyEnv, data: {
   const vendor = await getVendorWithEmail(env.db, data.vendorId)
   if (!vendor) return
 
-  const amount = (data.amountCents / 100).toLocaleString('en-AU', {
-    style: 'currency', currency: data.currency.toUpperCase(),
-  })
-
   const html = invoiceSentEmail({
     coupleName: data.coupleName,
     vendorName: vendor.business_name,
     invoiceTitle: data.invoiceTitle,
-    amountFormatted: amount,
+    amountFormatted: formatAmount(data.amountCents, data.currency),
     dueDate: data.dueDate ? formatDate(data.dueDate) : null,
     loginUrl: `${env.appUrl}/login`,
   })
+  const subject = `Invoice from ${vendor.business_name}: ${data.invoiceTitle}`
 
-  await sendEmailMessage({
-    db: env.db,
-    resendApiKey: env.resendApiKey,
-    vendorId: data.vendorId,
-    to: data.coupleEmail,
-    toName: data.coupleName,
-    subject: `Invoice from ${vendor.business_name}: ${data.invoiceTitle}`,
-    html,
-    isSystem: true,
-  }).catch((e) => console.error('[NOTIFY] invoice sent failed', e.message))
+  const user = await recipientByEmail(env.db, data.coupleEmail)
+  if (user) {
+    await deliver(env, { key: 'invoices', recipient: user, subject, html, vendorId: data.vendorId })
+  } else {
+    // No account — a bill addressed to them is transactional, not a preference.
+    await sendTransactional(env, { to: data.coupleEmail, toName: data.coupleName, subject, html, vendorId: data.vendorId })
+  }
 }
 
+/**
+ * A payment landed on an invoice (Stripe webhook or manual record).
+ * - source 'stripe': vendor gets a "payment received" (payments_received),
+ *   payer gets a receipt. Manual records skip the vendor (they did it themselves).
+ */
+export async function notifyPaymentReceived(env: NotifyEnv, data: {
+  vendorId: string
+  paymentId: string
+  source: 'stripe' | 'manual'
+}): Promise<void> {
+  const payment = await env.db
+    .prepare(
+      `SELECT ip.label, ip.amount_cents, i.id AS invoice_id, i.title AS invoice_title,
+              i.currency, i.wedding_id, i.contact_id, i.public_token
+       FROM invoice_payments ip
+       JOIN invoices i ON i.id = ip.invoice_id
+       WHERE ip.id = ? AND ip.vendor_id = ?`
+    )
+    .bind(data.paymentId, data.vendorId)
+    .first<{
+      label: string
+      amount_cents: number
+      invoice_id: string
+      invoice_title: string
+      currency: string
+      wedding_id: string | null
+      contact_id: string | null
+      public_token: string | null
+    }>()
+  if (!payment) return
+
+  const vendor = await getVendorWithEmail(env.db, data.vendorId)
+  if (!vendor) return
+
+  const amount = formatAmount(payment.amount_cents, payment.currency)
+  const wedding = payment.wedding_id ? await getWedding(env.db, payment.wedding_id) : null
+
+  // Vendor: money arrived (skip for manual — the vendor recorded it themselves).
+  if (data.source === 'stripe') {
+    await deliver(env, {
+      key: 'payments_received',
+      recipient: {
+        id: vendor.user_id,
+        email: vendor.user_email,
+        name: vendor.user_name,
+        notification_prefs: vendor.user_notification_prefs,
+      },
+      subject: `Payment received: ${amount} — ${payment.label}`,
+      html: paymentReceivedEmail({
+        vendorName: vendor.business_name,
+        weddingTitle: wedding?.title ?? payment.invoice_title,
+        amountFormatted: amount,
+        paymentLabel: payment.label,
+        viewUrl: `${env.appUrl}/app/invoices/${payment.invoice_id}`,
+      }),
+      vendorId: data.vendorId,
+      contactId: payment.contact_id,
+    })
+  }
+
+  // Payer side: receipt to couple members (gated) and invoice contacts (transactional).
+  const sentTo = new Set<string>([vendor.user_email.toLowerCase()])
+  const receiptHtml = (name: string) =>
+    paymentReceiptEmail({
+      recipientName: name,
+      vendorName: vendor.business_name,
+      invoiceTitle: payment.invoice_title,
+      amountFormatted: amount,
+      loginUrl: payment.public_token ? `${env.appUrl}/book/${payment.public_token}` : `${env.appUrl}/login`,
+    })
+  const receiptSubject = `Payment recorded: ${amount} to ${vendor.business_name}`
+
+  if (payment.wedding_id) {
+    const members = await getWeddingMembers(env.db, payment.wedding_id)
+    for (const m of members.filter((m) => m.role === 'couple')) {
+      const email = m.user_email.toLowerCase()
+      if (sentTo.has(email)) continue
+      sentTo.add(email)
+      await deliver(env, {
+        key: 'invoices',
+        recipient: { id: m.user_id, email: m.user_email, name: m.user_name, notification_prefs: m.user_notification_prefs },
+        subject: receiptSubject,
+        html: receiptHtml(m.user_name),
+        vendorId: data.vendorId,
+        contactId: payment.contact_id,
+      })
+    }
+  }
+
+  if (payment.contact_id) {
+    const contact = await env.db
+      .prepare('SELECT first_name, email, partner_first_name, partner_email FROM contacts WHERE id = ?')
+      .bind(payment.contact_id)
+      .first<{ first_name: string; email: string | null; partner_first_name: string | null; partner_email: string | null }>()
+    for (const { email, name } of [
+      { email: contact?.email, name: contact?.first_name },
+      { email: contact?.partner_email, name: contact?.partner_first_name },
+    ]) {
+      if (!email || sentTo.has(email.toLowerCase())) continue
+      sentTo.add(email.toLowerCase())
+      const user = await recipientByEmail(env.db, email)
+      if (user) {
+        await deliver(env, { key: 'invoices', recipient: user, subject: receiptSubject, html: receiptHtml(user.name), vendorId: data.vendorId, contactId: payment.contact_id })
+      } else {
+        await sendTransactional(env, { to: email, toName: name ?? undefined, subject: receiptSubject, html: receiptHtml(name ?? 'there'), vendorId: data.vendorId, contactId: payment.contact_id })
+      }
+    }
+  }
+}
+
+/**
+ * Cron: payment reminders. Exact-date matching means each payment is reminded
+ * about exactly once per stage with no extra bookkeeping:
+ * - due-soon: pending payments due in exactly 3 days
+ * - overdue: unpaid payments that became overdue exactly 1 day ago
+ * Payers (couple members + invoice contacts) get the reminder; the vendor gets
+ * an overdue alert so they can chase it up. All user sends gated by payment_reminders.
+ */
+export async function sendPaymentReminders(env: NotifyEnv): Promise<void> {
+  const duePayments = await env.db
+    .prepare(
+      `SELECT ip.id AS payment_id, ip.label, ip.amount_cents, ip.due_date,
+              i.id AS invoice_id, i.title AS invoice_title, i.currency, i.vendor_id,
+              i.wedding_id, i.contact_id, i.public_token,
+              CASE WHEN ip.due_date = date('now', '+3 days') THEN 'due_soon' ELSE 'overdue' END AS stage
+       FROM invoice_payments ip
+       JOIN invoices i ON i.id = ip.invoice_id
+       WHERE ip.status IN ('pending', 'overdue')
+         AND i.status NOT IN ('draft', 'paid', 'cancelled', 'refunded')
+         AND (ip.due_date = date('now', '+3 days') OR ip.due_date = date('now', '-1 day'))`
+    )
+    .all<{
+      payment_id: string
+      label: string
+      amount_cents: number
+      due_date: string
+      invoice_id: string
+      invoice_title: string
+      currency: string
+      vendor_id: string
+      wedding_id: string | null
+      contact_id: string | null
+      public_token: string | null
+      stage: 'due_soon' | 'overdue'
+    }>()
+    .then((r) => r.results)
+
+  let sent = 0
+  for (const p of duePayments) {
+    const vendor = await getVendorWithEmail(env.db, p.vendor_id)
+    if (!vendor) continue
+
+    const amount = formatAmount(p.amount_cents, p.currency)
+    const dueDate = formatDate(p.due_date)
+    const payUrl = p.public_token ? `${env.appUrl}/book/${p.public_token}` : `${env.appUrl}/login`
+    const buildHtml = (name: string) =>
+      p.stage === 'due_soon'
+        ? paymentDueSoonEmail({ recipientName: name, vendorName: vendor.business_name, invoiceTitle: `${p.invoice_title} — ${p.label}`, amountFormatted: amount, dueDate, loginUrl: payUrl })
+        : paymentOverdueEmail({ recipientName: name, vendorName: vendor.business_name, invoiceTitle: `${p.invoice_title} — ${p.label}`, amountFormatted: amount, dueDate, loginUrl: payUrl })
+    const subject =
+      p.stage === 'due_soon'
+        ? `Reminder: ${amount} due ${dueDate} to ${vendor.business_name}`
+        : `Overdue: ${amount} to ${vendor.business_name}`
+
+    const sentTo = new Set<string>([vendor.user_email.toLowerCase()])
+    let clientName: string | null = null
+
+    // Couple members on the wedding
+    if (p.wedding_id) {
+      const members = await getWeddingMembers(env.db, p.wedding_id)
+      for (const m of members.filter((m) => m.role === 'couple')) {
+        const email = m.user_email.toLowerCase()
+        if (sentTo.has(email)) continue
+        sentTo.add(email)
+        clientName = clientName ?? m.user_name
+        const ok = await deliver(env, {
+          key: 'payment_reminders',
+          recipient: { id: m.user_id, email: m.user_email, name: m.user_name, notification_prefs: m.user_notification_prefs },
+          subject,
+          html: buildHtml(m.user_name),
+          vendorId: p.vendor_id,
+          contactId: p.contact_id,
+        })
+        if (ok) sent++
+      }
+    }
+
+    // Invoice contact emails (may not be platform users)
+    if (p.contact_id) {
+      const contact = await env.db
+        .prepare('SELECT first_name, last_name, email, partner_first_name, partner_email FROM contacts WHERE id = ?')
+        .bind(p.contact_id)
+        .first<{ first_name: string; last_name: string; email: string | null; partner_first_name: string | null; partner_email: string | null }>()
+      clientName = clientName ?? (contact ? `${contact.first_name} ${contact.last_name}`.trim() : null)
+      for (const { email, name } of [
+        { email: contact?.email, name: contact?.first_name },
+        { email: contact?.partner_email, name: contact?.partner_first_name },
+      ]) {
+        if (!email || sentTo.has(email.toLowerCase())) continue
+        sentTo.add(email.toLowerCase())
+        const user = await recipientByEmail(env.db, email)
+        if (user) {
+          const ok = await deliver(env, { key: 'payment_reminders', recipient: user, subject, html: buildHtml(user.name), vendorId: p.vendor_id, contactId: p.contact_id })
+          if (ok) sent++
+        } else {
+          await sendTransactional(env, { to: email, toName: name ?? undefined, subject, html: buildHtml(name ?? 'there'), vendorId: p.vendor_id, contactId: p.contact_id })
+          sent++
+        }
+      }
+    }
+
+    // Vendor: overdue alert so they can chase it up
+    if (p.stage === 'overdue') {
+      const ok = await deliver(env, {
+        key: 'payment_reminders',
+        recipient: { id: vendor.user_id, email: vendor.user_email, name: vendor.user_name, notification_prefs: vendor.user_notification_prefs },
+        subject: `Client payment overdue: ${amount} — ${p.label}`,
+        html: clientPaymentOverdueEmail({
+          vendorName: vendor.business_name,
+          clientName: clientName ?? 'your client',
+          invoiceTitle: p.invoice_title,
+          paymentLabel: p.label,
+          amountFormatted: amount,
+          dueDate,
+          viewUrl: `${env.appUrl}/app/invoices/${p.invoice_id}`,
+        }),
+        vendorId: p.vendor_id,
+        contactId: p.contact_id,
+      })
+      if (ok) sent++
+    }
+  }
+
+  console.log('[REMINDERS] processed', duePayments.length, 'payments, sent', sent, 'emails')
+}
+
+// ─── Wedding membership & updates ───
+
+/**
+ * A vendor was added to a wedding. Notifies the added vendor (wedding_invites)
+ * and the couple on the wedding (wedding_updates).
+ * Payload matches the producer in routes/vendor/weddings.tsx (add-vendor).
+ */
 export async function notifyVendorAdded(env: NotifyEnv, data: {
   weddingId: string
-  vendorUserId: string
-  addedByName: string
+  vendorEmail: string
+  vendorName: string
+  addedBy: string
 }): Promise<void> {
   const wedding = await getWedding(env.db, data.weddingId)
   if (!wedding) return
 
-  const vendorUser = await env.db
-    .prepare('SELECT email, name FROM users WHERE id = ?')
-    .bind(data.vendorUserId)
-    .first<{ email: string; name: string }>()
-  if (!vendorUser) return
+  const ceremonyType = wedding.ceremony_type ?? 'wedding'
+  const weddingDate = wedding.date ? formatDate(wedding.date) : null
 
-  const html = vendorAddedEmail({
-    vendorName: vendorUser.name,
-    addedByName: data.addedByName,
-    weddingTitle: wedding.title,
-    ceremonyType: wedding.ceremony_type ?? 'wedding',
-    weddingDate: wedding.date ? formatDate(wedding.date) : null,
-    loginUrl: `${env.appUrl}/login`,
-  })
+  // The added vendor
+  const vendorUser = await recipientByEmail(env.db, data.vendorEmail)
+  if (vendorUser) {
+    await deliver(env, {
+      key: 'wedding_invites',
+      recipient: vendorUser,
+      subject: `You've been added to ${wedding.title}`,
+      html: vendorAddedEmail({
+        vendorName: vendorUser.name || data.vendorName,
+        addedByName: data.addedBy,
+        weddingTitle: wedding.title,
+        ceremonyType,
+        weddingDate,
+        loginUrl: `${env.appUrl}/login`,
+      }),
+    })
+  }
 
-  await sendEmailMessage({
-    db: env.db,
-    resendApiKey: env.resendApiKey,
-    vendorId: null,
-    to: vendorUser.email,
-    toName: vendorUser.name,
-    subject: `You've been added to ${wedding.title}`,
-    html,
-    isSystem: true,
-  }).catch((e) => console.error('[NOTIFY] vendor added failed', e.message))
+  // The couple: someone new is working on their wedding
+  const members = await getWeddingMembers(env.db, data.weddingId)
+  for (const m of members.filter((m) => m.role === 'couple')) {
+    if (m.user_email.toLowerCase() === data.vendorEmail.toLowerCase()) continue
+    await deliver(env, {
+      key: 'wedding_updates',
+      recipient: { id: m.user_id, email: m.user_email, name: m.user_name, notification_prefs: m.user_notification_prefs },
+      subject: `${data.vendorName} joined ${wedding.title}`,
+      html: vendorJoinedWeddingEmail({
+        recipientName: m.user_name,
+        vendorBusinessName: data.vendorName,
+        vendorCategory: null,
+        weddingTitle: wedding.title,
+        addedByName: data.addedBy,
+        loginUrl: `${env.appUrl}/wedding/${data.weddingId}`,
+      }),
+    })
+  }
 }
 
+/**
+ * A couple was invited to / joined a wedding. Notifies the wedding's vendors,
+ * excluding the vendor who did the inviting (they already know).
+ */
 export async function notifyCoupleJoined(env: NotifyEnv, data: {
   weddingId: string
   coupleName: string
+  excludeVendorProfileId?: string | null
 }): Promise<void> {
   const wedding = await getWedding(env.db, data.weddingId)
   if (!wedding) return
@@ -94,27 +475,21 @@ export async function notifyCoupleJoined(env: NotifyEnv, data: {
 
   for (const vendor of vendors) {
     if (!vendor.vendor_profile_id) continue
-    const vendorWithEmail = await getVendorWithEmail(env.db, vendor.vendor_profile_id)
-    if (!vendorWithEmail) continue
+    if (data.excludeVendorProfileId && vendor.vendor_profile_id === data.excludeVendorProfileId) continue
 
-    const html = coupleJoinedEmail({
-      vendorName: vendorWithEmail.business_name,
-      coupleName: data.coupleName,
-      weddingTitle: wedding.title,
-      appUrl: env.appUrl,
-      weddingId: data.weddingId,
-    })
-
-    await sendEmailMessage({
-      db: env.db,
-      resendApiKey: env.resendApiKey,
-      vendorId: vendor.vendor_profile_id,
-      to: vendorWithEmail.user_email,
-      toName: vendorWithEmail.user_name,
+    await deliver(env, {
+      key: 'wedding_updates',
+      recipient: { id: vendor.user_id, email: vendor.user_email, name: vendor.user_name, notification_prefs: vendor.user_notification_prefs },
       subject: `${data.coupleName} joined ${wedding.title}`,
-      html,
-      isSystem: true,
-    }).catch((e) => console.error('[NOTIFY] couple joined failed', e.message))
+      html: coupleJoinedEmail({
+        vendorName: vendor.business_name ?? vendor.user_name,
+        coupleName: data.coupleName,
+        weddingTitle: wedding.title,
+        appUrl: env.appUrl,
+        weddingId: data.weddingId,
+      }),
+      vendorId: vendor.vendor_profile_id,
+    })
   }
 }
 
@@ -126,30 +501,20 @@ export async function notifyVisibilityChanged(env: NotifyEnv, data: {
   if (!wedding) return
 
   const members = await getWeddingMembers(env.db, data.weddingId)
-  const vendors = members.filter((m) => m.role === 'vendor')
-
-  for (const vendor of vendors) {
+  for (const vendor of members.filter((m) => m.role === 'vendor')) {
     if (!vendor.vendor_profile_id) continue
-    const vendorWithEmail = await getVendorWithEmail(env.db, vendor.vendor_profile_id)
-    if (!vendorWithEmail) continue
-
-    const html = visibilityChangedEmail({
-      vendorName: vendorWithEmail.business_name,
-      weddingTitle: wedding.title,
-      isNowVisible: data.isNowVisible,
-      loginUrl: `${env.appUrl}/login`,
-    })
-
-    await sendEmailMessage({
-      db: env.db,
-      resendApiKey: env.resendApiKey,
-      vendorId: vendor.vendor_profile_id,
-      to: vendorWithEmail.user_email,
-      toName: vendorWithEmail.user_name,
+    await deliver(env, {
+      key: 'vendor_collaboration',
+      recipient: { id: vendor.user_id, email: vendor.user_email, name: vendor.user_name, notification_prefs: vendor.user_notification_prefs },
       subject: `Vendor visibility ${data.isNowVisible ? 'enabled' : 'disabled'} on ${wedding.title}`,
-      html,
-      isSystem: true,
-    }).catch((e) => console.error('[NOTIFY] visibility changed failed', e.message))
+      html: visibilityChangedEmail({
+        vendorName: vendor.business_name ?? vendor.user_name,
+        weddingTitle: wedding.title,
+        isNowVisible: data.isNowVisible,
+        loginUrl: `${env.appUrl}/login`,
+      }),
+      vendorId: vendor.vendor_profile_id,
+    })
   }
 }
 
@@ -160,77 +525,26 @@ export async function notifyBookingConfirmed(env: NotifyEnv, data: {
   if (!wedding) return
 
   const members = await getWeddingMembers(env.db, data.weddingId)
-
   for (const member of members) {
-    const user = await env.db
-      .prepare('SELECT email, name FROM users WHERE id = ?')
-      .bind(member.user_id)
-      .first<{ email: string; name: string }>()
-    if (!user) continue
-
     const loginUrl = member.role === 'couple'
       ? `${env.appUrl}/wedding/${data.weddingId}`
       : `${env.appUrl}/app/weddings/${data.weddingId}`
 
-    const html = bookingConfirmedEmail({
-      recipientName: user.name,
-      weddingTitle: wedding.title,
-      ceremonyType: wedding.ceremony_type ?? 'wedding',
-      weddingDate: wedding.date ? formatDate(wedding.date) : null,
-      weddingLocation: wedding.location,
-      loginUrl,
-    })
-
-    await sendEmailMessage({
-      db: env.db,
-      resendApiKey: env.resendApiKey,
-      vendorId: null,
-      to: user.email,
-      toName: user.name,
+    await deliver(env, {
+      key: 'wedding_updates',
+      recipient: { id: member.user_id, email: member.user_email, name: member.user_name, notification_prefs: member.user_notification_prefs },
       subject: `${wedding.title} is confirmed!`,
-      html,
-      isSystem: true,
-    }).catch((e) => console.error('[NOTIFY] booking confirmed failed', e.message))
+      html: bookingConfirmedEmail({
+        recipientName: member.user_name,
+        weddingTitle: wedding.title,
+        ceremonyType: wedding.ceremony_type ?? 'wedding',
+        weddingDate: wedding.date ? formatDate(wedding.date) : null,
+        weddingLocation: wedding.location,
+        loginUrl,
+      }),
+      vendorId: member.vendor_profile_id,
+    })
   }
-}
-
-export async function notifyVendorRemoved(env: NotifyEnv, data: {
-  weddingId: string
-  vendorProfileId: string
-  coupleUserId: string
-}): Promise<void> {
-  const wedding = await getWedding(env.db, data.weddingId)
-  if (!wedding) return
-
-  const coupleUser = await env.db
-    .prepare('SELECT email, name FROM users WHERE id = ?')
-    .bind(data.coupleUserId)
-    .first<{ email: string; name: string }>()
-  if (!coupleUser) return
-
-  const vendor = await getVendorWithEmail(env.db, data.vendorProfileId)
-  if (!vendor) return
-
-  const html = vendorRemovedAdminEmail({
-    coupleName: coupleUser.name,
-    coupleEmail: coupleUser.email,
-    vendorName: vendor.business_name,
-    vendorCategory: vendor.category,
-    weddingTitle: wedding.title,
-    weddingDate: wedding.date ? formatDate(wedding.date) : null,
-    weddingId: data.weddingId,
-  })
-
-  await sendEmailMessage({
-    db: env.db,
-    resendApiKey: env.resendApiKey,
-    vendorId: null,
-    to: 'hello@wedding.computer',
-    toName: 'Wedding Computer Admin',
-    subject: `Safety alert: ${coupleUser.name} removed ${vendor.business_name} from ${wedding.title}`,
-    html,
-    isSystem: true,
-  }).catch((e) => console.error('[NOTIFY] vendor removed admin alert failed', e.message))
 }
 
 export async function notifyVendorBooked(env: NotifyEnv, data: {
@@ -245,33 +559,25 @@ export async function notifyVendorBooked(env: NotifyEnv, data: {
   if (!bookedVendor) return
 
   const members = await getWeddingMembers(env.db, data.weddingId)
-  const vendors = members.filter((m) => (m.role === 'vendor') && m.vendor_profile_id !== data.bookedVendorId)
+  const vendors = members.filter((m) => m.role === 'vendor' && m.vendor_profile_id !== data.bookedVendorId)
 
   for (const vendor of vendors) {
     if (!vendor.vendor_profile_id) continue
-    const vendorWithEmail = await getVendorWithEmail(env.db, vendor.vendor_profile_id)
-    if (!vendorWithEmail) continue
-
-    const html = vendorBookedEmail({
-      recipientVendorName: vendorWithEmail.business_name,
-      coupleName: data.coupleName,
-      bookedVendorName: bookedVendor.business_name,
-      bookedVendorCategory: bookedVendor.category,
-      weddingTitle: wedding.title,
-      appUrl: env.appUrl,
-      weddingId: data.weddingId,
-    })
-
-    await sendEmailMessage({
-      db: env.db,
-      resendApiKey: env.resendApiKey,
-      vendorId: vendor.vendor_profile_id,
-      to: vendorWithEmail.user_email,
-      toName: vendorWithEmail.user_name,
+    await deliver(env, {
+      key: 'vendor_collaboration',
+      recipient: { id: vendor.user_id, email: vendor.user_email, name: vendor.user_name, notification_prefs: vendor.user_notification_prefs },
       subject: `${data.coupleName} booked ${bookedVendor.business_name} for ${wedding.title}`,
-      html,
-      isSystem: true,
-    }).catch((e) => console.error('[NOTIFY] vendor booked failed', e.message))
+      html: vendorBookedEmail({
+        recipientVendorName: vendor.business_name ?? vendor.user_name,
+        coupleName: data.coupleName,
+        bookedVendorName: bookedVendor.business_name,
+        bookedVendorCategory: bookedVendor.category,
+        weddingTitle: wedding.title,
+        appUrl: env.appUrl,
+        weddingId: data.weddingId,
+      }),
+      vendorId: vendor.vendor_profile_id,
+    })
   }
 }
 
@@ -283,49 +589,128 @@ export async function notifyWeddingDetailsUpdated(env: NotifyEnv, data: {
   if (!wedding) return
 
   const members = await getWeddingMembers(env.db, data.weddingId)
-  const vendors = members.filter((m) => m.role === 'vendor')
-
-  for (const vendor of vendors) {
+  for (const vendor of members.filter((m) => m.role === 'vendor')) {
     if (!vendor.vendor_profile_id) continue
-    const vendorWithEmail = await getVendorWithEmail(env.db, vendor.vendor_profile_id)
-    if (!vendorWithEmail) continue
-
-    const html = weddingDetailsUpdatedEmail({
-      vendorName: vendorWithEmail.business_name,
-      coupleName: data.coupleName,
-      weddingTitle: wedding.title,
-      appUrl: env.appUrl,
-      weddingId: data.weddingId,
-    })
-
-    await sendEmailMessage({
-      db: env.db,
-      resendApiKey: env.resendApiKey,
-      vendorId: vendor.vendor_profile_id,
-      to: vendorWithEmail.user_email,
-      toName: vendorWithEmail.user_name,
+    await deliver(env, {
+      key: 'wedding_updates',
+      recipient: { id: vendor.user_id, email: vendor.user_email, name: vendor.user_name, notification_prefs: vendor.user_notification_prefs },
       subject: `${data.coupleName} updated details for ${wedding.title}`,
-      html,
-      isSystem: true,
-    }).catch((e) => console.error('[NOTIFY] wedding details updated failed', e.message))
+      html: weddingDetailsUpdatedEmail({
+        vendorName: vendor.business_name ?? vendor.user_name,
+        coupleName: data.coupleName,
+        weddingTitle: wedding.title,
+        appUrl: env.appUrl,
+        weddingId: data.weddingId,
+      }),
+      vendorId: vendor.vendor_profile_id,
+    })
   }
 }
+
+// ─── Admin notifications ───
+
+/**
+ * Send to every admin user (gated by their prefs for the given key).
+ * Falls back to hello@wedding.computer if no admin users exist yet.
+ */
+export async function notifyAdmins(env: NotifyEnv, data: {
+  key: NotificationKey
+  subject: string
+  html: string
+}): Promise<void> {
+  const admins = await env.db
+    .prepare('SELECT id, email, name, notification_prefs FROM users WHERE is_admin = 1')
+    .all<Recipient>()
+    .then((r) => r.results)
+
+  if (admins.length === 0) {
+    await sendTransactional(env, {
+      to: 'hello@wedding.computer',
+      toName: 'Wedding Computer Admin',
+      subject: data.subject,
+      html: data.html,
+    })
+    return
+  }
+
+  for (const admin of admins) {
+    await deliver(env, { key: data.key, recipient: admin, subject: data.subject, html: data.html })
+  }
+}
+
+export async function notifyVendorRemoved(env: NotifyEnv, data: {
+  weddingId: string
+  vendorProfileId: string
+  coupleUserId: string
+}): Promise<void> {
+  const wedding = await getWedding(env.db, data.weddingId)
+  if (!wedding) return
+
+  const coupleUser = await recipientById(env.db, data.coupleUserId)
+  if (!coupleUser) return
+
+  const vendor = await getVendorWithEmail(env.db, data.vendorProfileId)
+  if (!vendor) return
+
+  await notifyAdmins(env, {
+    key: 'admin_safety',
+    subject: `Safety alert: ${coupleUser.name} removed ${vendor.business_name} from ${wedding.title}`,
+    html: vendorRemovedAdminEmail({
+      coupleName: coupleUser.name,
+      coupleEmail: coupleUser.email,
+      vendorName: vendor.business_name,
+      vendorCategory: vendor.category,
+      weddingTitle: wedding.title,
+      weddingDate: wedding.date ? formatDate(wedding.date) : null,
+      weddingId: data.weddingId,
+    }),
+  })
+}
+
+/** A new vendor or couple joined the platform. */
+export async function notifyAdminSignup(env: NotifyEnv, data: {
+  kind: 'vendor' | 'couple'
+  name: string
+  email: string
+  businessName?: string | null
+  category?: string | null
+}): Promise<void> {
+  await notifyAdmins(env, {
+    key: 'admin_signups',
+    subject: data.kind === 'vendor'
+      ? `New vendor signup: ${data.businessName || data.name}`
+      : `New couple signup: ${data.name}`,
+    html: adminSignupEmail({
+      kind: data.kind,
+      name: data.name,
+      email: data.email,
+      businessName: data.businessName,
+      category: data.category,
+      appUrl: env.appUrl,
+    }),
+  })
+}
+
+// ─── Daily digest ───
 
 export async function dailyDigest(env: NotifyEnv): Promise<void> {
   const today = new Date().toISOString().split('T')[0]
   const weekFromNow = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
 
-  // Get all active vendors
+  // Get all active vendors (with prefs so opted-out vendors skip the heavy queries)
   const vendors = await env.db
     .prepare(
-      `SELECT vp.id, vp.business_name, u.email, u.name
+      `SELECT vp.id, vp.business_name, u.id AS user_id, u.email, u.name, u.notification_prefs
        FROM vendor_profiles vp
        JOIN users u ON u.id = vp.user_id`
     )
-    .all<{ id: string; business_name: string; email: string; name: string }>()
+    .all<{ id: string; business_name: string; user_id: string; email: string; name: string; notification_prefs: string }>()
     .then((r) => r.results)
 
+  let sentCount = 0
   for (const vendor of vendors) {
+    if (!isNotificationEnabled(vendor.notification_prefs, 'daily_digest')) continue
+
     // Upcoming weddings in next 7 days
     const upcomingWeddings = await env.db
       .prepare(
@@ -397,7 +782,7 @@ export async function dailyDigest(env: NotifyEnv): Promise<void> {
       })),
       duePayments: duePayments.map((p) => ({
         label: p.label,
-        amount: (p.amount_cents / 100).toLocaleString('en-AU', { style: 'currency', currency: p.currency.toUpperCase() }),
+        amount: formatAmount(p.amount_cents, p.currency),
         weddingTitle: p.wedding_title ?? 'Unknown',
         dueDate: formatDate(p.due_date),
       })),
@@ -409,17 +794,15 @@ export async function dailyDigest(env: NotifyEnv): Promise<void> {
       appUrl: env.appUrl,
     })
 
-    await sendEmailMessage({
-      db: env.db,
-      resendApiKey: env.resendApiKey,
-      vendorId: vendor.id,
-      to: vendor.email,
-      toName: vendor.name,
+    const ok = await deliver(env, {
+      key: 'daily_digest',
+      recipient: { id: vendor.user_id, email: vendor.email, name: vendor.name, notification_prefs: vendor.notification_prefs },
       subject: `Your daily summary — ${formatDate(today)}`,
       html,
-      isSystem: true,
-    }).catch((e) => console.error('[DIGEST] failed for vendor', vendor.id, e.message))
+      vendorId: vendor.id,
+    })
+    if (ok) sentCount++
   }
 
-  console.log('[DIGEST] completed for', vendors.length, 'vendors')
+  console.log('[DIGEST] sent', sentCount, 'of', vendors.length, 'vendors')
 }

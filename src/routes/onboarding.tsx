@@ -270,6 +270,10 @@ onboarding.post('/onboarding/business', async (c) => {
       await createReferral(c.env.DB, referrerVendorId, vendor.id)
     }
     deleteCookie(c, 'wc_ref', { path: '/' })
+    await c.env.EMAIL_QUEUE.send({
+      type: 'notify_admin_signup',
+      payload: JSON.stringify({ kind: 'vendor', name: user.name, email: user.email, businessName, category }),
+    }).catch((e: any) => console.error('[ONBOARDING] admin signup enqueue failed', e.message))
     return c.redirect('/onboarding/profile')
   } catch (e: any) {
     return c.redirect(`/onboarding/business?error=${encodeURIComponent(e.message)}`)
@@ -507,6 +511,11 @@ onboarding.post('/onboarding/wedding', async (c) => {
       user_id: user.id,
       role: 'couple',
     })
+
+    await c.env.EMAIL_QUEUE.send({
+      type: 'notify_admin_signup',
+      payload: JSON.stringify({ kind: 'couple', name: userName, email: user.email }),
+    }).catch((e: any) => console.error('[ONBOARDING] admin signup enqueue failed', e.message))
 
     return c.redirect(`/wedding/${wedding.id}`)
   } catch (e: any) {

@@ -22,11 +22,42 @@ type SendEmailParams = {
   isSystem?: boolean
   threadId?: string | null
   inReplyTo?: string | null
+  /**
+   * For preference-gated notifications: adds a "manage / unsubscribe" footer
+   * to the email body and RFC 8058 List-Unsubscribe headers so mail clients
+   * can offer native one-click unsubscribe.
+   */
+  unsubscribe?: { manageUrl: string; unsubscribeUrl: string }
+}
+
+// Appended to notification emails so every preference-gated email carries its
+// own opt-out. Injected just before </body> — works for any wrapper-built html.
+function unsubscribeFooter(manageUrl: string, unsubscribeUrl: string): string {
+  return `
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+    <tr><td align="center" style="padding:0 16px 32px;">
+      <p style="margin:0;font-size:12px;color:#999;line-height:1.6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:520px;">
+        You choose which emails you get from Wedding Computer —
+        <a href="${manageUrl}" style="color:#999;text-decoration:underline;">manage email preferences</a>
+        or <a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">unsubscribe from emails like this</a>.
+      </p>
+    </td></tr>
+  </table>`
 }
 
 export async function sendEmailMessage(params: SendEmailParams): Promise<string> {
   const fromAddr = params.from ?? 'hello@wedding.computer'
   const fromName = params.fromName ?? 'Wedding Computer'
+
+  if (params.unsubscribe) {
+    const footer = unsubscribeFooter(params.unsubscribe.manageUrl, params.unsubscribe.unsubscribeUrl)
+    params = {
+      ...params,
+      html: params.html.includes('</body>')
+        ? params.html.replace('</body>', `${footer}</body>`)
+        : params.html + footer,
+    }
+  }
 
   const messageId = `<${crypto.randomUUID()}@wedding.computer>`
 
@@ -54,6 +85,11 @@ export async function sendEmailMessage(params: SendEmailParams): Promise<string>
     if (params.inReplyTo) {
       headers['In-Reply-To'] = params.inReplyTo
       headers['References'] = params.inReplyTo
+    }
+    if (params.unsubscribe) {
+      // RFC 8058 one-click unsubscribe — mail clients show a native button.
+      headers['List-Unsubscribe'] = `<${params.unsubscribe.unsubscribeUrl}>`
+      headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click'
     }
 
     const res = await fetch('https://api.resend.com/emails', {
@@ -326,16 +362,39 @@ export function paymentReceivedEmail(data: {
   weddingTitle: string
   amountFormatted: string
   paymentLabel: string
-  appUrl: string
-  weddingId: string
+  viewUrl: string
 }): string {
   return emailWrapper(`
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Payment received</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      ${data.vendorName}, a payment of <strong>${data.amountFormatted}</strong> has been recorded for <strong>${data.paymentLabel}</strong> on ${data.weddingTitle}.
+      ${esc(data.vendorName)}, a payment of <strong>${data.amountFormatted}</strong> has been recorded for <strong>${esc(data.paymentLabel)}</strong> on ${esc(data.weddingTitle)}.
     </p>
-    <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View details</a>
-  `, { preheader: `${data.amountFormatted} payment received for ${data.weddingTitle}` })
+    <a href="${data.viewUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View details</a>
+  `, { preheader: `${data.amountFormatted} payment received for ${esc(data.weddingTitle)}` })
+}
+
+export function clientPaymentOverdueEmail(data: {
+  vendorName: string
+  clientName: string
+  invoiceTitle: string
+  paymentLabel: string
+  amountFormatted: string
+  dueDate: string
+  viewUrl: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">A client payment is overdue</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      Hi ${esc(data.vendorName)}, a payment from <strong>${esc(data.clientName)}</strong> was due ${esc(data.dueDate)} and hasn't been recorded yet. We've sent them a reminder too.
+    </p>
+    <div style="background:#faf5ef;border-radius:12px;padding:16px;margin-bottom:20px;">
+      <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#1a1a1a;">${esc(data.invoiceTitle)} — ${esc(data.paymentLabel)}</p>
+      <p style="margin:0;font-size:24px;font-weight:700;color:#1a1a1a;">${data.amountFormatted}</p>
+      <p style="margin:8px 0 0;font-size:13px;color:#be2f2f;font-weight:600;">Was due ${esc(data.dueDate)}</p>
+    </div>
+    <a href="${data.viewUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View invoice</a>
+    <p style="margin:20px 0 0;font-size:13px;color:#999;line-height:1.5;">Received this payment outside Wedding Computer? Record it on the invoice to stop reminders.</p>
+  `, { preheader: `Overdue: ${data.amountFormatted} from ${esc(data.clientName)}` })
 }
 
 export function vendorBookedEmail(data: {
@@ -372,6 +431,112 @@ export function weddingDetailsUpdatedEmail(data: {
     </p>
     <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View details</a>
   `, { preheader: `${data.coupleName} updated details for ${data.weddingTitle}` })
+}
+
+export function paymentDueSoonEmail(data: {
+  recipientName: string
+  vendorName: string
+  invoiceTitle: string
+  amountFormatted: string
+  dueDate: string
+  loginUrl: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Payment due soon</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      Hi ${esc(data.recipientName)}, a friendly reminder that a payment to <strong>${esc(data.vendorName)}</strong> is due soon.
+    </p>
+    <div style="background:#faf5ef;border-radius:12px;padding:16px;margin-bottom:20px;">
+      <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#1a1a1a;">${esc(data.invoiceTitle)}</p>
+      <p style="margin:0;font-size:24px;font-weight:700;color:#1a1a1a;">${data.amountFormatted}</p>
+      <p style="margin:8px 0 0;font-size:13px;color:#666;">Due ${esc(data.dueDate)}</p>
+    </div>
+    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View invoice</a>
+  `, { preheader: `${data.amountFormatted} due ${esc(data.dueDate)} to ${esc(data.vendorName)}` })
+}
+
+export function paymentOverdueEmail(data: {
+  recipientName: string
+  vendorName: string
+  invoiceTitle: string
+  amountFormatted: string
+  dueDate: string
+  loginUrl: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#be2f2f;">Payment overdue</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      Hi ${esc(data.recipientName)}, a payment to <strong>${esc(data.vendorName)}</strong> was due ${esc(data.dueDate)} and is now overdue.
+    </p>
+    <div style="background:#faf5ef;border-radius:12px;padding:16px;margin-bottom:20px;">
+      <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#1a1a1a;">${esc(data.invoiceTitle)}</p>
+      <p style="margin:0;font-size:24px;font-weight:700;color:#1a1a1a;">${data.amountFormatted}</p>
+      <p style="margin:8px 0 0;font-size:13px;color:#be2f2f;font-weight:600;">Was due ${esc(data.dueDate)}</p>
+    </div>
+    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View invoice</a>
+    <p style="margin:20px 0 0;font-size:13px;color:#999;line-height:1.5;">Already paid? It may take a moment to be recorded — you can safely ignore this email.</p>
+  `, { preheader: `Overdue: ${data.amountFormatted} to ${esc(data.vendorName)}` })
+}
+
+export function paymentReceiptEmail(data: {
+  recipientName: string
+  vendorName: string
+  invoiceTitle: string
+  amountFormatted: string
+  loginUrl: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Payment recorded</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      Hi ${esc(data.recipientName)}, your payment of <strong>${data.amountFormatted}</strong> to <strong>${esc(data.vendorName)}</strong> has been recorded. Thank you!
+    </p>
+    <div style="background:#faf5ef;border-radius:12px;padding:16px;margin-bottom:20px;">
+      <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#1a1a1a;">${esc(data.invoiceTitle)}</p>
+      <p style="margin:0;font-size:24px;font-weight:700;color:#1a1a1a;">${data.amountFormatted}</p>
+    </div>
+    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View invoice</a>
+  `, { preheader: `Payment of ${data.amountFormatted} to ${esc(data.vendorName)} recorded` })
+}
+
+export function vendorJoinedWeddingEmail(data: {
+  recipientName: string
+  vendorBusinessName: string
+  vendorCategory: string | null
+  weddingTitle: string
+  addedByName: string
+  loginUrl: string
+}): string {
+  const cat = data.vendorCategory
+    ? ` as your ${esc(data.vendorCategory)}`
+    : ''
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">A vendor joined your wedding</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      Hi ${esc(data.recipientName)}, ${esc(data.addedByName)} has added <strong>${esc(data.vendorBusinessName)}</strong>${cat} to <strong>${esc(data.weddingTitle)}</strong>.
+    </p>
+    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View your wedding</a>
+  `, { preheader: `${esc(data.vendorBusinessName)} joined ${esc(data.weddingTitle)}` })
+}
+
+export function adminSignupEmail(data: {
+  kind: 'vendor' | 'couple'
+  name: string
+  email: string
+  businessName?: string | null
+  category?: string | null
+  appUrl: string
+}): string {
+  const heading = data.kind === 'vendor' ? 'New vendor signup' : 'New couple signup'
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">${heading}</h1>
+    <div style="background:#faf5ef;border-radius:12px;padding:16px;margin-bottom:20px;font-size:14px;line-height:1.8;color:#333;">
+      <strong>Name:</strong> ${esc(data.name)}<br>
+      <strong>Email:</strong> ${esc(data.email)}<br>
+      ${data.businessName ? `<strong>Business:</strong> ${esc(data.businessName)}<br>` : ''}
+      ${data.category ? `<strong>Category:</strong> ${esc(data.category)}<br>` : ''}
+    </div>
+    <a href="${data.appUrl}/admin" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">Open admin</a>
+  `, { preheader: `${heading}: ${esc(data.businessName || data.name)}` })
 }
 
 export function dailyDigestEmail(data: {

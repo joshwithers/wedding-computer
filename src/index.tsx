@@ -46,7 +46,7 @@ import { getStorageWithSecrets } from './storage'
 import { StorageConflictError } from './storage/conflicts'
 import { sendEmailMessage, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail, enquiryConfirmationEmail, referralRewardEmail } from './services/email'
 import { handleInboundEmail } from './services/inbound-email'
-import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, dailyDigest } from './services/notifications'
+import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, sendPaymentReminders, dailyDigest, deliver, type NotifyEnv } from './services/notifications'
 import { aggregateBusynessScores } from './db/busyness'
 import { syncStorageBackground } from './services/storage-sync'
 
@@ -484,6 +484,10 @@ app.notFound((c) =>
   )
 )
 
+function notifyEnv(env: Env['Bindings']): NotifyEnv {
+  return { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL, sessionSecret: env.SESSION_SECRET }
+}
+
 export default {
   fetch: app.fetch,
 
@@ -525,72 +529,85 @@ export default {
             contactId: contact.id,
           })
 
-          await sendEmailMessage({
-            db: env.DB,
-            resendApiKey: env.RESEND_API_KEY,
-            vendorId: body.vendorId,
-            to: vendor.user_email,
-            toName: vendor.user_name,
+          const sent = await deliver(notifyEnv(env), {
+            key: 'enquiries',
+            recipient: { id: vendor.user_id, email: vendor.user_email, name: vendor.user_name, notification_prefs: vendor.user_notification_prefs },
             subject: `New enquiry from ${contact.first_name} ${contact.last_name}`,
             html,
+            vendorId: body.vendorId,
+            contactId: contact.id,
           })
 
-          console.log('[QUEUE] new_lead email sent to', vendor.user_email)
+          console.log('[QUEUE] new_lead email', sent ? 'sent to' : 'skipped for', vendor.user_email)
         } else if (body.type === 'notify_invoice_sent') {
           await notifyInvoiceSent(
-            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            notifyEnv(env),
             JSON.parse(body.payload)
           )
           console.log('[QUEUE] notify_invoice_sent processed')
 
-        } else if (body.type === 'notify_vendor_added') {
+        } else if (body.type === 'notify_vendor_added_to_wedding') {
           await notifyVendorAdded(
-            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            notifyEnv(env),
             JSON.parse(body.payload)
           )
-          console.log('[QUEUE] notify_vendor_added processed')
+          console.log('[QUEUE] notify_vendor_added_to_wedding processed')
 
         } else if (body.type === 'notify_couple_joined') {
           await notifyCoupleJoined(
-            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            notifyEnv(env),
             JSON.parse(body.payload)
           )
           console.log('[QUEUE] notify_couple_joined processed')
 
         } else if (body.type === 'notify_visibility_changed') {
           await notifyVisibilityChanged(
-            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            notifyEnv(env),
             JSON.parse(body.payload)
           )
           console.log('[QUEUE] notify_visibility_changed processed')
 
         } else if (body.type === 'notify_booking_confirmed') {
           await notifyBookingConfirmed(
-            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            notifyEnv(env),
             JSON.parse(body.payload)
           )
           console.log('[QUEUE] notify_booking_confirmed processed')
 
         } else if (body.type === 'notify_vendor_removed') {
           await notifyVendorRemoved(
-            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            notifyEnv(env),
             JSON.parse(body.payload)
           )
           console.log('[QUEUE] notify_vendor_removed processed')
 
         } else if (body.type === 'notify_vendor_booked') {
           await notifyVendorBooked(
-            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            notifyEnv(env),
             JSON.parse(body.payload)
           )
           console.log('[QUEUE] notify_vendor_booked processed')
 
         } else if (body.type === 'notify_wedding_details_updated') {
           await notifyWeddingDetailsUpdated(
-            { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL },
+            notifyEnv(env),
             JSON.parse(body.payload)
           )
           console.log('[QUEUE] notify_wedding_details_updated processed')
+
+        } else if (body.type === 'notify_payment_received') {
+          await notifyPaymentReceived(
+            notifyEnv(env),
+            JSON.parse(body.payload)
+          )
+          console.log('[QUEUE] notify_payment_received processed')
+
+        } else if (body.type === 'notify_admin_signup') {
+          await notifyAdminSignup(
+            notifyEnv(env),
+            JSON.parse(body.payload)
+          )
+          console.log('[QUEUE] notify_admin_signup processed')
 
         } else if (body.type === 'form_submission') {
           // Notify the vendor that someone submitted one of their forms
@@ -607,16 +624,14 @@ export default {
             formId: body.formId,
             submissionId: body.submissionId,
           })
-          await sendEmailMessage({
-            db: env.DB,
-            resendApiKey: env.RESEND_API_KEY,
-            vendorId: body.vendorId,
-            to: vendor.user_email,
-            toName: vendor.user_name,
+          const sent = await deliver(notifyEnv(env), {
+            key: 'enquiries',
+            recipient: { id: vendor.user_id, email: vendor.user_email, name: vendor.user_name, notification_prefs: vendor.user_notification_prefs },
             subject: `New submission: ${body.formTitle}`,
             html,
+            vendorId: body.vendorId,
           })
-          console.log('[QUEUE] form_submission email sent to', vendor.user_email)
+          console.log('[QUEUE] form_submission email', sent ? 'sent to' : 'skipped for', vendor.user_email)
 
         } else if (body.type === 'form_notification') {
           // Notify a specific recipient configured on the form
@@ -680,16 +695,14 @@ export default {
             msg.ack()
             continue
           }
-          await sendEmailMessage({
-            db: env.DB,
-            resendApiKey: env.RESEND_API_KEY,
-            vendorId: body.vendorId,
-            to: vendor.user_email,
-            toName: vendor.user_name,
+          const sent = await deliver(notifyEnv(env), {
+            key: 'referrals',
+            recipient: { id: vendor.user_id, email: vendor.user_email, name: vendor.user_name, notification_prefs: vendor.user_notification_prefs },
             subject: 'You earned a free month 🎉',
             html: referralRewardEmail({ appUrl: env.APP_URL }),
+            vendorId: body.vendorId,
           })
-          console.log('[QUEUE] referral_reward email sent to', vendor.user_email)
+          console.log('[QUEUE] referral_reward email', sent ? 'sent to' : 'skipped for', vendor.user_email)
 
         } else if (body.type === 'broadcast_email') {
           // One recipient of an admin broadcast (fanned out from /admin/broadcast).
@@ -727,9 +740,16 @@ export default {
     if (event.cron === '0 20 * * *') {
       // Daily digest — 8pm UTC
       try {
-        await dailyDigest({ db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL })
+        await dailyDigest(notifyEnv(env))
       } catch (e: any) {
         console.error('[CRON] daily digest failed', e.message)
+      }
+
+      // Payment reminders — due in 3 days / overdue by 1 day
+      try {
+        await sendPaymentReminders(notifyEnv(env))
+      } catch (e: any) {
+        console.error('[CRON] payment reminders failed', e.message)
       }
 
       try {

@@ -21,6 +21,7 @@ import { writeWeddingFile } from '../../storage/weddings'
 import { createActivity } from '../../db/activities'
 import type { Bindings, VendorProfile, Wedding } from '../../types'
 import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
+import { getUserByEmail } from '../../db/users'
 import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, formatTime, daysUntil, addHoursToTime, subtractHoursFromTime } from '../../lib/date'
 import { createEvent, updateEvent, deleteEvent } from '../../db/calendar'
@@ -512,20 +513,34 @@ weddings.post('/app/weddings/new', async (c) => {
 
         if (contact.email) {
           const name = `${contact.first_name} ${contact.last_name}`
+          const isNewUser = !(await getUserByEmail(c.env.DB, contact.email))
           const coupleUser = await findOrCreateUser(c.env.DB, contact.email, name)
           await addWeddingMember(c.env.DB, { wedding_id: wedding.id, user_id: coupleUser.id, role: 'couple' })
           sendCoupleInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
             email: contact.email, coupleName: contact.first_name, ...inviteData,
           }).catch((e) => console.error('[INVITE]', e.message))
+          if (isNewUser) {
+            await c.env.EMAIL_QUEUE.send({
+              type: 'notify_admin_signup',
+              payload: JSON.stringify({ kind: 'couple', name, email: contact.email }),
+            }).catch((e) => console.error('[INVITE] admin signup enqueue failed', e.message))
+          }
         }
 
         if (contact.partner_email) {
           const partnerName = [contact.partner_first_name, contact.partner_last_name].filter(Boolean).join(' ') || contact.partner_email.split('@')[0]
+          const isNewUser = !(await getUserByEmail(c.env.DB, contact.partner_email))
           const partnerUser = await findOrCreateUser(c.env.DB, contact.partner_email, partnerName)
           await addWeddingMember(c.env.DB, { wedding_id: wedding.id, user_id: partnerUser.id, role: 'couple' })
           sendCoupleInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
             email: contact.partner_email, coupleName: contact.partner_first_name ?? partnerName, ...inviteData,
           }).catch((e) => console.error('[INVITE]', e.message))
+          if (isNewUser) {
+            await c.env.EMAIL_QUEUE.send({
+              type: 'notify_admin_signup',
+              payload: JSON.stringify({ kind: 'couple', name: partnerName, email: contact.partner_email }),
+            }).catch((e) => console.error('[INVITE] admin signup enqueue failed', e.message))
+          }
         }
       }
     }
@@ -553,6 +568,7 @@ weddings.post('/app/weddings/:id/invite', async (c) => {
     return c.redirect(`/app/weddings/${weddingId}?error=Valid+email+and+name+required`)
   }
 
+  const isNewUser = !(await getUserByEmail(c.env.DB, email))
   const coupleUser = await findOrCreateUser(c.env.DB, email, name)
   await addWeddingMember(c.env.DB, {
     wedding_id: weddingId,
@@ -569,6 +585,19 @@ weddings.post('/app/weddings/:id/invite', async (c) => {
     weddingTitle: wedding?.title ?? 'Your wedding',
     weddingDate: wedding?.date ? formatDate(wedding.date) : null,
   }).catch((e) => console.error('[INVITE]', e.message))
+
+  // Other vendors on this wedding learn the couple has been added
+  await c.env.EMAIL_QUEUE.send({
+    type: 'notify_couple_joined',
+    payload: JSON.stringify({ weddingId, coupleName: name, excludeVendorProfileId: vendor.id }),
+  }).catch((e) => console.error('[INVITE] couple_joined enqueue failed', e.message))
+
+  if (isNewUser) {
+    await c.env.EMAIL_QUEUE.send({
+      type: 'notify_admin_signup',
+      payload: JSON.stringify({ kind: 'couple', name, email }),
+    }).catch((e) => console.error('[INVITE] admin signup enqueue failed', e.message))
+  }
 
   track(c.env.DB, vendor.id, 'couple_invited', { weddingId })
 

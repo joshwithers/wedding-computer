@@ -3,11 +3,21 @@ import type { FC, PropsWithChildren } from 'hono/jsx'
 import type { Env, User } from '../types'
 import { SharedHead } from '../views/head'
 import { Logo } from '../views/logo'
+import { MarketingLayout } from '../views/layouts/marketing'
 import { requireAuth } from '../middleware/auth'
 import { csrf } from '../middleware/csrf'
-import { updateUser, updateUserEmail, getUserByEmail, deleteUser } from '../db/users'
+import { rateLimit } from '../middleware/rate-limit'
+import { updateUser, updateUserEmail, getUserByEmail, getUserById, deleteUser, updateNotificationPrefs } from '../db/users'
 import { getVendorByUserId } from '../db/vendors'
 import { getFirstCoupleWedding } from '../db/weddings'
+import {
+  NOTIFICATION_TYPES,
+  parseNotificationPrefs,
+  isNotificationEnabled,
+  verifyUnsubscribeToken,
+  type NotificationKey,
+  type NotificationType,
+} from '../services/notification-prefs'
 import { trimOrNull, isValidEmail } from '../lib/validation'
 import { generateToken } from '../lib/crypto'
 import { sendEmailMessage, emailChangeVerifyEmail, emailChangeNotifyEmail } from '../services/email'
@@ -249,6 +259,20 @@ account.get('/account', async (c) => {
         </form>
       </section>
 
+      {/* ─── Email notifications ─── */}
+      <section class="mt-10 pt-8 border-t border-gray-200">
+        <h2 class="text-base font-bold mb-2">Email notifications</h2>
+        <p class="text-sm text-gray-500 mb-4">
+          Choose which emails Wedding Computer sends you — enquiries, payment reminders, wedding updates, and more.
+        </p>
+        <a
+          href="/account/notifications"
+          class="inline-block bg-white border border-gray-200 text-gray-700 py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
+        >
+          Manage notifications
+        </a>
+      </section>
+
       {/* ─── Passkeys ─── */}
       <PasskeySection passkeys={await listPasskeys(c.env.DB, user.id)} csrfToken={c.get('csrfToken')} />
 
@@ -388,6 +412,232 @@ account.get('/account/email/verify', async (c) => {
   }).catch(() => {})
 
   return c.redirect('/account?saved=1')
+})
+
+// ─── Notification preferences ───
+
+type PrefSection = { heading: string; types: NotificationType[] }
+
+// Group the registry into role-aware page sections. Only the sections a user
+// sees here are written back on save, so a vendor can't accidentally clear
+// admin or couple keys (and vice versa).
+function prefSections(opts: { isVendor: boolean; isCouple: boolean; isAdmin: boolean }): PrefSection[] {
+  const sections: PrefSection[] = []
+  if (opts.isVendor) {
+    sections.push({
+      heading: 'Running your business',
+      types: NOTIFICATION_TYPES.filter((t) => t.audience === 'vendor'),
+    })
+  }
+  sections.push({
+    heading: "Weddings you're part of",
+    types: NOTIFICATION_TYPES.filter(
+      (t) =>
+        (t.audience === 'all' && t.key !== 'announcements') ||
+        (t.audience === 'couple' && opts.isCouple)
+    ),
+  })
+  sections.push({
+    heading: 'From Wedding Computer',
+    types: NOTIFICATION_TYPES.filter((t) => t.key === 'announcements'),
+  })
+  if (opts.isAdmin) {
+    sections.push({
+      heading: 'Admin',
+      types: NOTIFICATION_TYPES.filter((t) => t.audience === 'admin'),
+    })
+  }
+  return sections
+}
+
+async function userPrefSections(db: D1Database, user: User): Promise<PrefSection[]> {
+  const [vendor, coupleWedding] = await Promise.all([
+    getVendorByUserId(db, user.id),
+    getFirstCoupleWedding(db, user.id),
+  ])
+  return prefSections({ isVendor: !!vendor, isCouple: !!coupleWedding, isAdmin: user.is_admin === 1 })
+}
+
+account.get('/account/notifications', async (c) => {
+  const user = c.get('user')
+  const backUrl = await getBackUrl(c.env.DB, user.id)
+  const saved = c.req.query('saved')
+  const sections = await userPrefSections(c.env.DB, user)
+
+  return c.html(
+    <AccountLayout title="Email notifications" user={user} csrfToken={c.get('csrfToken')} backUrl={backUrl}>
+      {saved && (
+        <div class="bg-horizon-50 border border-horizon-600/20 text-horizon-700 text-sm font-bold rounded-xl p-3 mb-6">
+          Preferences saved.
+        </div>
+      )}
+
+      <h1 class="text-xl font-bold mb-1">Email notifications</h1>
+      <p class="text-sm text-gray-500 mb-6">
+        Choose what we email you about. Sign-in links, verification emails, and invoices addressed to you
+        always arrive — they're how the platform works, not notifications.
+      </p>
+
+      <form method="post" action="/account/notifications" class="space-y-8">
+        <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+
+        {sections.map((section) => (
+          <section>
+            <h2 class="text-base font-bold mb-3">{section.heading}</h2>
+            <div class="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
+              {section.types.map((t) => (
+                <label class="flex items-start gap-3 p-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name={`pref_${t.key}`}
+                    checked={isNotificationEnabled(user.notification_prefs, t.key)}
+                    class="mt-0.5 w-4 h-4 accent-horizon-600 shrink-0"
+                  />
+                  <span>
+                    <span class="block text-sm font-bold text-gray-900">{t.label}</span>
+                    <span class="block text-sm text-gray-500">{t.description}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </section>
+        ))}
+
+        <button
+          type="submit"
+          class="bg-horizon-600 text-white py-3 px-6 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
+        >
+          Save preferences
+        </button>
+      </form>
+
+      <p class="text-xs text-gray-400 mt-6">
+        Every notification email also has a one-click unsubscribe link for its category, so you can opt out
+        straight from your inbox.
+      </p>
+    </AccountLayout>
+  )
+})
+
+account.post('/account/notifications', async (c) => {
+  const user = c.get('user')
+  const body = await c.req.parseBody()
+
+  // Recompute the visible sections server-side: only keys this user was shown
+  // get written, and everything else in their prefs is preserved.
+  const sections = await userPrefSections(c.env.DB, user)
+  const prefs = parseNotificationPrefs(user.notification_prefs)
+  for (const section of sections) {
+    for (const t of section.types) {
+      prefs[t.key] = body[`pref_${t.key}`] === 'on'
+    }
+  }
+  await updateNotificationPrefs(c.env.DB, user.id, prefs)
+
+  return c.redirect('/account/notifications?saved=1')
+})
+
+// ─── Public unsubscribe (signed token, no session) ───
+//
+// These live outside the /account/* auth+csrf guards: the HMAC-signed token in
+// the URL is the authorisation. GET shows a confirm page (so mail-client link
+// prefetching can't silently unsubscribe anyone); POST executes — both for the
+// confirm button and for RFC 8058 List-Unsubscribe-Post one-click requests.
+
+function unsubLabel(key: NotificationKey): string {
+  return NOTIFICATION_TYPES.find((t) => t.key === key)?.label ?? key
+}
+
+const UnsubscribePage: FC<{ heading: string; message: unknown; button?: { token: string } }> = ({
+  heading,
+  message,
+  button,
+}) => (
+  <MarketingLayout title="Unsubscribe">
+    <div class="max-w-md mx-auto px-4 sm:px-6 py-16 sm:py-24 text-center">
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-3">{heading}</h1>
+      <p class="text-gray-600 leading-relaxed mb-8">{message}</p>
+      {button ? (
+        <form method="post" action={`/email/unsubscribe?token=${encodeURIComponent(button.token)}`}>
+          <button
+            type="submit"
+            class="inline-block bg-grapefruit-600 text-white px-6 py-3 rounded-xl text-sm font-bold hover:bg-grapefruit-700 transition-colors"
+          >
+            Unsubscribe
+          </button>
+        </form>
+      ) : (
+        <a
+          href="/"
+          class="inline-block bg-horizon-600 text-white px-6 py-3 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
+        >
+          Back to home
+        </a>
+      )}
+      <p class="text-sm text-gray-500 mt-8">
+        You can manage all your email preferences from{' '}
+        <a href="/account/notifications" class="font-bold text-horizon-700 hover:underline">
+          your account
+        </a>
+        .
+      </p>
+    </div>
+  </MarketingLayout>
+)
+
+account.get('/email/unsubscribe', async (c) => {
+  const token = c.req.query('token') ?? ''
+  const parsed = token ? await verifyUnsubscribeToken(c.env.SESSION_SECRET, token) : null
+
+  if (!parsed) {
+    return c.html(
+      <UnsubscribePage heading="Unsubscribe" message="This unsubscribe link is invalid or has expired." />
+    )
+  }
+
+  return c.html(
+    <UnsubscribePage
+      heading="Unsubscribe"
+      message={
+        <>
+          Stop receiving <strong>{unsubLabel(parsed.key)}</strong> emails from Wedding Computer? You can
+          switch them back on any time.
+        </>
+      }
+      button={{ token }}
+    />
+  )
+})
+
+account.post('/email/unsubscribe', rateLimit(30, 60), async (c) => {
+  const token = c.req.query('token') ?? ''
+  const parsed = token ? await verifyUnsubscribeToken(c.env.SESSION_SECRET, token) : null
+
+  if (!parsed) {
+    return c.html(
+      <UnsubscribePage heading="Unsubscribe" message="This unsubscribe link is invalid or has expired." />,
+      400
+    )
+  }
+
+  const target = await getUserById(c.env.DB, parsed.userId)
+  if (target) {
+    const prefs = parseNotificationPrefs(target.notification_prefs)
+    prefs[parsed.key] = false
+    await updateNotificationPrefs(c.env.DB, target.id, prefs)
+  }
+
+  // Mail providers' one-click POSTs only need a 2xx; humans get a real page.
+  return c.html(
+    <UnsubscribePage
+      heading="Unsubscribed"
+      message={
+        <>
+          You won't receive <strong>{unsubLabel(parsed.key)}</strong> emails any more.
+        </>
+      }
+    />
+  )
 })
 
 // ─── Avatar upload ───

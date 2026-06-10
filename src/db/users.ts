@@ -82,6 +82,17 @@ export async function updateUser(
     .run()
 }
 
+export async function updateNotificationPrefs(
+  db: D1Database,
+  id: string,
+  prefs: Record<string, boolean>
+): Promise<void> {
+  await db
+    .prepare(`UPDATE users SET notification_prefs = ?, updated_at = datetime('now') WHERE id = ?`)
+    .bind(JSON.stringify(prefs), id)
+    .run()
+}
+
 export async function updateUserEmail(
   db: D1Database,
   id: string,

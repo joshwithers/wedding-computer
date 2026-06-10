@@ -786,6 +786,11 @@ invoices.post('/app/invoices/:id/payments/:paymentId/record', async (c) => {
 
   await recordPayment(c.env.DB, vendor.id, c.req.param('paymentId'), method, notes)
   await recalculateInvoiceStatus(c.env.DB, vendor.id, invoice.id)
+  // Receipt to the payer (the vendor recorded this themselves, so no vendor email)
+  await c.env.EMAIL_QUEUE.send({
+    type: 'notify_payment_received',
+    payload: JSON.stringify({ vendorId: vendor.id, paymentId: c.req.param('paymentId'), source: 'manual' }),
+  }).catch((e) => console.error('[INVOICES] notify_payment_received enqueue failed', e.message))
   await auditLog(c, 'payment_recorded', 'invoice', invoice.id, { payment_id: c.req.param('paymentId'), method }).catch(() => {})
   track(c.env.DB, vendor.id, 'payment_received', {
     invoiceId: invoice.id,

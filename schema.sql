@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS users (
   avatar_r2_key TEXT,
   email_verified INTEGER NOT NULL DEFAULT 0,
   is_admin INTEGER NOT NULL DEFAULT 0,
+  -- JSON { [notificationKey]: boolean }; missing key = enabled (opt-out model).
+  -- Keys defined in src/services/notification-prefs.ts.
+  notification_prefs TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
