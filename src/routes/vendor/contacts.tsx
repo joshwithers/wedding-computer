@@ -18,6 +18,7 @@ import type { StorageBackend } from '../../storage/types'
 import { needsMigration, migrateContacts } from '../../storage/migrate'
 import { listActivities, createActivity } from '../../db/activities'
 import { resolveDemandView, type DemandView, type DemandHistoryContext } from '../../db/busyness'
+import { geocodeContactLocation } from '../../services/geocode'
 import type { BusynessScore } from '../../types'
 import { isProVendor } from '../../db/subscriptions'
 import { describeDemand, formatVsAverage, MONTH_NAMES, SEASON_LABELS, ordinal } from '../../lib/busyness'
@@ -447,6 +448,9 @@ contacts.post('/app/contacts/new', async (c) => {
 
     await createActivity(c.env.DB, contact.id, 'note', 'Contact created')
     track(c.env.DB, vendor.id, 'contact_created', { contactId: contact.id })
+    c.executionCtx.waitUntil(
+      geocodeContactLocation(c.env, contact.id).catch((err) => console.error('[contacts] geocode failed:', err))
+    )
     return c.redirect(`/app/contacts/${contact.id}`)
   } catch (e: any) {
     console.error('[contacts] Error creating contact:', e)
@@ -750,6 +754,9 @@ contacts.post('/app/contacts/:id/edit', async (c) => {
       await updateContactFallback(c.env.DB, vendor.id, contactId, updateData)
     }
 
+    c.executionCtx.waitUntil(
+      geocodeContactLocation(c.env, contactId).catch((err) => console.error('[contacts] geocode failed:', err))
+    )
     return c.redirect(`/app/contacts/${contactId}`)
   } catch (e: any) {
     console.error('[contacts] Error updating contact:', e)
@@ -1463,7 +1470,26 @@ function ContactForm({
         <h3 class="text-sm font-bold text-gray-900 mb-3">Wedding</h3>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Date" name="wedding_date" value={contact?.wedding_date} type="date" />
-          <FormField label="Location" name="wedding_location" value={contact?.wedding_location} />
+          {/* Google Places autocomplete (regions) so wedding locations are
+              canonical — the saved text is geocoded into structured
+              city/state/country for the demand data. */}
+          <div class="relative" data-places>
+            <label class="block text-sm font-bold text-gray-700 mb-1.5" for="wedding_location">Location</label>
+            <input
+              type="text"
+              id="wedding_location"
+              name="wedding_location"
+              value={contact?.wedding_location ?? ''}
+              autocomplete="off"
+              hx-get="/api/places/search?field=wedding_location&mode=region"
+              hx-trigger="input changed delay:300ms"
+              hx-target="#suggestions-wedding_location"
+              hx-swap="innerHTML"
+              hx-include="this"
+              class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+            />
+            <div id="suggestions-wedding_location" />
+          </div>
         </div>
       </section>
 

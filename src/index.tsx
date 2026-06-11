@@ -52,6 +52,7 @@ import { getBroadcast } from './db/broadcast'
 import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
 import { aggregateBusynessScores, aggregateDemandHistory } from './db/busyness'
+import { geocodePendingLocations } from './services/geocode'
 import { runRetention } from './db/retention'
 import { purgeExpiredAccounts } from './services/account'
 import { logEvent } from './lib/log'
@@ -868,6 +869,14 @@ export default {
         logEvent('cron.daily_enqueued', { jobs: n })
       } catch (e: any) {
         logEvent('cron.daily_failed', { error: e.message })
+      }
+
+      // Geocode any locations added or changed since the last run (bounded,
+      // KV-cached) so the aggregations below bucket by the wedding's region.
+      try {
+        await geocodePendingLocations(env, 25)
+      } catch (e: any) {
+        console.error('[CRON] geocode catch-up failed', e.message)
       }
 
       // Busyness aggregation is a single query — fine to run inline.

@@ -26,6 +26,7 @@ import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, formatDateTime, formatTime, daysUntil, addHoursToTime, subtractHoursFromTime } from '../../lib/date'
 import { createEvent, updateEvent, deleteEvent } from '../../db/calendar'
 import { track } from '../../services/analytics'
+import { geocodeWeddingLocation } from '../../services/geocode'
 import { getWeddingTodo, upsertWeddingTodo } from '../../db/todos'
 import { listTemplates, getDefaultTemplate } from '../../db/todos'
 import { TodoSection } from './checklists'
@@ -441,6 +442,9 @@ weddings.post('/app/weddings/new', async (c) => {
     // Push wedding files to storage (GitHub/R2) — keeps running after the
     // response is sent; without waitUntil the runtime may cancel it
     c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, wedding.id))
+    c.executionCtx.waitUntil(
+      geocodeWeddingLocation(c.env, wedding.id).catch((err) => console.error('[weddings] geocode failed:', err))
+    )
 
     // Link contact and auto-invite couple
     const contactId = trimOrNull(body.contact_id)
@@ -1298,6 +1302,9 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     console.log('[weddings] edit', weddingId, 'fields:', Object.keys(updateData).join(','))
     await updateWedding(c.env.DB, weddingId, updateData as any)
     console.log('[weddings] edit', weddingId, 'updateWedding succeeded')
+    c.executionCtx.waitUntil(
+      geocodeWeddingLocation(c.env, weddingId).catch((err) => console.error('[weddings] geocode failed:', err))
+    )
 
     // Log changes
     if (oldWedding) {

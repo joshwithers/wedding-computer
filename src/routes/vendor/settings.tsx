@@ -15,6 +15,7 @@ import { listInvoices } from '../../db/invoices'
 import { deleteCookie } from 'hono/cookie'
 import { verifyGitHubToken, createGitHubRepo, ensureGitHubWebhook } from '../../storage/github'
 import { deleteVendorSecret, putVendorSecret, resolveSecret } from '../../services/secrets'
+import { geocodeAddress } from '../../services/geocode'
 import { redactedVendorProfile } from '../../lib/redaction'
 
 const settings = new Hono<Env>()
@@ -881,23 +882,16 @@ settings.post('/app/settings', async (c) => {
       location,
     }
 
-    if (location && location !== vendor.location && c.env.GOOGLE_MAPS_API_KEY) {
+    if (location && location !== vendor.location) {
       try {
-        const geoRes = await fetch(
-          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${c.env.GOOGLE_MAPS_API_KEY}`
-        )
-        if (geoRes.ok) {
-          const geoData = (await geoRes.json()) as { results?: Array<{ address_components?: Array<{ long_name: string; types: string[] }>; geometry?: { location?: { lat: number; lng: number } }; place_id?: string }> }
-          const result = geoData.results?.[0]
-          if (result) {
-            const find = (type: string) => result.address_components?.find((c) => c.types.includes(type))?.long_name ?? null
-            updates.location_city = find('locality') ?? find('administrative_area_level_2')
-            updates.location_state = find('administrative_area_level_1')
-            updates.location_country = find('country')
-            updates.location_lat = result.geometry?.location?.lat ?? null
-            updates.location_lng = result.geometry?.location?.lng ?? null
-            updates.location_place_id = result.place_id ?? null
-          }
+        const geo = await geocodeAddress(c.env, location)
+        if (geo) {
+          updates.location_city = geo.city
+          updates.location_state = geo.state
+          updates.location_country = geo.country
+          updates.location_lat = geo.lat
+          updates.location_lng = geo.lng
+          updates.location_place_id = geo.place_id
         }
       } catch { /* geocoding is best-effort */ }
     }

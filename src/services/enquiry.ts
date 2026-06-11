@@ -6,6 +6,7 @@ import { track } from '../services/analytics'
 import { draftEnquiryReply } from '../services/ai'
 import { resolveSecret } from '../services/secrets'
 import { getScoreForDate } from '../db/busyness'
+import { geocodeContactLocation } from '../services/geocode'
 import { isProVendor } from '../db/subscriptions'
 import { isValidEmail } from '../lib/validation'
 import type { FormConfig, ContactMapping } from '../lib/form-schema'
@@ -175,6 +176,14 @@ export async function createEnquiry(
     source,
     form_data: Object.keys(formData).length > 0 ? JSON.stringify(formData) : null,
   })
+
+  // Canonicalise the wedding's region so demand data buckets by where the
+  // wedding happens, not just where the vendor is based.
+  try {
+    await geocodeContactLocation(env, contact.id)
+  } catch (err: any) {
+    console.error('[enquiry] geocode failed:', err.message)
+  }
 
   await createActivity(env.DB, contact.id, 'lead', SOURCE_LABEL[source])
 

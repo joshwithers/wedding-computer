@@ -108,26 +108,36 @@ export async function aggregateBusynessScores(db: D1Database): Promise<void> {
   // Saturdays) before COUNT(DISTINCT), and mis-attributed booking events to
   // contact-vendor locations via COALESCE. Splitting removes the cross-product
   // and attributes each count to its own vendor's location.
+  // Two location vectors: where the wedding happens beats where the vendor is
+  // based. The geocoded country acts as the sentinel for "wedding region
+  // known", so city/state/country always come from the same vector.
   const enquiryRows = await db
     .prepare(
-      `SELECT c.wedding_date AS date, vp.location_city, vp.location_state, vp.location_country,
+      `SELECT c.wedding_date AS date,
+              CASE WHEN c.wedding_location_country IS NOT NULL THEN c.wedding_location_city ELSE vp.location_city END AS location_city,
+              CASE WHEN c.wedding_location_country IS NOT NULL THEN c.wedding_location_state ELSE vp.location_state END AS location_state,
+              COALESCE(c.wedding_location_country, vp.location_country) AS location_country,
               COUNT(*) AS enquiry_count, 0 AS booking_count
        FROM contacts c
        JOIN vendor_profiles vp ON vp.id = c.vendor_id
        WHERE c.wedding_date >= date('now') AND c.wedding_date <= date('now', '+365 days')
-       GROUP BY c.wedding_date, vp.location_city, vp.location_state, vp.location_country`
+       GROUP BY 1, 2, 3, 4`
     )
     .all<DateLocationCounts>()
     .then((r) => r.results)
 
   const bookingRows = await db
     .prepare(
-      `SELECT ce.date AS date, vp.location_city, vp.location_state, vp.location_country,
+      `SELECT ce.date AS date,
+              CASE WHEN w.location_country IS NOT NULL THEN w.location_city ELSE vp.location_city END AS location_city,
+              CASE WHEN w.location_country IS NOT NULL THEN w.location_state ELSE vp.location_state END AS location_state,
+              COALESCE(w.location_country, vp.location_country) AS location_country,
               0 AS enquiry_count, COUNT(*) AS booking_count
        FROM calendar_events ce
        JOIN vendor_profiles vp ON vp.id = ce.vendor_id
+       LEFT JOIN weddings w ON w.id = ce.wedding_id
        WHERE ce.type = 'booking' AND ce.date >= date('now') AND ce.date <= date('now', '+365 days')
-       GROUP BY ce.date, vp.location_city, vp.location_state, vp.location_country`
+       GROUP BY 1, 2, 3, 4`
     )
     .all<DateLocationCounts>()
     .then((r) => r.results)
@@ -226,26 +236,35 @@ export async function aggregateBusynessScores(db: D1Database): Promise<void> {
 // the comparison gets better every year more data accumulates.
 
 export async function aggregateDemandHistory(db: D1Database): Promise<void> {
+  // Same two-vector preference as aggregateBusynessScores: the wedding's own
+  // region when geocoded, the vendor's region otherwise.
   const enquiryRows = await db
     .prepare(
-      `SELECT c.wedding_date AS date, vp.location_city, vp.location_state, vp.location_country,
+      `SELECT c.wedding_date AS date,
+              CASE WHEN c.wedding_location_country IS NOT NULL THEN c.wedding_location_city ELSE vp.location_city END AS location_city,
+              CASE WHEN c.wedding_location_country IS NOT NULL THEN c.wedding_location_state ELSE vp.location_state END AS location_state,
+              COALESCE(c.wedding_location_country, vp.location_country) AS location_country,
               COUNT(*) AS enquiry_count, 0 AS booking_count
        FROM contacts c
        JOIN vendor_profiles vp ON vp.id = c.vendor_id
        WHERE c.wedding_date IS NOT NULL AND c.wedding_date < date('now')
-       GROUP BY c.wedding_date, vp.location_city, vp.location_state, vp.location_country`
+       GROUP BY 1, 2, 3, 4`
     )
     .all<DateLocationCounts>()
     .then((r) => r.results)
 
   const bookingRows = await db
     .prepare(
-      `SELECT ce.date AS date, vp.location_city, vp.location_state, vp.location_country,
+      `SELECT ce.date AS date,
+              CASE WHEN w.location_country IS NOT NULL THEN w.location_city ELSE vp.location_city END AS location_city,
+              CASE WHEN w.location_country IS NOT NULL THEN w.location_state ELSE vp.location_state END AS location_state,
+              COALESCE(w.location_country, vp.location_country) AS location_country,
               0 AS enquiry_count, COUNT(*) AS booking_count
        FROM calendar_events ce
        JOIN vendor_profiles vp ON vp.id = ce.vendor_id
+       LEFT JOIN weddings w ON w.id = ce.wedding_id
        WHERE ce.type = 'booking' AND ce.date < date('now')
-       GROUP BY ce.date, vp.location_city, vp.location_state, vp.location_country`
+       GROUP BY 1, 2, 3, 4`
     )
     .all<DateLocationCounts>()
     .then((r) => r.results)

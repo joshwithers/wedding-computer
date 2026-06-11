@@ -9,6 +9,7 @@ import { csrf } from '../middleware/csrf'
 import { getTotalVendors, getTotalWeddings, getTotalCouples, getSignupsByMonth, countEventsGlobal, getRevenueGlobal, getAverageSpendPerWedding, getLocationBreakdown, getMonthlyEventCountsGlobal } from '../db/analytics'
 import { getActiveProCount, getMRR, getConversionRate } from '../db/subscriptions'
 import { aggregateBusynessScores, aggregateDemandHistory } from '../db/busyness'
+import { geocodePendingLocations } from '../services/geocode'
 import { getUserByEmail } from '../db/users'
 import { getVendorByUserId } from '../db/vendors'
 import { grantFreeMonths, listRecentGrants, FREE_MONTHS_CAP, type GrantRow } from '../db/referrals'
@@ -314,6 +315,7 @@ admin.get('/admin', async (c) => {
 // ─── Demand aggregations (manual rebuild/backfill) ───
 
 admin.post('/admin/aggregate-demand', async (c) => {
+  await geocodePendingLocations(c.env, 50).catch((err) => console.error('[admin] geocode backfill failed:', err))
   await aggregateBusynessScores(c.env.DB)
   await aggregateDemandHistory(c.env.DB)
   return c.redirect('/admin')
