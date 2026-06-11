@@ -13,19 +13,39 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { en } from './en'
+import { es } from './es'
+import { fr } from './fr'
+import { it } from './it'
+import { ja } from './ja'
+import { nl } from './nl'
+import { pt } from './pt'
+import { zh } from './zh'
 
 export type MessageKey = keyof typeof en
 export type Dictionary = Partial<Record<MessageKey, string>>
 
 // Language dictionaries. Regional variants (en-AU vs en-US) share a
 // dictionary; the full locale tag drives date/number formatting.
-const DICTIONARIES: Record<string, Dictionary> = { en }
+const DICTIONARIES: Record<string, Dictionary> = { en, es, fr, it, ja, nl, pt, zh }
 
 export const SUPPORTED_LOCALES = [
   { tag: 'en-AU', label: 'English (Australia)' },
   { tag: 'en-NZ', label: 'English (New Zealand)' },
   { tag: 'en-GB', label: 'English (UK)' },
   { tag: 'en-US', label: 'English (US)' },
+  { tag: 'es-ES', label: 'Español (España)' },
+  { tag: 'es-MX', label: 'Español (México)' },
+  { tag: 'fr-FR', label: 'Français (France)' },
+  { tag: 'fr-CA', label: 'Français (Canada)' },
+  { tag: 'it-IT', label: 'Italiano (Italia)' },
+  { tag: 'it-CH', label: 'Italiano (Svizzera)' },
+  { tag: 'ja-JP', label: '日本語（日本）' },
+  { tag: 'nl-NL', label: 'Nederlands (Nederland)' },
+  { tag: 'nl-BE', label: 'Nederlands (België)' },
+  { tag: 'pt-PT', label: 'Português (Portugal)' },
+  { tag: 'pt-BR', label: 'Português (Brasil)' },
+  { tag: 'zh-CN', label: '中文（简体，中国）' },
+  { tag: 'zh-SG', label: '中文（简体，新加坡）' },
 ] as const
 
 export type I18nContext = {

@@ -69,7 +69,7 @@ describe('resolveLocale', () => {
   })
 
   it('falls back to the default for unsupported languages (for now)', () => {
-    expect(resolveLocale(null, 'fr-FR,fr;q=0.9')).toBe(DEFAULT_LOCALE)
+    expect(resolveLocale(null, 'ko-KR,ko;q=0.9')).toBe(DEFAULT_LOCALE)
     expect(resolveLocale(null, null)).toBe(DEFAULT_LOCALE)
   })
 })
