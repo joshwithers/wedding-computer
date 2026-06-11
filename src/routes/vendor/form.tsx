@@ -611,7 +611,7 @@ function ShareChannels({
   "mcpServers": {
     "wedding-computer": {
       "url": "${appUrl}/mcp",
-      "headers": { "Authorization": "Bearer ${vendor.ical_token ?? 'YOUR_SYNC_TOKEN'}" }
+      "headers": { "Authorization": "Bearer YOUR_SYNC_TOKEN" }
     }
   }
 }`
@@ -751,8 +751,8 @@ function ShareChannels({
             <div>
               <p class="font-bold text-gray-700 mb-1">Set it up</p>
               <ol class="list-decimal list-inside space-y-1 mb-2">
-                <li>Copy your <strong>sync token</strong> from Settings → Calendar &amp; Sync.</li>
-                <li>Add this to your MCP client's config (e.g. Claude Desktop's <code class="bg-gray-50 px-1 rounded">claude_desktop_config.json</code>):</li>
+                <li>Copy your <strong>sync token</strong> from <a href="/app/settings#device-sync" class="underline hover:text-gray-700">Settings → Device sync</a> — it's shown once when generated, so regenerate it if you've lost it.</li>
+                <li>Add this to your MCP client's config (e.g. Claude Desktop's <code class="bg-gray-50 px-1 rounded">claude_desktop_config.json</code>), replacing <code class="bg-gray-50 px-1 rounded">YOUR_SYNC_TOKEN</code>:</li>
               </ol>
               <textarea readonly rows={9} onclick="this.select()" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-gray-600 bg-gray-50 font-mono">{mcpConfig}</textarea>
             </div>

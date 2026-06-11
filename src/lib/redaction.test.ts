@@ -22,6 +22,7 @@ function vendor(overrides: Partial<VendorProfile>): VendorProfile {
     booking_form: null,
     ceremony_types: null,
     ical_token: null,
+    enquiry_key: null,
     anthropic_api_key: null,
     email_handle: null,
     storage_type: 'r2',
@@ -79,5 +80,27 @@ describe('redactedVendorProfile', () => {
     expect(result.anthropic_api_key).toBe('[redacted]')
     expect(result.storage_config).not.toContain('ghp_secret')
     expect(result.storage_config).not.toContain('git_access_token')
+  })
+
+  it('strips sync tokens from exports, hashed or legacy raw', () => {
+    const hashed = redactedVendorProfile(vendor({
+      ical_token: 'sha256:aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899',
+    }))
+    expect(hashed.ical_token).toBe('[redacted]')
+
+    // Legacy rows store the raw token — a live credential if exported
+    const legacy = redactedVendorProfile(vendor({ ical_token: 'aabbccddeeff00112233445566778899' }))
+    expect(legacy.ical_token).toBe('[redacted]')
+  })
+
+  it('strips the enquiry intake key from exports', () => {
+    const result = redactedVendorProfile(vendor({ enquiry_key: 'ek_aabbccddeeff001122334455' }))
+    expect(result.enquiry_key).toBe('[redacted]')
+  })
+
+  it('leaves unset credentials null', () => {
+    const result = redactedVendorProfile(vendor({}))
+    expect(result.ical_token).toBeNull()
+    expect(result.enquiry_key).toBeNull()
   })
 })

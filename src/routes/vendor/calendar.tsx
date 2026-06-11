@@ -100,72 +100,24 @@ calendar.get('/app/calendar', async (c) => {
           <h3 class="text-sm font-bold text-gray-900 mb-1">Calendar feed</h3>
           <p class="text-xs text-gray-500 mb-4">
             Subscribe from Google Calendar, Apple Calendar, or Outlook to see your bookings everywhere.
+            {vendor.ical_token
+              ? ' Your feed URL uses your sync token — it was shown once when generated, and you can regenerate it in Settings.'
+              : ' Generate a sync token in Settings to get your feed URL.'}
           </p>
-          {vendor.ical_token ? (
-            <div>
-              <div class="flex gap-2 mb-3">
-                <input
-                  type="text"
-                  readonly
-                  value={`${c.env.APP_URL}/cal/${vendor.ical_token}.ics`}
-                  class="flex-1 bg-papaya-50 border border-papaya-300/30 rounded-xl px-3 py-2 text-xs text-gray-700 font-mono select-all"
-                  onclick="this.select()"
-                />
-                <button
-                  type="button"
-                  onclick={`navigator.clipboard.writeText('${c.env.APP_URL}/cal/${vendor.ical_token}.ics').then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})`}
-                  class="border border-gray-200 px-3 py-2 rounded-xl text-xs font-bold hover:bg-gray-50 transition-colors whitespace-nowrap"
-                >
-                  Copy
-                </button>
-              </div>
-              <form method="post" action="/app/calendar/feed/regenerate" class="inline">
-                <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                <button
-                  type="submit"
-                  class="text-xs text-gray-400 hover:text-grapefruit-700 transition-colors"
-                  onclick="return confirm('Regenerate your feed URL? Existing subscriptions will stop working.')"
-                >
-                  Regenerate URL
-                </button>
-              </form>
-            </div>
-          ) : (
-            <form method="post" action="/app/calendar/feed/enable">
-              <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-              <button
-                type="submit"
-                class="bg-horizon-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
-              >
-                Enable calendar feed
-              </button>
-            </form>
-          )}
+          <a
+            href="/app/settings#device-sync"
+            class="inline-block border border-gray-200 text-gray-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
+          >
+            Manage device sync in Settings
+          </a>
         </div>
       </div>
     </AppLayout>
   )
 })
 
-// ─── Feed token management ───
-
-calendar.post('/app/calendar/feed/enable', async (c) => {
-  const vendor = c.get('vendor')!
-  const { generateToken } = await import('../../lib/crypto')
-  const { updateVendor } = await import('../../db/vendors')
-  const token = await generateToken(32)
-  await updateVendor(c.env.DB, vendor.id, { ical_token: token })
-  return c.redirect('/app/calendar')
-})
-
-calendar.post('/app/calendar/feed/regenerate', async (c) => {
-  const vendor = c.get('vendor')!
-  const { generateToken } = await import('../../lib/crypto')
-  const { updateVendor } = await import('../../db/vendors')
-  const token = await generateToken(32)
-  await updateVendor(c.env.DB, vendor.id, { ical_token: token })
-  return c.redirect('/app/calendar')
-})
+// Sync-token management lives in settings (/app/settings/generate-sync-token):
+// it Pro-gates, stores only the sha256 hash, and reveals the raw token once.
 
 // ─── Day detail (events for a specific date) ───
 

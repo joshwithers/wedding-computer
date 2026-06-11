@@ -5,6 +5,10 @@ export function redactedVendorProfile(vendor: VendorProfile): VendorProfile {
   const redacted: VendorProfile = {
     ...vendor,
     anthropic_api_key: redactSecretValue(vendor.anthropic_api_key),
+    // Legacy rows may hold the sync token raw, and the enquiry intake key is
+    // always raw — neither credential may leave the system in an export.
+    ical_token: vendor.ical_token ? '[redacted]' : null,
+    enquiry_key: vendor.enquiry_key ? '[redacted]' : null,
   }
 
   if (vendor.storage_config) {

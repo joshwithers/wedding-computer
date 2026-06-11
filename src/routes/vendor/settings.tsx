@@ -704,7 +704,7 @@ settings.get('/app/settings', async (c) => {
           )}
         </section>
 
-        <section class="mt-10 pt-8 border-t border-gray-200">
+        <section id="device-sync" class="mt-10 pt-8 border-t border-gray-200">
           <h2 class="text-base font-bold mb-2">Device sync <ProBadge /></h2>
           <p class="text-sm text-gray-500 mb-4">
             Sync your contacts and calendar to your phone and computer. Works with Apple Contacts, Apple Calendar, and any CardDAV/CalDAV client.
