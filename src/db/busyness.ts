@@ -101,38 +101,37 @@ type DateLocationCounts = {
 const BATCH_SIZE = 100
 
 export async function aggregateBusynessScores(db: D1Database): Promise<void> {
-  const rows = await db
+  // Two independent aggregations merged in JS. The previous single query
+  // LEFT JOIN'd contacts and calendar_events on the same date, producing a
+  // |contacts| × |events| cross-product per date (millions of rows on popular
+  // Saturdays) before COUNT(DISTINCT), and mis-attributed booking events to
+  // contact-vendor locations via COALESCE. Splitting removes the cross-product
+  // and attributes each count to its own vendor's location.
+  const enquiryRows = await db
     .prepare(
-      `SELECT
-         dates.date,
-         vp.location_city,
-         vp.location_state,
-         vp.location_country,
-         COUNT(DISTINCT c.id) as enquiry_count,
-         COUNT(DISTINCT ce.id) as booking_count
-       FROM (
-         SELECT DISTINCT wedding_date as date FROM contacts
-         WHERE wedding_date IS NOT NULL
-           AND wedding_date >= date('now')
-           AND wedding_date <= date('now', '+365 days')
-         UNION
-         SELECT DISTINCT date FROM calendar_events
-         WHERE date >= date('now')
-           AND date <= date('now', '+365 days')
-       ) dates
-       LEFT JOIN contacts c
-         ON c.wedding_date = dates.date
-       LEFT JOIN vendor_profiles vp_c ON vp_c.id = c.vendor_id
-       LEFT JOIN calendar_events ce
-         ON ce.date = dates.date AND ce.type = 'booking'
-       LEFT JOIN vendor_profiles vp_e ON vp_e.id = ce.vendor_id
-       LEFT JOIN vendor_profiles vp
-         ON vp.id = COALESCE(vp_c.id, vp_e.id)
-       GROUP BY dates.date, vp.location_city, vp.location_state, vp.location_country
-       ORDER BY dates.date`
+      `SELECT c.wedding_date AS date, vp.location_city, vp.location_state, vp.location_country,
+              COUNT(*) AS enquiry_count, 0 AS booking_count
+       FROM contacts c
+       JOIN vendor_profiles vp ON vp.id = c.vendor_id
+       WHERE c.wedding_date >= date('now') AND c.wedding_date <= date('now', '+365 days')
+       GROUP BY c.wedding_date, vp.location_city, vp.location_state, vp.location_country`
     )
     .all<DateLocationCounts>()
     .then((r) => r.results)
+
+  const bookingRows = await db
+    .prepare(
+      `SELECT ce.date AS date, vp.location_city, vp.location_state, vp.location_country,
+              0 AS enquiry_count, COUNT(*) AS booking_count
+       FROM calendar_events ce
+       JOIN vendor_profiles vp ON vp.id = ce.vendor_id
+       WHERE ce.type = 'booking' AND ce.date >= date('now') AND ce.date <= date('now', '+365 days')
+       GROUP BY ce.date, vp.location_city, vp.location_state, vp.location_country`
+    )
+    .all<DateLocationCounts>()
+    .then((r) => r.results)
+
+  const rows = [...enquiryRows, ...bookingRows]
 
   // Build per-level aggregations from the raw rows
   type LevelKey = string

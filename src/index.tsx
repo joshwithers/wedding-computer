@@ -51,6 +51,7 @@ import { getBroadcast } from './db/broadcast'
 import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
 import { aggregateBusynessScores } from './db/busyness'
+import { runRetention } from './db/retention'
 import { syncVendorStorage } from './services/storage-sync'
 
 const app = new Hono<Env>()
@@ -865,6 +866,14 @@ export default {
         await aggregateBusynessScores(env.DB)
       } catch (e: any) {
         console.error('[CRON] busyness aggregation failed', e.message)
+      }
+
+      // Prune unbounded write-only tables (sessions, system emails, analytics,
+      // audit, import staging) so they don't creep toward the D1 10GB cap.
+      try {
+        await runRetention(env.DB)
+      } catch (e: any) {
+        console.error('[CRON] retention failed', e.message)
       }
     }
 

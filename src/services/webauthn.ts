@@ -449,9 +449,14 @@ export async function generateRegistrationOptions(
       name: user.email,
       displayName: user.name,
     },
+    // Only advertise algorithms we can actually verify (ES256). Previously we
+    // also offered RS256 (-257), but the verifier rejects it — so an
+    // authenticator that picked RS256 would create a credential that then
+    // failed verification. Offering only ES256 makes the browser surface a
+    // clean error up front; RS256-only authenticators fall back to magic-link
+    // login. (Full RS256 support would need RSA COSE parsing + verification.)
     pubKeyCredParams: [
       { type: 'public-key', alg: -7 },   // ES256 (ECDSA P-256)
-      { type: 'public-key', alg: -257 },  // RS256 (RSASSA-PKCS1-v1_5) fallback
     ],
     timeout: 60000,
     attestation: 'none',
