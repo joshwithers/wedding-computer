@@ -23,16 +23,19 @@ export type GeocodedLocation = {
 const CACHE_TTL_SECONDS = 60 * 60 * 24 * 30 // 30 days
 
 /**
- * Geocode free text to a structured location. Best-effort: returns null when
- * the key is missing, the address is empty, or Google finds nothing.
- * Results (including not-found) are cached in KV to protect the API quota —
- * the same venue name arrives over and over via enquiries.
+ * Geocode free text to a structured location via Places Text Search — the
+ * same API the autocomplete proxy uses, so one enabled API covers both (the
+ * classic Geocoding API is a separate product that may not be enabled on the
+ * key). Best-effort: returns null when the key is missing, the address is
+ * empty, or Google finds nothing. Genuine not-found results are cached in KV
+ * to protect the quota — the same venue name arrives over and over via
+ * enquiries. API errors are NOT cached, so transient failures retry.
  */
 export async function geocodeAddress(env: Bindings, address: string): Promise<GeocodedLocation | null> {
   const text = address.trim()
   if (!text || !env.GOOGLE_MAPS_API_KEY) return null
 
-  const cacheKey = `geo:${text.toLowerCase()}`
+  const cacheKey = `geo2:${text.toLowerCase()}`
   try {
     const cached = await env.KV.get(cacheKey)
     if (cached) {
@@ -43,37 +46,46 @@ export async function geocodeAddress(env: Bindings, address: string): Promise<Ge
     /* cache is best-effort */
   }
 
-  const res = await fetch(
-    `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(text)}&key=${env.GOOGLE_MAPS_API_KEY}`
-  )
-  if (!res.ok) return null
+  const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': env.GOOGLE_MAPS_API_KEY,
+      'X-Goog-FieldMask': 'places.id,places.formattedAddress,places.location,places.addressComponents',
+    },
+    body: JSON.stringify({ textQuery: text, languageCode: 'en', pageSize: 1 }),
+  })
+  if (!res.ok) {
+    console.error('[geocode] Places searchText error', res.status, (await res.text()).slice(0, 300))
+    return null
+  }
 
   const data = (await res.json()) as {
-    results?: Array<{
-      address_components?: Array<{ long_name: string; types: string[] }>
-      geometry?: { location?: { lat: number; lng: number } }
-      place_id?: string
-      formatted_address?: string
+    places?: Array<{
+      id?: string
+      formattedAddress?: string
+      location?: { latitude?: number; longitude?: number }
+      addressComponents?: Array<{ longText?: string; types?: string[] }>
     }>
   }
 
-  const result = data.results?.[0]
-  if (!result) {
+  const place = data.places?.[0]
+  if (!place) {
     await env.KV.put(cacheKey, JSON.stringify({ found: false }), { expirationTtl: CACHE_TTL_SECONDS }).catch(() => {})
     return null
   }
 
-  const components = result.address_components ?? []
-  const find = (type: string) => components.find((c) => c.types.includes(type))?.long_name ?? null
+  const components = place.addressComponents ?? []
+  const find = (type: string) => components.find((c) => c.types?.includes(type))?.longText ?? null
 
   const location: GeocodedLocation = {
     city: find('locality') ?? find('administrative_area_level_2'),
     state: find('administrative_area_level_1'),
     country: find('country'),
-    lat: result.geometry?.location?.lat ?? null,
-    lng: result.geometry?.location?.lng ?? null,
-    place_id: result.place_id ?? null,
-    formatted: result.formatted_address ?? text,
+    lat: place.location?.latitude ?? null,
+    lng: place.location?.longitude ?? null,
+    place_id: place.id ?? null,
+    formatted: place.formattedAddress ?? text,
   }
 
   await env.KV.put(cacheKey, JSON.stringify({ found: true, location }), { expirationTtl: CACHE_TTL_SECONDS }).catch(
@@ -91,13 +103,17 @@ export async function geocodeContactLocation(env: Bindings, contactId: string): 
     .first<{ wedding_location: string | null; wedding_location_geocoded_from: string | null }>()
   if (!row?.wedding_location || row.wedding_location === row.wedding_location_geocoded_from) return
 
+  // geocoded_from is only stamped on success: failed lookups stay pending so
+  // the nightly pass retries them, and the KV not-found cache keeps those
+  // retries off the API.
   const location = await geocodeAddress(env, row.wedding_location)
+  if (!location) return
   await env.DB.prepare(
     `UPDATE contacts SET wedding_location_city = ?, wedding_location_state = ?,
        wedding_location_country = ?, wedding_location_geocoded_from = ?
      WHERE id = ?`
   )
-    .bind(location?.city ?? null, location?.state ?? null, location?.country ?? null, row.wedding_location, contactId)
+    .bind(location.city, location.state, location.country, row.wedding_location, contactId)
     .run()
 }
 
@@ -109,11 +125,12 @@ export async function geocodeWeddingLocation(env: Bindings, weddingId: string): 
   if (!row?.location || row.location === row.location_geocoded_from) return
 
   const location = await geocodeAddress(env, row.location)
+  if (!location) return
   await env.DB.prepare(
     `UPDATE weddings SET location_city = ?, location_state = ?, location_country = ?, location_geocoded_from = ?
      WHERE id = ?`
   )
-    .bind(location?.city ?? null, location?.state ?? null, location?.country ?? null, row.location, weddingId)
+    .bind(location.city, location.state, location.country, row.location, weddingId)
     .run()
 }
 
