@@ -109,17 +109,27 @@ async function runVendorSync(
     return result // skip vendors with broken config
   }
 
+  // Skip the (full recursive tree) pull when the backend is unchanged since
+  // the last clean sync. The push phase still runs — it's cheap when there's
+  // nothing to push and is how D1 edits reach storage. (R2 has no fingerprint
+  // and is never skipped; its list is local and cheap anyway.)
+  const fpKey = `syncfp:${vendor.id}`
+  const fingerprint = storage.stateFingerprint ? await storage.stateFingerprint().catch(() => null) : null
+  const skipPull = !!fingerprint && (await env.KV.get(fpKey)) === fingerprint
+
   // ── Phase 1: pull external edits into D1 ──
-  try {
-    const pull = await syncVendor(storage, env.DB, vendor.id)
-    result.pulled = pull.indexed + pull.updated + pull.removed
-    result.errors += pull.errors
-    if (result.pulled > 0) {
-      console.log(`[sync] Pulled for vendor ${vendor.id}: ${pull.indexed} new, ${pull.updated} updated, ${pull.removed} removed`)
+  if (!skipPull) {
+    try {
+      const pull = await syncVendor(storage, env.DB, vendor.id)
+      result.pulled = pull.indexed + pull.updated + pull.removed
+      result.errors += pull.errors
+      if (result.pulled > 0) {
+        console.log(`[sync] Pulled for vendor ${vendor.id}: ${pull.indexed} new, ${pull.updated} updated, ${pull.removed} removed`)
+      }
+    } catch (err: any) {
+      console.error(`[sync] Pull failed for vendor ${vendor.id}:`, err.message)
+      result.errors++
     }
-  } catch (err: any) {
-    console.error(`[sync] Pull failed for vendor ${vendor.id}:`, err.message)
-    result.errors++
   }
 
   // ── Phase 2: push stale D1 state out to storage ──
@@ -156,6 +166,17 @@ async function runVendorSync(
       console.error(`[sync] Failed to sync wedding ${candidate.id} for vendor ${vendor.id}:`, err.message)
       result.errors++
     }
+  }
+
+  // Remember the backend state so the next run can skip the pull — but only
+  // after a clean sync, so an error always re-pulls next time. If the push
+  // wrote nothing the head is still `fingerprint`; otherwise re-fetch it.
+  if (fingerprint && result.errors === 0) {
+    const finalFp =
+      result.weddingsSynced > 0 && storage.stateFingerprint
+        ? (await storage.stateFingerprint().catch(() => null)) ?? fingerprint
+        : fingerprint
+    await env.KV.put(fpKey, finalFp).catch(() => {})
   }
 
   return result

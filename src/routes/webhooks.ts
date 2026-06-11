@@ -18,6 +18,7 @@ import { vendorSecretKey } from '../services/secrets'
 import { syncVendorStorage } from '../services/storage-sync'
 import { suppressEmail } from '../db/emails'
 import { APP_COMMIT_EMAIL } from '../storage/github'
+import { logEvent } from '../lib/log'
 
 const webhooks = new Hono<Env>()
 
@@ -88,7 +89,7 @@ webhooks.post('/webhooks/github', async (c) => {
             console.log(`[webhook] github sync vendor ${vendor.id}: ${r.pulled} pulled, ${r.weddingsSynced} pushed, ${r.errors} errors`)
           }
         })
-        .catch((err) => console.error(`[webhook] github sync failed for vendor ${vendor.id}:`, err))
+        .catch((err) => logEvent('webhook.github_sync_failed', { vendorId: vendor.id, error: err?.message ?? String(err) }))
     )
   }
 

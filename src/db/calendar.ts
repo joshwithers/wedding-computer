@@ -191,12 +191,13 @@ export async function listEnrichedEventsByRange(
 
 export async function listAllEnrichedEvents(
   db: D1Database,
-  vendorId: string
+  vendorId: string,
+  whereExtra?: string
 ): Promise<EnrichedCalendarEvent[]> {
   return db
     .prepare(
       `${ENRICHED_SELECT}
-       WHERE ce.vendor_id = ?
+       WHERE ce.vendor_id = ?${whereExtra ? ` AND ${whereExtra}` : ''}
        ORDER BY ce.date, ce.start_time`
     )
     .bind(vendorId)

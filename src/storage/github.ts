@@ -282,6 +282,20 @@ export class GitHubStorageBackend implements StorageBackend {
     return { files }
   }
 
+  /** The branch head commit SHA — a cheap fingerprint of the whole repo. */
+  async stateFingerprint(): Promise<string | null> {
+    try {
+      const res = await this.api(
+        `https://api.github.com/repos/${this.config.repo}/git/ref/heads/${this.config.branch}`
+      )
+      if (!res.ok) return null
+      const data = (await res.json()) as { object?: { sha?: string } }
+      return data.object?.sha ?? null
+    } catch {
+      return null
+    }
+  }
+
   async head(path: string): Promise<FileMeta | null> {
     const fullPath = this.fullPath(path)
     const res = await this.api(`${fullPath}?ref=${this.config.branch}`)

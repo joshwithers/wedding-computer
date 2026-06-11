@@ -72,6 +72,13 @@ export interface StorageBackend {
 
   /** Rename/move a file (for when a contact name changes). */
   move(oldPath: string, newPath: string): Promise<void>
+
+  /**
+   * A cheap fingerprint of the backend's current state (e.g. the git branch
+   * head commit SHA), or null if the backend has none. The sync engine uses
+   * it to skip the (expensive) full pull when nothing changed since last time.
+   */
+  stateFingerprint?(): Promise<string | null>
 }
 
 /** Storage configuration stored on the vendor profile */

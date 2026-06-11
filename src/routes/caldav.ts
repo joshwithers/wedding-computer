@@ -10,6 +10,13 @@ import { buildVevent } from '../services/ical'
 
 const caldav = new Hono<Env>()
 
+// Only sync a bounded window of events so a poll's cost is O(window), not
+// O(all-of-vendor-history). Applied consistently to the depth-1 listing, the
+// REPORT, and the ctag so the client sees one coherent set. Fixed literal —
+// never user input. (A client can still fetch an older event by id via the
+// single-event GET / multiget.)
+const CALENDAR_WINDOW = "date >= date('now', '-6 months') AND date <= date('now', '+2 years')"
+
 const PRIVILEGE_SET = `<D:current-user-privilege-set>
   <D:privilege><D:read/></D:privilege>
   <D:privilege><D:read-current-user-privilege-set/></D:privilege>
@@ -130,7 +137,7 @@ caldav.on('PROPFIND', '/calendars/:token/', async (c) => {
   if (!vendor) return unauth()
   const token = reqToken(c)
   const base = `/caldav`
-  const ctag = await makeCTag(c.env.DB, 'calendar_events', 'vendor_id', vendor.id)
+  const ctag = await makeCTag(c.env.DB, 'calendar_events', 'vendor_id', vendor.id, CALENDAR_WINDOW)
 
   return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/" xmlns:A="http://apple.com/ns/ical/">
@@ -171,7 +178,7 @@ caldav.on('PROPFIND', '/calendars/:token/bookings/', async (c) => {
   const token = reqToken(c)
   const base = `/caldav`
   const depth = getDepth(c.req.raw)
-  const ctag = await makeCTag(c.env.DB, 'calendar_events', 'vendor_id', vendor.id)
+  const ctag = await makeCTag(c.env.DB, 'calendar_events', 'vendor_id', vendor.id, CALENDAR_WINDOW)
 
   const collectionResponse = `<D:response>
     <D:href>${base}/calendars/${escXml(token)}/bookings/</D:href>
@@ -197,7 +204,7 @@ caldav.on('PROPFIND', '/calendars/:token/bookings/', async (c) => {
 
   // Depth 1: list events (only need etags, no enrichment needed)
   const rows = await c.env.DB
-    .prepare('SELECT * FROM calendar_events WHERE vendor_id = ?')
+    .prepare(`SELECT * FROM calendar_events WHERE vendor_id = ? AND ${CALENDAR_WINDOW}`)
     .bind(vendor.id)
     .all<CalendarEvent>()
     .then(r => r.results)
@@ -263,7 +270,7 @@ caldav.on('REPORT', '/calendars/:token/bookings/', async (c) => {
   }
 
   // Full query
-  const rows = await listAllEnrichedEvents(c.env.DB, vendor.id)
+  const rows = await listAllEnrichedEvents(c.env.DB, vendor.id, CALENDAR_WINDOW)
 
   const responses = rows.map(row => {
     const ical = wrapVCalendar(buildVevent(row, tz), tz)
@@ -313,7 +320,7 @@ caldav.get('/calendars/:token/bookings/:uid', async (c) => {
 caldav.get('/debug/:token', async (c) => {
   const vendor = await auth(c)
   if (!vendor) return unauth()
-  const ctag = await makeCTag(c.env.DB, 'calendar_events', 'vendor_id', vendor.id)
+  const ctag = await makeCTag(c.env.DB, 'calendar_events', 'vendor_id', vendor.id, CALENDAR_WINDOW)
   const total = await c.env.DB
     .prepare('SELECT COUNT(*) as cnt FROM calendar_events WHERE vendor_id = ?')
     .bind(vendor.id)

@@ -52,6 +52,7 @@ import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
 import { aggregateBusynessScores } from './db/busyness'
 import { runRetention } from './db/retention'
+import { logEvent } from './lib/log'
 import { syncVendorStorage } from './services/storage-sync'
 
 const app = new Hono<Env>()
@@ -812,9 +813,12 @@ export default {
           // sweep instead of re-running (and re-pushing) on retry.
           try {
             const vendor = await getVendorById(env.DB, body.vendorId)
-            if (vendor) await syncVendorStorage(env, vendor)
+            if (vendor) {
+              const r = await syncVendorStorage(env, vendor)
+              if (r.errors > 0) logEvent('sync.vendor_errors', { vendorId: body.vendorId, errors: r.errors, pulled: r.pulled, pushed: r.weddingsSynced })
+            }
           } catch (e: any) {
-            console.error('[QUEUE] sync_vendor failed', body.vendorId, e.message)
+            logEvent('sync.vendor_failed', { vendorId: body.vendorId, error: e.message })
           }
 
         } else if (body.type === 'vendor_digest') {
@@ -829,6 +833,7 @@ export default {
         msg.ack()
       } catch (e: any) {
         console.error('[QUEUE] failed', msg.id, e.message)
+        logEvent('queue.failed', { id: msg.id, type: (msg.body as { type?: string })?.type, error: e.message })
         if (e instanceof EmailSendError && !e.retryable) {
           // Permanent failure (bad address, other 4xx) — retrying will never
           // succeed, so ack it. The failure is recorded on the email row.
@@ -856,9 +861,9 @@ export default {
       // subrequest/CPU budget and Resend rate limit past a few hundred).
       try {
         const n = await enqueueVendorDailyJobs(env)
-        console.log(`[CRON] enqueued ${n} vendor_digest jobs`)
+        logEvent('cron.daily_enqueued', { jobs: n })
       } catch (e: any) {
-        console.error('[CRON] enqueue daily jobs failed', e.message)
+        logEvent('cron.daily_failed', { error: e.message })
       }
 
       // Busyness aggregation is a single query — fine to run inline.
@@ -883,9 +888,9 @@ export default {
       // single invocation iterates the whole fleet.
       try {
         const n = await enqueueStorageSyncJobs(env, event.scheduledTime)
-        if (n > 0) console.log(`[CRON] enqueued ${n} sync_vendor jobs`)
+        if (n > 0) logEvent('cron.sync_enqueued', { jobs: n })
       } catch (e: any) {
-        console.error('[CRON] enqueue storage sync failed', e.message)
+        logEvent('cron.sync_failed', { error: e.message })
       }
     }
   },
