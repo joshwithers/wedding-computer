@@ -1,0 +1,58 @@
+name: Nightly D1 backup
+
+# Exports the production D1 database every night and commits a gzipped SQL dump
+# to the private wedding-computer-backups repo (offsite, versioned). This is the
+# restore-source-of-last-resort — see RECOVERY.md.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN  — token with D1 read/export on the account
+#   BACKUP_REPO_TOKEN     — PAT (or fine-grained token) with contents:write on
+#                           joshwithers/wedding-computer-backups
+
+on:
+  schedule:
+    - cron: '0 3 * * *'      # 03:00 UTC daily
+  workflow_dispatch: {}      # allow manual runs / restore drills
+
+concurrency:
+  group: d1-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout app repo (for wrangler.toml)
+        uses: actions/checkout@v4
+
+      - name: Export production D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx -y wrangler@4 d1 export wedding-computer-db --remote --output d1.sql
+          test -s d1.sql                      # fail loudly if the dump is empty
+          gzip -9 d1.sql
+          echo "DUMP_DATE=$(date -u +%F)" >> "$GITHUB_ENV"
+          echo "Dump size: $(du -h d1.sql.gz | cut -f1)"
+
+      - name: Checkout backups repo
+        uses: actions/checkout@v4
+        with:
+          repository: joshwithers/wedding-computer-backups
+          token: ${{ secrets.BACKUP_REPO_TOKEN }}
+          path: _backups
+
+      - name: Commit dump (keep newest 30 in the tree)
+        run: |
+          set -euo pipefail
+          mkdir -p _backups/d1
+          cp d1.sql.gz "_backups/d1/${DUMP_DATE}.sql.gz"
+          cd _backups
+          # Prune all but the newest 30 dated dumps from the working tree
+          ls -1 d1/*.sql.gz | sort | head -n -30 | xargs -r rm --
+          git config user.name  "wc-backup-bot"
+          git config user.email "backup@wedding.computer"
+          git add -A
+          git commit -m "D1 backup ${DUMP_DATE}"
+          git push

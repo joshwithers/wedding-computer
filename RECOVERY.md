@@ -65,21 +65,31 @@ of any **offsite** copy of D1 + R2.
 - **Worker versioning** — every deploy is a version; roll back instantly.
   - `wrangler deployments list` → `wrangler rollback [<version-id>]`
 
-### Layer 2 — Automated offsite backups  🔴 (the main thing to build)
-A scheduled Worker (own cron, e.g. nightly `0 3 * * *`) that:
-1. **D1 → SQL dump.** Call the D1 export API, stream the dump to a dedicated
-   **`wedding-computer-backups` R2 bucket** under `d1/YYYY-MM-DD.sql.gz`.
-2. **R2 vault snapshot.** Copy R2-vendor vaults + documents into the backups
-   bucket under `r2/YYYY-MM-DD/…` (or a rolling mirror to start — cheaper).
-   Git-vendor vaults are skipped (already in GitHub).
-3. **KV secrets snapshot.** Dump vendor secret keys (encrypted — see M15) into
-   the backup set so a KV wipe doesn't force every vendor to reconnect GitHub.
-4. **Offsite push.** Mirror the newest backup set **out of Cloudflare** — push
-   the D1 dump (and a manifest) to a **private GitHub backup repo**, and/or an
-   external object store (Backblaze B2 / S3). This is the 3-2-1 "offsite" copy.
-5. **Retention:** keep 7 daily + 4 weekly + 6 monthly; prune the rest.
-6. **Health ping:** log a structured `backup.completed` event with sizes +
-   counts; alert (and a dead-man's-switch) if a night is missed.
+### Layer 2 — Automated offsite D1 backup  ✅ (built — needs 2 secrets set)
+A **GitHub Action** (`.github/workflows/backup.yml`), chosen over a Worker cron
+because it uses the official `wrangler d1 export`, has no Worker memory limit on
+large dumps, and keeps backup logic out of the production app. Nightly
+(`0 3 * * *`, plus manual `workflow_dispatch`) it:
+1. Exports the production D1 to a SQL dump and gzips it.
+2. Commits it to the private **`joshwithers/wedding-computer-backups`** repo as
+   `d1/<YYYY-MM-DD>.sql.gz` — **offsite** (separate repo, outside our Cloudflare
+   account) and **versioned** (git history).
+3. Keeps the newest 30 dumps in the working tree; older remain in git history.
+
+**One-time setup (required before it runs):** add two repo secrets to the main
+repo (Settings → Secrets and variables → Actions):
+- `CLOUDFLARE_API_TOKEN` — a Cloudflare token with **D1 read/export** on the
+  account (dash → My Profile → API Tokens; the "D1 Read" template, or a custom
+  token with `Account › D1 › Read`).
+- `BACKUP_REPO_TOKEN` — a GitHub PAT (fine-grained) with **Contents: write** on
+  `joshwithers/wedding-computer-backups`.
+
+Failures email the repo admin (GitHub's default) — that's the miss alert. A
+true dead-man's-switch (alert if a run never starts) is a later add.
+
+> Still to build (Phase 3): R2-vendor vault + document snapshot, and an
+> encrypted KV-secrets snapshot, into a dedicated `wedding-computer-backups`
+> **R2 bucket**. Git-vendor vaults are already offsite in their own repos.
 
 ### Layer 3 — User & admin export / import  🟡
 - **Vendor:** markdown vault export `/app/settings/export-markdown` ✅, JSON
@@ -155,10 +165,14 @@ things people most regret deleting:
 
 ## 7. Implementation plan (prioritised)
 
-**Phase 1 — close the offsite gap (highest value):**
-1. 🔴 Create the `wedding-computer-backups` R2 bucket + a private GitHub backup repo.
-2. 🔴 Build the nightly backup Worker: D1 dump → backups bucket → push offsite to GitHub; emit `backup.completed`; alert on miss.
-3. 🔴 Document the bucket/repo + secrets in this file as they're created.
+**Phase 1 — close the offsite gap (highest value):**  ✅ built
+1. ✅ Private GitHub backup repo `joshwithers/wedding-computer-backups` created.
+2. ✅ Nightly D1 backup Action (`.github/workflows/backup.yml`) → gzipped dump
+   committed offsite, 30-dump working-tree retention + full git history.
+3. 🟡 **Action required from Josh:** set the two repo secrets above
+   (`CLOUDFLARE_API_TOKEN`, `BACKUP_REPO_TOKEN`), then run the workflow once
+   manually (Actions → "Nightly D1 backup" → Run workflow) to confirm it pushes
+   a dump.
 
 **Phase 2 — make deletion safe:**
 4. 🔴 Soft-delete + 30-day grace for weddings, contacts, accounts (§4); restore UI for admin + user.
