@@ -5,7 +5,10 @@ name: Nightly D1 backup
 # restore-source-of-last-resort — see RECOVERY.md.
 #
 # Required repo secrets (Settings → Secrets and variables → Actions):
-#   CLOUDFLARE_API_TOKEN  — token with D1 read/export on the account
+#   CLOUDFLARE_API_TOKEN  — token with D1 *Edit* on the account. Note: `d1 export`
+#                           is a write-class operation, so D1 Read is NOT enough —
+#                           a Read-only token fails with "Authentication error
+#                           [code: 10000]".
 #   BACKUP_REPO_TOKEN     — PAT (or fine-grained token) with contents:write on
 #                           joshwithers/wedding-computer-backups
 
