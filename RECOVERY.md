@@ -104,19 +104,23 @@ true dead-man's-switch (alert if a run never starts) is a later add.
 
 ---
 
-## 4. Make deletion reversible  🔴 (high-value, cheap)
+## 4. Make deletion reversible  🟡 (accounts done; weddings/contacts to build)
 
 D1 Time Travel restores the **whole database** to a point in time — it can't
 surgically undo one couple deleting their wedding without rolling back
 *everyone's* last N hours. The fix is **soft-delete + grace period** on the
 things people most regret deleting:
 
-- Add `deleted_at` to `weddings`, `contacts`, and treat account deletion as a
-  30-day soft-delete (anonymise/hard-purge after the window via the retention
-  cron we already run).
-- Deleting hides the record and starts the clock; an admin (or the user) can
-  **restore within 30 days** with one action; after that it's purged for real
-  (GDPR-clean).
+- ✅ **Accounts** (migration 043, live 2026-06-11): account deletion now sets
+  `users.deleted_at` and destroys every session instead of hard-deleting.
+  Signing back in within 30 days **auto-restores** the account (logs
+  `account_delete_cancelled`); the nightly cron (`purgeExpiredAccounts`)
+  hard-purges R2/KV/D1 once the window passes. Soft-deleted users are hidden
+  from the public directory, daily digest, and vendor daily jobs immediately.
+  The restore happens on next login — no separate restore UI needed for the
+  user; an admin restore action is still to build.
+- 🔴 Add `deleted_at` to `weddings` and `contacts` the same way (deleting hides
+  the record and starts the clock; restore within 30 days; purge after).
 - This turns the single most common "disaster" into a non-event, with no DB
   rollback and no collateral damage to other users.
 
@@ -174,8 +178,9 @@ things people most regret deleting:
    manually (Actions → "Nightly D1 backup" → Run workflow) to confirm it pushes
    a dump.
 
-**Phase 2 — make deletion safe:**
-4. 🔴 Soft-delete + 30-day grace for weddings, contacts, accounts (§4); restore UI for admin + user.
+**Phase 2 — make deletion safe:**  🟡 accounts shipped
+4a. ✅ Account soft-delete + 30-day grace + auto-restore-on-login + nightly purge (§4, migration 043, live 2026-06-11).
+4b. 🔴 Same treatment for weddings + contacts; admin-facing restore action.
 
 **Phase 3 — R2 + KV coverage:**
 5. 🔴 R2-vendor vault + document snapshot into the backups bucket.
