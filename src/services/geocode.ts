@@ -46,20 +46,27 @@ export async function geocodeAddress(env: Bindings, address: string): Promise<Ge
     /* cache is best-effort */
   }
 
+  // Classic first, Text Search whenever it comes up empty — including on API
+  // errors (e.g. a referer-restricted key, which the Geocoding API rejects
+  // for server calls while the Places API accepts it).
   const classic = await classicGeocode(env, text)
-  if (classic.error) return null // API trouble — don't cache, don't burn the fallback
   let location = classic.location
+  let sawApiError = classic.error
   if (!location) {
     const places = await placesTextSearch(env, text)
-    if (places.error) return null
     location = places.location
+    sawApiError = sawApiError || places.error
   }
 
-  await env.KV.put(
-    cacheKey,
-    JSON.stringify(location ? { found: true, location } : { found: false }),
-    { expirationTtl: CACHE_TTL_SECONDS }
-  ).catch(() => {})
+  // Cache found results always; cache not-found only when both APIs answered
+  // cleanly, so transient/config errors keep retrying.
+  if (location || !sawApiError) {
+    await env.KV.put(
+      cacheKey,
+      JSON.stringify(location ? { found: true, location } : { found: false }),
+      { expirationTtl: CACHE_TTL_SECONDS }
+    ).catch(() => {})
+  }
   return location
 }
 
