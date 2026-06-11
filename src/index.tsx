@@ -51,7 +51,7 @@ import { sendEmailMessage, EmailSendError, broadcastEmail, newLeadEmail, formSub
 import { getBroadcast } from './db/broadcast'
 import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
-import { aggregateBusynessScores } from './db/busyness'
+import { aggregateBusynessScores, aggregateDemandHistory } from './db/busyness'
 import { runRetention } from './db/retention'
 import { purgeExpiredAccounts } from './services/account'
 import { logEvent } from './lib/log'
@@ -875,6 +875,12 @@ export default {
         await aggregateBusynessScores(env.DB)
       } catch (e: any) {
         console.error('[CRON] busyness aggregation failed', e.message)
+      }
+
+      try {
+        await aggregateDemandHistory(env.DB)
+      } catch (e: any) {
+        console.error('[CRON] demand history aggregation failed', e.message)
       }
 
       // Prune unbounded write-only tables (sessions, system emails, analytics,

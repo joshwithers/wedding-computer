@@ -8,6 +8,7 @@ import { requireAdmin } from '../middleware/admin'
 import { csrf } from '../middleware/csrf'
 import { getTotalVendors, getTotalWeddings, getTotalCouples, getSignupsByMonth, countEventsGlobal, getRevenueGlobal, getAverageSpendPerWedding, getLocationBreakdown, getMonthlyEventCountsGlobal } from '../db/analytics'
 import { getActiveProCount, getMRR, getConversionRate } from '../db/subscriptions'
+import { aggregateBusynessScores, aggregateDemandHistory } from '../db/busyness'
 import { getUserByEmail } from '../db/users'
 import { getVendorByUserId } from '../db/vendors'
 import { grantFreeMonths, listRecentGrants, FREE_MONTHS_CAP, type GrantRow } from '../db/referrals'
@@ -289,9 +290,33 @@ admin.get('/admin', async (c) => {
             })}
           </div>
         </section>
+
+        <section class="bg-white rounded-2xl p-5 sm:p-6">
+          <h3 class="font-bold text-gray-900 mb-1">Demand aggregations</h3>
+          <p class="text-sm text-gray-500 mb-3">
+            Busyness scores and year-on-year demand history rebuild nightly. Run them now to backfill.
+          </p>
+          <form method="post" action="/admin/aggregate-demand">
+            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+            <button
+              type="submit"
+              class="bg-horizon-600 text-white rounded-xl px-4 py-2 text-sm font-bold hover:bg-horizon-700 transition-colors"
+            >
+              Rebuild now
+            </button>
+          </form>
+        </section>
       </div>
     </AdminLayout>
   )
+})
+
+// ─── Demand aggregations (manual rebuild/backfill) ───
+
+admin.post('/admin/aggregate-demand', async (c) => {
+  await aggregateBusynessScores(c.env.DB)
+  await aggregateDemandHistory(c.env.DB)
+  return c.redirect('/admin')
 })
 
 // ─── Gift free months ───

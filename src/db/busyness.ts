@@ -1,4 +1,5 @@
 import type { BusynessScore } from '../types'
+import { seasonOf, weekendBucketOf } from '../lib/busyness'
 
 export async function getScoresForDateRange(
   db: D1Database,
@@ -214,6 +215,177 @@ export async function aggregateBusynessScores(db: D1Database): Promise<void> {
   for (let i = 0; i < statements.length; i += BATCH_SIZE) {
     await db.batch(statements.slice(i, i + BATCH_SIZE))
   }
+}
+
+// ─── Historical demand patterns ───
+//
+// Exact dates don't recur, but months, seasons, and "the Nth weekend of a
+// month" do. aggregateDemandHistory rebuilds per-year counts for those
+// buckets from everything that has already happened, so a date's demand can
+// be read against the matching weekend/month/season of previous years — and
+// the comparison gets better every year more data accumulates.
+
+export async function aggregateDemandHistory(db: D1Database): Promise<void> {
+  const enquiryRows = await db
+    .prepare(
+      `SELECT c.wedding_date AS date, vp.location_city, vp.location_state, vp.location_country,
+              COUNT(*) AS enquiry_count, 0 AS booking_count
+       FROM contacts c
+       JOIN vendor_profiles vp ON vp.id = c.vendor_id
+       WHERE c.wedding_date IS NOT NULL AND c.wedding_date < date('now')
+       GROUP BY c.wedding_date, vp.location_city, vp.location_state, vp.location_country`
+    )
+    .all<DateLocationCounts>()
+    .then((r) => r.results)
+
+  const bookingRows = await db
+    .prepare(
+      `SELECT ce.date AS date, vp.location_city, vp.location_state, vp.location_country,
+              0 AS enquiry_count, COUNT(*) AS booking_count
+       FROM calendar_events ce
+       JOIN vendor_profiles vp ON vp.id = ce.vendor_id
+       WHERE ce.type = 'booking' AND ce.date < date('now')
+       GROUP BY ce.date, vp.location_city, vp.location_state, vp.location_country`
+    )
+    .all<DateLocationCounts>()
+    .then((r) => r.results)
+
+  type Counts = { enquiry_count: number; booking_count: number }
+  const aggregated = new Map<string, Counts>()
+
+  function addBucket(
+    level: string,
+    levelValue: string,
+    bucketType: string,
+    bucketValue: string,
+    year: number,
+    enquiry: number,
+    booking: number
+  ) {
+    const key = `${level}|${levelValue}|${bucketType}|${bucketValue}|${year}`
+    const existing = aggregated.get(key)
+    if (existing) {
+      existing.enquiry_count += enquiry
+      existing.booking_count += booking
+    } else {
+      aggregated.set(key, { enquiry_count: enquiry, booking_count: booking })
+    }
+  }
+
+  for (const row of [...enquiryRows, ...bookingRows]) {
+    const m = /^(\d{4})-(\d{2})/.exec(row.date)
+    if (!m) continue
+    const year = Number(m[1])
+    const month = Number(m[2])
+    const weekend = weekendBucketOf(row.date)
+
+    const levels: Array<[string, string | null]> = [
+      ['city', row.location_city],
+      ['state', row.location_state],
+      ['country', row.location_country],
+      ['global', 'global'],
+    ]
+    for (const [level, value] of levels) {
+      if (!value) continue
+      addBucket(level, value, 'month', m[2], year, row.enquiry_count, row.booking_count)
+      addBucket(level, value, 'season', seasonOf(month), year, row.enquiry_count, row.booking_count)
+      if (weekend) {
+        const bucketValue = `${String(weekend.month).padStart(2, '0')}-w${weekend.index}`
+        addBucket(level, value, 'weekend', bucketValue, weekend.year, row.enquiry_count, row.booking_count)
+      }
+    }
+  }
+
+  const statements: D1PreparedStatement[] = []
+  for (const [key, counts] of aggregated) {
+    const [level, levelValue, bucketType, bucketValue, year] = key.split('|')
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO demand_history (level, level_value, bucket_type, bucket_value, year, enquiry_count, booking_count)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (level, level_value, bucket_type, bucket_value, year)
+           DO UPDATE SET enquiry_count = excluded.enquiry_count,
+                         booking_count = excluded.booking_count,
+                         updated_at = datetime('now')`
+        )
+        .bind(level, levelValue, bucketType, bucketValue, year, counts.enquiry_count, counts.booking_count)
+    )
+  }
+
+  for (let i = 0; i < statements.length; i += BATCH_SIZE) {
+    await db.batch(statements.slice(i, i + BATCH_SIZE))
+  }
+}
+
+export type DemandHistoryYear = { year: string; enquiry_count: number; booking_count: number }
+
+export type DemandHistoryContext = {
+  level: BusynessScore['level']
+  levelValue: string
+  weekend: { month: number; index: number; years: DemandHistoryYear[] } | null
+  month: { month: number; years: DemandHistoryYear[] }
+  season: { season: string; years: DemandHistoryYear[] }
+}
+
+const HISTORY_YEARS_SHOWN = 3
+
+// Year-on-year history for the buckets a date falls into, at the most
+// location-specific level that has any data (city → state → country → global).
+// Returns null when no history exists at any level.
+export async function getDemandHistoryContext(
+  db: D1Database,
+  date: string,
+  vendor: { location_city: string | null; location_state: string | null; location_country: string | null }
+): Promise<DemandHistoryContext | null> {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
+  if (!m) return null
+  const month = Number(m[2])
+  const monthBucket = m[2]
+  const seasonBucket = seasonOf(month)
+  const weekend = weekendBucketOf(date)
+  const weekendBucket = weekend ? `${String(weekend.month).padStart(2, '0')}-w${weekend.index}` : ''
+
+  const tries: Array<[BusynessScore['level'], string | null]> = [
+    ['city', vendor.location_city],
+    ['state', vendor.location_state],
+    ['country', vendor.location_country],
+    ['global', 'global'],
+  ]
+
+  for (const [level, value] of tries) {
+    if (!value) continue
+    const rows = await db
+      .prepare(
+        `SELECT bucket_type, year, enquiry_count, booking_count
+         FROM demand_history
+         WHERE level = ? AND level_value = ?
+           AND ((bucket_type = 'month' AND bucket_value = ?)
+             OR (bucket_type = 'season' AND bucket_value = ?)
+             OR (bucket_type = 'weekend' AND bucket_value = ?))
+         ORDER BY year DESC`
+      )
+      .bind(level, value, monthBucket, seasonBucket, weekendBucket)
+      .all<{ bucket_type: string; year: string; enquiry_count: number; booking_count: number }>()
+      .then((r) => r.results)
+    if (rows.length === 0) continue
+
+    const byType = (type: string): DemandHistoryYear[] =>
+      rows
+        .filter((r) => r.bucket_type === type)
+        .slice(0, HISTORY_YEARS_SHOWN)
+        .map(({ year, enquiry_count, booking_count }) => ({ year, enquiry_count, booking_count }))
+
+    return {
+      level,
+      levelValue: value,
+      weekend: weekend ? { month: weekend.month, index: weekend.index, years: byType('weekend') } : null,
+      month: { month, years: byType('month') },
+      season: { season: seasonBucket, years: byType('season') },
+    }
+  }
+
+  return null
 }
 
 export async function getDateHeatmap(

@@ -17,9 +17,9 @@ import { getStorageWithSecrets } from '../../storage'
 import type { StorageBackend } from '../../storage/types'
 import { needsMigration, migrateContacts } from '../../storage/migrate'
 import { listActivities, createActivity } from '../../db/activities'
-import { getBestScoreForDate } from '../../db/busyness'
+import { getBestScoreForDate, getDemandHistoryContext, type DemandHistoryContext, type DemandHistoryYear } from '../../db/busyness'
 import { isProVendor } from '../../db/subscriptions'
-import { describeDemand } from '../../lib/busyness'
+import { describeDemand, MONTH_NAMES, SEASON_LABELS, ordinal } from '../../lib/busyness'
 import { requireString, trimOrNull, sanitize } from '../../lib/validation'
 import { generateId } from '../../lib/crypto'
 import { formatDate } from '../../lib/date'
@@ -492,12 +492,15 @@ contacts.get('/app/contacts/:id', async (c) => {
 
     // Date demand for the contact's wedding date (only meaningful for an
     // upcoming date). Resolves the most location-specific score for the
-    // vendor's area; null when no aggregation row exists yet.
+    // vendor's area; null when no aggregation row exists yet. History adds
+    // year-on-year context for the matching weekend, month, and season.
     let demand: Awaited<ReturnType<typeof getBestScoreForDate>> = null
+    let demandHistory: DemandHistoryContext | null = null
     const today = new Date().toISOString().slice(0, 10)
     if (contact.wedding_date && contact.wedding_date >= today) {
       try {
         demand = await getBestScoreForDate(c.env.DB, contact.wedding_date, vendor)
+        demandHistory = await getDemandHistoryContext(c.env.DB, contact.wedding_date, vendor)
       } catch (err) {
         console.error('[contacts] demand lookup failed:', err)
       }
@@ -625,7 +628,7 @@ contacts.get('/app/contacts/:id', async (c) => {
               {contact.partner_email && <DetailCard label="Partner email" value={contact.partner_email} href={`mailto:${contact.partner_email}`} />}
               {contact.partner_phone && <DetailCard label="Partner phone" value={contact.partner_phone} href={`tel:${contact.partner_phone}`} />}
               <DetailCard label="Wedding date" value={contact.wedding_date ? formatDate(contact.wedding_date) : null} />
-              {contact.wedding_date && contact.wedding_date >= today && <DemandCard demand={demand} />}
+              {contact.wedding_date && contact.wedding_date >= today && <DemandCard demand={demand} history={demandHistory} />}
               <DetailCard label="Wedding location" value={contact.wedding_location} />
               <DetailCard label="Source" value={contact.source} />
               <DetailCard label="Added" value={formatDate(contact.created_at)} />
@@ -1280,8 +1283,10 @@ function DetailCard({
 
 function DemandCard({
   demand,
+  history,
 }: {
   demand: { score: number; level: string; levelValue: string; enquiry_count: number; booking_count: number } | null
+  history: DemandHistoryContext | null
 }) {
   const d = describeDemand(demand?.score ?? null)
   const scope = !demand
@@ -1310,6 +1315,47 @@ function DemandCard({
           How sought-after this date is for enquiries and bookings in your area. Updates daily.
         </p>
       )}
+      {history && <DemandHistory history={history} />}
+    </div>
+  )
+}
+
+// Year-on-year history for the buckets this date falls into. Each line is a
+// recurring window — "3rd weekend of September", the month, the season — with
+// counts from previous years, so a date can be judged against the matching
+// weekend last year even though the calendar dates differ.
+function DemandHistory({ history }: { history: DemandHistoryContext }) {
+  const scope = history.level === 'global' ? 'across the platform' : `in ${history.levelValue}`
+  const blocks: Array<{ label: string; years: DemandHistoryYear[] }> = []
+
+  if (history.weekend && history.weekend.years.length > 0) {
+    blocks.push({
+      label: `${ordinal(history.weekend.index)} weekend of ${MONTH_NAMES[history.weekend.month - 1]}`,
+      years: history.weekend.years,
+    })
+  }
+  if (history.month.years.length > 0) {
+    blocks.push({ label: MONTH_NAMES[history.month.month - 1], years: history.month.years })
+  }
+  if (history.season.years.length > 0) {
+    blocks.push({ label: SEASON_LABELS[history.season.season] ?? history.season.season, years: history.season.years })
+  }
+  if (blocks.length === 0) return null
+
+  return (
+    <div class="mt-2.5 pt-2.5 border-t border-gray-100 space-y-2">
+      <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Past years {scope}</p>
+      {blocks.map((b) => (
+        <div>
+          <p class="text-xs font-medium text-gray-600">{b.label}</p>
+          {b.years.map((y) => (
+            <p class="text-xs text-gray-400">
+              {y.year}: {y.enquiry_count} {y.enquiry_count === 1 ? 'enquiry' : 'enquiries'} · {y.booking_count}{' '}
+              {y.booking_count === 1 ? 'booking' : 'bookings'}
+            </p>
+          ))}
+        </div>
+      ))}
     </div>
   )
 }
