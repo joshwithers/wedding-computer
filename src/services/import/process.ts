@@ -210,6 +210,10 @@ async function createWeddingForImportedContact(
 
   const date = normalizeDate(mapped.fields.wedding_date)
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false
+  // Junk years (e.g. a real-world '0021-11-17' typo) — keep the contact's raw
+  // date for the vendor to fix, but don't mint a wedding in year 21.
+  const year = parseInt(date.slice(0, 4))
+  if (year < 1900 || year > 2200) return false
 
   const f = mapped.fields
   const title = f.partner_first_name
