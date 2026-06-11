@@ -23,13 +23,13 @@ export type GeocodedLocation = {
 const CACHE_TTL_SECONDS = 60 * 60 * 24 * 30 // 30 days
 
 /**
- * Geocode free text to a structured location via Places Text Search — the
- * same API the autocomplete proxy uses, so one enabled API covers both (the
- * classic Geocoding API is a separate product that may not be enabled on the
- * key). Best-effort: returns null when the key is missing, the address is
- * empty, or Google finds nothing. Genuine not-found results are cached in KV
- * to protect the quota — the same venue name arrives over and over via
- * enquiries. API errors are NOT cached, so transient failures retry.
+ * Geocode free text to a structured location. The classic Geocoding API runs
+ * first (an order of magnitude cheaper per lookup); Places Text Search picks
+ * up what it can't resolve — venue names especially. Best-effort: returns
+ * null when the key is missing, the address is empty, or neither API finds
+ * anything. Genuine not-found results are cached in KV to protect the quota —
+ * the same venue name arrives over and over via enquiries. API errors are
+ * NOT cached, so transient failures retry.
  */
 export async function geocodeAddress(env: Bindings, address: string): Promise<GeocodedLocation | null> {
   const text = address.trim()
@@ -46,18 +46,84 @@ export async function geocodeAddress(env: Bindings, address: string): Promise<Ge
     /* cache is best-effort */
   }
 
+  const classic = await classicGeocode(env, text)
+  if (classic.error) return null // API trouble — don't cache, don't burn the fallback
+  let location = classic.location
+  if (!location) {
+    const places = await placesTextSearch(env, text)
+    if (places.error) return null
+    location = places.location
+  }
+
+  await env.KV.put(
+    cacheKey,
+    JSON.stringify(location ? { found: true, location } : { found: false }),
+    { expirationTtl: CACHE_TTL_SECONDS }
+  ).catch(() => {})
+  return location
+}
+
+type GeocodeAttempt = { location: GeocodedLocation | null; error: boolean }
+
+async function classicGeocode(env: Bindings, text: string): Promise<GeocodeAttempt> {
+  const res = await fetch(
+    `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(text)}&key=${env.GOOGLE_MAPS_API_KEY}`
+  )
+  if (!res.ok) {
+    console.error('[geocode] Geocoding API HTTP error', res.status)
+    return { location: null, error: true }
+  }
+
+  // The Geocoding API reports problems in the body with HTTP 200 —
+  // REQUEST_DENIED must read as an error, not as "this address is nowhere".
+  const data = (await res.json()) as {
+    status?: string
+    error_message?: string
+    results?: Array<{
+      address_components?: Array<{ long_name: string; types: string[] }>
+      geometry?: { location?: { lat: number; lng: number } }
+      place_id?: string
+      formatted_address?: string
+    }>
+  }
+  if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+    console.error('[geocode] Geocoding API error', data.status, data.error_message ?? '')
+    return { location: null, error: true }
+  }
+
+  const result = data.results?.[0]
+  if (!result) return { location: null, error: false }
+
+  const components = result.address_components ?? []
+  const find = (type: string) => components.find((c) => c.types.includes(type))?.long_name ?? null
+
+  return {
+    error: false,
+    location: {
+      city: find('locality') ?? find('administrative_area_level_2'),
+      state: find('administrative_area_level_1'),
+      country: find('country'),
+      lat: result.geometry?.location?.lat ?? null,
+      lng: result.geometry?.location?.lng ?? null,
+      place_id: result.place_id ?? null,
+      formatted: result.formatted_address ?? text,
+    },
+  }
+}
+
+async function placesTextSearch(env: Bindings, text: string): Promise<GeocodeAttempt> {
   const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Goog-Api-Key': env.GOOGLE_MAPS_API_KEY,
+      'X-Goog-Api-Key': env.GOOGLE_MAPS_API_KEY!,
       'X-Goog-FieldMask': 'places.id,places.formattedAddress,places.location,places.addressComponents',
     },
     body: JSON.stringify({ textQuery: text, languageCode: 'en', pageSize: 1 }),
   })
   if (!res.ok) {
     console.error('[geocode] Places searchText error', res.status, (await res.text()).slice(0, 300))
-    return null
+    return { location: null, error: true }
   }
 
   const data = (await res.json()) as {
@@ -70,28 +136,23 @@ export async function geocodeAddress(env: Bindings, address: string): Promise<Ge
   }
 
   const place = data.places?.[0]
-  if (!place) {
-    await env.KV.put(cacheKey, JSON.stringify({ found: false }), { expirationTtl: CACHE_TTL_SECONDS }).catch(() => {})
-    return null
-  }
+  if (!place) return { location: null, error: false }
 
   const components = place.addressComponents ?? []
   const find = (type: string) => components.find((c) => c.types?.includes(type))?.longText ?? null
 
-  const location: GeocodedLocation = {
-    city: find('locality') ?? find('administrative_area_level_2'),
-    state: find('administrative_area_level_1'),
-    country: find('country'),
-    lat: place.location?.latitude ?? null,
-    lng: place.location?.longitude ?? null,
-    place_id: place.id ?? null,
-    formatted: place.formattedAddress ?? text,
+  return {
+    error: false,
+    location: {
+      city: find('locality') ?? find('administrative_area_level_2'),
+      state: find('administrative_area_level_1'),
+      country: find('country'),
+      lat: place.location?.latitude ?? null,
+      lng: place.location?.longitude ?? null,
+      place_id: place.id ?? null,
+      formatted: place.formattedAddress ?? text,
+    },
   }
-
-  await env.KV.put(cacheKey, JSON.stringify({ found: true, location }), { expirationTtl: CACHE_TTL_SECONDS }).catch(
-    () => {}
-  )
-  return location
 }
 
 /** Geocode a contact's wedding location into its structured region columns. */
