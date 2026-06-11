@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { setCookie } from 'hono/cookie'
-import { t, type MessageKey } from '../i18n'
+import { SUPPORTED_LOCALES, t, type MessageKey } from '../i18n'
 import type { Env } from '../types'
 import { MarketingLayout } from '../views/layouts/marketing'
 
@@ -20,6 +20,47 @@ function captureReferral(c: any) {
     maxAge: 60 * 60 * 24 * 30,
   })
 }
+
+function safeReturnTo(c: any, requested?: string): string {
+  const fallback = '/'
+  const candidate = requested || c.req.header('referer') || fallback
+
+  if (candidate.startsWith('/') && !candidate.startsWith('//')) {
+    return candidate === '/locale' ? fallback : candidate
+  }
+
+  try {
+    const target = new URL(candidate)
+    const current = new URL(c.req.url)
+    if (target.origin === current.origin && target.pathname !== '/locale') {
+      return `${target.pathname}${target.search}${target.hash}`
+    }
+  } catch {
+    return fallback
+  }
+
+  return fallback
+}
+
+marketing.post('/locale', async (c) => {
+  const body = await c.req.parseBody()
+  const locale = typeof body.locale === 'string' ? body.locale.trim() : ''
+  const returnTo = typeof body.return_to === 'string' ? body.return_to.trim() : undefined
+  const supported = SUPPORTED_LOCALES.some((l) => l.tag === locale)
+
+  if (supported) {
+    const isSecureRequest = new URL(c.req.url).protocol === 'https:'
+    setCookie(c, 'wc_locale', locale, {
+      path: '/',
+      httpOnly: true,
+      secure: isSecureRequest,
+      sameSite: 'Lax',
+      maxAge: 60 * 60 * 24 * 365,
+    })
+  }
+
+  return c.redirect(safeReturnTo(c, returnTo), 303)
+})
 
 // Markdown content negotiation — return markdown when agents request it
 const markdownPages: Record<string, string> = {
@@ -180,8 +221,8 @@ marketing.use('/', async (c, next) => {
   await next()
   c.header('Link', [
     '</sitemap.xml>; rel="sitemap"',
-    `</standard>; rel="service-doc"; title="${t('marketing.link.openFormat')}"`,
-    `</docs/plain-text>; rel="help"; title="${t('marketing.link.plainTextDocs')}"`,
+    '</standard>; rel="service-doc"; title="Open Format Specification"',
+    '</docs/plain-text>; rel="help"; title="Plain Text Data Documentation"',
     '</.well-known/carddav>; rel="related"; title="CardDAV"',
     '</.well-known/caldav>; rel="related"; title="CalDAV"',
   ].join(', '))

@@ -18,6 +18,14 @@ import { generatePreview, processImportJob } from '../../services/import/process
 import { extractContactsFromText, extractFromUrl } from '../../services/import/extract'
 import { resolveSecret } from '../../services/secrets'
 import { formatDate } from '../../lib/date'
+import { t } from '../../i18n'
+
+// Newer target fields have i18n labels; older ones keep their inline label.
+function fieldLabel(field: { key: string; label: string }): string {
+  if (field.key === '_extra') return t('contacts.import.field.extra')
+  if (field.key === 'created_at') return t('contacts.import.field.createdAt')
+  return field.label
+}
 
 function safeJsonParse<T>(json: string | null, fallback: T): T {
   if (!json) return fallback
@@ -273,7 +281,7 @@ importRoutes.get('/app/import/:id/map', async (c) => {
                             value={field.key}
                             selected={mapping[header] === field.key}
                           >
-                            {field.label}{'required' in field && field.required ? ' *' : ''}
+                            {fieldLabel(field)}{'required' in field && field.required ? ' *' : ''}
                           </option>
                         ))}
                       </select>
@@ -337,9 +345,12 @@ importRoutes.get('/app/import/:id/preview', async (c) => {
   const mappedFields = Object.values(mapping).filter((v) => v !== '_skip')
   const uniqueFields = [...new Set(mappedFields)]
   const fieldLabels = CONTACT_TARGET_FIELDS.reduce<Record<string, string>>((acc, f) => {
-    acc[f.key] = f.label
+    acc[f.key] = fieldLabel(f)
     return acc
   }, {})
+  fieldLabels._extra = t('contacts.import.preview.extraColumn')
+
+  const canCreateWeddings = uniqueFields.includes('status') && uniqueFields.includes('wedding_date')
 
   return c.html(
     <AppLayout title="Preview import" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
@@ -379,6 +390,25 @@ importRoutes.get('/app/import/:id/preview', async (c) => {
 
         <form method="post" action={`/app/import/${job.id}/process`}>
           <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+
+          {canCreateWeddings && (
+            <div class="bg-white border border-papaya-300/30 rounded-xl p-4 mb-6">
+              <p class="text-sm font-bold text-gray-900 mb-2">{t('contacts.import.options.title')}</p>
+              <label class="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="create_weddings"
+                  value="1"
+                  class="mt-0.5 rounded border-gray-300 text-horizon-600 focus:ring-horizon-600"
+                />
+                <span>
+                  <span class="block text-sm font-medium text-gray-900">{t('contacts.import.options.createWeddings')}</span>
+                  <span class="block text-xs text-gray-500 mt-0.5">{t('contacts.import.options.createWeddingsHelp')}</span>
+                </span>
+              </label>
+            </div>
+          )}
+
           <div class="flex items-center gap-3">
             <button
               type="submit"
@@ -399,6 +429,13 @@ importRoutes.get('/app/import/:id/preview', async (c) => {
 importRoutes.post('/app/import/:id/process', async (c) => {
   const vendor = c.get('vendor')!
   const jobId = c.req.param('id')
+
+  const form = await c.req.formData()
+  if (form.get('create_weddings') === '1') {
+    await updateImportJob(c.env.DB, vendor.id, jobId, {
+      config: JSON.stringify({ create_weddings: true }),
+    })
+  }
 
   try {
     await processImportJob(c.env.DB, vendor.id, jobId)
@@ -425,6 +462,8 @@ importRoutes.get('/app/import/:id', async (c) => {
     ? await listImportRecords(c.env.DB, job.id, 'failed')
     : []
 
+  const jobConfig = safeJsonParse<{ weddings_created?: number }>(job.config, {})
+
   return c.html(
     <AppLayout title="Import results" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-2xl">
@@ -440,10 +479,13 @@ importRoutes.get('/app/import/:id', async (c) => {
           </div>
 
           {(job.status === 'completed' || job.status === 'failed') && (
-            <div class="grid grid-cols-3 gap-4">
+            <div class={`grid gap-4 ${jobConfig.weddings_created ? 'grid-cols-4' : 'grid-cols-3'}`}>
               <StatBox label="Imported" value={job.imported_count} color="horizon" />
               <StatBox label="Skipped" value={job.skipped_count} color="gray" />
               <StatBox label="Failed" value={job.failed_count} color="grapefruit" />
+              {jobConfig.weddings_created ? (
+                <StatBox label={t('contacts.import.weddingsCreated')} value={jobConfig.weddings_created} color="horizon" />
+              ) : null}
             </div>
           )}
 

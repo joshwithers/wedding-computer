@@ -74,12 +74,12 @@ describe('autoMapColumns', () => {
     expect(result['How You Found Us']).toBe('source')
   })
 
-  it('skips unrecognized headers', () => {
+  it('keeps unrecognized headers as extra details', () => {
     const headers = ['First Name', 'Completely Random Column', 'Some Weird Thing']
     const result = autoMapColumns(headers)
     expect(result['First Name']).toBe('first_name')
-    expect(result['Completely Random Column']).toBe('_skip')
-    expect(result['Some Weird Thing']).toBe('_skip')
+    expect(result['Completely Random Column']).toBe('_extra')
+    expect(result['Some Weird Thing']).toBe('_extra')
   })
 
   it('fuzzy-matches case insensitively with stripped punctuation', () => {
@@ -184,11 +184,12 @@ describe('IMPORT_PRESETS', () => {
     }
   })
 
-  it('each preset maps to valid target fields or _skip', () => {
+  it('each preset maps to valid target fields or _skip/_extra', () => {
     const validTargets = new Set([
       'first_name', 'last_name', 'email', 'phone',
       'partner_first_name', 'partner_last_name', 'partner_email', 'partner_phone',
-      'wedding_date', 'wedding_location', 'source', 'status', 'notes', '_skip',
+      'wedding_date', 'wedding_location', 'source', 'status', 'notes',
+      'created_at', '_extra', '_skip',
     ])
     for (const [key, preset] of Object.entries(IMPORT_PRESETS)) {
       for (const [col, target] of Object.entries(preset.defaultMapping)) {

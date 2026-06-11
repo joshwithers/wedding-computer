@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { getCookie } from 'hono/cookie'
 import { trimTrailingSlash } from 'hono/trailing-slash'
 import type { Env } from './types'
 import marketing from './routes/marketing'
@@ -63,10 +64,10 @@ const app = new Hono<Env>()
 
 // Every request runs inside an i18n context (AsyncLocalStorage) so t() and
 // the date helpers work anywhere without prop-drilling. Seeded here from
-// Accept-Language; the auth/tenant middleware refine it with the signed-in
-// user's saved locale and timezone.
+// the public language preference cookie, then Accept-Language. The auth/tenant
+// middleware refine it with the signed-in user's saved locale and timezone.
 app.use((c, next) =>
-  runWithI18n({ locale: resolveLocale(null, c.req.header('accept-language')) }, () => next())
+  runWithI18n({ locale: resolveLocale(getCookie(c, 'wc_locale'), c.req.header('accept-language')) }, () => next())
 )
 
 // /app/ and friends: redirect trailing-slash 404s to the canonical path

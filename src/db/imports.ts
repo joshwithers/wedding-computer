@@ -44,7 +44,7 @@ export async function updateImportJob(
   db: D1Database,
   vendorId: string,
   jobId: string,
-  data: Partial<Pick<ImportJob, 'status' | 'column_mapping' | 'total_records' | 'imported_count' | 'skipped_count' | 'failed_count' | 'error_log' | 'preview_data' | 'raw_data' | 'completed_at'>>
+  data: Partial<Pick<ImportJob, 'status' | 'column_mapping' | 'total_records' | 'imported_count' | 'skipped_count' | 'failed_count' | 'error_log' | 'preview_data' | 'raw_data' | 'config' | 'completed_at'>>
 ): Promise<void> {
   const sets: string[] = []
   const values: unknown[] = []

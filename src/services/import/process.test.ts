@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeDate, generatePreview } from './process'
+import { normalizeDate, normalizeTime, normalizeTimestamp, generatePreview } from './process'
 
 describe('normalizeDate', () => {
   it('returns null for empty/undefined', () => {
@@ -108,9 +108,67 @@ describe('generatePreview', () => {
     expect(preview[0].notes).toBe('Sarah Smith')
   })
 
+  it('summarises _extra columns into a single preview column', () => {
+    const extraMapping: Record<string, string> = {
+      'First Name': 'first_name',
+      'Last Name': '_extra',
+      'Junk': '_extra',
+    }
+    const preview = generatePreview(rows, extraMapping, 1)
+    expect(preview[0].first_name).toBe('Sarah')
+    expect(preview[0]._extra).toBe('Last Name: Smith · Junk: xyz')
+  })
+
+  it('omits the _extra column when extras are empty', () => {
+    const extraMapping: Record<string, string> = {
+      'First Name': 'first_name',
+      'Missing Column': '_extra',
+    }
+    const preview = generatePreview(rows, extraMapping, 1)
+    expect(preview[0]).not.toHaveProperty('_extra')
+  })
+
   it('skips empty values', () => {
     const sparseRows = [{ 'First Name': 'Sarah', 'Last Name': '', 'Email': 'sarah@e.com' }]
     const preview = generatePreview(sparseRows, mapping, 1)
     expect(preview[0]).toEqual({ first_name: 'Sarah', email: 'sarah@e.com' })
+  })
+})
+
+describe('normalizeTime', () => {
+  it('accepts HH:MM and H:MM', () => {
+    expect(normalizeTime('14:30')).toBe('14:30')
+    expect(normalizeTime('9:05')).toBe('09:05')
+    expect(normalizeTime('14:30:00')).toBe('14:30')
+  })
+
+  it('rejects junk and out-of-range values', () => {
+    expect(normalizeTime(undefined)).toBeNull()
+    expect(normalizeTime('')).toBeNull()
+    expect(normalizeTime('3pm')).toBeNull()
+    expect(normalizeTime('25:00')).toBeNull()
+    expect(normalizeTime('12:75')).toBeNull()
+  })
+})
+
+describe('normalizeTimestamp', () => {
+  it('passes through SQLite datetime format', () => {
+    expect(normalizeTimestamp('2024-03-01 10:22:01')).toBe('2024-03-01 10:22:01')
+  })
+
+  it('converts ISO timestamps to SQLite form', () => {
+    expect(normalizeTimestamp('2024-03-01T10:22:01.123Z')).toBe('2024-03-01 10:22:01')
+    expect(normalizeTimestamp('2024-03-01T10:22:01+10:00')).toBe('2024-03-01 10:22:01')
+  })
+
+  it('accepts date-only values', () => {
+    expect(normalizeTimestamp('2024-03-01')).toBe('2024-03-01')
+    expect(normalizeTimestamp('15/03/2024')).toBe('2024-03-15')
+  })
+
+  it('returns null for junk', () => {
+    expect(normalizeTimestamp(undefined)).toBeNull()
+    expect(normalizeTimestamp('')).toBeNull()
+    expect(normalizeTimestamp('yesterday-ish')).toBeNull()
   })
 })

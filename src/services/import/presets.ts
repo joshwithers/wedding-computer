@@ -21,6 +21,8 @@ export const CONTACT_TARGET_FIELDS = [
   { key: 'source', label: 'Source' },
   { key: 'status', label: 'Status' },
   { key: 'notes', label: 'Notes' },
+  { key: 'created_at', label: 'Original created date' },
+  { key: '_extra', label: 'Keep as extra detail' },
   { key: '_skip', label: '-- Skip this column --' },
 ] as const
 
@@ -140,6 +142,7 @@ export const IMPORT_PRESETS: Record<string, ImportPreset> = {
     name: 'Tardis',
     description: 'Import contacts from a Tardis (Cloudflare Workers CRM) export.',
     defaultMapping: {
+      'id': '_extra',
       'first_name': 'first_name',
       'last_name': 'last_name',
       'email': 'email',
@@ -148,13 +151,45 @@ export const IMPORT_PRESETS: Record<string, ImportPreset> = {
       'partner_last_name': 'partner_last_name',
       'partner_email': 'partner_email',
       'partner_phone': 'partner_phone',
+      'instagram': '_extra',
+      'partner_instagram': '_extra',
+      'source': 'source',
+      'source_submission_id': '_skip',
+      'status': 'status',
+      'lead_github_path': '_skip',
+      'notes': 'notes',
+      'brand_id': '_skip',
+      'ceremony_date': 'wedding_date',
+      'ceremony_time': '_extra',
+      'ceremony_location': 'wedding_location',
+      'venue': '_extra',
+      'location_details': '_extra',
+      'booking_type': '_extra',
+      'package_price': '_extra',
+      'travel_fee': '_extra',
+      'region': '_extra',
+      'normalized_region': '_skip',
+      'additions': '_extra',
+      'timeline_html': '_skip',
+      'tally_id': '_skip',
+      'typeform_id': '_skip',
+      'upload_token': '_skip',
+      'how_found': '_extra',
+      'first_touchpoint': '_extra',
+      'contact_preference': '_extra',
+      'preferred_photographer': '_extra',
+      'enquiry_message': '_extra',
+      'p1_dob': '_extra',
+      'p2_dob': '_extra',
+      'gclid': '_skip',
+      'booked_at': '_extra',
+      'created_at': 'created_at',
+      'updated_at': '_skip',
+      // Legacy/manual export column names
       'wedding_date': 'wedding_date',
       'wedding_location': 'wedding_location',
-      'source': 'source',
-      'status': 'status',
-      'notes': 'notes',
     },
-    notes: 'Export from Tardis: Settings → Export Data → Contacts → JSON or CSV.',
+    notes: 'Export the Tardis contacts table as JSON or CSV (one row per contact, original column names). Elopement details like venue, package price, and travel fee are kept on each contact as extra details.',
   },
 }
 
@@ -171,8 +206,10 @@ export function autoMapColumns(
       continue
     }
 
+    // Unrecognised columns are kept as extra details rather than dropped —
+    // imports shouldn't silently lose data the source system cared about.
     const match = fuzzyMatchField(header)
-    mapping[header] = match ?? '_skip'
+    mapping[header] = match ?? '_extra'
   }
 
   return mapping

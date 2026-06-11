@@ -1,9 +1,65 @@
 import type { FC, PropsWithChildren } from 'hono/jsx'
-import { getI18n, t } from '../../i18n'
+import { getI18n, PUBLIC_LOCALES, t } from '../../i18n'
 import { SharedHead } from '../head'
 import { Logo } from '../logo'
 
 type Props = PropsWithChildren<{ title?: string }>
+
+const primaryLanguage = (tag: string) => tag.split('-')[0].toLowerCase()
+
+const LanguageSwitcher: FC<{ placement: 'nav' | 'footer' }> = ({ placement }) => {
+  const currentLocale = getI18n().locale
+  const currentLanguage = primaryLanguage(currentLocale)
+  const current =
+    PUBLIC_LOCALES.find((l) => l.tag === currentLocale) ??
+    PUBLIC_LOCALES.find((l) => primaryLanguage(l.tag) === currentLanguage) ??
+    PUBLIC_LOCALES[0]
+  const isNav = placement === 'nav'
+
+  return (
+    <form method="post" action="/locale" class={`relative ${isNav ? 'hidden sm:block' : 'w-full sm:w-auto'}`}>
+      <label for={`locale-${placement}`} class="sr-only">{t('marketing.nav.language')}</label>
+      <input type="hidden" name="return_to" value="/" data-locale-return-to />
+      <svg
+        class={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${isNav ? 'text-papaya-200' : 'text-gray-400'}`}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3.6 9h16.8M3.6 15h16.8M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+      </svg>
+      <select
+        id={`locale-${placement}`}
+        name="locale"
+        aria-label={`${t('marketing.nav.language')}: ${current.label}`}
+        onchange="this.form.submit()"
+        class={`${isNav ? 'w-40 bg-grapefruit-800/40 text-papaya-50 border-papaya-300/30 hover:bg-grapefruit-800/60 focus:ring-papaya-300' : 'w-full sm:w-52 bg-white text-gray-700 border-gray-200 hover:border-gray-300 focus:ring-horizon-500'} appearance-none rounded-xl border py-2 pl-9 pr-8 text-sm font-semibold transition-colors focus:outline-none focus:ring-2`}
+      >
+        {PUBLIC_LOCALES.map((locale) => (
+          <option value={locale.tag} selected={locale.tag === current.tag}>
+            {locale.label}
+          </option>
+        ))}
+      </select>
+      <svg
+        class={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 ${isNav ? 'text-papaya-200' : 'text-gray-400'}`}
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        aria-hidden="true"
+      >
+        <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd" />
+      </svg>
+      <noscript>
+        <button type="submit" class="ml-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700">
+          {t('common.save')}
+        </button>
+      </noscript>
+    </form>
+  )
+}
 
 export const MarketingLayout: FC<Props> = ({ title, children }) => (
   <html lang={getI18n().locale}>
@@ -20,6 +76,7 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => (
           <div class="flex items-center gap-3 sm:gap-6">
             <a href="/pricing" class="hidden sm:inline text-sm font-medium text-papaya-200 hover:text-white transition-colors">{t('marketing.nav.pricing')}</a>
             <a href="/about" class="hidden sm:inline text-sm font-medium text-papaya-200 hover:text-white transition-colors">{t('marketing.nav.about')}</a>
+            <LanguageSwitcher placement="nav" />
             <a href="/login" class="text-sm font-semibold bg-white text-grapefruit-700 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl hover:bg-papaya transition-colors whitespace-nowrap">
               {t('marketing.nav.signIn')}
             </a>
@@ -38,6 +95,7 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => (
               <a href="/docs/plain-text" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.docs')}</a>
               <a href="/login" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.signIn')}</a>
             </div>
+            <LanguageSwitcher placement="footer" />
           </div>
         </div>
       </footer>
@@ -84,6 +142,14 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => (
         }
       }
     ]
+  });
+})();
+      ` }} />
+      <script dangerouslySetInnerHTML={{ __html: `
+(function() {
+  var current = window.location.pathname + window.location.search + window.location.hash;
+  document.querySelectorAll('[data-locale-return-to]').forEach(function(input) {
+    input.value = current || '/';
   });
 })();
       ` }} />

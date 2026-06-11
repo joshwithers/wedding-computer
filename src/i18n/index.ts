@@ -12,6 +12,8 @@
 // SUPPORTED_LOCALES. Untranslated keys fall back to English at runtime.
 
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { de } from './de'
+import { el } from './el'
 import { en } from './en'
 import { es } from './es'
 import { fr } from './fr'
@@ -26,7 +28,7 @@ export type Dictionary = Partial<Record<MessageKey, string>>
 
 // Language dictionaries. Regional variants (en-AU vs en-US) share a
 // dictionary; the full locale tag drives date/number formatting.
-const DICTIONARIES: Record<string, Dictionary> = { en, es, fr, it, ja, nl, pt, zh }
+const DICTIONARIES: Record<string, Dictionary> = { de, el, en, es, fr, it, ja, nl, pt, zh }
 
 export const SUPPORTED_LOCALES = [
   { tag: 'en-AU', label: 'English (Australia)' },
@@ -37,6 +39,11 @@ export const SUPPORTED_LOCALES = [
   { tag: 'es-MX', label: 'Español (México)' },
   { tag: 'fr-FR', label: 'Français (France)' },
   { tag: 'fr-CA', label: 'Français (Canada)' },
+  { tag: 'de-DE', label: 'Deutsch (Deutschland)' },
+  { tag: 'de-AT', label: 'Deutsch (Österreich)' },
+  { tag: 'de-CH', label: 'Deutsch (Schweiz)' },
+  { tag: 'el-GR', label: 'Ελληνικά (Ελλάδα)' },
+  { tag: 'el-CY', label: 'Ελληνικά (Κύπρος)' },
   { tag: 'it-IT', label: 'Italiano (Italia)' },
   { tag: 'it-CH', label: 'Italiano (Svizzera)' },
   { tag: 'ja-JP', label: '日本語（日本）' },
@@ -46,6 +53,19 @@ export const SUPPORTED_LOCALES = [
   { tag: 'pt-BR', label: 'Português (Brasil)' },
   { tag: 'zh-CN', label: '中文（简体，中国）' },
   { tag: 'zh-SG', label: '中文（简体，新加坡）' },
+] as const
+
+export const PUBLIC_LOCALES = [
+  { tag: 'en-AU', label: 'English' },
+  { tag: 'es-ES', label: 'Español' },
+  { tag: 'fr-FR', label: 'Français' },
+  { tag: 'de-DE', label: 'Deutsch' },
+  { tag: 'el-GR', label: 'Ελληνικά' },
+  { tag: 'it-IT', label: 'Italiano' },
+  { tag: 'ja-JP', label: '日本語' },
+  { tag: 'nl-NL', label: 'Nederlands' },
+  { tag: 'pt-PT', label: 'Português' },
+  { tag: 'zh-CN', label: '中文' },
 ] as const
 
 export type I18nContext = {

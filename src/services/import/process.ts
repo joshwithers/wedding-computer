@@ -1,4 +1,9 @@
-import { createContact } from '../../db/contacts'
+import { createContact, updateContact } from '../../db/contacts'
+import { createWedding, updateWedding, addWeddingMember } from '../../db/weddings'
+import { createEvent } from '../../db/calendar'
+import { createActivity } from '../../db/activities'
+import { getVendorById } from '../../db/vendors'
+import { todayString } from '../../lib/date'
 import {
   getImportJob,
   updateImportJob,
@@ -7,13 +12,19 @@ import {
   listImportRecords,
 } from '../../db/imports'
 import { normalizeStatus } from './presets'
-import type { ImportJob } from '../../types'
+import type { ImportJob, VendorProfile } from '../../types'
 
 export type ProcessResult = {
   imported: number
   skipped: number
   failed: number
+  weddings_created: number
   errors: { index: number; error: string }[]
+}
+
+export type MappedRow = {
+  fields: Record<string, string>
+  extras: Record<string, string>
 }
 
 export async function processImportJob(
@@ -37,7 +48,14 @@ export async function processImportJob(
     ? JSON.parse(job.raw_data)
     : []
 
-  const result: ProcessResult = { imported: 0, skipped: 0, failed: 0, errors: [] }
+  const config: { create_weddings?: boolean } = job.config
+    ? safeParse(job.config, {})
+    : {}
+
+  // Wedding creation needs the vendor's user for membership rows.
+  const vendor = config.create_weddings ? await getVendorById(db, vendorId) : null
+
+  const result: ProcessResult = { imported: 0, skipped: 0, failed: 0, weddings_created: 0, errors: [] }
 
   for (let i = 0; i < rows.length; i++) {
     const raw = rows[i]
@@ -48,10 +66,10 @@ export async function processImportJob(
       record_index: i,
       entity_type: job.entity_type,
       raw_data: JSON.stringify(raw),
-      mapped_data: JSON.stringify(mapped),
+      mapped_data: JSON.stringify({ ...mapped.fields, ...(Object.keys(mapped.extras).length ? { _extra: mapped.extras } : {}) }),
     })
 
-    if (!mapped.first_name || mapped.first_name.trim() === '') {
+    if (!mapped.fields.first_name || mapped.fields.first_name.trim() === '') {
       await updateImportRecord(db, vendorId, record.id, {
         status: 'skipped',
         error: 'Missing required field: first_name',
@@ -62,7 +80,11 @@ export async function processImportJob(
 
     try {
       if (job.entity_type === 'contact') {
-        const contact = await importContact(db, vendorId, mapped)
+        const { contact, status } = await importContact(db, vendorId, mapped)
+        if (vendor) {
+          const created = await createWeddingForImportedContact(db, vendor, contact.id, mapped, status)
+          if (created) result.weddings_created++
+        }
         await updateImportRecord(db, vendorId, record.id, {
           status: 'imported',
           entity_id: contact.id,
@@ -100,38 +122,50 @@ export async function processImportJob(
     skipped_count: result.skipped,
     failed_count: result.failed,
     error_log: result.errors.length > 0 ? JSON.stringify(result.errors) : null,
+    config: JSON.stringify({ ...config, weddings_created: result.weddings_created }),
     completed_at: new Date().toISOString(),
   })
 
   return result
 }
 
+function safeParse<T>(json: string, fallback: T): T {
+  try {
+    return JSON.parse(json) as T
+  } catch {
+    return fallback
+  }
+}
+
 function applyMapping(
   row: Record<string, string>,
   mapping: Record<string, string>
-): Record<string, string> {
-  const result: Record<string, string> = {}
+): MappedRow {
+  const fields: Record<string, string> = {}
+  const extras: Record<string, string> = {}
 
   for (const [sourceCol, targetField] of Object.entries(mapping)) {
     if (targetField === '_skip' || !targetField) continue
     const value = row[sourceCol]
-    if (value && value.trim()) {
-      if (result[targetField]) {
-        result[targetField] += ' ' + value.trim()
-      } else {
-        result[targetField] = value.trim()
-      }
+    if (!value || !value.trim()) continue
+    if (targetField === '_extra') {
+      extras[sourceCol] = value.trim()
+    } else if (fields[targetField]) {
+      fields[targetField] += ' ' + value.trim()
+    } else {
+      fields[targetField] = value.trim()
     }
   }
 
-  return result
+  return { fields, extras }
 }
 
 async function importContact(
   db: D1Database,
   vendorId: string,
-  data: Record<string, string>
-) {
+  mapped: MappedRow
+): Promise<{ contact: { id: string }; status: string | null }> {
+  const data = mapped.fields
   const contact = await createContact(db, vendorId, {
     first_name: data.first_name,
     last_name: data.last_name || '',
@@ -145,14 +179,110 @@ async function importContact(
     wedding_date: normalizeDate(data.wedding_date) || null,
     wedding_location: data.wedding_location || null,
     notes: data.notes || null,
+    form_data: Object.keys(mapped.extras).length > 0 ? JSON.stringify(mapped.extras) : null,
+    created_at: normalizeTimestamp(data.created_at),
   })
 
+  let status: string | null = null
   if (data.status) {
+    status = normalizeStatus(data.status)
     const { updateContactStatus } = await import('../../db/contacts')
-    await updateContactStatus(db, vendorId, contact.id, normalizeStatus(data.status))
+    await updateContactStatus(db, vendorId, contact.id, status)
   }
 
-  return contact
+  return { contact, status }
+}
+
+/**
+ * Quietly create a wedding for an imported booked/completed contact: wedding +
+ * vendor membership + calendar booking + contact link. Unlike the interactive
+ * promote flow this sends no couple invites and creates no user accounts —
+ * bulk imports of historical clients must never email them.
+ */
+async function createWeddingForImportedContact(
+  db: D1Database,
+  vendor: VendorProfile,
+  contactId: string,
+  mapped: MappedRow,
+  status: string | null
+): Promise<boolean> {
+  if (status !== 'booked' && status !== 'completed') return false
+
+  const date = normalizeDate(mapped.fields.wedding_date)
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false
+
+  const f = mapped.fields
+  const title = f.partner_first_name
+    ? `${f.first_name} & ${f.partner_first_name}`
+    : `${f.first_name} ${f.last_name ?? ''}`.trim()
+
+  const bookingType = (mapped.extras.booking_type ?? '').toLowerCase().trim()
+  const time = normalizeTime(mapped.extras.ceremony_time)
+
+  const wedding = await createWedding(db, {
+    title,
+    date,
+    time,
+    location: f.wedding_location ?? null,
+    ceremony_type: bookingType || 'wedding',
+    created_by_user_id: vendor.user_id,
+  })
+
+  // Historical weddings land as completed; future bookings as confirmed.
+  const weddingStatus = status === 'completed' || date < todayString() ? 'completed' : 'confirmed'
+  await updateWedding(db, wedding.id, { status: weddingStatus })
+
+  await addWeddingMember(db, {
+    wedding_id: wedding.id,
+    user_id: vendor.user_id,
+    role: 'vendor',
+    vendor_profile_id: vendor.id,
+    vendor_role: vendor.category,
+    can_manage: true,
+  })
+
+  try {
+    await createEvent(db, vendor.id, {
+      title,
+      date,
+      start_time: time,
+      type: 'booking',
+      wedding_id: wedding.id,
+      all_day: !time,
+    })
+  } catch (err) {
+    console.error('[IMPORT] calendar event failed:', err instanceof Error ? err.message : err)
+  }
+
+  await updateContact(db, vendor.id, contactId, { wedding_id: wedding.id })
+  await createActivity(db, contactId, 'status_change', `Imported with wedding: ${title}`)
+
+  return true
+}
+
+/** Accept 'HH:MM' / 'H:MM' (with optional seconds) — anything else is dropped. */
+export function normalizeTime(raw?: string): string | null {
+  if (!raw) return null
+  const match = raw.trim().match(/^(\d{1,2}):(\d{2})/)
+  if (!match) return null
+  const hours = parseInt(match[1])
+  if (hours > 23 || parseInt(match[2]) > 59) return null
+  return `${String(hours).padStart(2, '0')}:${match[2]}`
+}
+
+/**
+ * Source timestamps ('2024-03-01 10:22:01' or ISO) pass through so imported
+ * contacts keep their original created date; date-only values are accepted;
+ * anything else falls back to the insert default.
+ */
+export function normalizeTimestamp(raw?: string): string | null {
+  if (!raw) return null
+  const trimmed = raw.trim()
+  if (/^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?/.test(trimmed)) {
+    return trimmed.replace('T', ' ').replace(/(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/, '')
+  }
+  const date = normalizeDate(trimmed)
+  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null
 }
 
 export function normalizeDate(raw?: string): string | null {
@@ -220,5 +350,13 @@ export function generatePreview(
   mapping: Record<string, string>,
   limit = 5
 ): Record<string, string>[] {
-  return rows.slice(0, limit).map((row) => applyMapping(row, mapping))
+  return rows.slice(0, limit).map((row) => {
+    const mapped = applyMapping(row, mapping)
+    const display = { ...mapped.fields }
+    const extraEntries = Object.entries(mapped.extras)
+    if (extraEntries.length > 0) {
+      display._extra = extraEntries.map(([k, v]) => `${k}: ${v}`).join(' · ')
+    }
+    return display
+  })
 }

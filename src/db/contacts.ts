@@ -65,14 +65,16 @@ export async function createContact(
     wedding_location?: string | null
     notes?: string | null
     form_data?: string | null
+    /** Imports preserve the source system's created date; defaults to now. */
+    created_at?: string | null
   }
 ): Promise<Contact> {
   const result = await db
     .prepare(
       `INSERT INTO contacts (vendor_id, first_name, last_name, email, phone,
         partner_first_name, partner_last_name, partner_email, partner_phone,
-        source, wedding_date, wedding_location, notes, form_data)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        source, wedding_date, wedding_location, notes, form_data, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))
        RETURNING *`
     )
     .bind(
@@ -89,7 +91,8 @@ export async function createContact(
       data.wedding_date ?? null,
       data.wedding_location ?? null,
       data.notes ?? null,
-      data.form_data ?? null
+      data.form_data ?? null,
+      data.created_at ?? null
     )
     .first<Contact>()
   return result!
