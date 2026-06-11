@@ -28,6 +28,9 @@ jobs:
       - name: Export production D1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # Pin the account so a multi-account token can't target the wrong one.
+          # Account IDs are not secret (they appear in dashboard URLs).
+          CLOUDFLARE_ACCOUNT_ID: 56eb0a25e23b5ed8e20b17842ccc14df
         run: |
           set -euo pipefail
           npx -y wrangler@4 d1 export wedding-computer-db --remote --output d1.sql
