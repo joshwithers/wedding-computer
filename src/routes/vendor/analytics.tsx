@@ -17,6 +17,7 @@ import {
 } from '../../db/analytics'
 import { listGoals, upsertGoal, deleteGoal, getCurrentYearGoals } from '../../db/goals'
 import { getDateHeatmap } from '../../db/busyness'
+import { formatVsAverage } from '../../lib/busyness'
 
 const analytics = new Hono<Env>()
 
@@ -804,10 +805,11 @@ function HeatmapGrid({ data }: { data: Array<{ date: string; score: number; enqu
                 ? 'bg-horizon-500'
                 : 'bg-horizon-700'
         const dayLabel = new Date(d.date + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })
+        // Cross-vendor data: the tooltip stays relative, never absolute counts.
         return (
           <div
             class={`w-6 h-6 rounded ${bg} cursor-default`}
-            title={`${dayLabel}: ${d.enquiry_count} enquiries, ${d.booking_count} bookings (score: ${d.score.toFixed(1)})`}
+            title={`${dayLabel}: ${formatVsAverage(d.score, 'date')}`}
           />
         )
       })}

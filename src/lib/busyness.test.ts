@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { describeDemand, seasonOf, weekendBucketOf, ordinal } from './busyness'
+import { describeDemand, seasonOf, weekendBucketOf, ordinal, formatVsAverage } from './busyness'
 
 describe('describeDemand — score → tier interpretation', () => {
   it('reports missing data as neutral "normal", not an error state', () => {
@@ -93,5 +93,31 @@ describe('ordinal', () => {
     expect(ordinal(3)).toBe('3rd')
     expect(ordinal(4)).toBe('4th')
     expect(ordinal(5)).toBe('5th')
+  })
+})
+
+describe('formatVsAverage — relative phrasing, never absolute counts', () => {
+  it('treats ±10% and missing data as in line with average', () => {
+    expect(formatVsAverage(1.0, 'month')).toBe('in line with the average month')
+    expect(formatVsAverage(1.1, 'month')).toBe('in line with the average month')
+    expect(formatVsAverage(0.9, 'month')).toBe('in line with the average month')
+    expect(formatVsAverage(null, 'month')).toBe('in line with the average month')
+    expect(formatVsAverage(Number.NaN, 'date')).toBe('in line with the average date')
+  })
+
+  it('uses signed percentages below 2×', () => {
+    expect(formatVsAverage(1.45, 'month')).toBe('+45% vs the average month')
+    expect(formatVsAverage(0.7, 'weekend')).toBe('−30% vs the average weekend')
+    expect(formatVsAverage(1.99, 'season')).toBe('+99% vs the average season')
+  })
+
+  it('switches to a multiplier at 2× and above', () => {
+    expect(formatVsAverage(2.0, 'month')).toBe('2× the average month')
+    expect(formatVsAverage(3.25, 'date')).toBe('3.3× the average date')
+  })
+
+  it('goes qualitative at 5× so sparse data does not read as fake precision', () => {
+    expect(formatVsAverage(5, 'weekend')).toBe('well above the average weekend')
+    expect(formatVsAverage(52, 'weekend')).toBe('well above the average weekend')
   })
 })

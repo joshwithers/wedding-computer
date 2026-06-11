@@ -318,7 +318,13 @@ export async function aggregateDemandHistory(db: D1Database): Promise<void> {
   }
 }
 
-export type DemandHistoryYear = { year: string; enquiry_count: number; booking_count: number }
+// The counts in demand_history are cross-vendor aggregates, so they are never
+// surfaced directly — readers convert each bucket-year into a ratio against
+// the average same-type window of that year (1.0 = average), matching the
+// busyness-score semantics. Slots per year for the averages:
+const BUCKET_SLOTS: Record<string, number> = { month: 12, season: 4, weekend: 52 }
+
+export type DemandHistoryYear = { year: string; ratio: number }
 
 export type DemandHistoryContext = {
   level: BusynessScore['level']
@@ -330,13 +336,15 @@ export type DemandHistoryContext = {
 
 const HISTORY_YEARS_SHOWN = 3
 
-// Year-on-year history for the buckets a date falls into, at the most
+// Year-on-year history for the buckets a date falls into. With levelOverride,
+// reads exactly that level; otherwise falls back through the most
 // location-specific level that has any data (city → state → country → global).
-// Returns null when no history exists at any level.
+// Returns null when no history exists.
 export async function getDemandHistoryContext(
   db: D1Database,
   date: string,
-  vendor: { location_city: string | null; location_state: string | null; location_country: string | null }
+  vendor: { location_city: string | null; location_state: string | null; location_country: string | null },
+  levelOverride?: BusynessScore['level']
 ): Promise<DemandHistoryContext | null> {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
   if (!m) return null
@@ -346,35 +354,59 @@ export async function getDemandHistoryContext(
   const weekend = weekendBucketOf(date)
   const weekendBucket = weekend ? `${String(weekend.month).padStart(2, '0')}-w${weekend.index}` : ''
 
-  const tries: Array<[BusynessScore['level'], string | null]> = [
+  let tries: Array<[BusynessScore['level'], string | null]> = [
     ['city', vendor.location_city],
     ['state', vendor.location_state],
     ['country', vendor.location_country],
     ['global', 'global'],
   ]
+  if (levelOverride) tries = tries.filter(([level]) => level === levelOverride)
 
   for (const [level, value] of tries) {
     if (!value) continue
-    const rows = await db
-      .prepare(
-        `SELECT bucket_type, year, enquiry_count, booking_count
-         FROM demand_history
-         WHERE level = ? AND level_value = ?
-           AND ((bucket_type = 'month' AND bucket_value = ?)
-             OR (bucket_type = 'season' AND bucket_value = ?)
-             OR (bucket_type = 'weekend' AND bucket_value = ?))
-         ORDER BY year DESC`
-      )
-      .bind(level, value, monthBucket, seasonBucket, weekendBucket)
-      .all<{ bucket_type: string; year: string; enquiry_count: number; booking_count: number }>()
-      .then((r) => r.results)
+    const [rows, totals] = await Promise.all([
+      db
+        .prepare(
+          `SELECT bucket_type, year, enquiry_count, booking_count
+           FROM demand_history
+           WHERE level = ? AND level_value = ?
+             AND ((bucket_type = 'month' AND bucket_value = ?)
+               OR (bucket_type = 'season' AND bucket_value = ?)
+               OR (bucket_type = 'weekend' AND bucket_value = ?))
+           ORDER BY year DESC`
+        )
+        .bind(level, value, monthBucket, seasonBucket, weekendBucket)
+        .all<{ bucket_type: string; year: string; enquiry_count: number; booking_count: number }>()
+        .then((r) => r.results),
+      db
+        .prepare(
+          `SELECT bucket_type, year, SUM(enquiry_count) AS enquiry_total, SUM(booking_count) AS booking_total
+           FROM demand_history
+           WHERE level = ? AND level_value = ?
+           GROUP BY bucket_type, year`
+        )
+        .bind(level, value)
+        .all<{ bucket_type: string; year: string; enquiry_total: number; booking_total: number }>()
+        .then((r) => r.results),
+    ])
     if (rows.length === 0) continue
+
+    // Same weighting as the busyness score: enquiries + 3×bookings.
+    const weighted = (e: number, b: number) => e + b * 3
+    const totalsByKey = new Map(
+      totals.map((t) => [`${t.bucket_type}|${t.year}`, weighted(t.enquiry_total, t.booking_total)])
+    )
 
     const byType = (type: string): DemandHistoryYear[] =>
       rows
         .filter((r) => r.bucket_type === type)
         .slice(0, HISTORY_YEARS_SHOWN)
-        .map(({ year, enquiry_count, booking_count }) => ({ year, enquiry_count, booking_count }))
+        .flatMap(({ year, enquiry_count, booking_count }) => {
+          const yearTotal = totalsByKey.get(`${type}|${year}`) ?? 0
+          if (yearTotal <= 0) return []
+          const average = yearTotal / BUCKET_SLOTS[type]
+          return [{ year, ratio: weighted(enquiry_count, booking_count) / average }]
+        })
 
     return {
       level,
@@ -386,6 +418,59 @@ export async function getDemandHistoryContext(
   }
 
   return null
+}
+
+// ─── Demand view resolution (card + level filter) ───
+
+export type DemandLevelOption = { level: BusynessScore['level']; levelValue: string }
+
+export type DemandView = {
+  level: BusynessScore['level']
+  levelValue: string
+  score: number | null
+  history: DemandHistoryContext | null
+  availableLevels: DemandLevelOption[]
+}
+
+/**
+ * Resolve everything the Date demand card needs at one locality level.
+ * With requestedLevel, pins the card to that level (empty data shows as
+ * neutral). Without it, auto-picks the most location-specific level that has
+ * a score or history, falling back to global.
+ */
+export async function resolveDemandView(
+  db: D1Database,
+  date: string,
+  vendor: { location_city: string | null; location_state: string | null; location_country: string | null },
+  requestedLevel?: BusynessScore['level']
+): Promise<DemandView> {
+  const availableLevels: DemandLevelOption[] = []
+  if (vendor.location_city) availableLevels.push({ level: 'city', levelValue: vendor.location_city })
+  if (vendor.location_state) availableLevels.push({ level: 'state', levelValue: vendor.location_state })
+  if (vendor.location_country) availableLevels.push({ level: 'country', levelValue: vendor.location_country })
+  availableLevels.push({ level: 'global', levelValue: 'global' })
+
+  const requested = availableLevels.find((o) => o.level === requestedLevel)
+  const candidates = requested ? [requested] : availableLevels
+
+  let chosen = requested ?? availableLevels[availableLevels.length - 1]
+  let score: number | null = null
+  let history: DemandHistoryContext | null = null
+
+  for (const option of candidates) {
+    const [row, hist] = await Promise.all([
+      getScoreForDate(db, date, option.level, option.levelValue),
+      getDemandHistoryContext(db, date, vendor, option.level),
+    ])
+    if (row || hist) {
+      chosen = option
+      score = row?.score ?? null
+      history = hist
+      break
+    }
+  }
+
+  return { level: chosen.level, levelValue: chosen.levelValue, score, history, availableLevels }
 }
 
 export async function getDateHeatmap(

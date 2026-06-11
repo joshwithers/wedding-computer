@@ -91,3 +91,32 @@ export function ordinal(n: number): string {
   if (n === 3) return '3rd'
   return `${n}th`
 }
+
+/**
+ * Render a demand ratio (1.0 = average) as a relative phrase. The underlying
+ * counts are cross-vendor aggregates, so the UI only ever shows how a window
+ * compares to the average window of the same kind — never absolute volumes.
+ *   formatVsAverage(1.45, 'month')   → "+45% vs the average month"
+ *   formatVsAverage(0.7, 'weekend')  → "−30% vs the average weekend"
+ *   formatVsAverage(3.25, 'date')    → "3.3× the average date"
+ *   formatVsAverage(1.05, 'season')  → "in line with the average season"
+ */
+export function formatVsAverage(ratio: number | null | undefined, noun: string): string {
+  if (ratio === null || ratio === undefined || Number.isNaN(ratio)) {
+    return `in line with the average ${noun}`
+  }
+  const pct = Math.round((ratio - 1) * 100)
+  if (Math.abs(pct) <= 10) {
+    return `in line with the average ${noun}`
+  }
+  // Sparse data makes big multipliers meaninglessly precise ("52× the average
+  // weekend" when one weekend held a year's only activity) — go qualitative.
+  if (ratio >= 5) {
+    return `well above the average ${noun}`
+  }
+  if (ratio >= 2) {
+    const mult = Math.round(ratio * 10) / 10
+    return `${Number.isInteger(mult) ? mult.toFixed(0) : mult}× the average ${noun}`
+  }
+  return `${pct > 0 ? '+' : '−'}${Math.abs(pct)}% vs the average ${noun}`
+}

@@ -17,9 +17,10 @@ import { getStorageWithSecrets } from '../../storage'
 import type { StorageBackend } from '../../storage/types'
 import { needsMigration, migrateContacts } from '../../storage/migrate'
 import { listActivities, createActivity } from '../../db/activities'
-import { getBestScoreForDate, getDemandHistoryContext, type DemandHistoryContext, type DemandHistoryYear } from '../../db/busyness'
+import { resolveDemandView, type DemandView, type DemandHistoryContext } from '../../db/busyness'
+import type { BusynessScore } from '../../types'
 import { isProVendor } from '../../db/subscriptions'
-import { describeDemand, MONTH_NAMES, SEASON_LABELS, ordinal } from '../../lib/busyness'
+import { describeDemand, formatVsAverage, MONTH_NAMES, SEASON_LABELS, ordinal } from '../../lib/busyness'
 import { requireString, trimOrNull, sanitize } from '../../lib/validation'
 import { generateId } from '../../lib/crypto'
 import { formatDate } from '../../lib/date'
@@ -491,16 +492,14 @@ contacts.get('/app/contacts/:id', async (c) => {
     const isPro = await isProVendor(c.env.DB, vendor.id)
 
     // Date demand for the contact's wedding date (only meaningful for an
-    // upcoming date). Resolves the most location-specific score for the
-    // vendor's area; null when no aggregation row exists yet. History adds
-    // year-on-year context for the matching weekend, month, and season.
-    let demand: Awaited<ReturnType<typeof getBestScoreForDate>> = null
-    let demandHistory: DemandHistoryContext | null = null
+    // upcoming date): relative score plus year-on-year history for the
+    // matching weekend, month, and season, at the most location-specific
+    // level with data. The card's pills re-fetch at other levels.
+    let demandView: DemandView | null = null
     const today = new Date().toISOString().slice(0, 10)
     if (contact.wedding_date && contact.wedding_date >= today) {
       try {
-        demand = await getBestScoreForDate(c.env.DB, contact.wedding_date, vendor)
-        demandHistory = await getDemandHistoryContext(c.env.DB, contact.wedding_date, vendor)
+        demandView = await resolveDemandView(c.env.DB, contact.wedding_date, vendor)
       } catch (err) {
         console.error('[contacts] demand lookup failed:', err)
       }
@@ -628,7 +627,9 @@ contacts.get('/app/contacts/:id', async (c) => {
               {contact.partner_email && <DetailCard label="Partner email" value={contact.partner_email} href={`mailto:${contact.partner_email}`} />}
               {contact.partner_phone && <DetailCard label="Partner phone" value={contact.partner_phone} href={`tel:${contact.partner_phone}`} />}
               <DetailCard label="Wedding date" value={contact.wedding_date ? formatDate(contact.wedding_date) : null} />
-              {contact.wedding_date && contact.wedding_date >= today && <DemandCard demand={demand} history={demandHistory} />}
+              {contact.wedding_date && contact.wedding_date >= today && demandView && (
+                <DemandCard contactId={contact.id} view={demandView} />
+              )}
               <DetailCard label="Wedding location" value={contact.wedding_location} />
               <DetailCard label="Source" value={contact.source} />
               <DetailCard label="Added" value={formatDate(contact.created_at)} />
@@ -757,6 +758,35 @@ contacts.post('/app/contacts/:id/edit', async (c) => {
 })
 
 // ─── Status update (htmx) ───
+// htmx partial: the Date demand card re-rendered at a requested locality
+// level (city/state/country/global pills).
+contacts.get('/app/contacts/:id/demand', async (c) => {
+  const vendor = c.get('vendor')
+  if (!vendor) return c.text('Not found', 404)
+  const contactId = c.req.param('id')
+
+  let contact: Contact | null = null
+  const storage = await tryGetStorage(c.env, vendor)
+  if (storage) {
+    try {
+      const result = await getContact(storage, c.env.DB, vendor.id, contactId)
+      if (result) contact = result.contact
+    } catch (err) {
+      console.error('[contacts] getContact for demand card failed:', err)
+    }
+  }
+  if (!contact) contact = await getContactFallback(c.env.DB, vendor.id, contactId)
+  if (!contact?.wedding_date) return c.text('Not found', 404)
+
+  const requested = c.req.query('level')
+  const level = (['city', 'state', 'country', 'global'] as const).find((l) => l === requested) as
+    | BusynessScore['level']
+    | undefined
+
+  const view = await resolveDemandView(c.env.DB, contact.wedding_date, vendor, level)
+  return c.html(<DemandCard contactId={contactId} view={view} />)
+})
+
 contacts.post('/app/contacts/:id/status', async (c) => {
   const vendor = c.get('vendor')!
   const contactId = c.req.param('id')
@@ -1281,22 +1311,12 @@ function DetailCard({
   )
 }
 
-function DemandCard({
-  demand,
-  history,
-}: {
-  demand: { score: number; level: string; levelValue: string; enquiry_count: number; booking_count: number } | null
-  history: DemandHistoryContext | null
-}) {
-  const d = describeDemand(demand?.score ?? null)
-  const scope = !demand
-    ? null
-    : demand.level === 'global'
-      ? 'across the platform'
-      : `in ${demand.levelValue}`
+function DemandCard({ contactId, view }: { contactId: string; view: DemandView }) {
+  const d = describeDemand(view.score)
+  const scope = view.level === 'global' ? 'across the platform' : `in ${view.levelValue}`
 
   return (
-    <div class="bg-white border border-papaya-300/30 rounded-2xl px-4 py-3">
+    <div class="bg-white border border-papaya-300/30 rounded-2xl px-4 py-3" id="demand-card">
       <div class="flex items-center justify-between mb-1.5">
         <p class="text-xs text-gray-500">Date demand</p>
         <a href="/app/analytics" class="text-xs text-gray-400 hover:text-horizon-700">Details</a>
@@ -1305,53 +1325,73 @@ function DemandCard({
         <span class={`w-2.5 h-2.5 rounded-full shrink-0 ${d.dotClass}`} />
         <span class={`text-sm font-bold ${d.textClass}`}>{d.label}</span>
       </div>
-      {demand ? (
+      {view.score !== null ? (
         <p class="text-xs text-gray-400 mt-1.5">
-          {demand.enquiry_count} {demand.enquiry_count === 1 ? 'enquiry' : 'enquiries'} · {demand.booking_count}{' '}
-          {demand.booking_count === 1 ? 'booking' : 'bookings'} {scope} for this date
+          This date is {formatVsAverage(view.score, 'date')} {scope}
         </p>
       ) : (
         <p class="text-xs text-gray-400 mt-1.5">
-          How sought-after this date is for enquiries and bookings in your area. Updates daily.
+          How sought-after this date is for enquiries and bookings {scope}. Updates daily.
         </p>
       )}
-      {history && <DemandHistory history={history} />}
+      {view.history && <DemandHistory history={view.history} />}
+      {view.availableLevels.length > 1 && (
+        <div class="mt-2.5 pt-2.5 border-t border-gray-100 flex flex-wrap gap-1.5">
+          {view.availableLevels.map((o) => (
+            <button
+              hx-get={`/app/contacts/${contactId}/demand?level=${o.level}`}
+              hx-target="#demand-card"
+              hx-swap="outerHTML"
+              class={`px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                o.level === view.level
+                  ? 'bg-horizon-600 text-white border-horizon-600'
+                  : 'bg-white text-gray-500 border-gray-200 hover:bg-papaya-50'
+              }`}
+            >
+              {o.level === 'global' ? 'Global' : o.levelValue}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
-// Year-on-year history for the buckets this date falls into. Each line is a
-// recurring window — "3rd weekend of September", the month, the season — with
-// counts from previous years, so a date can be judged against the matching
-// weekend last year even though the calendar dates differ.
+// Year-on-year history for the recurring windows this date falls into — "3rd
+// weekend of September", the month, the season. The underlying data is a
+// cross-vendor aggregate, so each year shows only how that window compared to
+// the average window of the same kind (never absolute volumes).
 function DemandHistory({ history }: { history: DemandHistoryContext }) {
-  const scope = history.level === 'global' ? 'across the platform' : `in ${history.levelValue}`
-  const blocks: Array<{ label: string; years: DemandHistoryYear[] }> = []
+  const blocks: Array<{ label: string; noun: string; years: typeof history.month.years }> = []
 
   if (history.weekend && history.weekend.years.length > 0) {
     blocks.push({
       label: `${ordinal(history.weekend.index)} weekend of ${MONTH_NAMES[history.weekend.month - 1]}`,
+      noun: 'weekend',
       years: history.weekend.years,
     })
   }
   if (history.month.years.length > 0) {
-    blocks.push({ label: MONTH_NAMES[history.month.month - 1], years: history.month.years })
+    blocks.push({ label: MONTH_NAMES[history.month.month - 1], noun: 'month', years: history.month.years })
   }
   if (history.season.years.length > 0) {
-    blocks.push({ label: SEASON_LABELS[history.season.season] ?? history.season.season, years: history.season.years })
+    blocks.push({
+      label: SEASON_LABELS[history.season.season] ?? history.season.season,
+      noun: 'season',
+      years: history.season.years,
+    })
   }
   if (blocks.length === 0) return null
 
   return (
     <div class="mt-2.5 pt-2.5 border-t border-gray-100 space-y-2">
-      <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Past years {scope}</p>
+      <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Past years</p>
       {blocks.map((b) => (
         <div>
           <p class="text-xs font-medium text-gray-600">{b.label}</p>
           {b.years.map((y) => (
             <p class="text-xs text-gray-400">
-              {y.year}: {y.enquiry_count} {y.enquiry_count === 1 ? 'enquiry' : 'enquiries'} · {y.booking_count}{' '}
-              {y.booking_count === 1 ? 'booking' : 'bookings'}
+              {y.year}: {formatVsAverage(y.ratio, b.noun)}
             </p>
           ))}
         </div>
