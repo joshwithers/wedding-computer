@@ -1,26 +1,28 @@
 import type { VendorProfile } from '../types'
+import { t, type MessageKey } from '../i18n'
 
 // Shared in-app education config: the setup checklist + category-tailored
 // feature discovery. Reused by the onboarding wizard and the dashboard.
 
 export type FeatureCard = { label: string; href: string; desc: string }
+type FeatureDef = { labelKey: MessageKey; href: string; descKey: MessageKey }
 
 // Pool of tools we can recommend. One-liners mirror the marketing copy.
 const FEATURES = {
-  enquiry: { label: 'Enquiry form', href: '/app/form', desc: 'Capture leads from your website straight into your CRM' },
-  forms: { label: 'Forms', href: '/app/forms', desc: 'Build any form — contact, intake, or a NOIM for couples' },
-  noim: { label: 'NOIM form', href: '/app/forms/new', desc: 'Collect Notice of Intended Marriage details and generate the PDF' },
-  calendar: { label: 'Calendar & availability', href: '/app/calendar', desc: 'Track bookings and share the dates you’re free' },
-  quotes: { label: 'Quote calculator', href: '/app/quotes', desc: 'Let couples price up packages and add-ons' },
-  invoices: { label: 'Invoicing', href: '/app/invoices', desc: 'Send invoices and take deposits with Stripe' },
-  weddings: { label: 'Weddings', href: '/app/weddings', desc: 'Shared workspaces for couples and other vendors' },
-  team: { label: 'Team', href: '/app/team', desc: 'Add staff and assign them to weddings' },
-  checklists: { label: 'Checklists', href: '/app/checklists', desc: 'Reusable to-do lists that deploy when a wedding is booked' },
-  contract: { label: 'Contracts', href: '/app/contract', desc: 'Set a contract template couples sign online' },
-  analytics: { label: 'Analytics', href: '/app/analytics', desc: 'Conversion funnel, revenue and benchmarks (Pro)' },
-  refer: { label: 'Refer & earn', href: '/app/refer', desc: 'Invite other vendors and earn free months' },
-  import: { label: 'Import contacts', href: '/app/import', desc: 'Bring leads in from a CSV or another CRM' },
-} as const satisfies Record<string, FeatureCard>
+  enquiry: { labelKey: 'dashboard.feature.enquiry.label', href: '/app/form', descKey: 'dashboard.feature.enquiry.desc' },
+  forms: { labelKey: 'dashboard.feature.forms.label', href: '/app/forms', descKey: 'dashboard.feature.forms.desc' },
+  noim: { labelKey: 'dashboard.feature.noim.label', href: '/app/forms/new', descKey: 'dashboard.feature.noim.desc' },
+  calendar: { labelKey: 'dashboard.feature.calendar.label', href: '/app/calendar', descKey: 'dashboard.feature.calendar.desc' },
+  quotes: { labelKey: 'dashboard.feature.quotes.label', href: '/app/quotes', descKey: 'dashboard.feature.quotes.desc' },
+  invoices: { labelKey: 'dashboard.feature.invoices.label', href: '/app/invoices', descKey: 'dashboard.feature.invoices.desc' },
+  weddings: { labelKey: 'dashboard.feature.weddings.label', href: '/app/weddings', descKey: 'dashboard.feature.weddings.desc' },
+  team: { labelKey: 'dashboard.feature.team.label', href: '/app/team', descKey: 'dashboard.feature.team.desc' },
+  checklists: { labelKey: 'dashboard.feature.checklists.label', href: '/app/checklists', descKey: 'dashboard.feature.checklists.desc' },
+  contract: { labelKey: 'dashboard.feature.contract.label', href: '/app/contract', descKey: 'dashboard.feature.contract.desc' },
+  analytics: { labelKey: 'dashboard.feature.analytics.label', href: '/app/analytics', descKey: 'dashboard.feature.analytics.desc' },
+  refer: { labelKey: 'dashboard.feature.refer.label', href: '/app/refer', descKey: 'dashboard.feature.refer.desc' },
+  import: { labelKey: 'dashboard.feature.import.label', href: '/app/import', descKey: 'dashboard.feature.import.desc' },
+} as const satisfies Record<string, FeatureDef>
 
 type FeatureKey = keyof typeof FEATURES
 
@@ -49,25 +51,37 @@ const CATEGORY_KEYS: Record<string, FeatureKey[]> = {
 export function categorySetup(category: string): CategorySetup {
   const keys = CATEGORY_KEYS[category] ?? DEFAULT_KEYS
   return {
-    blurb: 'Here are the tools most ' + categoryNoun(category) + ' set up first:',
-    recommended: keys.map((k) => FEATURES[k]),
+    blurb: t('dashboard.discovery.blurb', { category: t(categoryNounKey(category)) }),
+    recommended: keys.map((k) => featureCard(FEATURES[k])),
   }
 }
 
-function categoryNoun(category: string): string {
-  const map: Record<string, string> = {
-    celebrant: 'celebrants',
-    photographer: 'photographers',
-    videographer: 'videographers',
-    planner: 'planners',
-    venue: 'venues',
-    florist: 'florists',
-    caterer: 'caterers',
-    stylist: 'stylists',
-    dj: 'DJs',
-    band: 'bands',
+function featureCard(def: FeatureDef): FeatureCard {
+  return {
+    label: t(def.labelKey),
+    href: def.href,
+    desc: t(def.descKey),
   }
-  return map[category] ?? 'wedding pros'
+}
+
+function categoryNounKey(category: string): MessageKey {
+  const map: Record<string, MessageKey> = {
+    celebrant: 'dashboard.discovery.category.celebrant',
+    photographer: 'dashboard.discovery.category.photographer',
+    videographer: 'dashboard.discovery.category.videographer',
+    planner: 'dashboard.discovery.category.planner',
+    venue: 'dashboard.discovery.category.venue',
+    florist: 'dashboard.discovery.category.florist',
+    caterer: 'dashboard.discovery.category.caterer',
+    stylist: 'dashboard.discovery.category.stylist',
+    cake: 'dashboard.discovery.category.cake',
+    stationery: 'dashboard.discovery.category.stationery',
+    dj: 'dashboard.discovery.category.dj',
+    band: 'dashboard.discovery.category.band',
+    hair: 'dashboard.discovery.category.hair',
+    makeup: 'dashboard.discovery.category.makeup',
+  }
+  return map[category] ?? 'dashboard.discovery.category.weddingPros'
 }
 
 // ─── Setup checklist ───
@@ -89,43 +103,43 @@ export function buildSetupChecklist(
   const items: ChecklistItem[] = [
     {
       key: 'business',
-      label: 'Add your business details',
+      label: t('dashboard.setup.item.business'),
       href: '/app/settings#business',
       done: !!(vendor.phone || vendor.website || vendor.bio),
     },
     {
       key: 'location',
-      label: 'Set your location',
+      label: t('dashboard.setup.item.location'),
       href: '/app/settings#business',
       done: !!(vendor.location_city || vendor.location),
     },
     {
       key: 'email',
-      label: 'Claim your @wedding.computer email',
+      label: t('dashboard.setup.item.email'),
       href: '/app/settings#communication',
       done: !!vendor.email_handle,
     },
     {
       key: 'payments',
-      label: 'Connect payments with Stripe',
+      label: t('dashboard.setup.item.payments'),
       href: '/app/settings#invoicing',
       done: vendor.stripe_onboarding_complete === 1,
     },
     {
       key: 'enquiry',
-      label: 'Set up your enquiry form',
+      label: t('dashboard.setup.item.enquiry'),
       href: '/app/form',
       done: !!vendor.enquiry_form,
     },
     {
       key: 'contact',
-      label: 'Add your first contact',
+      label: t('dashboard.setup.item.contact'),
       href: '/app/contacts',
       done: counts.contacts > 0,
     },
     {
       key: 'calendar',
-      label: 'Add your availability',
+      label: t('dashboard.setup.item.calendar'),
       href: '/app/calendar',
       done: counts.events > 0,
     },

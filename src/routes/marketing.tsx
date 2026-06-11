@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { setCookie } from 'hono/cookie'
+import { t, type MessageKey } from '../i18n'
 import type { Env } from '../types'
 import { MarketingLayout } from '../views/layouts/marketing'
 
@@ -179,8 +180,8 @@ marketing.use('/', async (c, next) => {
   await next()
   c.header('Link', [
     '</sitemap.xml>; rel="sitemap"',
-    '</standard>; rel="service-doc"; title="Open Format Specification"',
-    '</docs/plain-text>; rel="help"; title="Plain Text Data Documentation"',
+    `</standard>; rel="service-doc"; title="${t('marketing.link.openFormat')}"`,
+    `</docs/plain-text>; rel="help"; title="${t('marketing.link.plainTextDocs')}"`,
     '</.well-known/carddav>; rel="related"; title="CardDAV"',
     '</.well-known/caldav>; rel="related"; title="CalDAV"',
   ].join(', '))
@@ -188,1693 +189,465 @@ marketing.use('/', async (c, next) => {
 
 marketing.get('/', (c) => {
   captureReferral(c)
-  return c.html(
-    <MarketingLayout>
-      <div class="max-w-5xl mx-auto px-4 sm:px-6">
-        {/* Hero */}
-        <section class="py-12 sm:py-16 lg:py-24 text-center">
-          <div class="inline-block bg-horizon-50 text-horizon-700 font-semibold text-sm px-4 py-1.5 rounded-full mb-4 sm:mb-6">
-            Free forever · Open data
-          </div>
-          <h1 class="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] mb-4 sm:mb-6">
-            <span class="block">Everyone working on a wedding,</span>
-            <span class="block text-horizon-700">finally on the same page</span>
-          </h1>
-          <p class="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto mb-6 sm:mb-10 leading-relaxed">
-            Vendors get a full CRM — leads, calendar, invoicing, email. Couples get a real
-            planning dashboard. And every wedding is a shared workspace, so the date, the timeline,
-            and the run sheet are entered <strong class="text-gray-900">once</strong> and seen by
-            everyone — instead of re-typed into a dozen different forms.
-          </p>
-          <div class="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
-            <a
-              href="/login"
-              class="bg-horizon-600 text-white px-8 py-3.5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors shadow-lg shadow-horizon/20"
-            >
-              Get started free
-            </a>
-            <a
-              href="/about"
-              class="border border-gray-300 text-gray-700 px-6 py-3.5 rounded-xl text-sm font-bold hover:border-horizon-600 hover:text-horizon-700 transition-colors"
-            >
-              See how it works
-            </a>
-          </div>
-          <p class="text-xs text-gray-400 mt-5">
-            Free for couples and vendors. No credit card. Your data in plain text you own forever.
-          </p>
-        </section>
-
-        {/* Waitlist capture — ahead of signup */}
-        <section class="pb-4 sm:pb-6">
-          <div class="bg-horizon-50 border border-horizon-600/15 rounded-2xl p-5 sm:p-6 max-w-2xl mx-auto">
-            <div class="sm:flex sm:items-center sm:justify-between gap-5">
-              <div class="mb-3 sm:mb-0">
-                <p class="font-bold text-gray-900">Be notified when it's live</p>
-                <p class="text-sm text-gray-600">We're opening up gradually — get an email the moment you can sign up.</p>
-              </div>
-              <form method="post" action="/notify" class="flex gap-2 shrink-0">
-                <input type="text" name="company" tabindex={-1} autocomplete="off" class="hidden" aria-hidden="true" />
-                <input
-                  type="email"
-                  name="email"
-                  required
-                  placeholder="you@example.com"
-                  class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent w-full sm:w-52"
-                />
-                <button type="submit" class="bg-horizon-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">
-                  Notify me
-                </button>
-              </form>
-            </div>
-          </div>
-        </section>
-
-        {/* Why it's different */}
-        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
-          <div class="max-w-3xl mx-auto text-center mb-10 sm:mb-12">
-            <h2 class="text-2xl sm:text-3xl font-bold mb-4">Not just another wedding CRM</h2>
-            <p class="text-gray-600 leading-relaxed">
-              A wedding is a dozen people working toward one day — yet most tools treat each vendor
-              as an island, and the big marketplaces rent you back your own data. Wedding Computer is
-              built on four ideas the rest of the industry forgot.
-            </p>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 max-w-4xl mx-auto">
-            <Pillar color="horizon" icon="workspace" title="Built for collaboration, not silos">
-              The wedding itself is the shared thing. Set the ceremony time once and it lands in
-              every vendor's calendar. Update the run sheet and the whole team sees it instantly —
-              no re-keying, no stale PDFs, no midnight group chats.
-            </Pillar>
-            <Pillar color="grapefruit" icon="plaintext" title="Your data, in plain text, forever">
-              Everything is stored as plain text files synced live to your own GitHub — open them in
-              Obsidian or any text editor. Not a CSV export button: a living mirror you control. If
-              you ever leave, your data is already on your computer. No lock-in, ever.
-            </Pillar>
-            <Pillar color="horizon" icon="mcp" title="AI-native, by design">
-              Connect Claude, ChatGPT, or Cursor straight to your data over MCP. AI drafts your
-              enquiry replies and builds your run sheets. Because your data is open text, you — or
-              any AI you trust — can read and write it directly.
-            </Pillar>
-            <Pillar color="grapefruit" icon="analytics" title="Know your market">
-              Anonymised demand scores show how in-demand any date is for enquiries and bookings in
-              your area — the kind of intelligence hotels and airlines have always had. Decide which
-              dates to chase, and what to charge for them.
-            </Pillar>
-          </div>
-        </section>
-
-        {/* Collaboration pitch */}
-        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
-          <div class="max-w-3xl mx-auto text-center mb-10">
-            <h2 class="text-xl sm:text-2xl font-bold mb-4">One wedding, one place, everyone together</h2>
-            <p class="text-gray-600 leading-relaxed mb-6">
-              Weddings involve a lot of people — the couple, the celebrant, the photographer,
-              the florist, the venue, the planner. Wedding Computer gives every party their own
-              view of the same wedding, with shared timelines and files that stay in sync.
-            </p>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
-            <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 text-center">
-              <div class="text-2xl mb-2">🤝</div>
-              <h3 class="text-sm font-bold mb-1">Shared timeline</h3>
-              <p class="text-xs text-gray-500">Ceremony, portraits, reception — set the times once and every vendor gets them in their calendar automatically.</p>
-            </div>
-            <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 text-center">
-              <div class="text-2xl mb-2">👥</div>
-              <h3 class="text-sm font-bold mb-1">Everyone has access</h3>
-              <p class="text-xs text-gray-500">Vendors manage their own invoices, checklists, and private notes. Couples see the big picture and track their budget.</p>
-            </div>
-            <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 text-center">
-              <div class="text-2xl mb-2">📋</div>
-              <h3 class="text-sm font-bold mb-1">Vendor credits built in</h3>
-              <p class="text-xs text-gray-500">One-click copy of the full vendor credit list for Instagram captions or blog posts — with @handles and website links.</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Features */}
-        <section class="py-10 sm:py-16">
-          <h2 class="text-xl sm:text-2xl font-bold text-center mb-3">Everything you need to run your wedding business</h2>
-          <p class="text-center text-gray-500 text-sm mb-8 sm:mb-12 max-w-lg mx-auto">For vendors, couples, and everyone in between — and the core is free forever.</p>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
-            <FeatureCard
-              color="horizon"
-              icon="crm"
-              title="CRM & pipeline"
-              desc="Track every lead from first enquiry to booked. Eight-stage pipeline, activity log, notes, and search — all in one place."
-            />
-            <FeatureCard
-              color="grapefruit"
-              icon="form"
-              title="Custom enquiry forms"
-              desc="Build your own branded enquiry form with a visual editor. Embed it anywhere. Leads land straight in your CRM with CAPTCHA protection."
-            />
-            <FeatureCard
-              color="horizon"
-              icon="calendar"
-              title="Calendar & availability"
-              desc="Monthly calendar with availability settings and event management. Pro users can sync to Apple Calendar via CalDAV, or share a read-only iCal feed with any app."
-            />
-            <FeatureCard
-              color="grapefruit"
-              icon="invoice"
-              title="Invoicing & payments"
-              desc="Create invoices with line items and payment schedules. Accept card payments via Stripe Connect, or record cash and bank transfers."
-            />
-            <FeatureCard
-              color="horizon"
-              icon="email"
-              title="Built-in email"
-              desc="Send and receive from your own @wedding.computer address. Full inbox, sent mail, threading — logged to contact activity automatically."
-            />
-            <FeatureCard
-              color="grapefruit"
-              icon="ai"
-              title="AI email drafting"
-              desc="One-click personalised drafts for follow-ups, quotes, and confirmations. Powered by Cloudflare AI, or bring your own Anthropic key."
-            />
-            <FeatureCard
-              color="horizon"
-              icon="workspace"
-              title="Wedding workspaces"
-              desc="Every wedding is a shared workspace. Invite the couple, the venue, and every vendor — everyone sees the same timeline, places, and notes. Set it once, share it everywhere."
-            />
-            <FeatureCard
-              color="grapefruit"
-              icon="couple"
-              title="Couple planner"
-              desc="Couples get their own dashboard: vendor grid, live budget tracker, booking forms, and details — no spreadsheet required."
-            />
-            <FeatureCard
-              color="horizon"
-              icon="import"
-              title="Import from anywhere"
-              desc="Bring your existing data with you. Import CSV or JSON files from Dubsado, Studio Ninja, HoneyBook, VSCO Workspace, or any spreadsheet. AI-powered extraction can pull contacts from pasted text or a URL."
-            />
-            <FeatureCard
-              color="grapefruit"
-              icon="team"
-              title="Team & agency management"
-              desc="Photography studios, celebrant agencies, and multi-person businesses can manage a team roster and assign individual team members to each wedding."
-            />
-            <FeatureCard
-              color="horizon"
-              icon="sync"
-              title="GitHub sync"
-              desc="Connect your GitHub account and your contacts and weddings sync to a private repo automatically. Browse files on github.com, open them in Obsidian, or clone them anywhere."
-            />
-            <FeatureCard
-              color="grapefruit"
-              icon="analytics"
-              title="Business analytics"
-              desc="Track enquiries, bookings, revenue, and conversion rates. Set goals for the year and measure yourself against anonymised industry benchmarks at city, state, country, and global levels."
-            />
-            <FeatureCard
-              color="horizon"
-              icon="calendar"
-              title="Date demand scores"
-              desc="See how in-demand upcoming dates are for enquiries and bookings — at your city, state, country, and global level. Know whether a date is in high demand or likely to be quiet."
-            />
-            <FeatureCard
-              color="grapefruit"
-              icon="invoice"
-              title="Quote calculator"
-              desc="Create an embeddable quote calculator for your website. Clients choose their options and see an instant estimate. Capture enquiries directly from the calculator."
-            />
-            <FeatureCard
-              color="horizon"
-              icon="runsheet"
-              title="Day-of run sheet"
-              desc="Build a detailed timeline for each wedding day. AI generates a starting run sheet from your wedding details — then customise times, locations, and assignments."
-            />
-            <FeatureCard
-              color="grapefruit"
-              icon="mcp"
-              title="MCP access for AI tools"
-              desc="Connect Claude, ChatGPT, Cursor, or any AI tool that supports Model Context Protocol directly to your data. Read contacts, weddings, run sheets, and checklists from your own AI workflow. Pro feature."
-            />
-            <FeatureCard
-              color="horizon"
-              icon="openformat"
-              title="An open standard, not a silo"
-              desc="Your files follow the Wedding CRM Markdown Standard — a CC0 public-domain spec any tool can implement. Sync over CalDAV, CardDAV, and iCal, connect AI over MCP, or edit both ways with the official Obsidian plugin."
-            />
-            <FeatureCard
-              color="grapefruit"
-              icon="plaintext"
-              title="Plain text files — live, right now"
-              desc="Every contact, wedding, checklist, and changelog is a plain text markdown file — synced live to GitHub. Open them in Obsidian, VS Code, TextEdit, or Notepad. Your data is portable, always accessible, and never locked in."
-            />
-          </div>
-        </section>
-
-        {/* Built for your role */}
-        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
-          <div class="max-w-3xl mx-auto text-center mb-8">
-            <h2 class="text-xl sm:text-2xl font-bold mb-3">Built for how you actually work</h2>
-            <p class="text-gray-600 text-sm leading-relaxed max-w-lg mx-auto">
-              Every vendor type has different priorities. Pick yours and see how Wedding Computer fits your workflow — and how collaboration makes it better.
-            </p>
-          </div>
-          <div class="flex flex-wrap justify-center gap-2 mb-8" id="role-tabs">
-            <RoleTab role="venue" label="Venues" active />
-            <RoleTab role="planner" label="Planners" />
-            <RoleTab role="photographer" label="Photographers" />
-            <RoleTab role="videographer" label="Videographers" />
-            <RoleTab role="celebrant" label="Celebrants" />
-            <RoleTab role="florist" label="Florists" />
-            <RoleTab role="music" label="Musicians & DJs" />
-          </div>
-          <div id="role-panels">
-            <RolePanel role="venue" active>
-              <RoleFeature
-                title="One workspace per wedding — you're the host"
-                desc="As the venue, you're often the hub. Create the wedding workspace, invite every vendor, and keep ceremony, reception, and bump-in times in one place. When you update the timeline, everyone sees it."
-              />
-              <RoleFeature
-                title="Enquiry forms built for venue enquiries"
-                desc="Custom form fields for event type, guest count, date preferences, and ceremony style. Leads land in your CRM pipeline with all the details you need to quote."
-              />
-              <RoleFeature
-                title="Calendar that shows the full picture"
-                desc="See every booking, hold, and blocked date. Know at a glance which Saturdays are free. Share your availability publicly so couples and planners can check before they enquire."
-              />
-              <RoleFeature
-                title="Invoicing with payment schedules"
-                desc="Venues often invoice in stages — deposit, interim, final. Create multi-installment invoices with due dates and track payments as they come in."
-              />
-              <RoleCollab>
-                When the photographer needs bump-in times or the celebrant needs the ceremony location, they already have it — because you set it once in the shared workspace. No back-and-forth emails.
-              </RoleCollab>
-            </RolePanel>
-            <RolePanel role="planner">
-              <RoleFeature
-                title="Manage every vendor from one dashboard"
-                desc="You're coordinating the whole team. See every vendor on the wedding, their invoices, their timelines, and their checklists — without chasing updates."
-              />
-              <RoleFeature
-                title="Run sheets your team can rely on"
-                desc="Build the day-of timeline with times, locations, and assignments. AI generates a starting run sheet from the wedding details — then you refine it. Every vendor gets the same version."
-              />
-              <RoleFeature
-                title="Team roster for your agency"
-                desc="Assign coordinators, assistants, and day-of staff to each wedding. Everyone knows who's on the job."
-              />
-              <RoleFeature
-                title="Analytics across your whole book of business"
-                desc="Track enquiries, bookings, and revenue across all your weddings. See conversion rates, average deal sizes, and how your pipeline is trending."
-              />
-              <RoleCollab>
-                You set the run sheet once and every vendor — photographer, celebrant, florist, DJ — sees the same timeline. Changes sync instantly. No more WhatsApp group updates at midnight.
-              </RoleCollab>
-            </RolePanel>
-            <RolePanel role="photographer">
-              <RoleFeature
-                title="CRM built for how photographers sell"
-                desc="Track every enquiry through your pipeline — from new lead to contacted, quoted, booked, and delivered. Log emails, calls, and notes on each contact."
-              />
-              <RoleFeature
-                title="Know the wedding timeline before you arrive"
-                desc="When the planner or venue sets ceremony, portraits, and reception times, you see them automatically. No hunting through email threads for the run sheet."
-              />
-              <RoleFeature
-                title="Vendor credits, ready to paste"
-                desc="After the wedding, one click gives you the full vendor credit list — formatted for Instagram captions with @handles, or for your blog with website links."
-              />
-              <RoleFeature
-                title="Import from Studio Ninja, HoneyBook, or Dubsado"
-                desc="Bring your existing client database with you. Upload a CSV and Wedding Computer maps the columns automatically."
-              />
-              <RoleCollab>
-                When the celebrant and couple confirm the timeline, you see it immediately in your calendar. The florist's setup time, the DJ's bump-in — it's all there so you can plan your shot list around the real schedule.
-              </RoleCollab>
-            </RolePanel>
-            <RolePanel role="videographer">
-              <RoleFeature
-                title="See the full timeline without asking"
-                desc="Ceremony start, first look timing, reception formalities — it's all in the shared workspace. When times change, your calendar updates automatically."
-              />
-              <RoleFeature
-                title="Coordinate with the photographer, not compete"
-                desc="Both creatives see the same timeline and the same portrait window. Know when you're shooting together and when you each have dedicated time."
-              />
-              <RoleFeature
-                title="Invoicing and quote calculator"
-                desc="Create packages with add-ons — highlight reel, full ceremony edit, drone footage. Embed a quote calculator on your website so couples can estimate their package before they enquire."
-              />
-              <RoleFeature
-                title="Vendor credits for your socials"
-                desc="After delivery, pull the full vendor credit list for your Instagram reel caption — every vendor name and @handle, ready to paste."
-              />
-              <RoleCollab>
-                The run sheet tells you when to be where. The photographer's timeline tells you when you'll be shooting together. No more texting each other the night before to figure out the schedule.
-              </RoleCollab>
-            </RolePanel>
-            <RolePanel role="celebrant">
-              <RoleFeature
-                title="Enquiry pipeline built for ceremony bookings"
-                desc="Track couples from first enquiry through to booked and completed. See their wedding date, ceremony type, and location right in your contact list."
-              />
-              <RoleFeature
-                title="Checklists for legal and ceremony prep"
-                desc="Use checklists to track your NOIM timeline, ceremony script drafts, rehearsal scheduling, and paperwork. Never miss a legal deadline."
-              />
-              <RoleFeature
-                title="Calendar with ceremony-specific details"
-                desc="Your calendar shows ceremony time, location, and getting-ready details. Share your availability publicly so couples can see your free dates."
-              />
-              <RoleFeature
-                title="AI-drafted replies to enquiries"
-                desc="When a new enquiry comes in, AI drafts a personalised response using the couple's details and your availability. Review it, edit it, send it."
-              />
-              <RoleCollab>
-                When the venue confirms the ceremony location or the planner adjusts the timeline, you see it immediately — no more last-minute "actually, we moved the ceremony to the garden" emails.
-              </RoleCollab>
-            </RolePanel>
-            <RolePanel role="florist">
-              <RoleFeature
-                title="Quote calculator for complex floral packages"
-                desc="Bouquets, buttonholes, table centrepieces, ceremony arch — build a calculator with all your options and let couples estimate their florals before they enquire."
-              />
-              <RoleFeature
-                title="Know bump-in times and venue details"
-                desc="The shared workspace tells you when you can access the venue, where the ceremony and reception are, and when everything needs to be set up."
-              />
-              <RoleFeature
-                title="Invoicing with deposit schedules"
-                desc="Florals often need a deposit to secure flowers. Create invoices with custom payment schedules and track each payment."
-              />
-              <RoleFeature
-                title="Import your existing client list"
-                desc="Bring your contacts from any spreadsheet or CRM. Upload a CSV, map the columns, and you're running in minutes."
-              />
-              <RoleCollab>
-                You need the venue's bump-in time and the ceremony start time to plan your setup. When the planner sets the run sheet, you see it in your calendar — setup window, ceremony start, pack-down time, all confirmed.
-              </RoleCollab>
-            </RolePanel>
-            <RolePanel role="music">
-              <RoleFeature
-                title="Reception timeline at your fingertips"
-                desc="First dance, speeches, cake cutting — the run sheet tells you exactly when each formality happens so you can plan your sets and transitions."
-              />
-              <RoleFeature
-                title="Enquiry forms with your options"
-                desc="Ceremony music, cocktail hour, reception DJ, live band — customise your enquiry form fields to capture exactly what the couple is looking for."
-              />
-              <RoleFeature
-                title="Calendar with load-in details"
-                desc="Know your bump-in time, sound check window, and set times. When the planner updates the schedule, your calendar reflects it."
-              />
-              <RoleFeature
-                title="Quote calculator for packages and add-ons"
-                desc="Ceremony acoustic set, cocktail hour, 5-hour reception, extra hour — let couples build their own package and see the price before they reach out."
-              />
-              <RoleCollab>
-                The MC's speech schedule, the photographer's must-have moments, the caterer's meal service timing — everything is on the same run sheet, so your set list matches the actual flow of the night.
-              </RoleCollab>
-            </RolePanel>
-          </div>
-          <script dangerouslySetInnerHTML={{ __html: `
-            document.getElementById('role-tabs').addEventListener('click', function(e) {
-              var btn = e.target.closest('[data-role]');
-              if (!btn) return;
-              var role = btn.getAttribute('data-role');
-              document.querySelectorAll('#role-tabs [data-role]').forEach(function(t) {
-                t.classList.remove('bg-horizon-600', 'text-white');
-                t.classList.add('bg-white', 'text-gray-700');
-              });
-              btn.classList.remove('bg-white', 'text-gray-700');
-              btn.classList.add('bg-horizon-600', 'text-white');
-              document.querySelectorAll('#role-panels [data-panel]').forEach(function(p) {
-                p.style.display = p.getAttribute('data-panel') === role ? '' : 'none';
-              });
-            });
-          ` }} />
-        </section>
-
-        {/* Switching CRMs */}
-        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
-          <div class="max-w-3xl mx-auto text-center mb-8">
-            <h2 class="text-xl sm:text-2xl font-bold mb-3">Switching from another CRM?</h2>
-            <p class="text-gray-600 text-sm leading-relaxed max-w-lg mx-auto">
-              Wedding Computer imports contacts from CSV and JSON files exported from the CRMs used by wedding vendors across Australia and beyond. Upload your file, map your columns, preview the data, and import.
-            </p>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 max-w-3xl mx-auto mb-6">
-            <div class="bg-white border border-papaya-300/30 rounded-xl p-4 text-center">
-              <p class="text-sm font-bold text-gray-700">Dubsado</p>
-              <p class="text-[10px] text-gray-500">CSV import</p>
-            </div>
-            <div class="bg-white border border-papaya-300/30 rounded-xl p-4 text-center">
-              <p class="text-sm font-bold text-gray-700">Studio Ninja</p>
-              <p class="text-[10px] text-gray-500">CSV import</p>
-            </div>
-            <div class="bg-white border border-papaya-300/30 rounded-xl p-4 text-center">
-              <p class="text-sm font-bold text-gray-700">HoneyBook</p>
-              <p class="text-[10px] text-gray-500">CSV import</p>
-            </div>
-            <div class="bg-white border border-papaya-300/30 rounded-xl p-4 text-center">
-              <p class="text-sm font-bold text-gray-700">VSCO Workspace</p>
-              <p class="text-[10px] text-gray-500 italic">formerly Táve</p>
-            </div>
-            <div class="bg-white border border-papaya-300/30 rounded-xl p-4 text-center">
-              <p class="text-sm font-bold text-gray-700">Any CSV / JSON</p>
-              <p class="text-[10px] text-gray-500">Custom mapping</p>
-            </div>
-          </div>
-          <p class="text-center text-xs text-gray-400 max-w-lg mx-auto">
-            Column mapping is automatic for known CRMs and fuzzy-matched for everything else. You can also paste text or a URL and let AI extract the contacts for you.
-          </p>
-        </section>
-
-        {/* Data philosophy */}
-        <section class="py-10 sm:py-16">
-          <div class="bg-white border border-papaya-300/30 rounded-2xl sm:rounded-3xl p-6 sm:p-10 lg:p-12">
-            <div class="max-w-2xl mx-auto text-center">
-              <div class="w-12 h-12 rounded-2xl bg-horizon-50 flex items-center justify-center mx-auto mb-4">
-                <div class="w-6 h-6 text-horizon-600" dangerouslySetInnerHTML={{ __html: featureIcons.plaintext }} />
-              </div>
-              <h2 class="text-xl sm:text-2xl font-bold mb-3">Your data is yours — live, portable, and never locked in</h2>
-              <p class="text-gray-600 leading-relaxed mb-6">
-                Wedding Computer stores everything as plain text markdown files — the same
-                format used by Wikipedia, GitHub, and millions of writers. Your files sync live
-                to a private GitHub repo, so you can access them right now in Obsidian, VS Code,
-                TextEdit, Notepad, or any tool that reads text files. No proprietary format. No
-                export-and-pray. If you stop using Wedding Computer tomorrow, your data is already
-                on your computer in files you can read with anything.
-              </p>
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                <div class="text-center">
-                  <div class="text-lg mb-1">📂</div>
-                  <p class="text-xs font-bold text-gray-700">GitHub</p>
-                  <p class="text-[10px] text-gray-500">Auto-synced repo</p>
-                </div>
-                <div class="text-center">
-                  <div class="text-lg mb-1">💎</div>
-                  <p class="text-xs font-bold text-gray-700">Obsidian</p>
-                  <p class="text-[10px] text-gray-500">Official plugin</p>
-                </div>
-                <div class="text-center">
-                  <div class="text-lg mb-1">📝</div>
-                  <p class="text-xs font-bold text-gray-700">Any text editor</p>
-                  <p class="text-[10px] text-gray-500">TextEdit, Notepad, vim</p>
-                </div>
-                <div class="text-center">
-                  <div class="text-lg mb-1">🔧</div>
-                  <p class="text-xs font-bold text-gray-700">Your own tools</p>
-                  <p class="text-[10px] text-gray-500">Parse YAML + markdown</p>
-                </div>
-              </div>
-              <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <a href="/standard" class="text-horizon-700 font-bold text-sm hover:underline">Read the open format spec →</a>
-                <span class="hidden sm:inline text-gray-300">|</span>
-                <a href="/docs/plain-text" class="text-horizon-700 font-bold text-sm hover:underline">How to access your files →</a>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* CTA */}
-        <section class="py-8 sm:py-16">
-          <div class="bg-horizon-600 rounded-2xl sm:rounded-3xl p-6 sm:p-12 text-center text-white">
-            <h2 class="text-2xl sm:text-3xl font-bold mb-4">Ready to get everyone on the same page?</h2>
-            <p class="text-white mb-6 sm:mb-8 max-w-md mx-auto">
-              Whether you're a vendor running your business or a couple planning your day — start free,
-              keep your data forever, and bring the whole wedding team with you.
-            </p>
-            <a
-              href="/login"
-              class="inline-block bg-white text-horizon-700 font-bold px-8 py-3.5 rounded-xl hover:bg-horizon-50 transition-colors"
-            >
-              Get started free
-            </a>
-          </div>
-        </section>
-      </div>
-    </MarketingLayout>
-  )
+  return c.html(<HomePage />)
 })
 
 marketing.get('/about', (c) => {
-  return c.html(
-    <MarketingLayout title="About">
-      <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
-        {/* Intro */}
-        <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6">The wedding industry deserves better software</h1>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-10">
-          <p>
-            A wedding is one of the most collaborative events there is — a couple plus a celebrant, a
-            photographer, a florist, a venue, a planner, a band, a caterer, all working toward a single
-            day. Yet the software they use pretends none of them know each other. The couple re-types
-            the same details into a dozen intake forms. Every vendor re-keys it into their own CRM. The
-            run sheet lives in a PDF that's out of date the moment it's emailed.
-          </p>
-          <p>
-            And the tools that dominate the industry are lead-gen marketplaces — the vendor is the
-            product, and the client relationship and the data are owned by the platform and rented back.
-            Couples get an even worse deal: a shared Google Sheet and a prayer.
-          </p>
-          <p>
-            Wedding Computer is the opposite of all that. Vendors run their entire business — leads,
-            calendar, invoices, email — from one dashboard. Couples get a real planning hub. And every
-            wedding is a shared workspace, so the people working on it actually work together. Your data
-            is stored as plain text files you own forever, and you can plug your own AI into it. It's
-            free to start, radically open with your data, and built by people who work in weddings — couples free forever,
-            vendors free for the core tools, with analytics and AI on a Pro plan for $28/month.
-          </p>
-        </div>
-
-        {/* What makes it different */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-2">What makes it different</h2>
-        <p class="text-gray-500 text-sm mb-6">Four ideas the rest of the industry forgot.</p>
-        <div class="space-y-3 mb-12">
-          <AboutFeature
-            title="Built for collaboration, not silos"
-            desc="A wedding is a team effort, so the wedding itself is the shared object. Set the ceremony time once and it lands in every vendor's calendar. Update the run sheet and the whole team sees it instantly. Enter the couple's details once and every connected vendor has them. No re-keying, no stale PDFs, no chasing updates over text."
-          />
-          <AboutFeature
-            title="Your data in plain text, owned by you"
-            desc="Every contact and wedding is a plain text markdown file, synced live to your own private GitHub repo and editable in Obsidian or any text editor. It's not an export you have to request — it's a living mirror of your data that you control. If you ever stop using Wedding Computer, everything is already on your computer in files that will still open in 50 years. No lock-in, ever."
-          />
-          <AboutFeature
-            title="AI-native through MCP"
-            desc="Connect Claude, ChatGPT, Cursor, or your own agent directly to your data over the Model Context Protocol. Because your data is open text, both you and any AI you trust can read and write it — draft enquiry replies, build run sheets, query your pipeline from your own AI workflow. We haven't seen another wedding platform offer this."
-          />
-          <AboutFeature
-            title="Market intelligence built in"
-            desc="Anonymised demand scores show how in-demand any date is for enquiries and bookings at your city, state, country, and global level — the kind of intelligence hotels and airlines have always had, brought to an industry that mostly flat-prices a wildly seasonal product. Decide which dates to chase and what to charge for them."
-          />
-        </div>
-
-        {/* For Vendors */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-2">For vendors</h2>
-        <p class="text-gray-500 text-sm mb-6">Everything you need to run your wedding business, nothing you don't.</p>
-        <div class="space-y-3 mb-12">
-          <AboutFeature
-            title="CRM with an eight-stage pipeline"
-            desc="Every enquiry flows through a clear pipeline: new, contacted, meeting, quoted, booked, completed, lost, archived. Click to change status. Filter by stage. Search across all contacts. Full activity log tracks every email, note, status change, and invoice automatically."
-          />
-          <AboutFeature
-            title="Custom enquiry forms with CAPTCHA"
-            desc="Build your own branded enquiry form with a visual editor — add text fields, dropdowns, date pickers, textareas, and partner details. Embed the form on your website or share the direct link. Submissions are protected by Cloudflare Turnstile (invisible CAPTCHA) and land straight in your CRM as a new lead with an automatic email notification."
-          />
-          <AboutFeature
-            title="Calendar, availability, and iCal/CalDAV sync"
-            desc="Monthly calendar with booking, blocked, and personal events. Set your default available days (e.g. Friday–Sunday) and add per-date overrides. Share a read-only iCal feed URL with any calendar app, or connect via CalDAV for two-way sync with Apple Calendar, Fantastical, or any CalDAV client. Events include timezone support, all-day events, and timed events with start/end."
-          />
-          <AboutFeature
-            title="Invoicing with Stripe Connect"
-            desc="Create invoices with line items, quantities, and notes. Track payments with a flexible schedule — deposits, progress payments, final balances. Accept card payments through Stripe Connect (vendors keep their own Stripe dashboard and full control). Record cash, bank transfer, and PayID payments manually. Automatic status tracking: draft, sent, partially paid, paid, overdue."
-          />
-          <AboutFeature
-            title="Built-in email with your own address"
-            desc="Claim a handle like josh@wedding.computer. Send and receive real emails from inside the dashboard — no external mail client needed. Full inbox and sent views with threaded conversations. Emails sent to contacts are automatically logged in their activity timeline. Powered by Cloudflare Email Routing."
-          />
-          <AboutFeature
-            title="AI email drafting"
-            desc="One click generates a personalised email draft based on the contact's history, wedding details, and your business context. Perfect for follow-ups, quotes, booking confirmations, and check-ins. Uses Cloudflare AI (Llama) by default — or bring your own Anthropic API key for Claude-powered drafts."
-          />
-          <AboutFeature
-            title="Booking forms"
-            desc="Once a couple books, they can fill out a detailed booking form to capture ceremony details, legal names, pronunciation guides, and everything else you need. Fully customisable per vendor. Responses attach to the wedding workspace."
-          />
-          <AboutFeature
-            title="CardDAV contact sync"
-            desc="Sync your CRM contacts to your phone's native contacts app via CardDAV. Add the server URL in Apple Contacts or any CardDAV client — your leads appear as real contacts with phone numbers, emails, partner details, and wedding notes. Read-only, always up to date, scoped to your vendor account only."
-          />
-          <AboutFeature
-            title="Email notifications"
-            desc="Get notified by email when things happen: new enquiries, couple accepts an invite, vendor joins a wedding, booking confirmations, invoice activity. Professional branded HTML emails, not plain text."
-          />
-          <AboutFeature
-            title="Business analytics (Pro)"
-            desc="Track enquiries, bookings, revenue, and conversion rates over time. See your conversion funnel from new lead to booked client. Measure enquiry sources, wedding locations, and average spend. Set goals for the year, season, or month and track your progress. Compare yourself against industry benchmarks from anonymised platform data."
-          />
-          <AboutFeature
-            title="Business goals (Pro)"
-            desc="Set targets for enquiries, bookings, or revenue — by year, season, or month. Track your progress with visual progress bars and year-over-year comparisons. See if you're ahead of pace or need to adjust your marketing."
-          />
-          <AboutFeature
-            title="Service contracts"
-            desc="Write a default service agreement template. When you create an invoice, a copy of the contract is attached automatically. Couples sign digitally on the booking page — their name, email, IP address, and timestamp are recorded."
-          />
-          <AboutFeature
-            title="Import from other CRMs"
-            desc="Switching from Dubsado, Studio Ninja, HoneyBook, or VSCO Workspace? Export your contacts as CSV and import them here. Columns are auto-mapped for known CRM exports, or you can map them manually. AI-powered extraction can also pull contacts from pasted text or any web page."
-          />
-          <AboutFeature
-            title="Team & agency management"
-            desc="Run a photography agency, celebrant team, or multi-person business? Add team members to your roster with contact details and roles. Then assign individuals to specific weddings — the wedding workspace shows which team members are working each event."
-          />
-          <AboutFeature
-            title="MCP access for AI tools (Pro)"
-            desc="Connect any AI tool that supports Model Context Protocol — Claude Desktop, ChatGPT, Cursor, Windsurf, or your own agent — directly to your Wedding Computer data. Read contacts, weddings, run sheets, checklists, and changelogs from your own AI workflow. Your token is in Settings under Calendar & Sync."
-          />
-        </div>
-
-        {/* For Couples */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-2">For couples</h2>
-        <p class="text-gray-500 text-sm mb-6">Plan your wedding without the spreadsheet chaos.</p>
-        <div class="space-y-3 mb-12">
-          <AboutFeature
-            title="Wedding planner dashboard"
-            desc="See your wedding at a glance: date, location, countdown, vendor grid, and budget summary. Everything in one place instead of scattered across apps."
-          />
-          <AboutFeature
-            title="Vendor tracking with budget"
-            desc="Track every vendor you're considering, contacted, or booked — with category, expected price, notes, and status. See your total expected spend, invoiced amount, and paid amount in a live budget summary."
-          />
-          <AboutFeature
-            title="Platform vendor integration"
-            desc="When your celebrant, photographer, or any vendor is on Wedding Computer, they appear in your dashboard automatically with an 'On platform' badge. Their invoices, booking forms, and updates are connected directly — no re-entering data."
-          />
-          <AboutFeature
-            title="Vendor visibility controls"
-            desc="You choose whether vendors on your wedding can see each other. Private by default — toggle to shared when you want your photographer and stylist to coordinate directly."
-          />
-        </div>
-
-        {/* Wedding Workspaces */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-2">Wedding workspaces</h2>
-        <p class="text-gray-500 text-sm mb-6">The thing that ties it all together.</p>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
-          <p>
-            When a vendor books a lead, a shared wedding workspace is created. They invite
-            the couple (who get the couple dashboard) and other vendors (who get scoped access to the wedding).
-          </p>
-          <p>
-            This is the single source of truth for the wedding. Set the date, venue, ceremony and
-            reception times, and run sheet once — in the workspace — and everyone draws from the same
-            copy. When something changes, it changes for everyone at the same moment. No more "actually,
-            we moved the ceremony to the garden" emails landing with half the team, and no vendor working
-            off a timeline that's three versions old.
-          </p>
-          <p>
-            Roles control who sees what. Managers (vendors, planners, or couples with the manage permission) have full control. Vendors see details relevant to their service.
-            Couples see their vendors, budget, and timeline. Nobody sees more than they should.
-          </p>
-          <p>
-            Couples can also create their own wedding and invite vendors — perfect for DIY weddings or
-            when the couple is driving the planning process.
-          </p>
-        </div>
-
-        {/* Data Philosophy */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-2">Your data, in plain text</h2>
-        <p class="text-gray-500 text-sm mb-6">Built to outlast the app itself.</p>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-6">
-          <p>
-            Most SaaS tools store your data in a proprietary database. If the company shuts down, raises
-            prices, or decides to pivot — your data goes with it. The best you get is a CSV export that
-            loses half the context.
-          </p>
-          <p>
-            Wedding Computer is different. Every contact and wedding is stored as a plain text
-            markdown file with YAML frontmatter — the same open format used by static site generators,
-            note-taking apps like Obsidian, and millions of developers worldwide. These files are human-readable,
-            human-editable, and will still make perfect sense in 50 years on any computer.
-          </p>
-          <p>
-            We think your client relationships are too important to trap inside a database you
-            can't see. So we published the format as an{' '}
-            <a href="/standard" class="text-horizon-700 font-bold hover:underline">open specification</a>{' '}
-            that anyone can use. Other apps can read and write the same files. You can open them
-            in a text editor, sync them with Obsidian, back them up to Git, or build your own tools on top.
-          </p>
-        </div>
-        <div class="space-y-3 mb-12">
-          <AboutFeature
-            title="Markdown files with YAML frontmatter"
-            desc="Each contact is a .md file with structured data (name, email, phone, status, tags) in the YAML header and free-form notes in the body. Each wedding is the same. The format is documented in our open standard — read it at /standard."
-          />
-          <AboutFeature
-            title="No vendor lock-in"
-            desc="Your files aren't trapped in our system. Access them through our app, through the Cloudflare R2 API, through Obsidian, or through any S3-compatible tool. If you leave Wedding Computer, you take everything — not an export, the actual files."
-          />
-          <AboutFeature
-            title="An open standard for the wedding industry"
-            desc="We published the Wedding CRM Markdown Standard so other developers and apps can use the same format. A contact created in Wedding Computer can be read by any tool that understands YAML frontmatter. We believe the wedding industry deserves interoperable data."
-          />
-        </div>
-
-        {/* What's Coming */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-2">What's coming next</h2>
-        <p class="text-gray-500 text-sm mb-6">On the roadmap, not yet shipped.</p>
-        <div class="space-y-3 mb-12">
-          <AboutFeature title="Available date finder" desc="A public search tool where couples can find vendors who are available on their wedding date. Vendors opt in to visibility. Filter by category, location, and date." />
-          <AboutFeature title="Vendor collaboration" desc="Vendors on the same wedding will be able to coordinate directly — share timelines, run sheets, and logistics with each other (with the couple's permission)." />
-          <AboutFeature title="Smarter AI" desc="AI-powered follow-up suggestions, budget recommendations, and automated reminders based on your pipeline and calendar." />
-          <AboutFeature title="Google Calendar two-way sync" desc="OAuth-based two-way sync between your Wedding Computer calendar and Google Calendar. Create an event in either place and it appears in both." />
-          <AboutFeature title="Document sharing" desc="Upload contracts, mood boards, run sheets, and other documents to a wedding workspace. Control visibility per document." />
-        </div>
-
-        {/* Technical / Nerdy */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-2">Under the hood</h2>
-        <p class="text-gray-500 text-sm mb-6">For the nerds. We are also nerds.</p>
-        <div class="space-y-3 mb-12">
-          <AboutFeature
-            title="Cloudflare Workers, globally"
-            desc="The entire application runs on Cloudflare Workers — a single Worker serves marketing, auth, the vendor app, the couple app, DAV servers, webhooks, and API. Requests are handled at the nearest Cloudflare edge location, typically under 50ms. No origin server, no cold starts, no regions to choose."
-          />
-          <AboutFeature
-            title="Hono + server-rendered JSX + htmx"
-            desc="Built with Hono (a lightweight TypeScript web framework designed for edge runtimes) using JSX for server-side HTML rendering. Interactive elements use htmx for partial page updates without a client-side JavaScript framework. Zero JS bundle shipped to the browser — just htmx (10KB) and Tailwind CSS via CDN."
-          />
-          <AboutFeature
-            title="Plain text files + D1 index"
-            desc="Contacts and weddings are stored as markdown files on Cloudflare R2. A D1 (SQLite) index caches key fields for fast queries — but it's just a cache. The files are the source of truth. If the index is lost, it rebuilds from the files. If the app disappears, the files still make sense. 24-character hex IDs, ISO 8601 timestamps, and explicit tenant-scoping on every query."
-          />
-          <AboutFeature
-            title="CardDAV and CalDAV servers (RFC 6352 / RFC 4791)"
-            desc="Full DAV servers built from scratch, not a library. CardDAV serves your contacts as vCard 3.0 with proper line folding (byte-level, not character-level) and UTF-8 support. CalDAV serves calendar events as iCalendar with timezone-aware DTSTART/DTEND properties. Both support PROPFIND discovery, REPORT multiget, and individual resource GET. ETags from row timestamps, CTags from SHA-256 of count + max(updated_at). Read-only by design — write operations return 403."
-          />
-          <AboutFeature
-            title="Passwordless auth with passkeys"
-            desc="Magic links via email, Google/Apple OAuth, and WebAuthn passkeys (Touch ID, Face ID, Windows Hello, security keys). No passwords means no credential stuffing, no password reuse, no bcrypt CPU cost. Passkey registration and verification built from scratch using Web Crypto API on Cloudflare Workers — no external dependencies. Session tokens are 32-byte random values stored in KV with 30-day rolling TTL. CSRF protection on every state-changing request."
-          />
-          <AboutFeature
-            title="Stripe Connect Standard"
-            desc="Vendors connect their own Stripe accounts (Standard Connect, not Express). They keep full control of their Stripe dashboard — we never hold funds or handle card data. Invoices are created on the vendor's connected account using Stripe-Account headers. Webhooks handle payment lifecycle events."
-          />
-          <AboutFeature
-            title="Cloudflare Email Routing"
-            desc="Inbound and outbound email handled by Cloudflare's email workers and Resend for delivery. Each vendor gets a handle@wedding.computer address. Inbound emails are parsed, matched to contacts by sender address, and stored with full headers. Outbound emails use professional HTML templates with the vendor's branding."
-          />
-          <AboutFeature
-            title="Background jobs via Queues"
-            desc="Email sending, notifications, and heavy processing run through Cloudflare Queues — guaranteed delivery with automatic retries and dead letter handling. No waitUntil() hacks, no fire-and-forget. If a job fails, it retries. If it keeps failing, you can see it."
-          />
-          <AboutFeature
-            title="Strict tenant isolation"
-            desc="Every database query is scoped by vendor_id or wedding membership. There are no admin endpoints that bypass scoping. The data access layer requires a scoping ID as a mandatory parameter — it's architecturally impossible to write an unscoped query by accident. Wedding-level access checks run through middleware that verifies wedding_members before touching any wedding data."
-          />
-          <AboutFeature
-            title="No tracking, no cookies banner"
-            desc="Session cookies only (HttpOnly, Secure, SameSite=Lax). No analytics scripts, no tracking pixels, no third-party cookies. No consent banner needed because there's nothing to consent to."
-          />
-        </div>
-
-        {/* Open Data */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-2">Open data, not open silos</h2>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
-          <p>
-            Wedding Computer is built around a simple promise: the data is yours, and you should never
-            need our permission to use it. Every contact, wedding, checklist, and changelog is a plain text
-            markdown file in an open, CC0 public-domain format that any tool can implement. Sync it live to
-            your own GitHub repo, edit it both ways with the official Obsidian plugin, subscribe over
-            CalDAV, CardDAV, and iCal, or connect your own AI through MCP.
-          </p>
-          <p>
-            Openness stops where your security starts. Every way in is authenticated and scoped to you —
-            signed sessions, per-device sync tokens you can revoke, time-limited signed URLs for documents,
-            and strict tenant isolation on every query. Your data is wide open to you and the tools you
-            trust, and closed to everyone else.
-          </p>
-          <p>
-            <a href="/standard" class="text-horizon-700 font-bold hover:underline">Read the open format spec</a>
-            {' '}·{' '}
-            <a href="https://community.obsidian.md/plugins/wedding-computer-sync" class="text-horizon-700 font-bold hover:underline" rel="noopener">Get the Obsidian plugin</a>
-          </p>
-        </div>
-
-        {/* CTA */}
-        <div class="bg-horizon-600 rounded-2xl p-6 sm:p-10 text-center text-white">
-          <h2 class="text-xl sm:text-2xl font-bold mb-3">Ready to try it?</h2>
-          <p class="text-white mb-6 max-w-md mx-auto text-sm">
-            Free to use. No credit card. Set up in under a minute.
-          </p>
-          <a
-            href="/login"
-            class="inline-block bg-white text-horizon-700 font-bold px-8 py-3.5 rounded-xl hover:bg-horizon-50 transition-colors"
-          >
-            Get started free
-          </a>
-        </div>
-      </div>
-    </MarketingLayout>
-  )
+  return c.html(<AboutPage />)
 })
 
 marketing.get('/pricing', (c) => {
-  return c.html(
-    <MarketingLayout title="Pricing">
-      <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
-        <h1 class="text-2xl sm:text-4xl font-bold mb-4 text-center">Simple pricing</h1>
-        <p class="text-gray-600 mb-10 sm:mb-12 text-center max-w-lg mx-auto">
-          Free for couples. Free core tools for vendors. Unlock analytics and AI with Pro.
-        </p>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 max-w-2xl mx-auto">
-          {/* Free plan */}
-          <div class="bg-white rounded-2xl border border-gray-200 p-6 sm:p-8">
-            <p class="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">Free</p>
-            <p class="text-4xl font-bold mb-1">$0</p>
-            <p class="text-sm text-gray-500 mb-6">per month, forever</p>
-            <ul class="space-y-2.5 text-sm text-gray-700 mb-8">
-              <PricingFeature text="CRM with eight-stage pipeline" />
-              <PricingFeature text="Custom enquiry forms" />
-              <PricingFeature text="Calendar" />
-              <PricingFeature text="Invoicing with Stripe Connect" />
-              <PricingFeature text="Built-in email" />
-              <PricingFeature text="Wedding workspaces" />
-              <PricingFeature text="Import from other CRMs" />
-              <PricingFeature text="Team & agency management" />
-              <PricingFeature text="Day-of run sheet builder" />
-              <PricingFeature text="Quote calculator" />
-              <PricingFeature text="Public availability calendar" />
-              <PricingFeature text="Directory listing opt-in" />
-              <PricingFeature text="Couple planner dashboard" />
-              <PricingFeature text="Plain text file access" />
-              <PricingFeature text="Passkey sign-in" />
-            </ul>
-            <a
-              href="/login"
-              class="block text-center bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
-            >
-              Get started free
-            </a>
-          </div>
-
-          {/* Pro plan */}
-          <div class="bg-white rounded-2xl border-2 border-horizon-600 p-6 sm:p-8 relative">
-            <div class="absolute -top-3 left-6 bg-horizon-600 text-white text-xs font-bold px-3 py-1 rounded-full">
-              Recommended
-            </div>
-            <p class="text-sm font-bold text-horizon-700 uppercase tracking-wide mb-3">Pro</p>
-            <p class="text-4xl font-bold mb-1">$28</p>
-            <p class="text-sm text-gray-500 mb-6">per month</p>
-            <ul class="space-y-2.5 text-sm text-gray-700 mb-8">
-              <PricingFeature text="Everything in Free" bold />
-              <PricingFeature text="GitHub sync for your data" />
-              <PricingFeature text="CalDAV/iCal calendar sync" />
-              <PricingFeature text="CardDAV contact sync to phone" />
-              <PricingFeature text="Business analytics dashboard" />
-              <PricingFeature text="Revenue and source insights" />
-              <PricingFeature text="Business goals and targets" />
-              <PricingFeature text="AI email drafting" />
-              <PricingFeature text="Date demand scores" />
-              <PricingFeature text="Anonymised industry benchmarks" />
-              <PricingFeature text="AI enquiry auto-replies" />
-              <PricingFeature text="MCP access for AI tools" />
-            </ul>
-            <a
-              href="/login"
-              class="block text-center bg-horizon-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors shadow-lg shadow-horizon/20"
-            >
-              Start with Pro
-            </a>
-          </div>
-        </div>
-
-        {/* Live Pro for free — referral */}
-        <div class="max-w-3xl mx-auto mt-12 sm:mt-16">
-          <div class="bg-horizon-50 border border-horizon-600/20 rounded-2xl p-6 sm:p-10 text-center">
-            <div class="inline-block bg-horizon-600 text-white text-xs font-bold px-3 py-1 rounded-full mb-3">Refer &amp; earn</div>
-            <h2 class="text-xl sm:text-2xl font-bold mb-3">Live Pro for free</h2>
-            <p class="text-gray-600 max-w-xl mx-auto mb-5">
-              Love Wedding Computer? Share it. Every time someone you refer becomes a paying Pro member,
-              you <strong class="text-gray-900">both</strong> get a month of Pro free — and you can bank up to
-              <strong class="text-gray-900"> nine months</strong> at a time. Refer a handful of fellow vendors and
-              your Pro plan pays for itself, indefinitely.
-            </p>
-            <a
-              href="/login"
-              class="inline-block bg-horizon-600 text-white py-2.5 px-6 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors shadow-lg shadow-horizon/20"
-            >
-              Get your referral link
-            </a>
-          </div>
-        </div>
-
-        {/* Detailed feature comparison */}
-        <div class="max-w-3xl mx-auto mt-12 sm:mt-16">
-          <h2 class="text-xl sm:text-2xl font-bold text-center mb-2">Compare every feature</h2>
-          <p class="text-center text-gray-500 text-sm mb-6">All the core tools are free forever. Pro adds sync, analytics, and AI.</p>
-          <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="bg-gray-50 border-b border-gray-200">
-                  <th class="text-left py-3 px-4 font-bold text-gray-700">Feature</th>
-                  <th class="py-3 px-2 text-center font-bold text-gray-500 w-16 sm:w-24">Free</th>
-                  <th class="py-3 px-2 text-center font-bold text-horizon-700 w-16 sm:w-24">Pro</th>
-                </tr>
-              </thead>
-              <tbody>
-                <PlanGroup label="Leads & CRM" />
-                <PlanRow feature="CRM with 8-stage pipeline" free pro />
-                <PlanRow feature="Custom enquiry forms" free pro />
-                <PlanRow feature="Embeddable HTML form for your own site" free pro />
-                <PlanRow feature="Spam protection (captcha + honeypot)" free pro />
-                <PlanRow feature="Import from other CRMs" free pro />
-                <PlanRow feature="AI email drafting" free={false} pro />
-                <PlanRow feature="AI enquiry auto-replies" free={false} pro />
-                <PlanRow feature="Enquiry API, webhooks & Zapier" free={false} pro />
-                <PlanRow feature="AI agent lead capture (MCP)" free={false} pro />
-
-                <PlanGroup label="Calendar & availability" />
-                <PlanRow feature="Calendar & event management" free pro />
-                <PlanRow feature="Availability settings" free pro />
-                <PlanRow feature="Public availability calendar" free pro />
-                <PlanRow feature="Directory listing" free pro />
-                <PlanRow feature="CalDAV / iCal calendar sync" free={false} pro />
-                <PlanRow feature="CardDAV contact sync to your phone" free={false} pro />
-
-                <PlanGroup label="Money" />
-                <PlanRow feature="Invoicing with Stripe Connect" free pro />
-                <PlanRow feature="Quote calculator" free pro />
-                <PlanRow feature="Contracts" free pro />
-
-                <PlanGroup label="Weddings & collaboration" />
-                <PlanRow feature="Wedding workspaces" free pro />
-                <PlanRow feature="Day-of run sheet builder" free pro />
-                <PlanRow feature="Checklists & NOIM forms" free pro />
-                <PlanRow feature="Team & agency management" free pro />
-                <PlanRow feature="Couple planner dashboard" free pro />
-
-                <PlanGroup label="Your data" />
-                <PlanRow feature="Plain-text file access" free pro />
-                <PlanRow feature="Passkey sign-in" free pro />
-                <PlanRow feature="GitHub sync for your data" free={false} pro />
-
-                <PlanGroup label="Insights & AI" />
-                <PlanRow feature="Business analytics dashboard" free={false} pro />
-                <PlanRow feature="Revenue & source insights" free={false} pro />
-                <PlanRow feature="Business goals & targets" free={false} pro />
-                <PlanRow feature="Date demand scores" free={false} pro />
-                <PlanRow feature="Anonymised industry benchmarks" free={false} pro />
-                <PlanRow feature="MCP access for AI tools" free={false} pro />
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="text-center mt-8 sm:mt-12">
-          <p class="text-sm text-gray-500">
-            Couples always free. No credit card required to start. Cancel Pro anytime.
-          </p>
-        </div>
-      </div>
-    </MarketingLayout>
-  )
+  return c.html(<PricingPage />)
 })
 
 // ─── Open Standard ───
 
 marketing.get('/standard', (c) => {
-  return c.html(
-    <MarketingLayout title="Wedding CRM Markdown Standard">
+  return c.html(<OpenStandardPage />)
+})
+
+function HomePage() {
+  return (
+    <MarketingLayout>
+      <div class="max-w-5xl mx-auto px-4 sm:px-6">
+        <section class="py-12 sm:py-16 lg:py-24 text-center">
+          <div class="inline-block bg-horizon-50 text-horizon-700 font-semibold text-sm px-4 py-1.5 rounded-full mb-4 sm:mb-6">{t('marketing.home.hero.badge')}</div>
+          <h1 class="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] mb-4 sm:mb-6">
+            <span class="block">{t('marketing.home.hero.titleLine1')}</span>
+            <span class="block text-horizon-700">{t('marketing.home.hero.titleLine2')}</span>
+          </h1>
+          <p class="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto mb-6 sm:mb-10 leading-relaxed">{t('marketing.home.hero.body')}</p>
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
+            <a href="/login" class="bg-horizon-600 text-white px-8 py-3.5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors shadow-lg shadow-horizon/20">{t('marketing.home.hero.primaryCta')}</a>
+            <a href="/about" class="border border-gray-300 text-gray-700 px-6 py-3.5 rounded-xl text-sm font-bold hover:border-horizon-600 hover:text-horizon-700 transition-colors">{t('marketing.home.hero.secondaryCta')}</a>
+          </div>
+          <p class="text-xs text-gray-400 mt-5">{t('marketing.home.hero.finePrint')}</p>
+        </section>
+
+        <section class="pb-4 sm:pb-6">
+          <div class="bg-horizon-50 border border-horizon-600/15 rounded-2xl p-5 sm:p-6 max-w-2xl mx-auto">
+            <div class="sm:flex sm:items-center sm:justify-between gap-5">
+              <div class="mb-3 sm:mb-0">
+                <p class="font-bold text-gray-900">{t('marketing.home.waitlist.title')}</p>
+                <p class="text-sm text-gray-600">{t('marketing.home.waitlist.body')}</p>
+              </div>
+              <form method="post" action="/notify" class="flex gap-2 shrink-0">
+                <input type="text" name="company" tabindex={-1} autocomplete="off" class="hidden" aria-hidden="true" />
+                <input type="email" name="email" required placeholder={t('marketing.home.waitlist.emailPlaceholder')} class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent w-full sm:w-52" />
+                <button type="submit" class="bg-horizon-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">{t('marketing.home.waitlist.submit')}</button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
+          <div class="max-w-3xl mx-auto text-center mb-10 sm:mb-12">
+            <h2 class="text-2xl sm:text-3xl font-bold mb-4">{t('marketing.home.why.title')}</h2>
+            <p class="text-gray-600 leading-relaxed">{t('marketing.home.why.body')}</p>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 max-w-4xl mx-auto">
+            {HOME_PILLARS.map((pillar) => <Pillar color={pillar.color} icon={pillar.icon} title={t(pillar.title)}>{t(pillar.desc)}</Pillar>)}
+          </div>
+        </section>
+
+        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
+          <div class="max-w-3xl mx-auto text-center mb-10">
+            <h2 class="text-xl sm:text-2xl font-bold mb-4">{t('marketing.home.collab.title')}</h2>
+            <p class="text-gray-600 leading-relaxed mb-6">{t('marketing.home.collab.body')}</p>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+            {HOME_COLLAB_CARDS.map((card) => (
+              <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 text-center">
+                <div class="text-2xl mb-2">{card.emoji}</div>
+                <h3 class="text-sm font-bold mb-1">{t(card.title)}</h3>
+                <p class="text-xs text-gray-500">{t(card.desc)}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section class="py-10 sm:py-16">
+          <h2 class="text-xl sm:text-2xl font-bold text-center mb-3">{t('marketing.home.features.title')}</h2>
+          <p class="text-center text-gray-500 text-sm mb-8 sm:mb-12 max-w-lg mx-auto">{t('marketing.home.features.body')}</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
+            {HOME_FEATURES.map((feature) => <FeatureCard color={feature.color} icon={feature.icon} title={t(feature.title)} desc={t(feature.desc)} />)}
+          </div>
+        </section>
+
+        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
+          <div class="max-w-3xl mx-auto text-center mb-8">
+            <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.home.roles.title')}</h2>
+            <p class="text-gray-600 text-sm leading-relaxed max-w-lg mx-auto">{t('marketing.home.roles.body')}</p>
+          </div>
+          <div class="flex flex-wrap justify-center gap-2 mb-8" id="role-tabs">
+            {HOME_ROLES.map((role, index) => <RoleTab role={role.role} label={t(role.label)} active={index === 0} />)}
+          </div>
+          <div id="role-panels">
+            {HOME_ROLES.map((panel, index) => (
+              <RolePanel role={panel.role} active={index === 0}>
+                {panel.features.map((feature) => <RoleFeature title={t(feature.title)} desc={t(feature.desc)} />)}
+                <RoleCollab>{t(panel.collab)}</RoleCollab>
+              </RolePanel>
+            ))}
+          </div>
+          <script dangerouslySetInnerHTML={{ __html: ROLE_TABS_SCRIPT }} />
+        </section>
+
+        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
+          <div class="max-w-3xl mx-auto text-center mb-8">
+            <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.home.switching.title')}</h2>
+            <p class="text-gray-600 text-sm leading-relaxed max-w-lg mx-auto">{t('marketing.home.switching.body')}</p>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 max-w-3xl mx-auto mb-6">
+            {CRM_IMPORTS.map((item) => (
+              <div class="bg-white border border-papaya-300/30 rounded-xl p-4 text-center">
+                <p class="text-sm font-bold text-gray-700">{item.name}</p>
+                <p class={'text-[10px] text-gray-500 ' + (item.italic ? 'italic' : '')}>{t(item.caption)}</p>
+              </div>
+            ))}
+          </div>
+          <p class="text-center text-xs text-gray-400 max-w-lg mx-auto">{t('marketing.home.switching.note')}</p>
+        </section>
+
+        <section class="py-10 sm:py-16">
+          <div class="bg-white border border-papaya-300/30 rounded-2xl sm:rounded-3xl p-6 sm:p-10 lg:p-12">
+            <div class="max-w-2xl mx-auto text-center">
+              <div class="w-12 h-12 rounded-2xl bg-horizon-50 flex items-center justify-center mx-auto mb-4"><div class="w-6 h-6 text-horizon-600" dangerouslySetInnerHTML={{ __html: featureIcons.plaintext }} /></div>
+              <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.home.data.title')}</h2>
+              <p class="text-gray-600 leading-relaxed mb-6">{t('marketing.home.data.body')}</p>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                {HOME_DATA_TOOLS.map((tool) => (
+                  <div class="text-center">
+                    <div class="text-lg mb-1">{tool.emoji}</div>
+                    <p class="text-xs font-bold text-gray-700">{t(tool.name)}</p>
+                    <p class="text-[10px] text-gray-500">{t(tool.caption)}</p>
+                  </div>
+                ))}
+              </div>
+              <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <a href="/standard" class="text-horizon-700 font-bold text-sm hover:underline">{t('marketing.home.data.standardLink')}</a>
+                <span class="hidden sm:inline text-gray-300">|</span>
+                <a href="/docs/plain-text" class="text-horizon-700 font-bold text-sm hover:underline">{t('marketing.home.data.filesLink')}</a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="py-8 sm:py-16">
+          <div class="bg-horizon-600 rounded-2xl sm:rounded-3xl p-6 sm:p-12 text-center text-white">
+            <h2 class="text-2xl sm:text-3xl font-bold mb-4">{t('marketing.home.cta.title')}</h2>
+            <p class="text-white mb-6 sm:mb-8 max-w-md mx-auto">{t('marketing.home.cta.body')}</p>
+            <a href="/login" class="inline-block bg-white text-horizon-700 font-bold px-8 py-3.5 rounded-xl hover:bg-horizon-50 transition-colors">{t('marketing.home.hero.primaryCta')}</a>
+          </div>
+        </section>
+      </div>
+    </MarketingLayout>
+  )
+}
+
+function AboutPage() {
+  return (
+    <MarketingLayout title={t('marketing.about.metaTitle')}>
       <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
-        <div class="inline-block bg-horizon-50 text-horizon-700 font-semibold text-sm px-4 py-1.5 rounded-full mb-4">
-          Open Standard v1.0
-        </div>
-        <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6">Wedding CRM Markdown Standard</h1>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
-          <p>
-            An open file format for storing wedding industry CRM data as plain text markdown files
-            with YAML frontmatter. Designed to be human-readable, human-editable, and interoperable
-            across any tool that understands text files.
-          </p>
-          <p>
-            This specification is published by <a href="/" class="text-horizon-700 font-bold hover:underline">Wedding Computer</a> and
-            is free for anyone to implement. We encourage other wedding software, CRM tools, and
-            planning apps to adopt this format so that wedding professionals can move their data freely
-            between tools.
-          </p>
-        </div>
-
-        {/* Why this exists */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Why an open format?</h2>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
-          <p>
-            Wedding professionals build their business on relationships — client details, wedding timelines,
-            notes from consultations, follow-up history. This data is the lifeblood of their business, but
-            it's usually trapped inside a proprietary database owned by a SaaS vendor.
-          </p>
-          <p>
-            Plain text files solve this. A markdown file created today will be readable on any computer
-            in 2050, 2075, or 2100. YAML frontmatter is a widely-adopted standard for structured metadata
-            in text files. Together, they give you structured data that's also human-friendly.
-          </p>
-          <p>
-            By publishing this as an open standard, we're making a bet: that the best way to serve wedding
-            professionals is to ensure their data is never locked in.
-          </p>
-        </div>
-
-        {/* Format overview */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Format overview</h2>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
-          <p>
-            Each entity (contact, wedding) is stored as a single <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">.md</code> file.
-            Structured data lives in YAML frontmatter between <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">---</code> fences
-            at the top of the file. Free-form notes are the markdown body below.
-          </p>
-        </div>
-        <div class="bg-gray-900 rounded-xl p-4 sm:p-6 mb-12 overflow-x-auto">
-          <pre class="text-sm text-gray-100 leading-relaxed"><code>{`---
-id: a1b2c3d4e5f6a1b2c3d4e5f6
-first_name: Sarah
-last_name: Smith
-email: sarah@example.com
-phone: "0400 123 456"
-partner_first_name: James
-partner_last_name: Wilson
-status: quoted
-wedding_date: 2026-12-15
-wedding_location: Sydney
-tags:
-  - vip
-  - referral
-created_at: 2025-06-01T00:00:00.000Z
-updated_at: 2025-06-01T00:00:00.000Z
----
-
-Met at the Bridal Expo in March 2025.
-
-- Interested in elopement ceremony
-- Budget: $3,000 - $5,000
-- Preferred dates: Dec 2026 or Jan 2027
-
-## Follow-up notes
-
-Called on March 15, very enthusiastic.
-Sending quote this week.`}</code></pre>
-        </div>
-
-        {/* Contact spec */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Contact file specification</h2>
-        <p class="text-gray-600 leading-relaxed mb-6">
-          Contact files represent a lead, client, or business relationship. They live in a <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">contacts/</code> directory.
-        </p>
-
-        <h3 class="text-lg font-bold mb-3">Required fields</h3>
-        <div class="bg-white border border-papaya-300/30 rounded-xl overflow-hidden mb-6">
-          <table class="w-full text-sm">
-            <thead class="bg-papaya-50/50">
-              <tr>
-                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Field</th>
-                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Type</th>
-                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Description</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-papaya-300/20">
-              <SpecRow field="id" type="string" desc="Unique identifier. 24-character hex string recommended. Must be globally unique." />
-              <SpecRow field="first_name" type="string" desc="Contact's first (given) name." />
-              <SpecRow field="last_name" type="string" desc="Contact's last (family) name." />
-              <SpecRow field="status" type="enum" desc="Pipeline stage. One of: new, contacted, meeting, quoted, booked, completed, lost, archived." />
-              <SpecRow field="created_at" type="ISO 8601" desc="When the contact was first created. Example: 2025-06-01T00:00:00.000Z" />
-              <SpecRow field="updated_at" type="ISO 8601" desc="When the contact was last modified." />
-            </tbody>
-          </table>
-        </div>
-
-        <h3 class="text-lg font-bold mb-3">Optional fields</h3>
-        <div class="bg-white border border-papaya-300/30 rounded-xl overflow-hidden mb-6">
-          <table class="w-full text-sm">
-            <thead class="bg-papaya-50/50">
-              <tr>
-                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Field</th>
-                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Type</th>
-                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Description</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-papaya-300/20">
-              <SpecRow field="email" type="string" desc="Primary email address." />
-              <SpecRow field="phone" type="string" desc='Phone number. Always quote in YAML to prevent numeric parsing. Example: "0400 123 456"' />
-              <SpecRow field="partner_first_name" type="string" desc="Partner's first name (for couples)." />
-              <SpecRow field="partner_last_name" type="string" desc="Partner's last name." />
-              <SpecRow field="partner_email" type="string" desc="Partner's email address." />
-              <SpecRow field="partner_phone" type="string" desc='Partner phone number. Always quote.' />
-              <SpecRow field="source" type="string" desc="Where the lead came from. Examples: website, instagram, referral, bridal-expo." />
-              <SpecRow field="wedding_id" type="string" desc="ID of a linked wedding entity, if one exists." />
-              <SpecRow field="wedding_date" type="string" desc="Expected wedding date. Format: YYYY-MM-DD." />
-              <SpecRow field="wedding_location" type="string" desc="Expected wedding location. Free text." />
-              <SpecRow field="tags" type="string[]" desc="YAML array of tags. Example: [vip, referral, 2026]" />
-              <SpecRow field="form_data" type="object" desc="Structured data from enquiry/booking forms. YAML object with arbitrary keys." />
-              <SpecRow field="last_contacted_at" type="ISO 8601" desc="When you last reached out to this contact." />
-            </tbody>
-          </table>
-        </div>
-
-        <h3 class="text-lg font-bold mb-3">Body (notes)</h3>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
-          <p>
-            Everything below the closing <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">---</code> fence is
-            free-form markdown. This is where you write notes, follow-up history, meeting summaries, or anything
-            else. Use headings, lists, links — any valid markdown.
-          </p>
-          <p>
-            In Wedding Computer, this maps to the "notes" field in the contact record. If the body is empty,
-            notes are null.
-          </p>
-        </div>
-
-        {/* Wedding spec */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Wedding file specification</h2>
-        <p class="text-gray-600 leading-relaxed mb-6">
-          Wedding files represent a wedding event. They live in a <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">weddings/</code> directory.
-        </p>
-
-        <div class="bg-gray-900 rounded-xl p-4 sm:p-6 mb-8 overflow-x-auto">
-          <pre class="text-sm text-gray-100 leading-relaxed"><code>{`---
-id: f8e7d6c5b4a3f8e7d6c5b4a3
-title: Sarah & James
-date: 2026-12-15
-time: "15:00"
-location: Royal Botanic Garden Sydney
-location_lat: -33.8642
-location_lng: 151.2166
-status: confirmed
-ceremony_type: legal
-vendor_visibility: private
-reception_location: The Calyx
-reception_time: "17:30"
-guest_count: 85
-dress_code: Semi-formal
-created_by_user_id: u1a2b3c4d5e6
-created_at: 2025-06-01T00:00:00.000Z
-updated_at: 2025-07-15T10:30:00.000Z
----
-
-Outdoor ceremony in the rose garden, weather permitting.
-Backup plan: The Calyx indoor space.
-
-## Timeline
-
-- 13:00 — Getting ready at hotel
-- 14:30 — First look photos
-- 15:00 — Ceremony
-- 15:30 — Family photos
-- 16:00 — Canapes and drinks
-- 17:30 — Reception begins`}</code></pre>
-        </div>
-
-        <h3 class="text-lg font-bold mb-3">Required fields</h3>
-        <div class="bg-white border border-papaya-300/30 rounded-xl overflow-hidden mb-6">
-          <table class="w-full text-sm">
-            <thead class="bg-papaya-50/50">
-              <tr>
-                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Field</th>
-                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Type</th>
-                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Description</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-papaya-300/20">
-              <SpecRow field="id" type="string" desc="Unique identifier. 24-character hex string recommended." />
-              <SpecRow field="title" type="string" desc={"Wedding title. Typically the couple's names: \"Sarah & James\"."} />
-              <SpecRow field="status" type="enum" desc="One of: planning, confirmed, completed, cancelled." />
-              <SpecRow field="created_by_user_id" type="string" desc="ID of the user who created this wedding." />
-              <SpecRow field="created_at" type="ISO 8601" desc="When the wedding record was created." />
-              <SpecRow field="updated_at" type="ISO 8601" desc="When the wedding record was last modified." />
-            </tbody>
-          </table>
-        </div>
-
-        <h3 class="text-lg font-bold mb-3">Optional fields</h3>
-        <div class="bg-white border border-papaya-300/30 rounded-xl overflow-hidden mb-6">
-          <table class="w-full text-sm">
-            <thead class="bg-papaya-50/50">
-              <tr>
-                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Field</th>
-                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Type</th>
-                <th class="text-left px-4 py-2.5 font-bold text-gray-700">Description</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-papaya-300/20">
-              <SpecRow field="date" type="string" desc="Wedding date. Format: YYYY-MM-DD." />
-              <SpecRow field="time" type="string" desc='Ceremony start time. Format: HH:MM (24-hour). Always quote in YAML.' />
-              <SpecRow field="location" type="string" desc="Ceremony venue name and/or address." />
-              <SpecRow field="location_lat" type="number" desc="Latitude of the ceremony location. Decimal degrees." />
-              <SpecRow field="location_lng" type="number" desc="Longitude of the ceremony location. Decimal degrees." />
-              <SpecRow field="ceremony_type" type="string" desc="Type of ceremony. Examples: legal, commitment, renewal, elopement." />
-              <SpecRow field="vendor_visibility" type="enum" desc="Whether vendors on this wedding can see each other. One of: private, visible." />
-              <SpecRow field="reception_location" type="string" desc="Reception venue name and/or address." />
-              <SpecRow field="reception_time" type="string" desc='Reception start time. Format: HH:MM. Always quote.' />
-              <SpecRow field="getting_ready_location" type="string" desc="Where the couple is getting ready (hotel, home, etc.)." />
-              <SpecRow field="getting_ready_time" type="string" desc='Getting ready start time. Always quote.' />
-              <SpecRow field="dress_code" type="string" desc="Dress code for guests. Free text." />
-              <SpecRow field="guest_count" type="integer" desc="Expected number of guests." />
-              <SpecRow field="timeline_notes" type="string" desc="Additional notes about the day's timeline." />
-            </tbody>
-          </table>
-        </div>
-
-        <h3 class="text-lg font-bold mb-3">Body (notes)</h3>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
-          <p>
-            The markdown body holds free-form notes about the wedding — logistics, backup plans,
-            run sheet details, vendor coordination notes, or anything else. Use headings to organise
-            sections. This maps to the "notes" field on the wedding record.
-          </p>
-        </div>
-
-        {/* File naming */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">File naming conventions</h2>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
-          <p>
-            Filenames should be human-readable slugs. This makes them easy to browse in a file explorer
-            or Obsidian's sidebar.
-          </p>
-        </div>
-
-        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6">
-          <h3 class="font-bold text-sm mb-3">Contacts</h3>
-          <div class="space-y-2 text-sm text-gray-600">
-            <p><code class="bg-gray-100 px-1.5 py-0.5 rounded">sarah-smith.md</code> — Single contact</p>
-            <p><code class="bg-gray-100 px-1.5 py-0.5 rounded">sarah-james-smith.md</code> — Couple with same surname</p>
-            <p><code class="bg-gray-100 px-1.5 py-0.5 rounded">sarah-smith-james-wilson.md</code> — Couple with different surnames</p>
-            <p><code class="bg-gray-100 px-1.5 py-0.5 rounded">john-doe-2.md</code> — Deduplicated (second John Doe)</p>
-          </div>
-        </div>
-
-        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6">
-          <h3 class="font-bold text-sm mb-3">Weddings</h3>
-          <div class="space-y-2 text-sm text-gray-600">
-            <p><code class="bg-gray-100 px-1.5 py-0.5 rounded">sarah-james-2026-12-15.md</code> — Wedding with date</p>
-            <p><code class="bg-gray-100 px-1.5 py-0.5 rounded">smith-jones-wedding.md</code> — Wedding without date</p>
-          </div>
-        </div>
-
-        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-12">
-          <h3 class="font-bold text-sm mb-3">Slugification rules</h3>
-          <div class="space-y-2 text-sm text-gray-600">
-            <p>1. Decompose Unicode (NFKD normalisation), strip combining marks</p>
-            <p>2. Lowercase everything</p>
-            <p>3. Strip apostrophes and quotes — O'Brien becomes obrien</p>
-            <p>4. Replace <code class="bg-gray-100 px-1.5 py-0.5 rounded">&amp;</code> with a hyphen</p>
-            <p>5. Replace all non-alphanumeric characters with hyphens</p>
-            <p>6. Collapse multiple hyphens, trim leading/trailing hyphens</p>
-            <p>7. If the result is empty, use <code class="bg-gray-100 px-1.5 py-0.5 rounded">untitled</code></p>
-          </div>
-        </div>
-
-        {/* Directory structure */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Directory structure</h2>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-8">
-          <p>
-            Files are organised by vendor, then by entity type:
-          </p>
-        </div>
-        <div class="bg-gray-900 rounded-xl p-4 sm:p-6 mb-12 overflow-x-auto">
-          <pre class="text-sm text-gray-100 leading-relaxed"><code>{`vendors/
-  {vendor_id}/
-    contacts/
-      sarah-smith.md
-      john-james-doe.md
-      jane-wilson-2.md
-    weddings/
-      2026-12-15-sarah-james/
-        wedding.md
-        todo.md
-        log.md
-        files/
-      smith-wilson/
-        wedding.md`}</code></pre>
-        </div>
-
-        {/* YAML tips */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">YAML authoring tips</h2>
-        <div class="space-y-3 mb-12">
-          <AboutFeature
-            title='Always quote phone numbers'
-            desc='YAML parses unquoted numbers like 0400123456 as the integer 400123456, losing the leading zero. Always wrap phone numbers in quotes: phone: "0400 123 456".'
-          />
-          <AboutFeature
-            title="Always quote times"
-            desc='YAML may parse HH:MM as a sexagesimal number. Write time: "15:00" not time: 15:00.'
-          />
-          <AboutFeature
-            title="Dates can be unquoted"
-            desc="YAML 1.2 handles ISO dates well. wedding_date: 2026-12-15 and created_at: 2025-06-01T00:00:00.000Z both work without quotes."
-          />
-          <AboutFeature
-            title="Use YAML arrays for tags"
-            desc='Write tags as a YAML array — either inline [vip, referral] or block style with - vip on each line. Not a JSON string.'
-          />
-          <AboutFeature
-            title="Colons and special characters in values"
-            desc='If a value contains a colon, hash, or other YAML-special character, quote it: location: "Ceremony: 3pm at The Grand Ballroom".'
-          />
-          <AboutFeature
-            title="Null vs absent"
-            desc="Omitting a field and setting it to null are equivalent. Wedding Computer treats both as null. If you're hand-editing, just leave optional fields out."
-          />
-        </div>
-
-        {/* Interop */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Interoperability</h2>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
-          <p>
-            Files conforming to this standard can be read by:
-          </p>
-          <ul class="list-disc list-inside space-y-1.5">
-            <li><strong>Any text editor</strong> — VS Code, Sublime Text, Notepad, vim</li>
-            <li><strong>Obsidian</strong> — reads YAML frontmatter natively, renders the markdown body</li>
-            <li><strong>Static site generators</strong> — Hugo, Jekyll, Eleventy, Astro all read YAML frontmatter</li>
-            <li><strong>Scripting languages</strong> — Python (PyYAML), JavaScript (yaml), Ruby, Go all have YAML parsers</li>
-            <li><strong>Any YAML-aware tool</strong> — the frontmatter is standard YAML 1.2</li>
-          </ul>
-          <p>
-            Wedding Computer uses the <a href="https://eemeli.org/yaml/" class="text-horizon-700 font-bold hover:underline">yaml</a> npm
-            package (YAML 1.2 compliant) for parsing and serialisation. We recommend other implementations
-            use a YAML 1.2 parser for maximum compatibility.
-          </p>
-        </div>
-
-        {/* License */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">License</h2>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
-          <p>
-            This specification is published under{' '}
-            <a href="https://creativecommons.org/publicdomain/zero/1.0/" class="text-horizon-700 font-bold hover:underline">CC0 1.0 Universal (Public Domain)</a>.
-            You are free to implement, modify, and redistribute it without restriction.
-            No attribution required, though we'd appreciate a link back.
-          </p>
-          <p>
-            The specification is intentionally independent of Wedding Computer itself — you can implement it
-            in any software, commercial or otherwise, without asking us. Our official{' '}
-            <a href="https://github.com/joshwithers/wedding-computer-sync" class="text-horizon-700 font-bold hover:underline" rel="noopener">Obsidian plugin</a>{' '}
-            is open source and doubles as a reference implementation.
-          </p>
-        </div>
-
-        {/* CTA */}
+        <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6">{t('marketing.about.title')}</h1>
+        <CopyParagraphs keys={ABOUT_INTRO} className="space-y-4 text-gray-600 leading-relaxed mb-10" />
+        {ABOUT_SECTIONS.map((section) => <PageFeatureSection section={section} />)}
+        <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.about.workspaces.title')}</h2>
+        <p class="text-gray-500 text-sm mb-6">{t('marketing.about.workspaces.subtitle')}</p>
+        <CopyParagraphs keys={ABOUT_WORKSPACE_PARAGRAPHS} className="space-y-4 text-gray-600 leading-relaxed mb-12" />
+        <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.about.data.title')}</h2>
+        <p class="text-gray-500 text-sm mb-6">{t('marketing.about.data.subtitle')}</p>
+        <CopyParagraphs keys={ABOUT_DATA_PARAGRAPHS} className="space-y-4 text-gray-600 leading-relaxed mb-6" />
+        <div class="space-y-3 mb-12">{ABOUT_DATA_FEATURES.map((feature) => <AboutFeature title={t(feature.title)} desc={t(feature.desc)} />)}</div>
+        {ABOUT_MORE_SECTIONS.map((section) => <PageFeatureSection section={section} />)}
+        <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.about.openData.title')}</h2>
+        <CopyParagraphs keys={ABOUT_OPEN_DATA_PARAGRAPHS} className="space-y-4 text-gray-600 leading-relaxed mb-6" />
+        <p class="text-gray-600 leading-relaxed mb-12"><a href="/standard" class="text-horizon-700 font-bold hover:underline">{t('marketing.about.openData.standardLink')}</a>{' '}·{' '}<a href="https://community.obsidian.md/plugins/wedding-computer-sync" class="text-horizon-700 font-bold hover:underline" rel="noopener">{t('marketing.about.openData.pluginLink')}</a></p>
         <div class="bg-horizon-600 rounded-2xl p-6 sm:p-10 text-center text-white">
-          <h2 class="text-xl sm:text-2xl font-bold mb-3">Build on this standard</h2>
-          <p class="text-white mb-6 max-w-md mx-auto text-sm">
-            If you're building wedding software, adopt this format. Your users will thank you.
-          </p>
-          <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <a
-              href="https://github.com/joshwithers/wedding-computer-sync"
-              class="inline-block bg-white text-horizon-700 font-bold px-6 py-3 rounded-xl hover:bg-horizon-50 transition-colors text-sm"
-            >
-              Reference implementation
-            </a>
-            <a
-              href="/docs/plain-text"
-              class="inline-block bg-horizon-500 text-white font-bold px-6 py-3 rounded-xl hover:bg-horizon-400 transition-colors text-sm"
-            >
-              Access your files
-            </a>
-          </div>
+          <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.about.cta.title')}</h2>
+          <p class="text-white mb-6 max-w-md mx-auto text-sm">{t('marketing.about.cta.body')}</p>
+          <a href="/login" class="inline-block bg-white text-horizon-700 font-bold px-8 py-3.5 rounded-xl hover:bg-horizon-50 transition-colors">{t('marketing.home.hero.primaryCta')}</a>
         </div>
       </div>
     </MarketingLayout>
   )
-})
+}
+
+function PricingPage() {
+  return (
+    <MarketingLayout title={t('marketing.pricing.metaTitle')}>
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
+        <h1 class="text-2xl sm:text-4xl font-bold mb-4 text-center">{t('marketing.pricing.title')}</h1>
+        <p class="text-gray-600 mb-10 sm:mb-12 text-center max-w-lg mx-auto">{t('marketing.pricing.subtitle')}</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 max-w-2xl mx-auto">
+          <PlanCard name="marketing.pricing.free.name" price="$0" note="marketing.pricing.free.priceNote" features={PRICING_FREE_FEATURES} cta="marketing.home.hero.primaryCta" />
+          <PlanCard name="marketing.pricing.pro.name" price="$28" note="marketing.pricing.pro.priceNote" features={PRICING_PRO_FEATURES} cta="marketing.pricing.pro.cta" highlighted />
+        </div>
+        <div class="max-w-3xl mx-auto mt-12 sm:mt-16">
+          <div class="bg-horizon-50 border border-horizon-600/20 rounded-2xl p-6 sm:p-10 text-center">
+            <div class="inline-block bg-horizon-600 text-white text-xs font-bold px-3 py-1 rounded-full mb-3">{t('marketing.pricing.referral.badge')}</div>
+            <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.pricing.referral.title')}</h2>
+            <p class="text-gray-600 max-w-xl mx-auto mb-5">{t('marketing.pricing.referral.body')}</p>
+            <a href="/login" class="inline-block bg-horizon-600 text-white py-2.5 px-6 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors shadow-lg shadow-horizon/20">{t('marketing.pricing.referral.cta')}</a>
+          </div>
+        </div>
+        <div class="max-w-3xl mx-auto mt-12 sm:mt-16">
+          <h2 class="text-xl sm:text-2xl font-bold text-center mb-2">{t('marketing.pricing.compare.title')}</h2>
+          <p class="text-center text-gray-500 text-sm mb-6">{t('marketing.pricing.compare.subtitle')}</p>
+          <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+            <table class="w-full text-sm">
+              <thead><tr class="bg-gray-50 border-b border-gray-200"><th class="text-left py-3 px-4 font-bold text-gray-700">{t('marketing.pricing.compare.feature')}</th><th class="py-3 px-2 text-center font-bold text-gray-500 w-16 sm:w-24">{t('marketing.pricing.free.name')}</th><th class="py-3 px-2 text-center font-bold text-horizon-700 w-16 sm:w-24">{t('marketing.pricing.pro.name')}</th></tr></thead>
+              <tbody>{PRICING_COMPARISON.map((group) => <><PlanGroup label={t(group.label)} />{group.rows.map((row) => <PlanRow feature={t(row.feature)} free={row.free} pro={row.pro} />)}</>)}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="text-center mt-8 sm:mt-12"><p class="text-sm text-gray-500">{t('marketing.pricing.footer')}</p></div>
+      </div>
+    </MarketingLayout>
+  )
+}
+
+function OpenStandardPage() {
+  return (
+    <MarketingLayout title={t('marketing.standard.metaTitle')}>
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
+        <div class="inline-block bg-horizon-50 text-horizon-700 font-semibold text-sm px-4 py-1.5 rounded-full mb-4">{t('marketing.standard.badge')}</div>
+        <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6">{t('marketing.standard.title')}</h1>
+        <CopyParagraphs keys={STANDARD_INTRO} className="space-y-4 text-gray-600 leading-relaxed mb-12" />
+        <DocSection title="marketing.standard.why.title" paragraphs={STANDARD_WHY} />
+        <DocSection title="marketing.standard.format.title" paragraphs={STANDARD_FORMAT} />
+        <CodeBlock code={STANDARD_CONTACT_SAMPLE} className="mb-12" />
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.standard.contact.title')}</h2>
+        <p class="text-gray-600 leading-relaxed mb-6">{t('marketing.standard.contact.body')}</p>
+        <SpecTable heading="marketing.standard.requiredFields" rows={STANDARD_CONTACT_REQUIRED} />
+        <SpecTable heading="marketing.standard.optionalFields" rows={STANDARD_CONTACT_OPTIONAL} />
+        <h3 class="text-lg font-bold mb-3">{t('marketing.standard.bodyNotes.title')}</h3>
+        <CopyParagraphs keys={STANDARD_CONTACT_BODY} className="space-y-4 text-gray-600 leading-relaxed mb-12" />
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.standard.wedding.title')}</h2>
+        <p class="text-gray-600 leading-relaxed mb-6">{t('marketing.standard.wedding.body')}</p>
+        <CodeBlock code={STANDARD_WEDDING_SAMPLE} className="mb-8" />
+        <SpecTable heading="marketing.standard.requiredFields" rows={STANDARD_WEDDING_REQUIRED} />
+        <SpecTable heading="marketing.standard.optionalFields" rows={STANDARD_WEDDING_OPTIONAL} />
+        <h3 class="text-lg font-bold mb-3">{t('marketing.standard.bodyNotes.title')}</h3>
+        <CopyParagraphs keys={STANDARD_WEDDING_BODY} className="space-y-4 text-gray-600 leading-relaxed mb-12" />
+        <DocSection title="marketing.standard.naming.title" paragraphs={STANDARD_NAMING} />
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6"><h3 class="font-bold text-sm mb-3">{t('marketing.standard.naming.contacts')}</h3><ExampleLines examples={STANDARD_CONTACT_FILENAME_EXAMPLES} /></div>
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-6"><h3 class="font-bold text-sm mb-3">{t('marketing.standard.naming.weddings')}</h3><ExampleLines examples={STANDARD_WEDDING_FILENAME_EXAMPLES} /></div>
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-12"><h3 class="font-bold text-sm mb-3">{t('marketing.standard.slug.title')}</h3><CopyParagraphs keys={STANDARD_SLUG_RULES} className="space-y-2 text-sm text-gray-600" /></div>
+        <DocSection title="marketing.standard.directory.title" paragraphs={STANDARD_DIRECTORY} />
+        <CodeBlock code={STANDARD_DIRECTORY_SAMPLE} className="mb-12" />
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.standard.yaml.title')}</h2>
+        <div class="space-y-3 mb-12">{STANDARD_YAML_TIPS.map((tip) => <AboutFeature title={t(tip.title)} desc={t(tip.desc)} />)}</div>
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.standard.interop.title')}</h2>
+        <CopyParagraphs keys={STANDARD_INTEROP_PARAGRAPHS} className="space-y-4 text-gray-600 leading-relaxed mb-4" />
+        <ul class="list-disc list-inside space-y-1.5 text-gray-600 mb-4">{STANDARD_INTEROP_LIST.map((item) => <li>{t(item)}</li>)}</ul>
+        <p class="text-gray-600 leading-relaxed mb-12">{t('marketing.standard.interop.parser')}</p>
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.standard.license.title')}</h2>
+        <CopyParagraphs keys={STANDARD_LICENSE} className="space-y-4 text-gray-600 leading-relaxed mb-12" />
+        <div class="bg-horizon-600 rounded-2xl p-6 sm:p-10 text-center text-white">
+          <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.standard.cta.title')}</h2>
+          <p class="text-white mb-6 max-w-md mx-auto text-sm">{t('marketing.standard.cta.body')}</p>
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-3"><a href="https://github.com/joshwithers/wedding-computer-sync" class="inline-block bg-white text-horizon-700 font-bold px-6 py-3 rounded-xl hover:bg-horizon-50 transition-colors text-sm">{t('marketing.standard.cta.reference')}</a><a href="/docs/plain-text" class="inline-block bg-horizon-500 text-white font-bold px-6 py-3 rounded-xl hover:bg-horizon-400 transition-colors text-sm">{t('marketing.standard.cta.files')}</a></div>
+        </div>
+      </div>
+    </MarketingLayout>
+  )
+}
+
+function PlanCard({ name, price, note, features, cta, highlighted }: { name: MessageKey; price: string; note: MessageKey; features: MessageKey[]; cta: MessageKey; highlighted?: boolean }) {
+  return (
+    <div class={`bg-white rounded-2xl ${highlighted ? 'border-2 border-horizon-600 relative' : 'border border-gray-200'} p-6 sm:p-8`}>
+      {highlighted && <div class="absolute -top-3 left-6 bg-horizon-600 text-white text-xs font-bold px-3 py-1 rounded-full">{t('marketing.pricing.recommended')}</div>}
+      <p class={`text-sm font-bold ${highlighted ? 'text-horizon-700' : 'text-gray-500'} uppercase tracking-wide mb-3`}>{t(name)}</p>
+      <p class="text-4xl font-bold mb-1">{price}</p>
+      <p class="text-sm text-gray-500 mb-6">{t(note)}</p>
+      <ul class="space-y-2.5 text-sm text-gray-700 mb-8">{features.map((feature, index) => <PricingFeature text={t(feature)} bold={highlighted && index === 0} />)}</ul>
+      <a href="/login" class={highlighted ? 'block text-center bg-horizon-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors shadow-lg shadow-horizon/20' : 'block text-center bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors'}>{t(cta)}</a>
+    </div>
+  )
+}
+
+function CopyParagraphs({ keys, className }: { keys: MessageKey[]; className: string }) {
+  return <div class={className}>{keys.map((key) => <p>{t(key)}</p>)}</div>
+}
+
+function PageFeatureSection({ section }: { section: FeatureSection }) {
+  return <><h2 class="text-xl sm:text-2xl font-bold mb-2">{t(section.title)}</h2>{section.subtitle && <p class="text-gray-500 text-sm mb-6">{t(section.subtitle)}</p>}<div class="space-y-3 mb-12">{section.features.map((feature) => <AboutFeature title={t(feature.title)} desc={t(feature.desc)} />)}</div></>
+}
+
+function DocSection({ title, paragraphs }: { title: MessageKey; paragraphs: MessageKey[] }) {
+  return <><h2 class="text-xl sm:text-2xl font-bold mb-3">{t(title)}</h2><CopyParagraphs keys={paragraphs} className="space-y-4 text-gray-600 leading-relaxed mb-12" /></>
+}
+
+function CodeBlock({ code, className }: { code: string; className: string }) {
+  return <div class={'bg-gray-900 rounded-xl p-4 sm:p-6 ' + className + ' overflow-x-auto'}><pre class="text-sm text-gray-100 leading-relaxed"><code>{code}</code></pre></div>
+}
+
+function SpecTable({ heading, rows }: { heading: MessageKey; rows: SpecDef[] }) {
+  return <><h3 class="text-lg font-bold mb-3">{t(heading)}</h3><div class="bg-white border border-papaya-300/30 rounded-xl overflow-hidden mb-6"><table class="w-full text-sm"><thead class="bg-papaya-50/50"><tr><th class="text-left px-4 py-2.5 font-bold text-gray-700">{t('marketing.standard.table.field')}</th><th class="text-left px-4 py-2.5 font-bold text-gray-700">{t('marketing.standard.table.type')}</th><th class="text-left px-4 py-2.5 font-bold text-gray-700">{t('marketing.standard.table.description')}</th></tr></thead><tbody class="divide-y divide-papaya-300/20">{rows.map((row) => <SpecRow field={row.field} type={row.type} desc={t(row.desc)} />)}</tbody></table></div></>
+}
+
+function ExampleLines({ examples }: { examples: ExampleLine[] }) {
+  return <div class="space-y-2 text-sm text-gray-600">{examples.map((example) => <p><code class="bg-gray-100 px-1.5 py-0.5 rounded">{example.code}</code> — {t(example.desc)}</p>)}</div>
+}
+
+type MarketingColor = 'horizon' | 'grapefruit'
+type CardDef = { title: MessageKey; desc: MessageKey }
+type FeatureCardDef = CardDef & { color: MarketingColor; icon: string }
+type RoleDef = { role: string; label: MessageKey; features: CardDef[]; collab: MessageKey }
+type FeatureSection = { title: MessageKey; subtitle?: MessageKey; features: CardDef[] }
+type PlanRowDef = { feature: MessageKey; free?: boolean; pro?: boolean }
+type PlanGroupDef = { label: MessageKey; rows: PlanRowDef[] }
+type SpecDef = { field: string; type: string; desc: MessageKey }
+type ExampleLine = { code: string; desc: MessageKey }
+
+const ROLE_TABS_SCRIPT = "document.getElementById('role-tabs').addEventListener('click', function(e) { var btn = e.target.closest('[data-role]'); if (!btn) return; var role = btn.getAttribute('data-role'); document.querySelectorAll('#role-tabs [data-role]').forEach(function(t) { t.classList.remove('bg-horizon-600', 'text-white'); t.classList.add('bg-white', 'text-gray-700'); }); btn.classList.remove('bg-white', 'text-gray-700'); btn.classList.add('bg-horizon-600', 'text-white'); document.querySelectorAll('#role-panels [data-panel]').forEach(function(p) { p.style.display = p.getAttribute('data-panel') === role ? '' : 'none'; }); });"
+
+const HOME_PILLARS: FeatureCardDef[] = [
+  { color: 'horizon', icon: 'workspace', title: 'marketing.home.pillar.collab.title', desc: 'marketing.home.pillar.collab.desc' },
+  { color: 'grapefruit', icon: 'plaintext', title: 'marketing.home.pillar.data.title', desc: 'marketing.home.pillar.data.desc' },
+  { color: 'horizon', icon: 'mcp', title: 'marketing.home.pillar.ai.title', desc: 'marketing.home.pillar.ai.desc' },
+  { color: 'grapefruit', icon: 'analytics', title: 'marketing.home.pillar.market.title', desc: 'marketing.home.pillar.market.desc' },
+]
+const HOME_COLLAB_CARDS: Array<CardDef & { emoji: string }> = [
+  { emoji: '🤝', title: 'marketing.home.collab.timeline.title', desc: 'marketing.home.collab.timeline.desc' },
+  { emoji: '👥', title: 'marketing.home.collab.access.title', desc: 'marketing.home.collab.access.desc' },
+  { emoji: '📋', title: 'marketing.home.collab.credits.title', desc: 'marketing.home.collab.credits.desc' },
+]
+const HOME_FEATURES: FeatureCardDef[] = [
+  { color: 'horizon', icon: 'crm', title: 'marketing.home.feature.crm.title', desc: 'marketing.home.feature.crm.desc' },
+  { color: 'grapefruit', icon: 'form', title: 'marketing.home.feature.forms.title', desc: 'marketing.home.feature.forms.desc' },
+  { color: 'horizon', icon: 'calendar', title: 'marketing.home.feature.calendar.title', desc: 'marketing.home.feature.calendar.desc' },
+  { color: 'grapefruit', icon: 'invoice', title: 'marketing.home.feature.invoices.title', desc: 'marketing.home.feature.invoices.desc' },
+  { color: 'horizon', icon: 'email', title: 'marketing.home.feature.email.title', desc: 'marketing.home.feature.email.desc' },
+  { color: 'grapefruit', icon: 'ai', title: 'marketing.home.feature.aiEmail.title', desc: 'marketing.home.feature.aiEmail.desc' },
+  { color: 'horizon', icon: 'workspace', title: 'marketing.home.feature.workspaces.title', desc: 'marketing.home.feature.workspaces.desc' },
+  { color: 'grapefruit', icon: 'couple', title: 'marketing.home.feature.couple.title', desc: 'marketing.home.feature.couple.desc' },
+  { color: 'horizon', icon: 'import', title: 'marketing.home.feature.import.title', desc: 'marketing.home.feature.import.desc' },
+  { color: 'grapefruit', icon: 'team', title: 'marketing.home.feature.team.title', desc: 'marketing.home.feature.team.desc' },
+  { color: 'horizon', icon: 'sync', title: 'marketing.home.feature.github.title', desc: 'marketing.home.feature.github.desc' },
+  { color: 'grapefruit', icon: 'analytics', title: 'marketing.home.feature.analytics.title', desc: 'marketing.home.feature.analytics.desc' },
+  { color: 'horizon', icon: 'calendar', title: 'marketing.home.feature.demand.title', desc: 'marketing.home.feature.demand.desc' },
+  { color: 'grapefruit', icon: 'invoice', title: 'marketing.home.feature.quote.title', desc: 'marketing.home.feature.quote.desc' },
+  { color: 'horizon', icon: 'runsheet', title: 'marketing.home.feature.runsheet.title', desc: 'marketing.home.feature.runsheet.desc' },
+  { color: 'grapefruit', icon: 'mcp', title: 'marketing.home.feature.mcp.title', desc: 'marketing.home.feature.mcp.desc' },
+  { color: 'horizon', icon: 'openformat', title: 'marketing.home.feature.standard.title', desc: 'marketing.home.feature.standard.desc' },
+  { color: 'grapefruit', icon: 'plaintext', title: 'marketing.home.feature.plainText.title', desc: 'marketing.home.feature.plainText.desc' },
+]
+const HOME_ROLES: RoleDef[] = [
+  { role: 'venue', label: 'marketing.home.role.venue.label', collab: 'marketing.home.role.venue.collab', features: [{ title: 'marketing.home.role.venue.feature.workspace.title', desc: 'marketing.home.role.venue.feature.workspace.desc' },{ title: 'marketing.home.role.venue.feature.forms.title', desc: 'marketing.home.role.venue.feature.forms.desc' },{ title: 'marketing.home.role.venue.feature.calendar.title', desc: 'marketing.home.role.venue.feature.calendar.desc' },{ title: 'marketing.home.role.venue.feature.invoicing.title', desc: 'marketing.home.role.venue.feature.invoicing.desc' }] },
+  { role: 'planner', label: 'marketing.home.role.planner.label', collab: 'marketing.home.role.planner.collab', features: [{ title: 'marketing.home.role.planner.feature.dashboard.title', desc: 'marketing.home.role.planner.feature.dashboard.desc' },{ title: 'marketing.home.role.planner.feature.runsheets.title', desc: 'marketing.home.role.planner.feature.runsheets.desc' },{ title: 'marketing.home.role.planner.feature.team.title', desc: 'marketing.home.role.planner.feature.team.desc' },{ title: 'marketing.home.role.planner.feature.analytics.title', desc: 'marketing.home.role.planner.feature.analytics.desc' }] },
+  { role: 'photographer', label: 'marketing.home.role.photographer.label', collab: 'marketing.home.role.photographer.collab', features: [{ title: 'marketing.home.role.photographer.feature.crm.title', desc: 'marketing.home.role.photographer.feature.crm.desc' },{ title: 'marketing.home.role.photographer.feature.timeline.title', desc: 'marketing.home.role.photographer.feature.timeline.desc' },{ title: 'marketing.home.role.photographer.feature.credits.title', desc: 'marketing.home.role.photographer.feature.credits.desc' },{ title: 'marketing.home.role.photographer.feature.import.title', desc: 'marketing.home.role.photographer.feature.import.desc' }] },
+  { role: 'videographer', label: 'marketing.home.role.videographer.label', collab: 'marketing.home.role.videographer.collab', features: [{ title: 'marketing.home.role.videographer.feature.timeline.title', desc: 'marketing.home.role.videographer.feature.timeline.desc' },{ title: 'marketing.home.role.videographer.feature.coordinate.title', desc: 'marketing.home.role.videographer.feature.coordinate.desc' },{ title: 'marketing.home.role.videographer.feature.quote.title', desc: 'marketing.home.role.videographer.feature.quote.desc' },{ title: 'marketing.home.role.videographer.feature.credits.title', desc: 'marketing.home.role.videographer.feature.credits.desc' }] },
+  { role: 'celebrant', label: 'marketing.home.role.celebrant.label', collab: 'marketing.home.role.celebrant.collab', features: [{ title: 'marketing.home.role.celebrant.feature.pipeline.title', desc: 'marketing.home.role.celebrant.feature.pipeline.desc' },{ title: 'marketing.home.role.celebrant.feature.checklists.title', desc: 'marketing.home.role.celebrant.feature.checklists.desc' },{ title: 'marketing.home.role.celebrant.feature.calendar.title', desc: 'marketing.home.role.celebrant.feature.calendar.desc' },{ title: 'marketing.home.role.celebrant.feature.ai.title', desc: 'marketing.home.role.celebrant.feature.ai.desc' }] },
+  { role: 'florist', label: 'marketing.home.role.florist.label', collab: 'marketing.home.role.florist.collab', features: [{ title: 'marketing.home.role.florist.feature.quote.title', desc: 'marketing.home.role.florist.feature.quote.desc' },{ title: 'marketing.home.role.florist.feature.bumpIn.title', desc: 'marketing.home.role.florist.feature.bumpIn.desc' },{ title: 'marketing.home.role.florist.feature.invoicing.title', desc: 'marketing.home.role.florist.feature.invoicing.desc' },{ title: 'marketing.home.role.florist.feature.import.title', desc: 'marketing.home.role.florist.feature.import.desc' }] },
+  { role: 'music', label: 'marketing.home.role.music.label', collab: 'marketing.home.role.music.collab', features: [{ title: 'marketing.home.role.music.feature.timeline.title', desc: 'marketing.home.role.music.feature.timeline.desc' },{ title: 'marketing.home.role.music.feature.forms.title', desc: 'marketing.home.role.music.feature.forms.desc' },{ title: 'marketing.home.role.music.feature.calendar.title', desc: 'marketing.home.role.music.feature.calendar.desc' },{ title: 'marketing.home.role.music.feature.quote.title', desc: 'marketing.home.role.music.feature.quote.desc' }] },
+]
+const CRM_IMPORTS: Array<{ name: string; caption: MessageKey; italic?: boolean }> = [{ name: 'Dubsado', caption: 'marketing.home.switching.csvImport' },{ name: 'Studio Ninja', caption: 'marketing.home.switching.csvImport' },{ name: 'HoneyBook', caption: 'marketing.home.switching.csvImport' },{ name: 'VSCO Workspace', caption: 'marketing.home.switching.formerlyTave', italic: true },{ name: 'Any CSV / JSON', caption: 'marketing.home.switching.customMapping' }]
+const HOME_DATA_TOOLS: Array<{ emoji: string; name: MessageKey; caption: MessageKey }> = [{ emoji: '📂', name: 'marketing.home.data.tool.github', caption: 'marketing.home.data.github' },{ emoji: '💎', name: 'marketing.home.data.tool.obsidian', caption: 'marketing.home.data.obsidian' },{ emoji: '📝', name: 'marketing.home.data.tool.editor', caption: 'marketing.home.data.editor' },{ emoji: '🔧', name: 'marketing.home.data.tool.tools', caption: 'marketing.home.data.tools' }]
+const ABOUT_INTRO: MessageKey[] = ['marketing.about.intro.p1', 'marketing.about.intro.p2', 'marketing.about.intro.p3']
+const ABOUT_SECTIONS: FeatureSection[] = [{ title: 'marketing.about.difference.title', subtitle: 'marketing.about.difference.subtitle', features: [{ title: 'marketing.about.difference.collab.title', desc: 'marketing.about.difference.collab.desc' },{ title: 'marketing.about.difference.data.title', desc: 'marketing.about.difference.data.desc' },{ title: 'marketing.about.difference.ai.title', desc: 'marketing.about.difference.ai.desc' },{ title: 'marketing.about.difference.market.title', desc: 'marketing.about.difference.market.desc' }] },{ title: 'marketing.about.vendors.title', subtitle: 'marketing.about.vendors.subtitle', features: [{ title: 'marketing.about.vendors.pipeline.title', desc: 'marketing.about.vendors.pipeline.desc' },{ title: 'marketing.about.vendors.forms.title', desc: 'marketing.about.vendors.forms.desc' },{ title: 'marketing.about.vendors.calendar.title', desc: 'marketing.about.vendors.calendar.desc' },{ title: 'marketing.about.vendors.invoicing.title', desc: 'marketing.about.vendors.invoicing.desc' },{ title: 'marketing.about.vendors.email.title', desc: 'marketing.about.vendors.email.desc' },{ title: 'marketing.about.vendors.aiEmail.title', desc: 'marketing.about.vendors.aiEmail.desc' },{ title: 'marketing.about.vendors.bookingForms.title', desc: 'marketing.about.vendors.bookingForms.desc' },{ title: 'marketing.about.vendors.carddav.title', desc: 'marketing.about.vendors.carddav.desc' },{ title: 'marketing.about.vendors.notifications.title', desc: 'marketing.about.vendors.notifications.desc' },{ title: 'marketing.about.vendors.analytics.title', desc: 'marketing.about.vendors.analytics.desc' },{ title: 'marketing.about.vendors.goals.title', desc: 'marketing.about.vendors.goals.desc' },{ title: 'marketing.about.vendors.contracts.title', desc: 'marketing.about.vendors.contracts.desc' },{ title: 'marketing.about.vendors.import.title', desc: 'marketing.about.vendors.import.desc' },{ title: 'marketing.about.vendors.team.title', desc: 'marketing.about.vendors.team.desc' },{ title: 'marketing.about.vendors.mcp.title', desc: 'marketing.about.vendors.mcp.desc' }] },{ title: 'marketing.about.couples.title', subtitle: 'marketing.about.couples.subtitle', features: [{ title: 'marketing.about.couples.dashboard.title', desc: 'marketing.about.couples.dashboard.desc' },{ title: 'marketing.about.couples.budget.title', desc: 'marketing.about.couples.budget.desc' },{ title: 'marketing.about.couples.platform.title', desc: 'marketing.about.couples.platform.desc' },{ title: 'marketing.about.couples.visibility.title', desc: 'marketing.about.couples.visibility.desc' }] }]
+const ABOUT_WORKSPACE_PARAGRAPHS: MessageKey[] = ['marketing.about.workspaces.p1', 'marketing.about.workspaces.p2', 'marketing.about.workspaces.p3', 'marketing.about.workspaces.p4']
+const ABOUT_DATA_PARAGRAPHS: MessageKey[] = ['marketing.about.data.p1', 'marketing.about.data.p2', 'marketing.about.data.p3']
+const ABOUT_DATA_FEATURES: CardDef[] = [{ title: 'marketing.about.data.markdown.title', desc: 'marketing.about.data.markdown.desc' },{ title: 'marketing.about.data.lockIn.title', desc: 'marketing.about.data.lockIn.desc' },{ title: 'marketing.about.data.standard.title', desc: 'marketing.about.data.standard.desc' }]
+const ABOUT_MORE_SECTIONS: FeatureSection[] = [{ title: 'marketing.about.roadmap.title', subtitle: 'marketing.about.roadmap.subtitle', features: [{ title: 'marketing.about.roadmap.dateFinder.title', desc: 'marketing.about.roadmap.dateFinder.desc' },{ title: 'marketing.about.roadmap.collab.title', desc: 'marketing.about.roadmap.collab.desc' },{ title: 'marketing.about.roadmap.ai.title', desc: 'marketing.about.roadmap.ai.desc' },{ title: 'marketing.about.roadmap.google.title', desc: 'marketing.about.roadmap.google.desc' },{ title: 'marketing.about.roadmap.documents.title', desc: 'marketing.about.roadmap.documents.desc' }] },{ title: 'marketing.about.technical.title', subtitle: 'marketing.about.technical.subtitle', features: [{ title: 'marketing.about.technical.workers.title', desc: 'marketing.about.technical.workers.desc' },{ title: 'marketing.about.technical.hono.title', desc: 'marketing.about.technical.hono.desc' },{ title: 'marketing.about.technical.files.title', desc: 'marketing.about.technical.files.desc' },{ title: 'marketing.about.technical.dav.title', desc: 'marketing.about.technical.dav.desc' },{ title: 'marketing.about.technical.auth.title', desc: 'marketing.about.technical.auth.desc' },{ title: 'marketing.about.technical.stripe.title', desc: 'marketing.about.technical.stripe.desc' },{ title: 'marketing.about.technical.email.title', desc: 'marketing.about.technical.email.desc' },{ title: 'marketing.about.technical.queues.title', desc: 'marketing.about.technical.queues.desc' },{ title: 'marketing.about.technical.tenant.title', desc: 'marketing.about.technical.tenant.desc' },{ title: 'marketing.about.technical.tracking.title', desc: 'marketing.about.technical.tracking.desc' }] }]
+const ABOUT_OPEN_DATA_PARAGRAPHS: MessageKey[] = ['marketing.about.openData.p1', 'marketing.about.openData.p2']
+const PRICING_FREE_FEATURES: MessageKey[] = ['marketing.pricing.feature.pipeline','marketing.pricing.feature.forms','marketing.pricing.feature.calendar','marketing.pricing.feature.invoicing','marketing.pricing.feature.email','marketing.pricing.feature.workspaces','marketing.pricing.feature.import','marketing.pricing.feature.team','marketing.pricing.feature.runsheet','marketing.pricing.feature.quote','marketing.pricing.feature.publicCalendar','marketing.pricing.feature.directory','marketing.pricing.feature.coupleDashboard','marketing.pricing.feature.plainText','marketing.pricing.feature.passkeys']
+const PRICING_PRO_FEATURES: MessageKey[] = ['marketing.pricing.feature.everythingFree','marketing.pricing.feature.github','marketing.pricing.feature.caldav','marketing.pricing.feature.carddav','marketing.pricing.feature.analyticsDashboard','marketing.pricing.feature.revenueInsights','marketing.pricing.feature.goals','marketing.pricing.feature.aiDrafting','marketing.pricing.feature.demandScores','marketing.pricing.feature.benchmarks','marketing.pricing.feature.aiReplies','marketing.pricing.feature.mcp']
+const PRICING_COMPARISON: PlanGroupDef[] = [{ label: 'marketing.pricing.group.leads', rows: [{ feature: 'marketing.pricing.compare.pipeline', free: true, pro: true },{ feature: 'marketing.pricing.compare.forms', free: true, pro: true },{ feature: 'marketing.pricing.compare.htmlForm', free: true, pro: true },{ feature: 'marketing.pricing.compare.spam', free: true, pro: true },{ feature: 'marketing.pricing.compare.import', free: true, pro: true },{ feature: 'marketing.pricing.compare.aiDrafting', pro: true },{ feature: 'marketing.pricing.compare.aiReplies', pro: true },{ feature: 'marketing.pricing.compare.webhooks', pro: true },{ feature: 'marketing.pricing.compare.agentLead', pro: true }] },{ label: 'marketing.pricing.group.calendar', rows: [{ feature: 'marketing.pricing.compare.calendar', free: true, pro: true },{ feature: 'marketing.pricing.compare.availability', free: true, pro: true },{ feature: 'marketing.pricing.compare.publicCalendar', free: true, pro: true },{ feature: 'marketing.pricing.compare.directory', free: true, pro: true },{ feature: 'marketing.pricing.compare.caldav', pro: true },{ feature: 'marketing.pricing.compare.carddav', pro: true }] },{ label: 'marketing.pricing.group.money', rows: [{ feature: 'marketing.pricing.compare.invoicing', free: true, pro: true },{ feature: 'marketing.pricing.compare.quote', free: true, pro: true },{ feature: 'marketing.pricing.compare.contracts', free: true, pro: true }] },{ label: 'marketing.pricing.group.weddings', rows: [{ feature: 'marketing.pricing.compare.workspaces', free: true, pro: true },{ feature: 'marketing.pricing.compare.runsheet', free: true, pro: true },{ feature: 'marketing.pricing.compare.checklists', free: true, pro: true },{ feature: 'marketing.pricing.compare.team', free: true, pro: true },{ feature: 'marketing.pricing.compare.coupleDashboard', free: true, pro: true }] },{ label: 'marketing.pricing.group.data', rows: [{ feature: 'marketing.pricing.compare.plainText', free: true, pro: true },{ feature: 'marketing.pricing.compare.passkeys', free: true, pro: true },{ feature: 'marketing.pricing.compare.github', pro: true }] },{ label: 'marketing.pricing.group.insights', rows: [{ feature: 'marketing.pricing.compare.analytics', pro: true },{ feature: 'marketing.pricing.compare.revenue', pro: true },{ feature: 'marketing.pricing.compare.goals', pro: true },{ feature: 'marketing.pricing.compare.demand', pro: true },{ feature: 'marketing.pricing.compare.benchmarks', pro: true },{ feature: 'marketing.pricing.compare.mcp', pro: true }] }]
+const STANDARD_INTRO: MessageKey[] = ['marketing.standard.intro.p1', 'marketing.standard.intro.p2']
+const STANDARD_WHY: MessageKey[] = ['marketing.standard.why.p1', 'marketing.standard.why.p2', 'marketing.standard.why.p3']
+const STANDARD_FORMAT: MessageKey[] = ['marketing.standard.format.p1']
+const STANDARD_CONTACT_BODY: MessageKey[] = ['marketing.standard.contact.bodyNotes.p1', 'marketing.standard.contact.bodyNotes.p2']
+const STANDARD_WEDDING_BODY: MessageKey[] = ['marketing.standard.wedding.bodyNotes.p1']
+const STANDARD_NAMING: MessageKey[] = ['marketing.standard.naming.p1']
+const STANDARD_DIRECTORY: MessageKey[] = ['marketing.standard.directory.p1']
+const STANDARD_SLUG_RULES: MessageKey[] = ['marketing.standard.slug.rule1','marketing.standard.slug.rule2','marketing.standard.slug.rule3','marketing.standard.slug.rule4','marketing.standard.slug.rule5','marketing.standard.slug.rule6','marketing.standard.slug.rule7']
+const STANDARD_INTEROP_PARAGRAPHS: MessageKey[] = ['marketing.standard.interop.p1']
+const STANDARD_INTEROP_LIST: MessageKey[] = ['marketing.standard.interop.editor','marketing.standard.interop.obsidian','marketing.standard.interop.static','marketing.standard.interop.scripting','marketing.standard.interop.yaml']
+const STANDARD_LICENSE: MessageKey[] = ['marketing.standard.license.p1', 'marketing.standard.license.p2']
+const STANDARD_CONTACT_REQUIRED: SpecDef[] = [{ field: 'id', type: 'string', desc: 'marketing.standard.spec.contact.id' },{ field: 'first_name', type: 'string', desc: 'marketing.standard.spec.contact.firstName' },{ field: 'last_name', type: 'string', desc: 'marketing.standard.spec.contact.lastName' },{ field: 'status', type: 'enum', desc: 'marketing.standard.spec.contact.status' },{ field: 'created_at', type: 'ISO 8601', desc: 'marketing.standard.spec.contact.createdAt' },{ field: 'updated_at', type: 'ISO 8601', desc: 'marketing.standard.spec.contact.updatedAt' }]
+const STANDARD_CONTACT_OPTIONAL: SpecDef[] = [{ field: 'email', type: 'string', desc: 'marketing.standard.spec.contact.email' },{ field: 'phone', type: 'string', desc: 'marketing.standard.spec.contact.phone' },{ field: 'partner_first_name', type: 'string', desc: 'marketing.standard.spec.contact.partnerFirstName' },{ field: 'partner_last_name', type: 'string', desc: 'marketing.standard.spec.contact.partnerLastName' },{ field: 'partner_email', type: 'string', desc: 'marketing.standard.spec.contact.partnerEmail' },{ field: 'partner_phone', type: 'string', desc: 'marketing.standard.spec.contact.partnerPhone' },{ field: 'source', type: 'string', desc: 'marketing.standard.spec.contact.source' },{ field: 'wedding_id', type: 'string', desc: 'marketing.standard.spec.contact.weddingId' },{ field: 'wedding_date', type: 'string', desc: 'marketing.standard.spec.contact.weddingDate' },{ field: 'wedding_location', type: 'string', desc: 'marketing.standard.spec.contact.weddingLocation' },{ field: 'tags', type: 'string[]', desc: 'marketing.standard.spec.contact.tags' },{ field: 'form_data', type: 'object', desc: 'marketing.standard.spec.contact.formData' },{ field: 'last_contacted_at', type: 'ISO 8601', desc: 'marketing.standard.spec.contact.lastContactedAt' }]
+const STANDARD_WEDDING_REQUIRED: SpecDef[] = [{ field: 'id', type: 'string', desc: 'marketing.standard.spec.wedding.id' },{ field: 'title', type: 'string', desc: 'marketing.standard.spec.wedding.title' },{ field: 'status', type: 'enum', desc: 'marketing.standard.spec.wedding.status' },{ field: 'created_by_user_id', type: 'string', desc: 'marketing.standard.spec.wedding.createdBy' },{ field: 'created_at', type: 'ISO 8601', desc: 'marketing.standard.spec.wedding.createdAt' },{ field: 'updated_at', type: 'ISO 8601', desc: 'marketing.standard.spec.wedding.updatedAt' }]
+const STANDARD_WEDDING_OPTIONAL: SpecDef[] = [{ field: 'date', type: 'string', desc: 'marketing.standard.spec.wedding.date' },{ field: 'time', type: 'string', desc: 'marketing.standard.spec.wedding.time' },{ field: 'location', type: 'string', desc: 'marketing.standard.spec.wedding.location' },{ field: 'location_lat', type: 'number', desc: 'marketing.standard.spec.wedding.locationLat' },{ field: 'location_lng', type: 'number', desc: 'marketing.standard.spec.wedding.locationLng' },{ field: 'ceremony_type', type: 'string', desc: 'marketing.standard.spec.wedding.ceremonyType' },{ field: 'vendor_visibility', type: 'enum', desc: 'marketing.standard.spec.wedding.vendorVisibility' },{ field: 'reception_location', type: 'string', desc: 'marketing.standard.spec.wedding.receptionLocation' },{ field: 'reception_time', type: 'string', desc: 'marketing.standard.spec.wedding.receptionTime' },{ field: 'getting_ready_location', type: 'string', desc: 'marketing.standard.spec.wedding.gettingReadyLocation' },{ field: 'getting_ready_time', type: 'string', desc: 'marketing.standard.spec.wedding.gettingReadyTime' },{ field: 'dress_code', type: 'string', desc: 'marketing.standard.spec.wedding.dressCode' },{ field: 'guest_count', type: 'integer', desc: 'marketing.standard.spec.wedding.guestCount' },{ field: 'timeline_notes', type: 'string', desc: 'marketing.standard.spec.wedding.timelineNotes' }]
+const STANDARD_CONTACT_FILENAME_EXAMPLES: ExampleLine[] = [{ code: 'sarah-smith.md', desc: 'marketing.standard.example.singleContact' },{ code: 'sarah-james-smith.md', desc: 'marketing.standard.example.sameSurname' },{ code: 'sarah-smith-james-wilson.md', desc: 'marketing.standard.example.differentSurnames' },{ code: 'john-doe-2.md', desc: 'marketing.standard.example.deduplicated' }]
+const STANDARD_WEDDING_FILENAME_EXAMPLES: ExampleLine[] = [{ code: 'sarah-james-2026-12-15.md', desc: 'marketing.standard.example.weddingWithDate' },{ code: 'smith-jones-wedding.md', desc: 'marketing.standard.example.weddingWithoutDate' }]
+const STANDARD_YAML_TIPS: CardDef[] = [{ title: 'marketing.standard.yaml.phone.title', desc: 'marketing.standard.yaml.phone.desc' },{ title: 'marketing.standard.yaml.times.title', desc: 'marketing.standard.yaml.times.desc' },{ title: 'marketing.standard.yaml.dates.title', desc: 'marketing.standard.yaml.dates.desc' },{ title: 'marketing.standard.yaml.arrays.title', desc: 'marketing.standard.yaml.arrays.desc' },{ title: 'marketing.standard.yaml.colons.title', desc: 'marketing.standard.yaml.colons.desc' },{ title: 'marketing.standard.yaml.null.title', desc: 'marketing.standard.yaml.null.desc' }]
+const STANDARD_CONTACT_SAMPLE = ['---','id: a1b2c3d4e5f6a1b2c3d4e5f6','first_name: Sarah','last_name: Smith','email: sarah@example.com','phone: "0400 123 456"','partner_first_name: James','partner_last_name: Wilson','status: quoted','wedding_date: 2026-12-15','wedding_location: Sydney','tags:','  - vip','  - referral','created_at: 2025-06-01T00:00:00.000Z','updated_at: 2025-06-01T00:00:00.000Z','---','','Met at the Bridal Expo in March 2025.','','- Interested in elopement ceremony','- Budget: $3,000 - $5,000','- Preferred dates: Dec 2026 or Jan 2027','','## Follow-up notes','','Called on March 15, very enthusiastic.','Sending quote this week.'].join('\n')
+const STANDARD_WEDDING_SAMPLE = ['---','id: f8e7d6c5b4a3f8e7d6c5b4a3','title: Sarah & James','date: 2026-12-15','time: "15:00"','location: Royal Botanic Garden Sydney','location_lat: -33.8642','location_lng: 151.2166','status: confirmed','ceremony_type: legal','vendor_visibility: private','reception_location: The Calyx','reception_time: "17:30"','guest_count: 85','dress_code: Semi-formal','created_by_user_id: u1a2b3c4d5e6','created_at: 2025-06-01T00:00:00.000Z','updated_at: 2025-07-15T10:30:00.000Z','---','','Outdoor ceremony in the rose garden, weather permitting.','Backup plan: The Calyx indoor space.','','## Timeline','','- 13:00 — Getting ready at hotel','- 14:30 — First look photos','- 15:00 — Ceremony','- 15:30 — Family photos','- 16:00 — Canapes and drinks','- 17:30 — Reception begins'].join('\n')
+const STANDARD_DIRECTORY_SAMPLE = ['vendors/','  {vendor_id}/','    contacts/','      sarah-smith.md','      john-james-doe.md','      jane-wilson-2.md','    weddings/','      2026-12-15-sarah-james/','        wedding.md','        todo.md','        log.md','        files/','      smith-wilson/','        wedding.md'].join('\n')
 
 // ─── Plain Text Docs ───
 
 marketing.get('/docs/plain-text', (c) => {
-  return c.html(
-    <MarketingLayout title="Your Data, Your Way">
+  return c.html(<PlainTextDocsPage />)
+})
+
+function PlainTextDocsPage() {
+  return (
+    <MarketingLayout title={t('marketing.docs.metaTitle')}>
       <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
-        <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6">Your data, your way</h1>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
-          <p>
-            Every contact and wedding in Wedding Computer is stored as a plain text file — not
-            locked in a database you can't see. These files are yours. You can read them, copy them,
-            edit them, and back them up however you like.
-          </p>
-          <p>
-            This page shows you how. Most people will want to start with GitHub sync — it's the
-            easiest way to keep a copy of everything, and it works with Obsidian too.
-          </p>
-        </div>
-
-        {/* What the files look like */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">What your files look like</h2>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-6">
-          <p>
-            Each contact is a file. Each wedding is a file. They look like this:
-          </p>
-        </div>
-        <div class="bg-gray-900 rounded-xl p-4 sm:p-6 mb-4 overflow-x-auto">
-          <pre class="text-sm text-gray-100 leading-relaxed"><code>{`---
-first_name: Sarah
-last_name: Smith
-email: sarah@example.com
-phone: "0400 123 456"
-status: quoted
-wedding_date: 2026-12-15
-tags:
-  - vip
-  - referral
----
-
-Met at the Bridal Expo. Very enthusiastic about
-an elopement ceremony at the Royal Botanic Garden.
-
-Budget: $3,000 - $5,000`}</code></pre>
-        </div>
-        <p class="text-sm text-gray-500 mb-12">
-          That's a real contact file. The structured data (name, email, status, tags) is at the top.
-          Your notes are below. You can open this in any text editor on any computer, forever.
-        </p>
-
-        {/* Method 1: GitHub */}
+        <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6">{t('marketing.docs.title')}</h1>
+        <CopyParagraphs keys={DOCS_INTRO} className="space-y-4 text-gray-600 leading-relaxed mb-12" />
+        <DocSection title="marketing.docs.look.title" paragraphs={DOCS_LOOK_PARAGRAPHS} />
+        <CodeBlock code={DOCS_CONTACT_SAMPLE} className="mb-4" />
+        <p class="text-sm text-gray-500 mb-12">{t('marketing.docs.look.caption')}</p>
         <div class="bg-horizon-50 rounded-2xl p-6 sm:p-8 mb-12">
           <div class="flex items-start gap-4">
-            <div class="w-10 h-10 rounded-xl bg-horizon-100 flex items-center justify-center shrink-0">
-              <div class="w-5 h-5 text-horizon-600" dangerouslySetInnerHTML={{ __html: featureIcons.sync }} />
-            </div>
+            <div class="w-10 h-10 rounded-xl bg-horizon-100 flex items-center justify-center shrink-0"><div class="w-5 h-5 text-horizon-600" dangerouslySetInnerHTML={{ __html: featureIcons.sync }} /></div>
             <div>
-              <div class="inline-block bg-horizon-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full mb-2">
-                Recommended
-              </div>
-              <h2 class="text-xl sm:text-2xl font-bold mb-2">Connect to GitHub</h2>
-              <p class="text-gray-600 leading-relaxed mb-4">
-                The easiest way to access your files. Connect your GitHub account in Settings, and
-                we automatically sync all your contacts and weddings to a private GitHub repository.
-                Every change you make in Wedding Computer creates a new version in your repo.
-              </p>
+              <div class="inline-block bg-horizon-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full mb-2">{t('marketing.pricing.recommended')}</div>
+              <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.docs.github.title')}</h2>
+              <p class="text-gray-600 leading-relaxed mb-4">{t('marketing.docs.github.body')}</p>
             </div>
           </div>
-
-          <div class="space-y-3 mt-4">
-            <AboutFeature
-              title="How to set it up"
-              desc={"Go to Settings and click Connect GitHub. Sign in with your GitHub account and choose a repository (or we'll create one for you). That's it — your data starts syncing immediately."}
-            />
-            <AboutFeature
-              title="What happens next"
-              desc="Every time you add a contact, update a wedding, or write a note, the change syncs to your GitHub repo within minutes. You get a folder of contacts and a folder of weddings — plain text files you can browse right on github.com."
-            />
-            <AboutFeature
-              title="Full version history"
-              desc="GitHub tracks every change automatically. You can see when a contact was created, when their status changed, when you added notes — and roll back to any previous version if you need to."
-            />
-            <AboutFeature
-              title="Works with Obsidian"
-              desc={"Our official Wedding Computer Sync plugin is in the Obsidian community directory. Your contacts and weddings show up as browsable, searchable notes with all the structured data visible as properties — editable in both directions, on desktop and mobile."}
-            />
-            <AboutFeature
-              title="Works offline"
-              desc="Clone the repo to your computer and you have a local copy of everything. Works without internet. Make changes in a text editor and push them back when you reconnect."
-            />
-          </div>
-          <p class="text-sm text-gray-500 mt-4">
-            GitHub sync is available on the Pro plan ($28/month).
-          </p>
+          <div class="space-y-3 mt-4">{DOCS_GITHUB_FEATURES.map((feature) => <AboutFeature title={t(feature.title)} desc={t(feature.desc)} />)}</div>
+          <p class="text-sm text-gray-500 mt-4">{t('marketing.docs.github.proNote')}</p>
         </div>
-
-        {/* Method 2: Download from the app */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Download your data</h2>
-        <p class="text-gray-500 text-sm mb-6">Available on all plans, any time.</p>
-        <div class="space-y-3 mb-12">
-          <AboutFeature
-            title="Export everything"
-            desc={"Go to Settings, scroll down to Data Export, and click the button. You'll get a file containing every contact, every wedding, all your notes — everything. Save it to your computer, a USB drive, Dropbox, wherever you like."}
-          />
-          <AboutFeature
-            title="No limits, no tricks"
-            desc="Export as many times as you want. There are no limits, no waiting periods, and no reduced-quality exports. You get the real data, the same files the app uses."
-          />
-          <AboutFeature
-            title="Regular backups"
-            desc="We recommend exporting a backup once a month (or more if you like). Keep it somewhere safe. If anything ever happens to Wedding Computer — or any software — you have everything."
-          />
-        </div>
-
-        {/* Method 3: Obsidian */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Use with Obsidian</h2>
-        <p class="text-gray-500 text-sm mb-6">Two-way sync with our official plugin.</p>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-6">
-          <p>
-            <a href="https://obsidian.md/" class="text-horizon-700 font-bold hover:underline">Obsidian</a> is
-            a free app for reading and writing markdown files. It runs on Mac, Windows, Linux, iPhone,
-            iPad, and Android. Since your Wedding Computer data is markdown, Obsidian reads it perfectly —
-            and our official{' '}
-            <a href="https://community.obsidian.md/plugins/wedding-computer-sync" class="text-horizon-700 font-bold hover:underline" rel="noopener">
-              Wedding Computer Sync plugin
-            </a>{' '}
-            keeps a vault in two-way sync with your account.
-          </p>
-        </div>
-        <div class="space-y-3 mb-12">
-          <AboutFeature
-            title="Official plugin (easiest)"
-            desc={"In Obsidian, open Settings → Community plugins → Browse and search for \"Wedding Computer Sync\". Install it, paste your sync token from Settings → Device sync, and your contacts, weddings, and checklists appear as editable notes. Changes sync both ways within seconds — no GitHub or git required, and it works on mobile."}
-          />
-          <AboutFeature
-            title="With a downloaded export"
-            desc={"Download your data export, unzip it into a folder, and open that folder as an Obsidian vault. You'll see all your contacts and weddings in the sidebar. Use Obsidian's search to find anyone by name, email, wedding date, or any field."}
-          />
-          <AboutFeature
-            title="What you see in Obsidian"
-            desc="Each contact shows up as a note. The structured data (name, email, phone, status, tags) appears as properties at the top. Your free-form notes are the body. Obsidian renders it all beautifully — headings, lists, links, everything."
-          />
-        </div>
-
-        {/* Phone sync */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Sync to your phone</h2>
-        <p class="text-gray-500 text-sm mb-6">Your leads as real contacts on your phone. Pro plan.</p>
-        <div class="space-y-3 mb-12">
-          <AboutFeature
-            title="CardDAV: contacts on your phone"
-            desc="Add Wedding Computer as a contacts account on your iPhone or Android. Your CRM contacts appear in your phone's native Contacts app — with names, phone numbers, emails, and wedding notes. When you update a contact in Wedding Computer, it updates on your phone automatically."
-          />
-          <AboutFeature
-            title="CalDAV / iCal: calendar events on your phone"
-            desc="Subscribe to your Wedding Computer calendar from Apple Calendar, Google Calendar, or any calendar app. Your bookings, blocked dates, and events show up alongside your personal calendar. Changes sync automatically."
-          />
-          <AboutFeature
-            title="How to set it up"
-            desc="Go to Settings and you'll find your CardDAV and CalDAV server details. Add them as accounts on your phone — it takes about 30 seconds. Available on the Pro plan."
-          />
-        </div>
-
-        {/* What the files look like in a folder */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">How your files are organised</h2>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-6">
-          <p>
-            Whether you access your files through GitHub, Obsidian, or a data export,
-            the structure is the same:
-          </p>
-        </div>
-        <div class="bg-gray-900 rounded-xl p-4 sm:p-6 mb-8 overflow-x-auto">
-          <pre class="text-sm text-gray-100 leading-relaxed"><code>{`contacts/
-  sarah-smith.md
-  john-doe.md
-  jane-wilson-james-brown.md
-weddings/
-  2026-12-15-sarah-james/
-    wedding.md
-    todo.md
-    log.md
-    files/
-  doe-wedding/
-    wedding.md`}</code></pre>
-        </div>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
-          <p>
-            Contact files are named after the person (or couple). Wedding files are named after the
-            couple and date. The files follow the{' '}
-            <a href="/standard" class="text-horizon-700 font-bold hover:underline">Wedding CRM Markdown Standard</a> —
-            an open format anyone can use.
-          </p>
-        </div>
-
-        {/* Why */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-3">Why we do this</h2>
-        <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
-          <p>
-            Most CRM tools store your data in a proprietary database. If the company shuts down,
-            raises prices, or gets acquired — your data goes with it. The best you usually get is
-            a CSV export that loses half the context.
-          </p>
-          <p>
-            We think your client relationships are worth more than that. A wedding vendor's
-            contact list represents years of relationship building. Notes from consultations,
-            follow-up plans, wedding details — that's the lifeblood of your business.
-          </p>
-          <p>
-            Plain text files are the most durable data format ever created. A text file written in
-            1970 is still perfectly readable today. We chose this format because your data should
-            outlive any app — including ours.
-          </p>
-        </div>
-
-        {/* For developers */}
+        {DOCS_FEATURE_SECTIONS.map((section) => <PageFeatureSection section={section} />)}
+        <DocSection title="marketing.docs.organised.title" paragraphs={DOCS_ORGANISED_PARAGRAPHS} />
+        <CodeBlock code={DOCS_DIRECTORY_SAMPLE} className="mb-8" />
+        <CopyParagraphs keys={DOCS_ORGANISED_AFTER} className="space-y-4 text-gray-600 leading-relaxed mb-12" />
+        <DocSection title="marketing.docs.why.title" paragraphs={DOCS_WHY} />
         <details class="bg-white border border-papaya-300/30 rounded-xl mb-12">
-          <summary class="px-4 sm:px-6 py-4 cursor-pointer font-bold text-sm text-gray-700 hover:text-gray-900">
-            For developers: API access, scripting, and building your own tools
-          </summary>
+          <summary class="px-4 sm:px-6 py-4 cursor-pointer font-bold text-sm text-gray-700 hover:text-gray-900">{t('marketing.docs.developers.summary')}</summary>
           <div class="px-4 sm:px-6 pb-6 pt-2 space-y-6">
-            <div>
-              <h3 class="font-bold text-sm mb-2">Cloudflare R2 API (S3-compatible)</h3>
-              <p class="text-sm text-gray-600 mb-3">
-                Files are stored on Cloudflare R2. Any S3-compatible tool (rclone, AWS CLI, Cyberduck, boto3) works.
-                Request read-only API credentials scoped to your data — they can see your files and nobody else's.
-              </p>
-              <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-                <pre class="text-sm text-gray-100"><code>{`# rclone — sync everything to a local folder
-rclone sync wc:wedding-computer-storage/vendors/YOUR_ID/ ./my-data/
-
-# AWS CLI — download a single contact
-aws s3 cp s3://wedding-computer-storage/vendors/YOUR_ID/contacts/sarah-smith.md . \\
-  --endpoint-url https://YOUR_ACCOUNT.r2.cloudflarestorage.com`}</code></pre>
+            {DOCS_DEVELOPER_BLOCKS.map((block) => (
+              <div>
+                <h3 class="font-bold text-sm mb-2">{t(block.title)}</h3>
+                <p class="text-sm text-gray-600 mb-3">{t(block.body)}</p>
+                {block.code && <CodeBlock code={block.code} className="" />}
               </div>
-            </div>
-
-            <div>
-              <h3 class="font-bold text-sm mb-2">Scripting your data</h3>
-              <p class="text-sm text-gray-600 mb-3">
-                Files follow the <a href="/standard" class="text-horizon-700 font-bold hover:underline">Wedding CRM Markdown Standard</a>.
-                Parse the YAML frontmatter with any language:
-              </p>
-              <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-                <pre class="text-sm text-gray-100"><code>{`# Python — list all quoted contacts
-import yaml
-from pathlib import Path
-
-for f in Path("contacts").glob("*.md"):
-    parts = f.read_text().split("---", 2)
-    data = yaml.safe_load(parts[1])
-    if data.get("status") == "quoted":
-        print(f"{data['first_name']} {data['last_name']}")`}</code></pre>
-              </div>
-            </div>
-
-            <div>
-              <h3 class="font-bold text-sm mb-2">Building your own tools</h3>
-              <p class="text-sm text-gray-600">
-                The file format is an open, CC0 public-domain standard — implement it in anything,
-                no permission needed. Our official{' '}
-                <a href="https://github.com/joshwithers/wedding-computer-sync" class="text-horizon-700 font-bold hover:underline" rel="noopener">Obsidian plugin</a> is
-                open source and doubles as a reference implementation of the format and the sync API.
-              </p>
-            </div>
+            ))}
           </div>
         </details>
-
-        {/* CTA */}
         <div class="bg-horizon-600 rounded-2xl p-6 sm:p-10 text-center text-white">
-          <h2 class="text-xl sm:text-2xl font-bold mb-3">Your data, always yours</h2>
-          <p class="text-white mb-6 max-w-md mx-auto text-sm">
-            Start using Wedding Computer. Connect GitHub. And never worry about losing your data again.
-          </p>
+          <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.docs.cta.title')}</h2>
+          <p class="text-white mb-6 max-w-md mx-auto text-sm">{t('marketing.docs.cta.body')}</p>
           <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <a
-              href="/login"
-              class="inline-block bg-white text-horizon-700 font-bold px-6 py-3 rounded-xl hover:bg-horizon-50 transition-colors text-sm"
-            >
-              Get started free
-            </a>
-            <a
-              href="/standard"
-              class="inline-block bg-horizon-500 text-white font-bold px-6 py-3 rounded-xl hover:bg-horizon-400 transition-colors text-sm"
-            >
-              Read the open standard
-            </a>
+            <a href="/login" class="inline-block bg-white text-horizon-700 font-bold px-6 py-3 rounded-xl hover:bg-horizon-50 transition-colors text-sm">{t('marketing.home.hero.primaryCta')}</a>
+            <a href="/standard" class="inline-block bg-horizon-500 text-white font-bold px-6 py-3 rounded-xl hover:bg-horizon-400 transition-colors text-sm">{t('marketing.docs.cta.standard')}</a>
           </div>
         </div>
       </div>
     </MarketingLayout>
   )
-})
+}
+
+type DeveloperBlock = { title: MessageKey; body: MessageKey; code?: string }
+
+const DOCS_INTRO: MessageKey[] = ['marketing.docs.intro.p1', 'marketing.docs.intro.p2']
+const DOCS_LOOK_PARAGRAPHS: MessageKey[] = ['marketing.docs.look.p1']
+const DOCS_GITHUB_FEATURES: CardDef[] = [{ title: 'marketing.docs.github.setup.title', desc: 'marketing.docs.github.setup.desc' },{ title: 'marketing.docs.github.next.title', desc: 'marketing.docs.github.next.desc' },{ title: 'marketing.docs.github.history.title', desc: 'marketing.docs.github.history.desc' },{ title: 'marketing.docs.github.obsidian.title', desc: 'marketing.docs.github.obsidian.desc' },{ title: 'marketing.docs.github.offline.title', desc: 'marketing.docs.github.offline.desc' }]
+const DOCS_FEATURE_SECTIONS: FeatureSection[] = [{ title: 'marketing.docs.download.title', subtitle: 'marketing.docs.download.subtitle', features: [{ title: 'marketing.docs.download.export.title', desc: 'marketing.docs.download.export.desc' },{ title: 'marketing.docs.download.limits.title', desc: 'marketing.docs.download.limits.desc' },{ title: 'marketing.docs.download.backups.title', desc: 'marketing.docs.download.backups.desc' }] },{ title: 'marketing.docs.obsidian.title', subtitle: 'marketing.docs.obsidian.subtitle', features: [{ title: 'marketing.docs.obsidian.plugin.title', desc: 'marketing.docs.obsidian.plugin.desc' },{ title: 'marketing.docs.obsidian.export.title', desc: 'marketing.docs.obsidian.export.desc' },{ title: 'marketing.docs.obsidian.view.title', desc: 'marketing.docs.obsidian.view.desc' }] },{ title: 'marketing.docs.phone.title', subtitle: 'marketing.docs.phone.subtitle', features: [{ title: 'marketing.docs.phone.carddav.title', desc: 'marketing.docs.phone.carddav.desc' },{ title: 'marketing.docs.phone.caldav.title', desc: 'marketing.docs.phone.caldav.desc' },{ title: 'marketing.docs.phone.setup.title', desc: 'marketing.docs.phone.setup.desc' }] }]
+const DOCS_ORGANISED_PARAGRAPHS: MessageKey[] = ['marketing.docs.organised.p1']
+const DOCS_ORGANISED_AFTER: MessageKey[] = ['marketing.docs.organised.p2']
+const DOCS_WHY: MessageKey[] = ['marketing.docs.why.p1', 'marketing.docs.why.p2', 'marketing.docs.why.p3']
+const DOCS_CONTACT_SAMPLE = ['---','first_name: Sarah','last_name: Smith','email: sarah@example.com','phone: "0400 123 456"','status: quoted','wedding_date: 2026-12-15','tags:','  - vip','  - referral','---','','Met at the Bridal Expo. Very enthusiastic about','an elopement ceremony at the Royal Botanic Garden.','','Budget: $3,000 - $5,000'].join('\n')
+const DOCS_DIRECTORY_SAMPLE = ['contacts/','  sarah-smith.md','  john-doe.md','  jane-wilson-james-brown.md','weddings/','  2026-12-15-sarah-james/','    wedding.md','    todo.md','    log.md','    files/','  doe-wedding/','    wedding.md'].join('\n')
+const DOCS_RCLONE_SAMPLE = ['# rclone - sync everything to a local folder','rclone sync wc:wedding-computer-storage/vendors/YOUR_ID/ ./my-data/','','# AWS CLI - download a single contact','aws s3 cp s3://wedding-computer-storage/vendors/YOUR_ID/contacts/sarah-smith.md . \\','  --endpoint-url https://YOUR_ACCOUNT.r2.cloudflarestorage.com'].join('\n')
+const DOCS_PYTHON_SAMPLE = ['# Python - list all quoted contacts','import yaml','from pathlib import Path','','for f in Path("contacts").glob("*.md"):','    parts = f.read_text().split("---", 2)','    data = yaml.safe_load(parts[1])','    if data.get("status") == "quoted":','        print(f"{data[\'first_name\']} {data[\'last_name\']}")'].join('\n')
+const DOCS_DEVELOPER_BLOCKS: DeveloperBlock[] = [{ title: 'marketing.docs.developers.r2.title', body: 'marketing.docs.developers.r2.body', code: DOCS_RCLONE_SAMPLE },{ title: 'marketing.docs.developers.scripting.title', body: 'marketing.docs.developers.scripting.body', code: DOCS_PYTHON_SAMPLE },{ title: 'marketing.docs.developers.tools.title', body: 'marketing.docs.developers.tools.body' }]
 
 export default marketing
 
@@ -1889,7 +662,7 @@ function PricingFeature({ text, bold }: { text: string; bold?: boolean }) {
 
 function PlanCheck() {
   return (
-    <svg class="w-5 h-5 text-horizon-600 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" role="img" aria-label="Included"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+    <svg class="w-5 h-5 text-horizon-600 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" role="img" aria-label={t('marketing.pricing.included')}><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
   )
 }
 
@@ -1897,8 +670,8 @@ function PlanRow({ feature, free, pro }: { feature: string; free?: boolean; pro?
   return (
     <tr class="border-t border-gray-100">
       <td class="py-3 px-4 text-gray-700">{feature}</td>
-      <td class="py-3 px-2 text-center">{free ? <PlanCheck /> : <span class="text-gray-300" aria-label="Not included">—</span>}</td>
-      <td class="py-3 px-2 text-center">{pro ? <PlanCheck /> : <span class="text-gray-300" aria-label="Not included">—</span>}</td>
+      <td class="py-3 px-2 text-center">{free ? <PlanCheck /> : <span class="text-gray-300" aria-label={t('marketing.pricing.notIncluded')}>—</span>}</td>
+      <td class="py-3 px-2 text-center">{pro ? <PlanCheck /> : <span class="text-gray-300" aria-label={t('marketing.pricing.notIncluded')}>—</span>}</td>
     </tr>
   )
 }
@@ -1963,7 +736,7 @@ function RoleFeature({ title, desc }: { title: string; desc: string }) {
 function RoleCollab({ children }: { children: any }) {
   return (
     <div class="sm:col-span-2 bg-horizon-50 border border-horizon-600/10 rounded-xl p-4">
-      <p class="text-xs font-bold text-horizon-700 mb-1">How collaboration makes it better</p>
+      <p class="text-xs font-bold text-horizon-700 mb-1">{t('marketing.home.roles.collabHeading')}</p>
       <p class="text-xs text-gray-700 leading-relaxed">{children}</p>
     </div>
   )

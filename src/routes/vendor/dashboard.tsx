@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
-import { t } from '../../i18n'
+import { getI18n, t, tp, type MessageKey } from '../../i18n'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
@@ -128,7 +128,7 @@ dashboard.get('/app', async (c) => {
   const discovery = categorySetup(vendor.category)
 
   return c.html(
-    <AppLayout title="Dashboard" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
+    <AppLayout title={t('dashboard.title')} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-4xl">
         {showChecklist && <SetupCard checklist={checklist} />}
 
@@ -147,7 +147,7 @@ dashboard.get('/app', async (c) => {
             {/* Overdue payments */}
             {overduePayments.length > 0 && (
               <section class="bg-grapefruit-50 border border-grapefruit-200 rounded-2xl p-5">
-                <h3 class="text-sm font-bold text-grapefruit-700 mb-3">Overdue payments</h3>
+                <h3 class="text-sm font-bold text-grapefruit-700 mb-3">{t('dashboard.overduePayments')}</h3>
                 <div class="space-y-2">
                   {overduePayments.map((p) => (
                     <a href={`/app/invoices/${p.invoice_id}`} class="flex items-center justify-between text-sm hover:bg-grapefruit-100 rounded-lg px-2 py-1.5 -mx-2">
@@ -157,7 +157,7 @@ dashboard.get('/app', async (c) => {
                       </div>
                       <div class="text-right">
                         <span class="font-bold text-grapefruit-700">{formatCents(p.amount_cents)}</span>
-                        <span class="text-xs text-gray-500 ml-2">due {formatDate(p.due_date)}</span>
+                        <span class="text-xs text-gray-500 ml-2">{t('dashboard.paymentDue', { date: formatDate(p.due_date) })}</span>
                       </div>
                     </a>
                   ))}
@@ -182,8 +182,8 @@ dashboard.get('/app', async (c) => {
                         <a href={`/app/weddings/${w.id}`} class="block hover:bg-papaya-50 rounded-lg px-2 py-1.5 -mx-2">
                           <p class="text-sm font-medium text-gray-900">{w.title}</p>
                           <p class="text-xs text-gray-500">
-                            {w.date ? formatDate(w.date) : 'Date TBD'}
-                            {days !== null && days >= 0 && <span class="ml-1">({days} days)</span>}
+                            {w.date ? formatDate(w.date) : t('dashboard.dateTbd')}
+                            {days !== null && days >= 0 && <span class="ml-1">({tp('dashboard.day', days)})</span>}
                             {w.location && <span> · {w.location}</span>}
                           </p>
                         </a>
@@ -197,7 +197,7 @@ dashboard.get('/app', async (c) => {
               <section class="bg-white border border-papaya-300/30 rounded-2xl p-5">
                 <div class="flex items-center justify-between mb-3">
                   <h3 class="text-sm font-bold">{t('dashboard.comingUp')}</h3>
-                  <a href="/app/calendar" class="text-xs text-horizon-600 font-bold hover:text-horizon-700">Calendar</a>
+                  <a href="/app/calendar" class="text-xs text-horizon-600 font-bold hover:text-horizon-700">{t('nav.calendar')}</a>
                 </div>
                 {upcomingEvents.length === 0 ? (
                   <p class="text-sm text-gray-400">{t('dashboard.noUpcomingEvents')}</p>
@@ -260,7 +260,7 @@ dashboard.get('/app', async (c) => {
             {/* Recent contacts */}
             <section class="bg-white border border-papaya-300/30 rounded-2xl p-5">
               <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-bold">Recent contacts</h3>
+                <h3 class="text-sm font-bold">{t('dashboard.recentContacts')}</h3>
                 <a href="/app/contacts" class="text-xs text-horizon-600 font-bold hover:text-horizon-700">{t('common.viewAll')}</a>
               </div>
               {recentContacts.length > 0 ? (
@@ -269,13 +269,13 @@ dashboard.get('/app', async (c) => {
                     <a href={`/app/contacts/${ct.id}`} class="flex items-center justify-between hover:bg-papaya-50 rounded-lg px-2 py-1.5 -mx-2">
                       <span class="text-sm text-gray-900">{ct.first_name} {ct.last_name}</span>
                       <span class={`text-xs font-bold px-2 py-0.5 rounded-full ${statusColor(ct.status)}`}>
-                        {ct.status}
+                        {contactStatusLabel(ct.status)}
                       </span>
                     </a>
                   ))}
                 </div>
               ) : (
-                <p class="text-sm text-gray-400">No contacts yet</p>
+                <p class="text-sm text-gray-400">{t('dashboard.noContactsYet')}</p>
               )}
             </section>
           </div>
@@ -290,9 +290,9 @@ dashboard.get('/app', async (c) => {
               </svg>
             </div>
             <div>
-              <h3 class="text-sm font-bold text-gray-900">Your data is stored as plain text</h3>
+              <h3 class="text-sm font-bold text-gray-900">{t('dashboard.data.title')}</h3>
               <p class="text-xs text-gray-500 mt-0.5">
-                Every contact and wedding is a Markdown file with YAML frontmatter. Your data is readable, portable, and yours forever.
+                {t('dashboard.data.desc')}
               </p>
             </div>
           </div>
@@ -305,8 +305,8 @@ dashboard.get('/app', async (c) => {
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
               <div>
-                <p class="text-sm font-bold text-horizon-700">Sync with GitHub</p>
-                <p class="text-xs text-gray-600">Auto-sync to a private repo, open in Obsidian or VS Code</p>
+                <p class="text-sm font-bold text-horizon-700">{t('dashboard.data.github.title')}</p>
+                <p class="text-xs text-gray-600">{t('dashboard.data.github.desc')}</p>
               </div>
             </a>
             <a
@@ -317,8 +317,8 @@ dashboard.get('/app', async (c) => {
                 <path stroke-linecap="round" stroke-linejoin="round" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
               </svg>
               <div>
-                <p class="text-sm font-bold text-gray-900">Download Markdown</p>
-                <p class="text-xs text-gray-500">Contacts and weddings as .md files</p>
+                <p class="text-sm font-bold text-gray-900">{t('dashboard.data.markdown.title')}</p>
+                <p class="text-xs text-gray-500">{t('dashboard.data.markdown.desc')}</p>
               </div>
             </a>
             <a
@@ -329,14 +329,14 @@ dashboard.get('/app', async (c) => {
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               <div>
-                <p class="text-sm font-bold text-gray-900">Download JSON</p>
-                <p class="text-xs text-gray-500">Full export for backups</p>
+                <p class="text-sm font-bold text-gray-900">{t('dashboard.data.json.title')}</p>
+                <p class="text-xs text-gray-500">{t('dashboard.data.json.desc')}</p>
               </div>
             </a>
           </div>
           <div class="mt-3 pt-3 border-t border-gray-100">
             <a href="/docs/plain-text" class="text-xs text-horizon-600 font-bold hover:text-horizon-700">
-              Learn more about how your data is stored &rarr;
+              {t('dashboard.data.learnStorage')} &rarr;
             </a>
           </div>
         </section>
@@ -358,8 +358,8 @@ function SetupCard({ checklist }: { checklist: SetupChecklist }) {
     <section id="setup-card" class="bg-white border border-papaya-300/30 rounded-2xl p-5 mb-6">
       <div class="flex items-start justify-between gap-3 mb-3">
         <div>
-          <h3 class="text-sm font-bold text-gray-900">Get set up</h3>
-          <p class="text-xs text-gray-500 mt-0.5">{checklist.doneCount} of {checklist.total} done</p>
+          <h3 class="text-sm font-bold text-gray-900">{t('dashboard.setup.title')}</h3>
+          <p class="text-xs text-gray-500 mt-0.5">{t('dashboard.setup.progress', { done: checklist.doneCount, total: checklist.total })}</p>
         </div>
         <button
           type="button"
@@ -368,7 +368,7 @@ function SetupCard({ checklist }: { checklist: SetupChecklist }) {
           hx-swap="outerHTML"
           class="text-xs text-gray-400 hover:text-gray-600 transition-colors"
         >
-          Dismiss
+          {t('common.dismiss')}
         </button>
       </div>
       <div class="w-full bg-gray-100 rounded-full h-1.5 mb-4">
@@ -397,7 +397,7 @@ function DiscoveryGrid({ userName, discovery }: { userName: string; discovery: C
   return (
     <div class="space-y-6">
       <div class="bg-white border border-papaya-300/30 rounded-2xl p-6">
-        <h2 class="text-lg font-bold mb-1">Welcome, {userName} &#128075;</h2>
+        <h2 class="text-lg font-bold mb-1">{t('dashboard.welcome', { name: userName })}</h2>
         <p class="text-sm text-gray-600 mb-5">{discovery.blurb}</p>
         <div class="grid sm:grid-cols-2 gap-3">
           {discovery.recommended.map((f) => (
@@ -441,6 +441,25 @@ function statusColor(status: string): string {
   return map[status] ?? 'bg-gray-100 text-gray-600'
 }
 
+function contactStatusLabel(status: string): string {
+  const map: Record<string, MessageKey> = {
+    new: 'contacts.status.new',
+    contacted: 'contacts.status.contacted',
+    meeting: 'contacts.status.meeting',
+    quoted: 'contacts.status.quoted',
+    booked: 'contacts.status.booked',
+    completed: 'contacts.status.completed',
+    lost: 'contacts.status.lost',
+    archived: 'contacts.status.archived',
+  }
+  return t(map[status] ?? 'contacts.status.unknown')
+}
+
 function formatCents(cents: number): string {
-  return `$${(cents / 100).toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+  return new Intl.NumberFormat(getI18n().locale, {
+    style: 'currency',
+    currency: 'AUD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(cents / 100)
 }

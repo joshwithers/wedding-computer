@@ -19,8 +19,8 @@ describe('NOTIFICATION_TYPES registry', () => {
 
   it('every type has a label and description', () => {
     for (const t of NOTIFICATION_TYPES) {
-      expect(t.label.length).toBeGreaterThan(0)
-      expect(t.description.length).toBeGreaterThan(0)
+      expect(t.labelKey.length).toBeGreaterThan(0)
+      expect(t.descriptionKey.length).toBeGreaterThan(0)
     }
   })
 

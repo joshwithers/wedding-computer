@@ -1,11 +1,12 @@
 import type { FC, PropsWithChildren } from 'hono/jsx'
+import { getI18n, t } from '../../i18n'
 import { SharedHead } from '../head'
 import { Logo } from '../logo'
 
 type Props = PropsWithChildren<{ title?: string }>
 
 export const MarketingLayout: FC<Props> = ({ title, children }) => (
-  <html lang="en">
+  <html lang={getI18n().locale}>
     <head>
       <SharedHead title={title} />
     </head>
@@ -17,10 +18,10 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => (
             Wedding Computer
           </a>
           <div class="flex items-center gap-3 sm:gap-6">
-            <a href="/pricing" class="hidden sm:inline text-sm font-medium text-papaya-200 hover:text-white transition-colors">Pricing</a>
-            <a href="/about" class="hidden sm:inline text-sm font-medium text-papaya-200 hover:text-white transition-colors">About</a>
+            <a href="/pricing" class="hidden sm:inline text-sm font-medium text-papaya-200 hover:text-white transition-colors">{t('marketing.nav.pricing')}</a>
+            <a href="/about" class="hidden sm:inline text-sm font-medium text-papaya-200 hover:text-white transition-colors">{t('marketing.nav.about')}</a>
             <a href="/login" class="text-sm font-semibold bg-white text-grapefruit-700 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl hover:bg-papaya transition-colors whitespace-nowrap">
-              Sign in
+              {t('marketing.nav.signIn')}
             </a>
           </div>
         </div>
@@ -31,11 +32,11 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => (
           <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
             <span class="text-sm text-gray-500 font-medium">&copy; {new Date().getFullYear()} Wedding Computer</span>
             <div class="flex items-center gap-4 sm:gap-6 flex-wrap justify-center">
-              <a href="/about" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">About</a>
-              <a href="/pricing" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">Pricing</a>
-              <a href="/standard" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">Open Standard</a>
-              <a href="/docs/plain-text" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">Docs</a>
-              <a href="/login" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">Sign in</a>
+              <a href="/about" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.about')}</a>
+              <a href="/pricing" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.pricing')}</a>
+              <a href="/standard" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.openStandard')}</a>
+              <a href="/docs/plain-text" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.docs')}</a>
+              <a href="/login" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.signIn')}</a>
             </div>
           </div>
         </div>
@@ -47,37 +48,37 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => (
     tools: [
       {
         name: "get_started",
-        description: "Navigate to the sign-up / login page to create a Wedding Computer account.",
+        description: ${JSON.stringify(t('marketing.agent.getStarted.desc'))},
         inputSchema: { type: "object", properties: {} },
         execute: function() { window.location.href = "/login"; return { success: true }; }
       },
       {
         name: "view_pricing",
-        description: "View Wedding Computer pricing plans and features.",
+        description: ${JSON.stringify(t('marketing.agent.viewPricing.desc'))},
         inputSchema: { type: "object", properties: {} },
         execute: function() { window.location.href = "/pricing"; return { success: true }; }
       },
       {
         name: "view_about",
-        description: "Learn more about Wedding Computer — what it does, who it's for, and the team behind it.",
+        description: ${JSON.stringify(t('marketing.agent.viewAbout.desc'))},
         inputSchema: { type: "object", properties: {} },
         execute: function() { window.location.href = "/about"; return { success: true }; }
       },
       {
         name: "view_data_format",
-        description: "Read the open plain text data format specification — how contacts and weddings are stored as markdown files.",
+        description: ${JSON.stringify(t('marketing.agent.viewDataFormat.desc'))},
         inputSchema: { type: "object", properties: {} },
         execute: function() { window.location.href = "/standard"; return { success: true }; }
       },
       {
         name: "view_mcp_server",
-        description: "Get the MCP server configuration for connecting AI agents to Wedding Computer.",
+        description: ${JSON.stringify(t('marketing.agent.viewMcpServer.desc'))},
         inputSchema: { type: "object", properties: {} },
         execute: function() {
           return {
             url: "https://wedding.computer/mcp",
             transport: "streamable-http",
-            auth: "Bearer token from Settings > Calendar & Sync",
+            auth: ${JSON.stringify(t('marketing.agent.viewMcpServer.auth'))},
             serverCard: "https://wedding.computer/.well-known/mcp/server-card.json"
           };
         }

@@ -6,7 +6,7 @@ import { Logo } from '../views/logo'
 import { MarketingLayout } from '../views/layouts/marketing'
 import { requireAuth } from '../middleware/auth'
 import { csrf } from '../middleware/csrf'
-import { t, getI18n, SUPPORTED_LOCALES, listTimezones, isValidTimezone } from '../i18n'
+import { t, getI18n, SUPPORTED_LOCALES, listTimezones, isValidTimezone, type MessageKey } from '../i18n'
 import { rateLimit } from '../middleware/rate-limit'
 import { updateUser, updateUserEmail, getUserByEmail, getUserById, updateNotificationPrefs } from '../db/users'
 import { softDeleteAccount } from '../services/account'
@@ -28,6 +28,7 @@ import { deleteCookie } from 'hono/cookie'
 import { listPasskeys, deletePasskey } from '../db/passkeys'
 import type { PasskeyCredential } from '../types'
 import { redactedVendorProfile } from '../lib/redaction'
+import { formatDate } from '../lib/date'
 
 const account = new Hono<Env>()
 
@@ -43,7 +44,7 @@ const AccountLayout: FC<PropsWithChildren<{ title?: string; user: User; csrfToke
   backUrl,
   children,
 }) => (
-  <html lang="en">
+  <html lang={getI18n().language}>
     <head>
       <SharedHead title={title} />
       <meta name="csrf-token" content={csrfToken} />
@@ -55,7 +56,7 @@ const AccountLayout: FC<PropsWithChildren<{ title?: string; user: User; csrfToke
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
             </svg>
-            Back
+            {t('common.back')}
           </a>
           <a href="/" class="flex items-center gap-2 text-lg font-bold tracking-tight text-papaya">
             <Logo class="w-6 h-6" />
@@ -94,10 +95,10 @@ account.get('/account', async (c) => {
   const emailSent = c.req.query('email_sent')
 
   return c.html(
-    <AccountLayout title="Your profile" user={user} csrfToken={c.get('csrfToken')} backUrl={backUrl}>
+    <AccountLayout title={t('account.profileTitle')} user={user} csrfToken={c.get('csrfToken')} backUrl={backUrl}>
       {saved && (
         <div class="bg-horizon-50 border border-horizon-600/20 text-horizon-700 text-sm font-bold rounded-xl p-3 mb-6">
-          Profile saved.
+          {t('account.profileSaved')}
         </div>
       )}
       {error && (
@@ -107,18 +108,18 @@ account.get('/account', async (c) => {
       )}
       {emailSent && (
         <div class="bg-horizon-50 border border-horizon-600/20 text-horizon-700 text-sm font-bold rounded-xl p-3 mb-6">
-          Check your new email address for a verification link.
+          {t('account.emailSent')}
         </div>
       )}
 
-      <h1 class="text-xl font-bold mb-1">Your profile</h1>
+      <h1 class="text-xl font-bold mb-1">{t('account.profileTitle')}</h1>
       <p class="text-sm text-gray-500 mb-6">
-        This information is shared with vendors and couples on your weddings.
+        {t('account.profileHint')}
       </p>
 
       {/* ─── Profile photo ─── */}
       <section class="mb-8">
-        <h2 class="text-base font-bold mb-3">Profile photo</h2>
+        <h2 class="text-base font-bold mb-3">{t('account.profilePhoto')}</h2>
         <div class="flex items-center gap-4">
           {user.avatar_r2_key ? (
             <img
@@ -134,7 +135,7 @@ account.get('/account', async (c) => {
           <form method="post" action="/account/avatar" enctype="multipart/form-data">
             <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
             <label class="cursor-pointer bg-white border border-gray-200 text-gray-700 py-2 px-4 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors inline-block">
-              Upload photo
+              {t('account.uploadPhoto')}
               <input type="file" name="avatar" accept="image/*" class="hidden" onchange="this.form.submit()" />
             </label>
           </form>
@@ -142,7 +143,7 @@ account.get('/account', async (c) => {
             <form method="post" action="/account/avatar/remove">
               <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
               <button type="submit" class="text-sm text-gray-400 hover:text-grapefruit-600 transition-colors">
-                Remove
+                {t('common.remove')}
               </button>
             </form>
           )}
@@ -154,59 +155,59 @@ account.get('/account', async (c) => {
         <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
 
         <section>
-          <h2 class="text-base font-bold mb-3">Personal details</h2>
+          <h2 class="text-base font-bold mb-3">{t('account.personalDetails')}</h2>
           <div class="space-y-4">
             <div>
-              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="name">Full name</label>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="name">{t('account.fullName')}</label>
               <input type="text" id="name" name="name" value={user.name} required class={inputClass} />
             </div>
             <div>
-              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="phone">Phone</label>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="phone">{t('account.phone')}</label>
               <input type="tel" id="phone" name="phone" value={user.phone ?? ''} class={inputClass} />
             </div>
             <div>
-              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="date_of_birth">Date of birth</label>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="date_of_birth">{t('account.dateOfBirth')}</label>
               <input type="date" id="date_of_birth" name="date_of_birth" value={user.date_of_birth ?? ''} class={inputClass} />
             </div>
           </div>
         </section>
 
         <section>
-          <h2 class="text-base font-bold mb-3">Address</h2>
+          <h2 class="text-base font-bold mb-3">{t('account.address')}</h2>
           <div class="space-y-4">
             <div>
-              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="address_line_1">Address line 1</label>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="address_line_1">{t('account.addressLine1')}</label>
               <input type="text" id="address_line_1" name="address_line_1" value={user.address_line_1 ?? ''} class={inputClass} />
             </div>
             <div>
-              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="address_line_2">Address line 2</label>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="address_line_2">{t('account.addressLine2')}</label>
               <input type="text" id="address_line_2" name="address_line_2" value={user.address_line_2 ?? ''} class={inputClass} />
             </div>
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="city">City</label>
+                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="city">{t('account.city')}</label>
                 <input type="text" id="city" name="city" value={user.city ?? ''} class={inputClass} />
               </div>
               <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="state">State</label>
+                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="state">{t('account.state')}</label>
                 <input type="text" id="state" name="state" value={user.state ?? ''} class={inputClass} />
               </div>
             </div>
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="postcode">Postcode</label>
+                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="postcode">{t('account.postcode')}</label>
                 <input type="text" id="postcode" name="postcode" value={user.postcode ?? ''} class={inputClass} />
               </div>
               <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="country">Country</label>
-                <input type="text" id="country" name="country" value={user.country ?? ''} class={inputClass} placeholder="Australia" />
+                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="country">{t('account.country')}</label>
+                <input type="text" id="country" name="country" value={user.country ?? ''} class={inputClass} placeholder={t('account.countryPlaceholder')} />
               </div>
             </div>
           </div>
         </section>
 
         <section>
-          <h2 class="text-base font-bold mb-3">Social &amp; web</h2>
+          <h2 class="text-base font-bold mb-3">{t('account.socialWeb')}</h2>
           <div class="space-y-4">
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5" for="instagram">Instagram</label>
@@ -214,7 +215,7 @@ account.get('/account', async (c) => {
             </div>
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5" for="facebook">Facebook</label>
-              <input type="text" id="facebook" name="facebook" value={user.facebook ?? ''} class={inputClass} placeholder="Profile URL or name" />
+              <input type="text" id="facebook" name="facebook" value={user.facebook ?? ''} class={inputClass} placeholder={t('account.socialProfilePlaceholder')} />
             </div>
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5" for="tiktok">TikTok</label>
@@ -222,10 +223,10 @@ account.get('/account', async (c) => {
             </div>
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5" for="linkedin">LinkedIn</label>
-              <input type="text" id="linkedin" name="linkedin" value={user.linkedin ?? ''} class={inputClass} placeholder="Profile URL" />
+              <input type="text" id="linkedin" name="linkedin" value={user.linkedin ?? ''} class={inputClass} placeholder={t('account.socialUrlPlaceholder')} />
             </div>
             <div>
-              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="website">Website</label>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="website">{t('account.website')}</label>
               <input type="url" id="website" name="website" value={user.website ?? ''} class={inputClass} placeholder="https://..." />
             </div>
           </div>
@@ -235,27 +236,27 @@ account.get('/account', async (c) => {
           type="submit"
           class="bg-horizon-600 text-white py-3 px-6 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
         >
-          Save profile
+          {t('account.saveProfile')}
         </button>
       </form>
 
       {/* ─── Email address (separate form) ─── */}
       <section class="mt-10 pt-8 border-t border-gray-200">
-        <h2 class="text-base font-bold mb-2">Email address</h2>
+        <h2 class="text-base font-bold mb-2">{t('account.emailAddress')}</h2>
         <p class="text-sm text-gray-500 mb-4">
-          Your email is used for signing in and receiving notifications. Changing it requires verification.
+          {t('account.emailAddressHint')}
         </p>
         <form method="post" action="/account/email" class="flex gap-3 items-end">
           <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
           <div class="flex-1">
-            <label class="block text-sm font-bold text-gray-700 mb-1.5" for="new_email">Current: {user.email}</label>
-            <input type="email" id="new_email" name="new_email" required class={inputClass} placeholder="New email address" />
+            <label class="block text-sm font-bold text-gray-700 mb-1.5" for="new_email">{t('account.currentEmail', { email: user.email })}</label>
+            <input type="email" id="new_email" name="new_email" required class={inputClass} placeholder={t('account.newEmailPlaceholder')} />
           </div>
           <button
             type="submit"
             class="bg-white border border-gray-200 text-gray-700 py-3 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors shrink-0"
           >
-            Change email
+            {t('account.changeEmail')}
           </button>
         </form>
       </section>
@@ -297,15 +298,15 @@ account.get('/account', async (c) => {
 
       {/* ─── Email notifications ─── */}
       <section class="mt-10 pt-8 border-t border-gray-200">
-        <h2 class="text-base font-bold mb-2">Email notifications</h2>
+        <h2 class="text-base font-bold mb-2">{t('account.notifications.title')}</h2>
         <p class="text-sm text-gray-500 mb-4">
-          Choose which emails Wedding Computer sends you — enquiries, payment reminders, wedding updates, and more.
+          {t('account.notifications.accountHint')}
         </p>
         <a
           href="/account/notifications"
           class="inline-block bg-white border border-gray-200 text-gray-700 py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
         >
-          Manage notifications
+          {t('account.notifications.manage')}
         </a>
       </section>
 
@@ -314,24 +315,24 @@ account.get('/account', async (c) => {
 
       {/* ─── Data management ─── */}
       <section class="mt-10 pt-8 border-t border-gray-200">
-        <h2 class="text-base font-bold mb-2">Your data</h2>
+        <h2 class="text-base font-bold mb-2">{t('account.data.title')}</h2>
         <p class="text-sm text-gray-500 mb-4">
-          Download or delete all your data.
+          {t('account.data.hint')}
         </p>
         <div class="flex flex-col sm:flex-row gap-3">
           <a
             href="/account/export"
             class="inline-block bg-white border border-gray-200 text-gray-700 py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors text-center"
           >
-            Export data (JSON)
+            {t('account.data.exportJson')}
           </a>
-          <form method="post" action="/account/delete" onsubmit="return confirm('Schedule your account for deletion? You will be signed out, and everything is permanently removed in 30 days. Sign back in any time within 30 days to restore it.')">
+          <form method="post" action="/account/delete" onsubmit={`return confirm(${JSON.stringify(t('account.data.deleteConfirm'))})`}>
             <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
             <button
               type="submit"
               class="bg-grapefruit-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-grapefruit-700 transition-colors"
             >
-              Delete account
+              {t('account.data.deleteAccount')}
             </button>
           </form>
         </div>
@@ -472,7 +473,7 @@ account.get('/account/email/verify', async (c) => {
 
 // ─── Notification preferences ───
 
-type PrefSection = { heading: string; types: NotificationType[] }
+type PrefSection = { heading: MessageKey; types: NotificationType[] }
 
 // Group the registry into role-aware page sections. Only the sections a user
 // sees here are written back on save, so a vendor can't accidentally clear
@@ -481,12 +482,12 @@ function prefSections(opts: { isVendor: boolean; isCouple: boolean; isAdmin: boo
   const sections: PrefSection[] = []
   if (opts.isVendor) {
     sections.push({
-      heading: 'Running your business',
+      heading: 'account.notifications.section.business',
       types: NOTIFICATION_TYPES.filter((t) => t.audience === 'vendor'),
     })
   }
   sections.push({
-    heading: "Weddings you're part of",
+    heading: 'account.notifications.section.weddings',
     types: NOTIFICATION_TYPES.filter(
       (t) =>
         (t.audience === 'all' && t.key !== 'announcements') ||
@@ -494,12 +495,12 @@ function prefSections(opts: { isVendor: boolean; isCouple: boolean; isAdmin: boo
     ),
   })
   sections.push({
-    heading: 'From Wedding Computer',
+    heading: 'account.notifications.section.platform',
     types: NOTIFICATION_TYPES.filter((t) => t.key === 'announcements'),
   })
   if (opts.isAdmin) {
     sections.push({
-      heading: 'Admin',
+      heading: 'account.notifications.section.admin',
       types: NOTIFICATION_TYPES.filter((t) => t.audience === 'admin'),
     })
   }
@@ -521,17 +522,16 @@ account.get('/account/notifications', async (c) => {
   const sections = await userPrefSections(c.env.DB, user)
 
   return c.html(
-    <AccountLayout title="Email notifications" user={user} csrfToken={c.get('csrfToken')} backUrl={backUrl}>
+    <AccountLayout title={t('account.notifications.title')} user={user} csrfToken={c.get('csrfToken')} backUrl={backUrl}>
       {saved && (
         <div class="bg-horizon-50 border border-horizon-600/20 text-horizon-700 text-sm font-bold rounded-xl p-3 mb-6">
-          Preferences saved.
+          {t('account.notifications.saved')}
         </div>
       )}
 
-      <h1 class="text-xl font-bold mb-1">Email notifications</h1>
+      <h1 class="text-xl font-bold mb-1">{t('account.notifications.title')}</h1>
       <p class="text-sm text-gray-500 mb-6">
-        Choose what we email you about. Sign-in links, verification emails, and invoices addressed to you
-        always arrive — they're how the platform works, not notifications.
+        {t('account.notifications.pageHint')}
       </p>
 
       <form method="post" action="/account/notifications" class="space-y-8">
@@ -539,19 +539,19 @@ account.get('/account/notifications', async (c) => {
 
         {sections.map((section) => (
           <section>
-            <h2 class="text-base font-bold mb-3">{section.heading}</h2>
+            <h2 class="text-base font-bold mb-3">{t(section.heading)}</h2>
             <div class="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
-              {section.types.map((t) => (
+              {section.types.map((type) => (
                 <label class="flex items-start gap-3 p-4 cursor-pointer">
                   <input
                     type="checkbox"
-                    name={`pref_${t.key}`}
-                    checked={isNotificationEnabled(user.notification_prefs, t.key)}
+                    name={`pref_${type.key}`}
+                    checked={isNotificationEnabled(user.notification_prefs, type.key)}
                     class="mt-0.5 w-4 h-4 accent-horizon-600 shrink-0"
                   />
                   <span>
-                    <span class="block text-sm font-bold text-gray-900">{t.label}</span>
-                    <span class="block text-sm text-gray-500">{t.description}</span>
+                    <span class="block text-sm font-bold text-gray-900">{t(type.labelKey)}</span>
+                    <span class="block text-sm text-gray-500">{t(type.descriptionKey)}</span>
                   </span>
                 </label>
               ))}
@@ -563,13 +563,12 @@ account.get('/account/notifications', async (c) => {
           type="submit"
           class="bg-horizon-600 text-white py-3 px-6 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
         >
-          Save preferences
+          {t('account.notifications.savePreferences')}
         </button>
       </form>
 
       <p class="text-xs text-gray-400 mt-6">
-        Every notification email also has a one-click unsubscribe link for its category, so you can opt out
-        straight from your inbox.
+        {t('account.notifications.unsubscribeHint')}
       </p>
     </AccountLayout>
   )
@@ -601,7 +600,8 @@ account.post('/account/notifications', async (c) => {
 // confirm button and for RFC 8058 List-Unsubscribe-Post one-click requests.
 
 function unsubLabel(key: NotificationKey): string {
-  return NOTIFICATION_TYPES.find((t) => t.key === key)?.label ?? key
+  const type = NOTIFICATION_TYPES.find((t) => t.key === key)
+  return type ? t(type.labelKey) : key
 }
 
 const UnsubscribePage: FC<{ heading: string; message: unknown; button?: { token: string } }> = ({
@@ -609,7 +609,7 @@ const UnsubscribePage: FC<{ heading: string; message: unknown; button?: { token:
   message,
   button,
 }) => (
-  <MarketingLayout title="Unsubscribe">
+  <MarketingLayout title={t('account.unsubscribe.title')}>
     <div class="max-w-md mx-auto px-4 sm:px-6 py-16 sm:py-24 text-center">
       <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-3">{heading}</h1>
       <p class="text-gray-600 leading-relaxed mb-8">{message}</p>
@@ -619,7 +619,7 @@ const UnsubscribePage: FC<{ heading: string; message: unknown; button?: { token:
             type="submit"
             class="inline-block bg-grapefruit-600 text-white px-6 py-3 rounded-xl text-sm font-bold hover:bg-grapefruit-700 transition-colors"
           >
-            Unsubscribe
+            {t('account.unsubscribe.button')}
           </button>
         </form>
       ) : (
@@ -627,13 +627,13 @@ const UnsubscribePage: FC<{ heading: string; message: unknown; button?: { token:
           href="/"
           class="inline-block bg-horizon-600 text-white px-6 py-3 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
         >
-          Back to home
+          {t('account.unsubscribe.backHome')}
         </a>
       )}
       <p class="text-sm text-gray-500 mt-8">
-        You can manage all your email preferences from{' '}
+        {t('account.unsubscribe.managePrefix')}{' '}
         <a href="/account/notifications" class="font-bold text-horizon-700 hover:underline">
-          your account
+          {t('account.unsubscribe.accountLink')}
         </a>
         .
       </p>
@@ -647,19 +647,14 @@ account.get('/email/unsubscribe', async (c) => {
 
   if (!parsed) {
     return c.html(
-      <UnsubscribePage heading="Unsubscribe" message="This unsubscribe link is invalid or has expired." />
+      <UnsubscribePage heading={t('account.unsubscribe.title')} message={t('account.unsubscribe.invalid')} />
     )
   }
 
   return c.html(
     <UnsubscribePage
-      heading="Unsubscribe"
-      message={
-        <>
-          Stop receiving <strong>{unsubLabel(parsed.key)}</strong> emails from Wedding Computer? You can
-          switch them back on any time.
-        </>
-      }
+      heading={t('account.unsubscribe.title')}
+      message={t('account.unsubscribe.confirmMessage', { label: unsubLabel(parsed.key) })}
       button={{ token }}
     />
   )
@@ -671,7 +666,7 @@ account.post('/email/unsubscribe', rateLimit(30, 60), async (c) => {
 
   if (!parsed) {
     return c.html(
-      <UnsubscribePage heading="Unsubscribe" message="This unsubscribe link is invalid or has expired." />,
+      <UnsubscribePage heading={t('account.unsubscribe.title')} message={t('account.unsubscribe.invalid')} />,
       400
     )
   }
@@ -686,12 +681,8 @@ account.post('/email/unsubscribe', rateLimit(30, 60), async (c) => {
   // Mail providers' one-click POSTs only need a 2xx; humans get a real page.
   return c.html(
     <UnsubscribePage
-      heading="Unsubscribed"
-      message={
-        <>
-          You won't receive <strong>{unsubLabel(parsed.key)}</strong> emails any more.
-        </>
-      }
+      heading={t('account.unsubscribe.doneTitle')}
+      message={t('account.unsubscribe.doneMessage', { label: unsubLabel(parsed.key) })}
     />
   )
 })
@@ -861,11 +852,16 @@ account.post('/account/passkeys/:id/delete', async (c) => {
 // ─── Passkey section component ───
 
 function PasskeySection({ passkeys, csrfToken }: { passkeys: PasskeyCredential[]; csrfToken: string }) {
+  const optionsFailed = JSON.stringify(t('account.passkeys.optionsFailed'))
+  const namePrompt = JSON.stringify(t('account.passkeys.namePrompt'))
+  const registrationFailed = JSON.stringify(t('account.passkeys.registrationFailed'))
+  const unsupported = JSON.stringify(t('account.passkeys.unsupported'))
+
   return (
     <section class="mt-10 pt-8 border-t border-gray-200">
-      <h2 class="text-base font-bold mb-2">Passkeys</h2>
+      <h2 class="text-base font-bold mb-2">{t('account.passkeys.title')}</h2>
       <p class="text-sm text-gray-500 mb-4">
-        Use a passkey to sign in without email. Works with Touch ID, Face ID, Windows Hello, or a security key.
+        {t('account.passkeys.hint')}
       </p>
 
       {passkeys.length > 0 && (
@@ -874,18 +870,18 @@ function PasskeySection({ passkeys, csrfToken }: { passkeys: PasskeyCredential[]
             <div class="flex items-center justify-between bg-white border border-gray-200 rounded-xl p-3">
               <div>
                 <p class="text-sm font-bold text-gray-900">
-                  {pk.device_name ?? 'Passkey'}
-                  {pk.backed_up ? <span class="text-xs text-gray-400 ml-2">Synced</span> : null}
+                  {pk.device_name ?? t('account.passkeys.defaultName')}
+                  {pk.backed_up ? <span class="text-xs text-gray-400 ml-2">{t('account.passkeys.synced')}</span> : null}
                 </p>
                 <p class="text-xs text-gray-500">
-                  Added {new Date(pk.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  {pk.last_used_at ? ` · Last used ${new Date(pk.last_used_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}` : ''}
+                  {t('account.passkeys.added', { date: formatDate(pk.created_at) })}
+                  {pk.last_used_at ? ` · ${t('account.passkeys.lastUsed', { date: formatDate(pk.last_used_at) })}` : ''}
                 </p>
               </div>
-              <form method="post" action={`/account/passkeys/${pk.id}/delete`} onsubmit="return confirm('Remove this passkey?')">
+              <form method="post" action={`/account/passkeys/${pk.id}/delete`} onsubmit={`return confirm(${JSON.stringify(t('account.passkeys.removeConfirm'))})`}>
                 <input type="hidden" name="_csrf" value={csrfToken} />
                 <button type="submit" class="text-xs text-gray-400 hover:text-grapefruit-600 transition-colors">
-                  Remove
+                  {t('common.remove')}
                 </button>
               </form>
             </div>
@@ -898,7 +894,7 @@ function PasskeySection({ passkeys, csrfToken }: { passkeys: PasskeyCredential[]
         type="button"
         class="bg-white border border-gray-200 text-gray-700 py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
       >
-        Add a passkey
+        {t('account.passkeys.add')}
       </button>
       <p id="passkey-msg" class="text-sm mt-2 hidden"></p>
 
@@ -935,7 +931,7 @@ function PasskeySection({ passkeys, csrfToken }: { passkeys: PasskeyCredential[]
       var optRes = await fetch('/auth/passkey/register/options', {
         method: 'POST', headers: headers
       });
-      if (!optRes.ok) throw new Error('Failed to get options');
+      if (!optRes.ok) throw new Error(${optionsFailed});
       var opts = await optRes.json();
 
       var publicKey = {
@@ -958,7 +954,7 @@ function PasskeySection({ passkeys, csrfToken }: { passkeys: PasskeyCredential[]
       }
 
       var cred = await navigator.credentials.create({ publicKey: publicKey });
-      var deviceName = prompt('Name this passkey (optional):', '') || null;
+      var deviceName = prompt(${namePrompt}, '') || null;
 
       var verRes = await fetch('/auth/passkey/register/verify', {
         method: 'POST',
@@ -981,13 +977,13 @@ function PasskeySection({ passkeys, csrfToken }: { passkeys: PasskeyCredential[]
       if (result.verified) {
         window.location.reload();
       } else {
-        msgEl.textContent = result.error || 'Registration failed';
+        msgEl.textContent = result.error || ${registrationFailed};
         msgEl.className = 'text-sm text-grapefruit-700 mt-2';
         msgEl.classList.remove('hidden');
       }
     } catch(e) {
       if (e.name !== 'NotAllowedError') {
-        msgEl.textContent = 'Passkey registration failed. Your browser may not support this feature.';
+        msgEl.textContent = ${unsupported};
         msgEl.className = 'text-sm text-grapefruit-700 mt-2';
         msgEl.classList.remove('hidden');
       }

@@ -9,6 +9,7 @@
 // it is the mechanism of using the platform, not a notification about it.
 
 import { hmacSign, hmacVerify } from '../lib/crypto'
+import type { MessageKey } from '../i18n'
 
 export type NotificationKey =
   | 'enquiries'
@@ -28,8 +29,8 @@ export type NotificationAudience = 'vendor' | 'couple' | 'all' | 'admin'
 
 export type NotificationType = {
   key: NotificationKey
-  label: string
-  description: string
+  labelKey: MessageKey
+  descriptionKey: MessageKey
   /** Which preference groups show this toggle. 'all' = vendors and couples. */
   audience: NotificationAudience
 }
@@ -38,82 +39,82 @@ export const NOTIFICATION_TYPES: NotificationType[] = [
   // ─── Vendor: running your business ───
   {
     key: 'enquiries',
-    label: 'New enquiries',
-    description: 'Someone submits your enquiry form or one of your custom forms.',
+    labelKey: 'account.notifications.type.enquiries.label',
+    descriptionKey: 'account.notifications.type.enquiries.desc',
     audience: 'vendor',
   },
   {
     key: 'payments_received',
-    label: 'Payments received',
-    description: 'A payment lands on one of your invoices.',
+    labelKey: 'account.notifications.type.paymentsReceived.label',
+    descriptionKey: 'account.notifications.type.paymentsReceived.desc',
     audience: 'vendor',
   },
   {
     key: 'vendor_collaboration',
-    label: 'Vendor collaboration',
-    description: 'A couple books another vendor, or changes whether vendors can see each other.',
+    labelKey: 'account.notifications.type.vendorCollaboration.label',
+    descriptionKey: 'account.notifications.type.vendorCollaboration.desc',
     audience: 'vendor',
   },
   {
     key: 'daily_digest',
-    label: 'Daily summary',
-    description: 'A morning round-up of upcoming weddings, new contacts, and payments due.',
+    labelKey: 'account.notifications.type.dailyDigest.label',
+    descriptionKey: 'account.notifications.type.dailyDigest.desc',
     audience: 'vendor',
   },
   {
     key: 'referrals',
-    label: 'Referral rewards',
-    description: 'Someone you referred subscribes and you earn a free month.',
+    labelKey: 'account.notifications.type.referrals.label',
+    descriptionKey: 'account.notifications.type.referrals.desc',
     audience: 'vendor',
   },
 
   // ─── Everyone: weddings you're part of ───
   {
     key: 'wedding_invites',
-    label: 'Added to a wedding',
-    description: "You're added to a wedding by a vendor or couple.",
+    labelKey: 'account.notifications.type.weddingInvites.label',
+    descriptionKey: 'account.notifications.type.weddingInvites.desc',
     audience: 'all',
   },
   {
     key: 'wedding_updates',
-    label: 'Wedding updates',
-    description: 'Details change, a booking is confirmed, or someone joins a wedding you’re part of.',
+    labelKey: 'account.notifications.type.weddingUpdates.label',
+    descriptionKey: 'account.notifications.type.weddingUpdates.desc',
     audience: 'all',
   },
   {
     key: 'payment_reminders',
-    label: 'Payment reminders',
-    description: 'A payment is due in the next few days or has become overdue.',
+    labelKey: 'account.notifications.type.paymentReminders.label',
+    descriptionKey: 'account.notifications.type.paymentReminders.desc',
     audience: 'all',
   },
 
   // ─── Couple: your wedding's money ───
   {
     key: 'invoices',
-    label: 'Invoices & receipts',
-    description: 'A vendor sends you an invoice, or a payment you made is recorded.',
+    labelKey: 'account.notifications.type.invoices.label',
+    descriptionKey: 'account.notifications.type.invoices.desc',
     audience: 'couple',
   },
 
   // ─── Everyone: from Wedding Computer ───
   {
     key: 'announcements',
-    label: 'News & announcements',
-    description: 'Occasional product news and updates from Wedding Computer.',
+    labelKey: 'account.notifications.type.announcements.label',
+    descriptionKey: 'account.notifications.type.announcements.desc',
     audience: 'all',
   },
 
   // ─── Admins ───
   {
     key: 'admin_signups',
-    label: 'New signups',
-    description: 'A new vendor or couple joins the platform.',
+    labelKey: 'account.notifications.type.adminSignups.label',
+    descriptionKey: 'account.notifications.type.adminSignups.desc',
     audience: 'admin',
   },
   {
     key: 'admin_safety',
-    label: 'Safety alerts',
-    description: 'A couple removes a vendor from their wedding, or other events that may need review.',
+    labelKey: 'account.notifications.type.adminSafety.label',
+    descriptionKey: 'account.notifications.type.adminSafety.desc',
     audience: 'admin',
   },
 ]
