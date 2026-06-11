@@ -57,7 +57,7 @@ A wedding is a dozen people working toward one day — yet most tools treat each
 - **GitHub sync** — contacts and weddings sync to a private repo as plain text markdown
 - **Obsidian plugin** — official two-way sync plugin in the [Obsidian community directory](https://community.obsidian.md/plugins/wedding-computer-sync)
 - **Plain text files** — every file is portable, human-readable, and never locked in
-- **Open source** — AGPL-3.0, self-hostable on Cloudflare Workers
+- **Open file format** — files follow a CC0 public-domain standard (https://wedding.computer/standard) that any tool can implement
 
 ## Collaboration
 
@@ -81,7 +81,7 @@ All data is stored as plain text markdown files, synced live to GitHub. Access y
 - [About](https://wedding.computer/about)
 - [Pricing](https://wedding.computer/pricing)
 - [Open Format Spec](https://wedding.computer/standard)
-- [Source Code](https://github.com/joshwithers/wedding-computer)
+- [Obsidian Plugin](https://community.obsidian.md/plugins/wedding-computer-sync)
 `,
   '/about': `# About Wedding Computer
 
@@ -96,13 +96,14 @@ A wedding is one of the most collaborative events there is, yet most software tr
 - **AI-native through MCP** — connect Claude, ChatGPT, Cursor, or your own agent directly to your data. Your open-text data is readable and writable by you and any AI you trust.
 - **Market intelligence built in** — anonymised demand scores show how in-demand any date is for enquiries and bookings, so vendors can decide which dates to chase and what to charge.
 
-Built on Cloudflare Workers. Open source under AGPL-3.0.
+Built on Cloudflare Workers. Your data lives in plain text markdown following an open, CC0-licensed format — synced live to your own GitHub repo and editable both ways via the official Obsidian plugin.
 
 ## Links
 
 - [Home](https://wedding.computer/)
 - [Pricing](https://wedding.computer/pricing)
-- [Source](https://github.com/joshwithers/wedding-computer)
+- [Open Format Spec](https://wedding.computer/standard)
+- [Obsidian Plugin](https://community.obsidian.md/plugins/wedding-computer-sync)
 `,
   '/pricing': `# Pricing — Wedding Computer
 
@@ -193,7 +194,7 @@ marketing.get('/', (c) => {
         {/* Hero */}
         <section class="py-12 sm:py-16 lg:py-24 text-center">
           <div class="inline-block bg-horizon-50 text-horizon-700 font-semibold text-sm px-4 py-1.5 rounded-full mb-4 sm:mb-6">
-            Free forever · Open source
+            Free forever · Open data
           </div>
           <h1 class="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] mb-4 sm:mb-6">
             <span class="block">Everyone working on a wedding,</span>
@@ -415,9 +416,9 @@ marketing.get('/', (c) => {
             />
             <FeatureCard
               color="horizon"
-              icon="opensource"
-              title="Open source"
-              desc="Built in the open under AGPL-3.0. Audit the code, self-host it, or contribute. Runs on Cloudflare Workers at the edge, globally."
+              icon="openformat"
+              title="An open standard, not a silo"
+              desc="Your files follow the Wedding CRM Markdown Standard — a CC0 public-domain spec any tool can implement. Sync over CalDAV, CardDAV, and iCal, connect AI over MCP, or edit both ways with the official Obsidian plugin."
             />
             <FeatureCard
               color="grapefruit"
@@ -739,7 +740,7 @@ marketing.get('/about', (c) => {
             calendar, invoices, email — from one dashboard. Couples get a real planning hub. And every
             wedding is a shared workspace, so the people working on it actually work together. Your data
             is stored as plain text files you own forever, and you can plug your own AI into it. It's
-            free to start, open source, and built by people who work in weddings — couples free forever,
+            free to start, radically open with your data, and built by people who work in weddings — couples free forever,
             vendors free for the core tools, with analytics and AI on a Pro plan for $28/month.
           </p>
         </div>
@@ -974,22 +975,26 @@ marketing.get('/about', (c) => {
           />
         </div>
 
-        {/* Open Source */}
-        <h2 class="text-xl sm:text-2xl font-bold mb-2">Open source (AGPL-3.0)</h2>
+        {/* Open Data */}
+        <h2 class="text-xl sm:text-2xl font-bold mb-2">Open data, not open silos</h2>
         <div class="space-y-4 text-gray-600 leading-relaxed mb-12">
           <p>
-            Wedding Computer is open source under the AGPL-3.0 license. That means anyone can read the code,
-            audit the security, self-host it, or contribute improvements. The AGPL specifically requires that anyone
-            who modifies and deploys the software must share their changes — it prevents hosted competitors from
-            taking the code without giving back.
+            Wedding Computer is built around a simple promise: the data is yours, and you should never
+            need our permission to use it. Every contact, wedding, checklist, and changelog is a plain text
+            markdown file in an open, CC0 public-domain format that any tool can implement. Sync it live to
+            your own GitHub repo, edit it both ways with the official Obsidian plugin, subscribe over
+            CalDAV, CardDAV, and iCal, or connect your own AI through MCP.
           </p>
           <p>
-            We chose AGPL because the wedding industry has been underserved by closed, expensive SaaS tools for
-            too long. Building in the open means vendors can trust what the software does with their data, and
-            the community can help make it better.
+            Openness stops where your security starts. Every way in is authenticated and scoped to you —
+            signed sessions, per-device sync tokens you can revoke, time-limited signed URLs for documents,
+            and strict tenant isolation on every query. Your data is wide open to you and the tools you
+            trust, and closed to everyone else.
           </p>
           <p>
-            <a href="https://github.com/joshwithers/wedding-computer" class="text-horizon-700 font-bold hover:underline">View the source on GitHub</a>
+            <a href="/standard" class="text-horizon-700 font-bold hover:underline">Read the open format spec</a>
+            {' '}·{' '}
+            <a href="https://community.obsidian.md/plugins/wedding-computer-sync" class="text-horizon-700 font-bold hover:underline" rel="noopener">Get the Obsidian plugin</a>
           </p>
         </div>
 
@@ -1547,8 +1552,10 @@ Backup plan: The Calyx indoor space.
             No attribution required, though we'd appreciate a link back.
           </p>
           <p>
-            The Wedding Computer application that implements this standard is licensed under AGPL-3.0.
-            The specification itself carries no such requirement — you can implement it in proprietary software.
+            The specification is intentionally independent of Wedding Computer itself — you can implement it
+            in any software, commercial or otherwise, without asking us. Our official{' '}
+            <a href="https://github.com/joshwithers/wedding-computer-sync" class="text-horizon-700 font-bold hover:underline" rel="noopener">Obsidian plugin</a>{' '}
+            is open source and doubles as a reference implementation.
           </p>
         </div>
 
@@ -1560,10 +1567,10 @@ Backup plan: The Calyx indoor space.
           </p>
           <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
             <a
-              href="https://github.com/joshwithers/wedding-computer"
+              href="https://github.com/joshwithers/wedding-computer-sync"
               class="inline-block bg-white text-horizon-700 font-bold px-6 py-3 rounded-xl hover:bg-horizon-50 transition-colors text-sm"
             >
-              View on GitHub
+              Reference implementation
             </a>
             <a
               href="/docs/plain-text"
@@ -1793,14 +1800,14 @@ weddings/
         {/* For developers */}
         <details class="bg-white border border-papaya-300/30 rounded-xl mb-12">
           <summary class="px-4 sm:px-6 py-4 cursor-pointer font-bold text-sm text-gray-700 hover:text-gray-900">
-            For developers: API access, scripting, and self-hosting
+            For developers: API access, scripting, and building your own tools
           </summary>
           <div class="px-4 sm:px-6 pb-6 pt-2 space-y-6">
             <div>
               <h3 class="font-bold text-sm mb-2">Cloudflare R2 API (S3-compatible)</h3>
               <p class="text-sm text-gray-600 mb-3">
                 Files are stored on Cloudflare R2. Any S3-compatible tool (rclone, AWS CLI, Cyberduck, boto3) works.
-                Self-hosters have direct access. Hosted users can request read-only API credentials scoped to their data.
+                Request read-only API credentials scoped to your data — they can see your files and nobody else's.
               </p>
               <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
                 <pre class="text-sm text-gray-100"><code>{`# rclone — sync everything to a local folder
@@ -1832,12 +1839,12 @@ for f in Path("contacts").glob("*.md"):
             </div>
 
             <div>
-              <h3 class="font-bold text-sm mb-2">Self-hosting</h3>
+              <h3 class="font-bold text-sm mb-2">Building your own tools</h3>
               <p class="text-sm text-gray-600">
-                Wedding Computer is open source (AGPL-3.0). Self-host it on your own Cloudflare account
-                and you have direct access to the R2 bucket, D1 database, and all files. See the{' '}
-                <a href="https://github.com/joshwithers/wedding-computer" class="text-horizon-700 font-bold hover:underline">GitHub repo</a> for
-                setup instructions.
+                The file format is an open, CC0 public-domain standard — implement it in anything,
+                no permission needed. Our official{' '}
+                <a href="https://github.com/joshwithers/wedding-computer-sync" class="text-horizon-700 font-bold hover:underline" rel="noopener">Obsidian plugin</a> is
+                open source and doubles as a reference implementation of the format and the sync API.
               </p>
             </div>
           </div>
@@ -2000,7 +2007,7 @@ const featureIcons: Record<string, string> = {
   ai: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>',
   workspace: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.42 4.58a5.4 5.4 0 0 0-7.65 0l-.77.78-.77-.78a5.4 5.4 0 0 0-7.65 0C1.46 6.7 1.33 10.28 4 13l8 8 8-8c2.67-2.72 2.54-6.3.42-8.42z"/></svg>',
   analytics: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>',
-  opensource: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 22h2a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v3"/><path d="M14 2v6h6"/><path d="m5 17 3-3-3-3"/><path d="M9 18h4"/></svg>',
+  openformat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 22h2a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v3"/><path d="M14 2v6h6"/><path d="m5 17 3-3-3-3"/><path d="M9 18h4"/></svg>',
   couple: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
   sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>',
   notifications: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',

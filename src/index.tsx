@@ -442,10 +442,9 @@ app.get('/.well-known/agent', (c) =>
       homepage: 'https://wedding.computer/about',
       'open-format': 'https://wedding.computer/standard',
       'plain-text-data': 'https://wedding.computer/docs/plain-text',
+      'obsidian-plugin': 'https://community.obsidian.md/plugins/wedding-computer-sync',
     },
     sitemap: 'https://wedding.computer/sitemap.xml',
-    source: 'https://github.com/joshwithers/wedding-computer',
-    license: 'AGPL-3.0',
   })
 )
 

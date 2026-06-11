@@ -136,7 +136,7 @@ Any website can post directly to `https://wedding.computer/enquire/{vendorId}` (
 | [/.well-known/oauth-authorization-server](https://wedding.computer/.well-known/oauth-authorization-server) | OAuth metadata with agent_auth |
 | [/.well-known/oauth-protected-resource](https://wedding.computer/.well-known/oauth-protected-resource) | Protected resource metadata |
 
-## Source
+## Open Data
 
-- License: AGPL-3.0
-- Source Code: [github.com/joshwithers/wedding-computer](https://github.com/joshwithers/wedding-computer)
+- File format: [Wedding CRM Markdown Standard](https://wedding.computer/standard) (CC0 public domain)
+- Obsidian plugin: [wedding-computer-sync](https://github.com/joshwithers/wedding-computer-sync) (open source reference implementation)
