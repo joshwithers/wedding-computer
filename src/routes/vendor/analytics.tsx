@@ -72,6 +72,22 @@ function monthKey(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, '0')}`
 }
 
+/**
+ * [start, end) window for a goal's period.
+ * period_value is free text: "2026" (year), "2026-06" (month), "summer-2026"
+ * (season). Seasons have no parseable bounds, so they fall back to the year
+ * found in the value.
+ */
+function goalPeriodRange(periodType: string, periodValue: string): [string, string] {
+  if (periodType === 'month' && /^\d{4}-\d{2}$/.test(periodValue)) {
+    const [y, m] = periodValue.split('-').map(Number)
+    const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
+    return [`${periodValue}-01`, `${next}-01`]
+  }
+  const year = Number(periodValue.match(/\d{4}/)?.[0] ?? new Date().getFullYear())
+  return [`${year}-01-01`, `${year + 1}-01-01`]
+}
+
 // ─── Main dashboard ───
 
 analytics.get('/app/analytics', async (c) => {
@@ -92,8 +108,10 @@ analytics.get('/app/analytics', async (c) => {
     )
   }
 
-  // Date ranges
+  // Date ranges. End bounds are exclusive and compared against full datetimes,
+  // so "now" windows must end at tomorrow's date or today's events drop out.
   const today = new Date().toISOString().slice(0, 10)
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
   const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10)
   const yearStart = `${new Date().getFullYear()}-01-01`
@@ -120,11 +138,11 @@ analytics.get('/app/analytics', async (c) => {
     stateHeatmap,
     globalHeatmap,
   ] = await Promise.all([
-    countEvents(db, vendor.id, 'enquiry_received', thirtyDaysAgo, today),
+    countEvents(db, vendor.id, 'enquiry_received', thirtyDaysAgo, tomorrow),
     countEvents(db, vendor.id, 'enquiry_received', sixtyDaysAgo, thirtyDaysAgo),
-    countEvents(db, vendor.id, 'booking_confirmed', thirtyDaysAgo, today),
+    countEvents(db, vendor.id, 'booking_confirmed', thirtyDaysAgo, tomorrow),
     countEvents(db, vendor.id, 'booking_confirmed', sixtyDaysAgo, thirtyDaysAgo),
-    getRevenue(db, vendor.id, thirtyDaysAgo, today),
+    getRevenue(db, vendor.id, thirtyDaysAgo, tomorrow),
     getRevenue(db, vendor.id, sixtyDaysAgo, thirtyDaysAgo),
     getMonthlyEventCounts(db, vendor.id, 'enquiry_received', 12),
     getMonthlyEventCounts(db, vendor.id, 'booking_confirmed', 12),
@@ -135,8 +153,8 @@ analytics.get('/app/analytics', async (c) => {
     getAverageSpendPerWedding(db, null, yearStart, yearEnd),
     getCurrentYearGoals(db, vendor.id),
     // Benchmarks at geographic levels
-    countEventsGlobal(db, 'enquiry_received', thirtyDaysAgo, today, { category: vendor.category }),
-    countEventsGlobal(db, 'booking_confirmed', thirtyDaysAgo, today, { category: vendor.category }),
+    countEventsGlobal(db, 'enquiry_received', thirtyDaysAgo, tomorrow, { category: vendor.category }),
+    countEventsGlobal(db, 'booking_confirmed', thirtyDaysAgo, tomorrow, { category: vendor.category }),
     // Date demand heatmap (next 90 days)
     vendor.location_city
       ? getDateHeatmap(db, today, new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10), 'city', vendor.location_city)
@@ -173,15 +191,18 @@ analytics.get('/app/analytics', async (c) => {
   // Source data
   const sourceMax = Math.max(1, ...sources.map((s) => s.count))
 
-  // Goals progress
-  const goalsWithProgress = yearGoals.map((g) => {
-    let current = 0
-    if (g.goal_type === 'enquiries') current = enquiriesCurrent
-    else if (g.goal_type === 'bookings') current = bookingsCurrent
-    else if (g.goal_type === 'revenue') current = revenueCurrent
-    const pct = g.target > 0 ? Math.min(100, Math.round((current / g.target) * 100)) : 0
-    return { ...g, current, pct }
-  })
+  // Goals progress — measured over each goal's own period, not the 30-day window
+  const goalsWithProgress = await Promise.all(
+    yearGoals.map(async (g) => {
+      const [start, end] = goalPeriodRange(g.period_type, g.period_value)
+      let current = 0
+      if (g.goal_type === 'enquiries') current = await countEvents(db, vendor.id, 'enquiry_received', start, end)
+      else if (g.goal_type === 'bookings') current = await countEvents(db, vendor.id, 'booking_confirmed', start, end)
+      else if (g.goal_type === 'revenue') current = await getRevenue(db, vendor.id, start, end)
+      const pct = g.target > 0 ? Math.min(100, Math.round((current / g.target) * 100)) : 0
+      return { ...g, current, pct }
+    })
+  )
 
   return c.html(
     <AppLayout title="Analytics" user={user} vendor={vendor} csrfToken={csrfToken}>

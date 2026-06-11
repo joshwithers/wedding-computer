@@ -23,7 +23,7 @@ import type { Bindings, VendorProfile, Wedding } from '../../types'
 import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { getUserByEmail } from '../../db/users'
 import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
-import { formatDate, formatTime, daysUntil, addHoursToTime, subtractHoursFromTime } from '../../lib/date'
+import { formatDate, formatDateTime, formatTime, daysUntil, addHoursToTime, subtractHoursFromTime } from '../../lib/date'
 import { createEvent, updateEvent, deleteEvent } from '../../db/calendar'
 import { track } from '../../services/analytics'
 import { getWeddingTodo, upsertWeddingTodo } from '../../db/todos'
@@ -454,6 +454,9 @@ weddings.post('/app/weddings/new', async (c) => {
           status: 'booked',
         })
         await createActivity(c.env.DB, contactId, 'status_change', `Promoted to wedding: ${title}`)
+        if (contact.status !== 'booked') {
+          track(c.env.DB, vendor.id, 'booking_confirmed', { contactId, weddingId: wedding.id })
+        }
 
         const inviteData = {
           vendorName: vendor.business_name,
@@ -936,7 +939,7 @@ weddings.get('/app/weddings/:id', async (c) => {
                 {log.map((entry) => (
                   <div class="flex items-start gap-2 text-xs">
                     <span class="text-gray-400 whitespace-nowrap shrink-0">
-                      {entry.created_at.replace('T', ' ').slice(0, 16)}
+                      {formatDateTime(entry.created_at)}
                     </span>
                     <span class="text-gray-500">
                       <strong class="text-gray-700">{entry.user_name ?? 'System'}</strong>

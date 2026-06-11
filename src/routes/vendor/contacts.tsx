@@ -40,6 +40,28 @@ const STATUSES = [
   { value: 'archived', label: 'Archived' },
 ]
 
+function statusButtons(contactId: string, activeStatus: string) {
+  return (
+    <div class="flex flex-wrap gap-2" id="status-buttons">
+      {STATUSES.map((s) => (
+        <button
+          hx-post={`/app/contacts/${contactId}/status`}
+          hx-vals={JSON.stringify({ status: s.value })}
+          hx-target="#status-buttons"
+          hx-swap="outerHTML"
+          class={`px-3 py-1 rounded-full text-xs font-medium border ${
+            activeStatus === s.value
+              ? 'bg-horizon-600 text-white border-horizon-600'
+              : 'bg-white text-gray-600 border-gray-200 hover:bg-papaya-50'
+          }`}
+        >
+          {s.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── Storage fallback helpers ───
 
 /**
@@ -547,23 +569,7 @@ contacts.get('/app/contacts/:id', async (c) => {
               {/* Status */}
               <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
                 <h3 class="text-sm font-bold text-gray-500 mb-3">Status</h3>
-                <div class="flex flex-wrap gap-2" id="status-buttons">
-                  {STATUSES.map((s) => (
-                    <button
-                      hx-post={`/app/contacts/${contact.id}/status`}
-                      hx-vals={JSON.stringify({ status: s.value })}
-                      hx-target="#status-buttons"
-                      hx-swap="outerHTML"
-                      class={`px-3 py-1 rounded-full text-xs font-medium border ${
-                        contact.status === s.value
-                          ? 'bg-horizon-600 text-white border-horizon-600'
-                          : 'bg-white text-gray-600 border-gray-200 hover:bg-papaya-50'
-                      }`}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
+                {statusButtons(contact.id, contact.status)}
               </div>
 
               {/* Activity log */}
@@ -772,6 +778,12 @@ contacts.post('/app/contacts/:id/status', async (c) => {
     }
     if (!oldContact) return c.text('Not found', 404)
 
+    // No-op: clicking the already-active status must not log an activity
+    // or re-fire booking_confirmed (which would inflate analytics).
+    if (oldContact.status === status) {
+      return c.html(statusButtons(contactId, status))
+    }
+
     // Update status
     if (storage) {
       try {
@@ -799,40 +811,9 @@ contacts.post('/app/contacts/:id/status', async (c) => {
       track(c.env.DB, vendor.id, 'booking_confirmed', { contactId })
     }
 
-    // Re-read the contact for the updated status buttons
-    let contact: Contact | null = null
-    if (storage) {
-      try {
-        const result = await getContact(storage, c.env.DB, vendor.id, contactId)
-        if (result) contact = result.contact
-      } catch (err) {
-        console.error('[contacts] Re-read after status update failed:', err)
-      }
-    }
-    if (!contact) {
-      contact = await getContactFallback(c.env.DB, vendor.id, contactId)
-    }
-    if (!contact) return c.text('Contact not found after status update', 404)
-
-    return c.html(
-      <div class="flex flex-wrap gap-2" id="status-buttons">
-        {STATUSES.map((s) => (
-          <button
-            hx-post={`/app/contacts/${contactId}/status`}
-            hx-vals={JSON.stringify({ status: s.value })}
-            hx-target="#status-buttons"
-            hx-swap="outerHTML"
-            class={`px-3 py-1 rounded-full text-xs font-medium border ${
-              contact!.status === s.value
-                ? 'bg-horizon-600 text-white border-horizon-600'
-                : 'bg-white text-gray-600 border-gray-200 hover:bg-papaya-50'
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
-    )
+    // Render from the status we just wrote — re-reading through storage can
+    // return a stale GitHub read-after-write and paint the old chip.
+    return c.html(statusButtons(contactId, status))
   } catch (err) {
     console.error('[contacts] Unhandled error in status update:', err)
     return c.text('Failed to update status', 500)

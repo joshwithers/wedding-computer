@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { trimTrailingSlash } from 'hono/trailing-slash'
 import type { Env } from './types'
 import marketing from './routes/marketing'
 import auth from './routes/auth'
@@ -57,6 +58,9 @@ import { logEvent } from './lib/log'
 import { syncVendorStorage } from './services/storage-sync'
 
 const app = new Hono<Env>()
+
+// /app/ and friends: redirect trailing-slash 404s to the canonical path
+app.use(trimTrailingSlash())
 
 app.use('*', async (c, next) => {
   await next()
