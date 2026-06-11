@@ -322,6 +322,8 @@ export async function createContact(
     partner_email?: string | null
     partner_phone?: string | null
     source?: string | null
+    wedding_id?: string | null
+    status?: Contact['status']
     wedding_date?: string | null
     wedding_location?: string | null
     notes?: string | null
@@ -344,8 +346,8 @@ export async function createContact(
     partner_email: data.partner_email ?? null,
     partner_phone: data.partner_phone ?? null,
     source: data.source ?? null,
-    status: 'new',
-    wedding_id: null,
+    status: data.status ?? 'new',
+    wedding_id: data.wedding_id ?? null,
     wedding_date: data.wedding_date ?? null,
     wedding_location: data.wedding_location ?? null,
     notes: data.notes ?? null,

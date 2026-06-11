@@ -67,7 +67,19 @@ export async function linkPendingInvites(
   db: D1Database,
   userId: string,
   vendorProfileId: string
-): Promise<void> {
+): Promise<string[]> {
+  // Capture which weddings we're about to link, so the caller can create the
+  // couple's CRM contact for each.
+  const pending = await db
+    .prepare(
+      "SELECT wedding_id FROM wedding_members WHERE user_id = ? AND role = 'vendor' AND vendor_profile_id IS NULL"
+    )
+    .bind(userId)
+    .all<{ wedding_id: string }>()
+    .then((r) => r.results.map((row) => row.wedding_id))
+
+  if (pending.length === 0) return []
+
   await db
     .prepare(
       "UPDATE wedding_members SET vendor_profile_id = ?2 WHERE user_id = ?1 AND role = 'vendor' AND vendor_profile_id IS NULL"
@@ -86,6 +98,8 @@ export async function linkPendingInvites(
     )
     .bind(userId, vendorProfileId)
     .run()
+
+  return pending
 }
 
 export async function createCoupleVendor(

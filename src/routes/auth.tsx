@@ -7,6 +7,7 @@ import { sendMagicLink, verifyMagicLink, findOrCreateUser, createUserSession, de
 import { getVendorByUserId } from '../db/vendors'
 import { getFirstCoupleWedding, hasPendingVendorInvite } from '../db/weddings'
 import { linkPendingInvites } from '../db/couple-vendors'
+import { ensureCoupleContact } from '../services/couple-contact'
 import { getUserById, getUserByEmail } from '../db/users'
 import { hasPasskeys } from '../db/passkeys'
 import { rateLimit } from '../middleware/rate-limit'
@@ -110,8 +111,12 @@ auth.get('/login/verify', async (c) => {
 
   const vendor = await getVendorByUserId(c.env.DB, user.id)
   if (vendor) {
-    // Link any weddings they were invited to before they had a profile.
-    await linkPendingInvites(c.env.DB, user.id, vendor.id).catch(() => {})
+    // Link any weddings they were invited to before they had a profile, and
+    // add each couple to their CRM contacts.
+    try {
+      const linked = await linkPendingInvites(c.env.DB, user.id, vendor.id)
+      for (const wid of linked) c.executionCtx.waitUntil(ensureCoupleContact(c.env, vendor, wid))
+    } catch { /* best-effort */ }
     return c.redirect('/app')
   }
   const coupleWedding = await getFirstCoupleWedding(c.env.DB, user.id)

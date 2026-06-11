@@ -11,6 +11,7 @@ import { updateUser } from '../db/users'
 import { listCoupleVendors, getCoupleVendor, getCoupleVendorByProfileId, createCoupleVendor, updateCoupleVendor, deleteCoupleVendor, syncPlatformVendors, findCoupleVendorByEmail } from '../db/couple-vendors'
 import { getVendorByUserId } from '../db/vendors'
 import { findOrCreateUser, sendVendorInvite } from '../services/auth'
+import { ensureCoupleContact } from '../services/couple-contact'
 import { isValidEmail } from '../lib/validation'
 import { consumeRateLimit } from '../middleware/rate-limit'
 import { auditLog } from '../middleware/audit'
@@ -665,6 +666,8 @@ couple.post('/wedding/:id/vendors/add', async (c) => {
         addedBy: user.name,
       }),
     })
+    // Add the couple to the vendor's CRM contacts (best-effort, after response).
+    c.executionCtx.waitUntil(ensureCoupleContact(c.env, vendorProfile, weddingId))
   } else {
     // Not on the platform yet — show a pending row and email a sign-up invite.
     const existingRow = await findCoupleVendorByEmail(c.env.DB, weddingId, email)
