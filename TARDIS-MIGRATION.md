@@ -1,5 +1,16 @@
 # TARDIS → Wedding Computer migration runbook
 
+> **EXECUTED 2026-06-12.** All contacts imported to production: TEC 463/463
+> (292 weddings), MBJ 808/808 incl. 6 TEC-overlap couples (159 weddings; one
+> transient D1 502 retried successfully). Harrison & Lauren cross-linked (note:
+> TEC recorded 2023-09-14, MBJ 2024-09-21 — reconcile manually). `is_organiser=1`
+> set on TEC. Zero emails sent. Pre-import backup: `backups/pre-tardis-import-2026-06-12.sql`.
+> Method note: large imports were run as ~70-row chunks because the importer
+> processes synchronously in one request (subrequest budget); imports executed
+> via local `wrangler dev` with `d1_databases.remote = true` (reverted after).
+> Known inherited mess: 58 duplicate-email contact pairs in MBJ (53 existed in
+> TARDIS, 5 organic collisions). Remaining: Phase 2 images, TARDIS form freeze.
+
 Migrating both businesses out of TARDIS (`~/Websites/forms-project`, prod at `tardis.withers.co`, D1 `forms-db`) into Wedding Computer production.
 
 ## Decisions (made 2026-06-11)
