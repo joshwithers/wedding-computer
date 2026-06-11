@@ -610,18 +610,27 @@ async function upsertIndex(
   filePath: string,
   etag: string
 ): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO file_index (vendor_id, entity_type, entity_id, file_path, etag, cached_data, last_synced_at)
-       VALUES (?, 'contact', ?, ?, ?, ?, datetime('now'))
-       ON CONFLICT(vendor_id, file_path) DO UPDATE SET
-         entity_id = excluded.entity_id,
-         etag = excluded.etag,
-         cached_data = excluded.cached_data,
-         last_synced_at = datetime('now')`
-    )
-    .bind(vendorId, contact.id, filePath, etag, contactCachedData(contact))
-    .run()
+  // One index row per contact: drop any stale-path row for this contact (file
+  // renamed) before inserting, atomically, so the UNIQUE(vendor_id,
+  // entity_type, entity_id) constraint is never transiently violated.
+  await db.batch([
+    db
+      .prepare(
+        "DELETE FROM file_index WHERE vendor_id = ? AND entity_type = 'contact' AND entity_id = ? AND file_path != ?"
+      )
+      .bind(vendorId, contact.id, filePath),
+    db
+      .prepare(
+        `INSERT INTO file_index (vendor_id, entity_type, entity_id, file_path, etag, cached_data, last_synced_at)
+         VALUES (?, 'contact', ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(vendor_id, file_path) DO UPDATE SET
+           entity_id = excluded.entity_id,
+           etag = excluded.etag,
+           cached_data = excluded.cached_data,
+           last_synced_at = datetime('now')`
+      )
+      .bind(vendorId, contact.id, filePath, etag, contactCachedData(contact)),
+  ])
 }
 
 async function deleteIndex(

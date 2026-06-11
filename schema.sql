@@ -533,14 +533,15 @@ CREATE TABLE IF NOT EXISTS file_index (
   cached_data TEXT,
   last_synced_at TEXT NOT NULL DEFAULT (datetime('now')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE(vendor_id, file_path)
+  UNIQUE(vendor_id, file_path),
+  UNIQUE(vendor_id, entity_type, entity_id)
 );
 
 -- File conflicts detected during sync
 CREATE TABLE IF NOT EXISTS file_conflicts (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
   vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
-  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding')),
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding', 'todo', 'log')),
   entity_id TEXT NOT NULL,
   file_path TEXT NOT NULL,
   local_content TEXT NOT NULL,

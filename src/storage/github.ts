@@ -132,15 +132,18 @@ export class GitHubStorageBackend implements StorageBackend {
     }
   }
 
-  async write(path: string, content: string): Promise<string> {
+  async write(path: string, content: string, knownSha?: string): Promise<string> {
     const fullPath = this.fullPath(path)
 
-    // Check if file exists to get its SHA (required for updates)
-    let sha: string | undefined
-    const existing = await this.api(`${fullPath}?ref=${this.config.branch}`)
-    if (existing.ok) {
-      const data = (await existing.json()) as GitHubFileResponse
-      sha = data.sha
+    // Need the current blob SHA to update an existing file. If the caller
+    // already knows it (e.g. from a conflict-check read), skip the extra GET.
+    let sha: string | undefined = knownSha
+    if (sha === undefined) {
+      const existing = await this.api(`${fullPath}?ref=${this.config.branch}`)
+      if (existing.ok) {
+        const data = (await existing.json()) as GitHubFileResponse
+        sha = data.sha
+      }
     }
 
     const body: Record<string, unknown> = {

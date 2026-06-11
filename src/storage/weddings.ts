@@ -271,7 +271,9 @@ export async function writeWeddingFile(
 
   if (oldFolder === desiredFolder) {
     // ── Same folder: just update wedding.md in place ──
-    const etag = await storage.write(oldPath, content)
+    // We just read the current version above for the conflict check, so hand
+    // its sha to write() to skip the backend's redundant pre-write lookup.
+    const etag = await storage.write(oldPath, content, remoteFile?.meta.etag)
     await db
       .prepare(
         `UPDATE file_index SET etag = ?, cached_data = ?, last_synced_at = datetime('now')

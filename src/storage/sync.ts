@@ -509,19 +509,29 @@ async function upsertIndexRow(
   etag: string,
   cachedData: string | null
 ): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO file_index (vendor_id, entity_type, entity_id, file_path, etag, cached_data, last_synced_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-       ON CONFLICT(vendor_id, file_path) DO UPDATE SET
-         entity_type = excluded.entity_type,
-         entity_id = excluded.entity_id,
-         etag = excluded.etag,
-         cached_data = excluded.cached_data,
-         last_synced_at = datetime('now')`
-    )
-    .bind(vendorId, entityType, entityId, filePath, etag, cachedData)
-    .run()
+  // Keep exactly one index row per entity: if the file moved (e.g. an external
+  // folder rename), drop the stale-path row before inserting the new one.
+  // Atomic batch so we never leave the entity with two rows (which the
+  // UNIQUE(vendor_id, entity_type, entity_id) constraint forbids) or zero.
+  await db.batch([
+    db
+      .prepare(
+        'DELETE FROM file_index WHERE vendor_id = ? AND entity_type = ? AND entity_id = ? AND file_path != ?'
+      )
+      .bind(vendorId, entityType, entityId, filePath),
+    db
+      .prepare(
+        `INSERT INTO file_index (vendor_id, entity_type, entity_id, file_path, etag, cached_data, last_synced_at)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(vendor_id, file_path) DO UPDATE SET
+           entity_type = excluded.entity_type,
+           entity_id = excluded.entity_id,
+           etag = excluded.etag,
+           cached_data = excluded.cached_data,
+           last_synced_at = datetime('now')`
+      )
+      .bind(vendorId, entityType, entityId, filePath, etag, cachedData),
+  ])
 }
 
 /**

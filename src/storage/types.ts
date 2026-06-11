@@ -55,8 +55,13 @@ export interface StorageBackend {
   /** Read a file. Returns null if not found. */
   read(path: string): Promise<StorageFile | null>
 
-  /** Write a file. Returns the new etag. */
-  write(path: string, content: string): Promise<string>
+  /**
+   * Write a file. Returns the new etag. `knownSha` lets a caller that already
+   * knows the current version's id (e.g. from a conflict-check read) skip the
+   * backend's own "what's there now?" lookup — git backends use it as the
+   * update sha; other backends ignore it.
+   */
+  write(path: string, content: string, knownSha?: string): Promise<string>
 
   /** Write a binary file (images, PDFs, etc.). Returns the new etag. */
   writeBinary(path: string, data: ArrayBuffer, contentType: string): Promise<string>

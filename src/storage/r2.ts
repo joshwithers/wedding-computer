@@ -41,13 +41,13 @@ export class R2StorageBackend implements StorageBackend {
     }
   }
 
-  async write(path: string, content: string): Promise<string> {
+  async write(path: string, content: string, _knownSha?: string): Promise<string> {
     const obj = await this.bucket.put(this.fullPath(path), content, {
       httpMetadata: {
         contentType: 'text/markdown; charset=utf-8',
       },
     })
-    // R2 put returns the object with its etag
+    // R2 put returns the object with its etag (R2 has no concept of a prior sha)
     return obj.etag
   }
 
