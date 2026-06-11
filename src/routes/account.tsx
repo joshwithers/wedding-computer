@@ -8,7 +8,7 @@ import { requireAuth } from '../middleware/auth'
 import { csrf } from '../middleware/csrf'
 import { rateLimit } from '../middleware/rate-limit'
 import { updateUser, updateUserEmail, getUserByEmail, getUserById, updateNotificationPrefs } from '../db/users'
-import { purgeAccount } from '../services/account'
+import { softDeleteAccount } from '../services/account'
 import { getVendorByUserId } from '../db/vendors'
 import { getFirstCoupleWedding } from '../db/weddings'
 import {
@@ -23,8 +23,7 @@ import { trimOrNull, isValidEmail } from '../lib/validation'
 import { generateToken } from '../lib/crypto'
 import { sendEmailMessage, emailChangeVerifyEmail, emailChangeNotifyEmail } from '../services/email'
 import { auditLog } from '../middleware/audit'
-import { destroySession } from '../services/auth'
-import { deleteCookie, getCookie } from 'hono/cookie'
+import { deleteCookie } from 'hono/cookie'
 import { listPasskeys, deletePasskey } from '../db/passkeys'
 import type { PasskeyCredential } from '../types'
 import { redactedVendorProfile } from '../lib/redaction'
@@ -290,7 +289,7 @@ account.get('/account', async (c) => {
           >
             Export data (JSON)
           </a>
-          <form method="post" action="/account/delete" onsubmit="return confirm('Are you sure? This will permanently delete your account and all data. This cannot be undone.')">
+          <form method="post" action="/account/delete" onsubmit="return confirm('Schedule your account for deletion? You will be signed out, and everything is permanently removed in 30 days. Sign back in any time within 30 days to restore it.')">
             <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
             <button
               type="submit"
@@ -761,17 +760,14 @@ account.get('/account/export', async (c) => {
 
 account.post('/account/delete', async (c) => {
   const user = c.get('user')
-  const sessionId = getCookie(c, 'wc_session')
 
-  await auditLog(c, 'account_deleted', 'user', user.id).catch(() => {})
-  // Purge R2 (avatar, logo, storage tree), KV (sessions, secrets), and D1.
-  await purgeAccount(c.env, user)
+  await auditLog(c, 'account_delete_scheduled', 'user', user.id).catch(() => {})
+  // Soft-delete: 30-day grace, logged out everywhere. Signing back in restores
+  // it; the nightly cron hard-purges (R2/KV/D1) after the window.
+  await softDeleteAccount(c.env, user)
 
-  if (sessionId) {
-    await destroySession(c.env.DB, c.env.KV, sessionId).catch(() => {})
-  }
   deleteCookie(c, 'wc_session', { path: '/' })
-  return c.redirect('/')
+  return c.redirect('/login?deleted=1')
 })
 
 // ─── Serve avatar ───

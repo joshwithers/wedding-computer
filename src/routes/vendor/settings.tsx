@@ -6,14 +6,13 @@ import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
 import { updateVendor } from '../../db/vendors'
 import { isProVendor } from '../../db/subscriptions'
-import { purgeAccount } from '../../services/account'
+import { softDeleteAccount } from '../../services/account'
 import { VENDOR_CATEGORIES } from '../../types'
 import { trimOrNull, requireString } from '../../lib/validation'
 import { auditLog } from '../../middleware/audit'
 import { listContacts } from '../../storage/contacts'
 import { listInvoices } from '../../db/invoices'
 import { deleteCookie } from 'hono/cookie'
-import { destroySession } from '../../services/auth'
 import { verifyGitHubToken, createGitHubRepo, ensureGitHubWebhook } from '../../storage/github'
 import { deleteVendorSecret, putVendorSecret, resolveSecret } from '../../services/secrets'
 import { redactedVendorProfile } from '../../lib/redaction'
@@ -845,7 +844,7 @@ settings.get('/app/settings', async (c) => {
           </div>
           <div class="mt-8 pt-6 border-t border-gray-200">
             <h3 class="text-sm font-bold text-grapefruit-700 mb-2">Danger zone</h3>
-            <form method="post" action="/app/settings/delete-account" onsubmit="return confirm('Are you sure? This will permanently delete your account and all data. This cannot be undone.')">
+            <form method="post" action="/app/settings/delete-account" onsubmit="return confirm('Schedule your account for deletion? You will be signed out, and everything is permanently removed in 30 days. Sign back in any time within 30 days to restore it.')">
               <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
               <button
                 type="submit"
@@ -1671,17 +1670,13 @@ function slugify(first: string, last: string): string {
 
 settings.post('/app/settings/delete-account', async (c) => {
   const user = c.get('user')
-  const sessionId = (await import('hono/cookie')).getCookie(c, 'wc_session')
 
-  await auditLog(c, 'account_deleted', 'user', user.id).catch(() => {})
-  // Purge R2 (avatar, logo, storage tree), KV (sessions, secrets), and D1.
-  await purgeAccount(c.env, user)
+  await auditLog(c, 'account_delete_scheduled', 'user', user.id).catch(() => {})
+  // Soft-delete: 30-day grace, logged out everywhere. Signing back in restores it.
+  await softDeleteAccount(c.env, user)
 
-  if (sessionId) {
-    await destroySession(c.env.DB, c.env.KV, sessionId).catch(() => {})
-  }
   deleteCookie(c, 'wc_session', { path: '/' })
-  return c.redirect('/')
+  return c.redirect('/login?deleted=1')
 })
 
 export default settings

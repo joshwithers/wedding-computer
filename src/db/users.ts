@@ -104,6 +104,33 @@ export async function updateUserEmail(
     .run()
 }
 
+/** Soft-delete: mark the account for deletion (30-day grace). Reversible. */
+export async function softDeleteUser(db: D1Database, userId: string): Promise<void> {
+  await db
+    .prepare("UPDATE users SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE id = ?")
+    .bind(userId)
+    .run()
+}
+
+/** Cancel a pending soft-delete (e.g. the user signed back in). */
+export async function restoreUser(db: D1Database, userId: string): Promise<void> {
+  await db
+    .prepare("UPDATE users SET deleted_at = NULL, updated_at = datetime('now') WHERE id = ?")
+    .bind(userId)
+    .run()
+}
+
+/** Accounts whose grace period has elapsed and are due for a hard purge. */
+export async function listExpiredDeletedUserIds(db: D1Database, graceDays = 30): Promise<string[]> {
+  const rows = await db
+    .prepare(
+      `SELECT id FROM users WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '-' || ? || ' days') LIMIT 500`
+    )
+    .bind(graceDays)
+    .all<{ id: string }>()
+  return rows.results.map((r) => r.id)
+}
+
 export async function deleteUser(db: D1Database, userId: string): Promise<void> {
   // weddings.created_by_user_id has no ON DELETE action and FK enforcement is
   // on, so deleting a user who created a wedding would otherwise fail. Hand

@@ -37,8 +37,12 @@ directory.get('/api/directory/vendors', async (c) => {
   const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '20', 10)))
   const offset = (page - 1) * limit
 
-  // Build query dynamically
-  const conditions: string[] = ['vp.directory_listed = 1']
+  // Build query dynamically. Exclude vendors whose account is soft-deleted
+  // (subquery form works in both the count and the JOINed list query).
+  const conditions: string[] = [
+    'vp.directory_listed = 1',
+    'vp.user_id NOT IN (SELECT id FROM users WHERE deleted_at IS NOT NULL)',
+  ]
   const binds: (string | number)[] = []
 
   if (category) {
@@ -116,7 +120,7 @@ directory.get('/api/directory/vendors/:id', async (c) => {
       `SELECT vp.id, vp.business_name, vp.category, vp.location_city, vp.location_state, vp.location_country, vp.bio, vp.website, vp.instagram, vp.phone, vp.ceremony_types, vp.logo_r2_key, u.avatar_url
        FROM vendor_profiles vp
        JOIN users u ON u.id = vp.user_id
-       WHERE vp.id = ? AND vp.directory_listed = 1`
+       WHERE vp.id = ? AND vp.directory_listed = 1 AND u.deleted_at IS NULL`
     )
     .bind(id)
     .first<{

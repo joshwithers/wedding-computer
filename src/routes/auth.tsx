@@ -8,7 +8,7 @@ import { getVendorByUserId } from '../db/vendors'
 import { getFirstCoupleWedding, hasPendingVendorInvite } from '../db/weddings'
 import { linkPendingInvites } from '../db/couple-vendors'
 import { ensureCoupleContact } from '../services/couple-contact'
-import { getUserById, getUserByEmail } from '../db/users'
+import { getUserById, getUserByEmail, restoreUser } from '../db/users'
 import { hasPasskeys } from '../db/passkeys'
 import { rateLimit } from '../middleware/rate-limit'
 import { auditLog } from '../middleware/audit'
@@ -38,7 +38,7 @@ auth.get('/login', (c) => {
       })
     }
   }
-  return c.html(renderLoginPage({ error, sent: !!sent, gateOn: signupGateActive(c.env) }))
+  return c.html(renderLoginPage({ error, sent: !!sent, gateOn: signupGateActive(c.env), deleted: c.req.query('deleted') === '1' }))
 })
 
 auth.post('/login', rateLimit(5, 60), async (c) => {
@@ -95,6 +95,11 @@ auth.get('/login/verify', async (c) => {
   }
 
   const user = await findOrCreateUser(c.env.DB, email)
+  // Signing back in within the grace period cancels a pending account deletion.
+  if (user.deleted_at) {
+    await restoreUser(c.env.DB, user.id).catch(() => {})
+    await auditLog(c, 'account_delete_cancelled', 'user', user.id).catch(() => {})
+  }
   const ip = c.req.header('cf-connecting-ip') ?? null
   const ua = c.req.header('user-agent') ?? null
   const sessionId = await createUserSession(c.env.DB, c.env.KV, user, ip, ua)
@@ -253,13 +258,18 @@ function signupGateActive(env: Env['Bindings']): boolean {
   return !!env.SIGNUP_INVITE_CODE?.trim()
 }
 
-function renderLoginPage(opts: { error?: string; sent?: boolean; gateOn?: boolean; email?: string }) {
-  const { error, sent, gateOn, email } = opts
+function renderLoginPage(opts: { error?: string; sent?: boolean; gateOn?: boolean; email?: string; deleted?: boolean }) {
+  const { error, sent, gateOn, email, deleted } = opts
   return (
     <AuthLayout title="Sign in">
       <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">
         <h2 class="text-2xl font-bold mb-1">Sign in</h2>
         <p class="text-sm text-gray-500 mb-6">Enter your email and we'll send you a magic link.</p>
+        {deleted && (
+          <div class="bg-papaya-50 text-grapefruit-700 text-sm font-medium rounded-xl p-4 mb-4">
+            Your account is scheduled for deletion in 30 days. Changed your mind? Sign back in below to restore it.
+          </div>
+        )}
         {error && <p class="text-sm text-grapefruit-700 font-medium mb-4">{error}</p>}
         {sent && (
           <div class="bg-horizon-50 text-horizon-700 text-sm font-medium rounded-xl p-4 mb-4">

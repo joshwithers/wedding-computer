@@ -716,7 +716,7 @@ const DIGEST_VENDOR_SELECT =
 export async function dailyDigest(env: NotifyEnv): Promise<void> {
   // Get all active vendors (with prefs so opted-out vendors skip the heavy queries)
   const vendors = await env.db
-    .prepare(DIGEST_VENDOR_SELECT)
+    .prepare(`${DIGEST_VENDOR_SELECT} WHERE u.deleted_at IS NULL`)
     .all<DigestVendorRow>()
     .then((r) => r.results)
 
@@ -738,7 +738,7 @@ export async function dailyDigest(env: NotifyEnv): Promise<void> {
 export async function runVendorDailyJobs(env: NotifyEnv, vendorId: string): Promise<void> {
   try {
     const vendor = await env.db
-      .prepare(`${DIGEST_VENDOR_SELECT} WHERE vp.id = ?`)
+      .prepare(`${DIGEST_VENDOR_SELECT} WHERE vp.id = ? AND u.deleted_at IS NULL`)
       .bind(vendorId)
       .first<DigestVendorRow>()
     if (vendor) await digestForVendor(env, vendor)

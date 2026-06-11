@@ -64,6 +64,8 @@ export type User = {
   is_admin: number
   /** JSON { [notificationKey]: boolean }; missing key = enabled. See services/notification-prefs.ts. */
   notification_prefs: string
+  /** Set when soft-deleted; cleared on restore; hard-purged 30 days later. */
+  deleted_at: string | null
   created_at: string
   updated_at: string
 }

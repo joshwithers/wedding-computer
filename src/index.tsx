@@ -52,6 +52,7 @@ import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
 import { aggregateBusynessScores } from './db/busyness'
 import { runRetention } from './db/retention'
+import { purgeExpiredAccounts } from './services/account'
 import { logEvent } from './lib/log'
 import { syncVendorStorage } from './services/storage-sync'
 
@@ -879,6 +880,13 @@ export default {
         await runRetention(env.DB)
       } catch (e: any) {
         console.error('[CRON] retention failed', e.message)
+      }
+
+      // Hard-purge accounts whose 30-day soft-delete grace has elapsed.
+      try {
+        await purgeExpiredAccounts(env)
+      } catch (e: any) {
+        console.error('[CRON] purge expired accounts failed', e.message)
       }
     }
 

@@ -25,9 +25,12 @@ CREATE TABLE IF NOT EXISTS users (
   -- JSON { [notificationKey]: boolean }; missing key = enabled (opt-out model).
   -- Keys defined in src/services/notification-prefs.ts.
   notification_prefs TEXT NOT NULL DEFAULT '{}',
+  -- Set when the account is soft-deleted; nightly cron hard-purges after 30 days.
+  deleted_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users(deleted_at);
 
 -- Vendor profiles (a user who is a vendor has one of these)
 CREATE TABLE IF NOT EXISTS vendor_profiles (

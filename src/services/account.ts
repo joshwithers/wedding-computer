@@ -11,24 +11,54 @@
 
 import type { Bindings, User } from '../types'
 import { getVendorByUserId } from '../db/vendors'
-import { deleteUser } from '../db/users'
+import { deleteUser, softDeleteUser, listExpiredDeletedUserIds, getUserById } from '../db/users'
 import { deleteVendorSecret } from './secrets'
 
-export async function purgeAccount(env: Bindings, user: User): Promise<void> {
-  // 1. KV sessions — the D1 sessions rows cascade on user delete, but their
-  //    KV entries (session:<id>) do not, so collect and delete them first.
+/** Delete every one of a user's sessions (D1 rows cascade on hard delete, but
+ *  their KV `session:<id>` entries do not — collect and clear them). */
+async function destroyAllSessions(env: Bindings, userId: string): Promise<void> {
   try {
     const sessions = await env.DB
       .prepare('SELECT id FROM sessions WHERE user_id = ?')
-      .bind(user.id)
+      .bind(userId)
       .all<{ id: string }>()
       .then((r) => r.results)
     for (const s of sessions) {
       await env.KV.delete(`session:${s.id}`).catch(() => {})
     }
+    await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId).run().catch(() => {})
   } catch (e: any) {
-    console.error('[purge] session cleanup failed', e.message)
+    console.error('[account] session cleanup failed', e.message)
   }
+}
+
+/**
+ * Soft-delete an account: mark it for deletion (30-day grace) and log the user
+ * out everywhere. Nothing is destroyed yet — signing back in restores it
+ * (auth.tsx), and purgeExpiredAccounts hard-purges once the grace elapses.
+ */
+export async function softDeleteAccount(env: Bindings, user: User): Promise<void> {
+  await softDeleteUser(env.DB, user.id)
+  await destroyAllSessions(env, user.id)
+}
+
+/** Hard-purge accounts past their grace window. Called from the nightly cron. */
+export async function purgeExpiredAccounts(env: Bindings): Promise<void> {
+  const ids = await listExpiredDeletedUserIds(env.DB, 30)
+  for (const id of ids) {
+    const user = await getUserById(env.DB, id)
+    if (user) {
+      await purgeAccount(env, user).catch((e: any) =>
+        console.error('[account] purge expired failed', id, e.message)
+      )
+    }
+  }
+  if (ids.length > 0) console.log(`[account] purged ${ids.length} expired soft-deleted accounts`)
+}
+
+export async function purgeAccount(env: Bindings, user: User): Promise<void> {
+  // 1. Sessions (KV entries don't cascade with the D1 rows).
+  await destroyAllSessions(env, user.id)
 
   // 2. Avatar
   if (user.avatar_r2_key && env.STORAGE) {
