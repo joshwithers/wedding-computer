@@ -3,6 +3,7 @@ import type { Env } from '../types'
 import { resolveSession } from '../services/auth'
 import { getUserById } from '../db/users'
 import { getCookie } from 'hono/cookie'
+import { updateI18n } from '../i18n'
 
 export const requireAuth = createMiddleware<Env>(async (c, next) => {
   const sessionId = getCookie(c, 'wc_session')
@@ -21,5 +22,7 @@ export const requireAuth = createMiddleware<Env>(async (c, next) => {
   }
 
   c.set('user', user)
+  // The signed-in user's saved preferences beat the Accept-Language seed.
+  updateI18n({ locale: user.locale, timezone: user.timezone })
   await next()
 })

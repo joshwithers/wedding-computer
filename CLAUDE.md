@@ -737,6 +737,28 @@ Open source with teeth. Anyone modifying and deploying must share changes. Preve
 - Never expose stack traces in production
 - Log: `console.error('[ROUTE]', method, path, error.message)`
 
+### Internationalisation (REQUIRED for all new/edited UI)
+
+The platform is multilingual/multi-timezone by design. Every request runs in
+an AsyncLocalStorage i18n context (`src/i18n`) carrying the viewer's locale,
+language, and timezone — resolved from `users.locale`/`users.timezone`, then
+the vendor's timezone, then Accept-Language, then defaults (en-AU,
+Australia/Sydney).
+
+- **User-facing strings**: never hardcode. Add a key to `src/i18n/en.ts`
+  (dot-namespaced: `contacts.title`) and render with `t('key')` /
+  `t('key', { name })`. Plurals: `.one`/`.other` key pairs via `tp(base, count)`.
+  `t()` works in any component or service — no prop-drilling.
+- **Dates/times**: always through `src/lib/date.ts` (`formatDate`,
+  `formatDateTime`, `formatDayLabel`, `monthLabel`, `todayString`). Never call
+  `toLocaleDateString`/`toLocaleString` with a hardcoded locale or timezone in
+  routes. `todayString()` is the viewer's "today", not the server's.
+- **Adding a language**: create `src/i18n/<lang>.ts` satisfying `Dictionary`,
+  register it in `DICTIONARIES`, add regional tags to `SUPPORTED_LOCALES`.
+  Untranslated keys fall back to English at runtime.
+- **Jobs/cron/email**: code outside a request gets platform defaults; wrap in
+  `runWithI18n({ locale, timezone }, fn)` with the recipient's preferences.
+
 ---
 
 ## Future Phase Notes

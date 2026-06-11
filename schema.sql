@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS users (
   avatar_r2_key TEXT,
   email_verified INTEGER NOT NULL DEFAULT 0,
   is_admin INTEGER NOT NULL DEFAULT 0,
+  -- i18n preferences: BCP 47 locale ('en-AU') and IANA timezone. Nullable —
+  -- resolution falls back through Accept-Language / vendor timezone / defaults.
+  locale TEXT,
+  timezone TEXT,
   -- JSON { [notificationKey]: boolean }; missing key = enabled (opt-out model).
   -- Keys defined in src/services/notification-prefs.ts.
   notification_prefs TEXT NOT NULL DEFAULT '{}',

@@ -1,3 +1,5 @@
+import { getI18n } from '../i18n'
+
 /**
  * Parse a date string from D1 into a Date object.
  * Handles:
@@ -25,10 +27,13 @@ function parseDate(str: string): Date {
   return new Date(trimmed)
 }
 
+// All date rendering reads the viewer's locale and timezone from the i18n
+// request context (src/i18n) — never hardcode a locale or zone in routes.
+
 export function formatDate(iso: string): string {
   const d = parseDate(iso)
   if (isNaN(d.getTime())) return iso || '—'
-  return d.toLocaleDateString('en-AU', {
+  return d.toLocaleDateString(getI18n().locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -38,13 +43,25 @@ export function formatDate(iso: string): string {
 export function formatDateTime(iso: string): string {
   const d = parseDate(iso)
   if (isNaN(d.getTime())) return iso || '—'
-  return d.toLocaleString('en-AU', {
-    timeZone: 'Australia/Sydney',
+  const { locale, timezone } = getI18n()
+  return d.toLocaleString(locale, {
+    timeZone: timezone,
     day: 'numeric',
     month: 'short',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+  })
+}
+
+/** Weekday + date ("Sat, 19 Sept") in the viewer's locale. */
+export function formatDayLabel(dateStr: string): string {
+  const d = parseDate(dateStr)
+  if (isNaN(d.getTime())) return dateStr || '—'
+  return d.toLocaleDateString(getI18n().locale, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
   })
 }
 
@@ -57,7 +74,7 @@ export function daysUntil(dateStr: string): number {
 // ─── Calendar helpers ───
 
 export function monthLabel(year: number, month: number): string {
-  return new Date(year, month - 1).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+  return new Date(year, month - 1).toLocaleDateString(getI18n().locale, { month: 'long', year: 'numeric' })
 }
 
 export function prevMonth(year: number, month: number): { year: number; month: number } {
@@ -82,9 +99,13 @@ export function toDateString(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
+/**
+ * Today's date (YYYY-MM-DD) in the viewer's timezone — NOT the server's,
+ * which runs in UTC and is a day behind for much of the Australian morning.
+ * en-CA is used purely because it formats as YYYY-MM-DD.
+ */
 export function todayString(): string {
-  const d = new Date()
-  return toDateString(d.getFullYear(), d.getMonth() + 1, d.getDate())
+  return new Intl.DateTimeFormat('en-CA', { timeZone: getI18n().timezone }).format(new Date())
 }
 
 export function formatTime(time: string): string {

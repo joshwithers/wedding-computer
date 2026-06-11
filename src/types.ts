@@ -62,6 +62,10 @@ export type User = {
   avatar_r2_key: string | null
   email_verified: number
   is_admin: number
+  /** BCP 47 locale preference ('en-AU'); null = resolve from Accept-Language. */
+  locale: string | null
+  /** IANA timezone preference; null = fall back to vendor timezone / default. */
+  timezone: string | null
   /** JSON { [notificationKey]: boolean }; missing key = enabled. See services/notification-prefs.ts. */
   notification_prefs: string
   /** Set when soft-deleted; cleared on restore; hard-purged 30 days later. */

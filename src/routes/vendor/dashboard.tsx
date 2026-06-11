@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
+import { t } from '../../i18n'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
@@ -137,10 +138,10 @@ dashboard.get('/app', async (c) => {
           <div class="space-y-6">
             {/* Stats row */}
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <StatCard label="Contacts" value={String(counts.total)} href="/app/contacts" />
-              <StatCard label="New leads" value={String(counts.new_leads)} href="/app/contacts?status=new" accent />
-              <StatCard label="Booked" value={String(counts.booked)} href="/app/contacts?status=booked" />
-              <StatCard label="Revenue" value={formatCents(revenue)} href="/app/invoices?status=paid" />
+              <StatCard label={t('dashboard.contacts')} value={String(counts.total)} href="/app/contacts" />
+              <StatCard label={t('dashboard.newLeads')} value={String(counts.new_leads)} href="/app/contacts?status=new" accent />
+              <StatCard label={t('dashboard.booked')} value={String(counts.booked)} href="/app/contacts?status=booked" />
+              <StatCard label={t('dashboard.revenue')} value={formatCents(revenue)} href="/app/invoices?status=paid" />
             </div>
 
             {/* Overdue payments */}
@@ -168,11 +169,11 @@ dashboard.get('/app', async (c) => {
               {/* Upcoming weddings */}
               <section class="bg-white border border-papaya-300/30 rounded-2xl p-5">
                 <div class="flex items-center justify-between mb-3">
-                  <h3 class="text-sm font-bold">Upcoming weddings</h3>
-                  <a href="/app/weddings" class="text-xs text-horizon-600 font-bold hover:text-horizon-700">View all</a>
+                  <h3 class="text-sm font-bold">{t('dashboard.upcomingWeddings')}</h3>
+                  <a href="/app/weddings" class="text-xs text-horizon-600 font-bold hover:text-horizon-700">{t('common.viewAll')}</a>
                 </div>
                 {upcomingWeddings.length === 0 ? (
-                  <p class="text-sm text-gray-400">No upcoming weddings</p>
+                  <p class="text-sm text-gray-400">{t('dashboard.noUpcomingWeddings')}</p>
                 ) : (
                   <div class="space-y-2">
                     {upcomingWeddings.map((w) => {
@@ -195,11 +196,11 @@ dashboard.get('/app', async (c) => {
               {/* Upcoming events */}
               <section class="bg-white border border-papaya-300/30 rounded-2xl p-5">
                 <div class="flex items-center justify-between mb-3">
-                  <h3 class="text-sm font-bold">Coming up</h3>
+                  <h3 class="text-sm font-bold">{t('dashboard.comingUp')}</h3>
                   <a href="/app/calendar" class="text-xs text-horizon-600 font-bold hover:text-horizon-700">Calendar</a>
                 </div>
                 {upcomingEvents.length === 0 ? (
-                  <p class="text-sm text-gray-400">No upcoming events</p>
+                  <p class="text-sm text-gray-400">{t('dashboard.noUpcomingEvents')}</p>
                 ) : (
                   <div class="space-y-2">
                     {upcomingEvents.map((ev) => (
@@ -223,8 +224,8 @@ dashboard.get('/app', async (c) => {
             {todoProgress.length > 0 && (
               <section class="bg-white border border-papaya-300/30 rounded-2xl p-5">
                 <div class="flex items-center justify-between mb-3">
-                  <h3 class="text-sm font-bold">Checklists</h3>
-                  <a href="/app/checklists" class="text-xs text-horizon-600 font-bold hover:text-horizon-700">Templates</a>
+                  <h3 class="text-sm font-bold">{t('dashboard.checklists')}</h3>
+                  <a href="/app/checklists" class="text-xs text-horizon-600 font-bold hover:text-horizon-700">{t('dashboard.templates')}</a>
                 </div>
                 <div class="space-y-3">
                   {todoProgress.map((todo) => {
@@ -260,7 +261,7 @@ dashboard.get('/app', async (c) => {
             <section class="bg-white border border-papaya-300/30 rounded-2xl p-5">
               <div class="flex items-center justify-between mb-3">
                 <h3 class="text-sm font-bold">Recent contacts</h3>
-                <a href="/app/contacts" class="text-xs text-horizon-600 font-bold hover:text-horizon-700">View all</a>
+                <a href="/app/contacts" class="text-xs text-horizon-600 font-bold hover:text-horizon-700">{t('common.viewAll')}</a>
               </div>
               {recentContacts.length > 0 ? (
                 <div class="space-y-1">

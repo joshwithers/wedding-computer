@@ -53,12 +53,21 @@ import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
 import { aggregateBusynessScores, aggregateDemandHistory } from './db/busyness'
 import { geocodePendingLocations } from './services/geocode'
+import { runWithI18n, resolveLocale } from './i18n'
 import { runRetention } from './db/retention'
 import { purgeExpiredAccounts } from './services/account'
 import { logEvent } from './lib/log'
 import { syncVendorStorage } from './services/storage-sync'
 
 const app = new Hono<Env>()
+
+// Every request runs inside an i18n context (AsyncLocalStorage) so t() and
+// the date helpers work anywhere without prop-drilling. Seeded here from
+// Accept-Language; the auth/tenant middleware refine it with the signed-in
+// user's saved locale and timezone.
+app.use((c, next) =>
+  runWithI18n({ locale: resolveLocale(null, c.req.header('accept-language')) }, () => next())
+)
 
 // /app/ and friends: redirect trailing-slash 404s to the canonical path
 app.use(trimTrailingSlash())

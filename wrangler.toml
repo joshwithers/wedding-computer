@@ -1,6 +1,8 @@
 name = "wedding-computer"
 main = "src/index.tsx"
 compatibility_date = "2025-05-01"
+# AsyncLocalStorage for the per-request i18n context (src/i18n)
+compatibility_flags = ["nodejs_als"]
 account_id = "56eb0a25e23b5ed8e20b17842ccc14df"
 workers_dev = true
 

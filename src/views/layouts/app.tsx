@@ -2,6 +2,7 @@ import type { FC, PropsWithChildren } from 'hono/jsx'
 import type { User, VendorProfile } from '../../types'
 import { SharedHead } from '../head'
 import { Logo } from '../logo'
+import { t, getI18n, type MessageKey } from '../../i18n'
 
 type Props = PropsWithChildren<{
   title?: string
@@ -10,8 +11,49 @@ type Props = PropsWithChildren<{
   csrfToken: string
 }>
 
+// Nav structure, labelled via message keys so every language gets the same
+// sidebar. Built as data (not JSX) so the mobile and desktop navs can't drift.
+const NAV_SECTIONS: { heading?: MessageKey; items: Array<{ href: string; label: MessageKey }> }[] = [
+  {
+    items: [
+      { href: '/app', label: 'nav.dashboard' },
+      { href: '/app/contacts', label: 'nav.contacts' },
+      { href: '/app/weddings', label: 'nav.weddings' },
+      { href: '/app/calendar', label: 'nav.calendar' },
+      { href: '/app/invoices', label: 'nav.invoices' },
+      { href: '/app/emails', label: 'nav.emails' },
+    ],
+  },
+  {
+    heading: 'nav.setup',
+    items: [
+      { href: '/app/forms', label: 'nav.forms' },
+      { href: '/app/form', label: 'nav.enquiryForm' },
+      { href: '/app/booking-form', label: 'nav.bookingForm' },
+      { href: '/app/contract', label: 'nav.contract' },
+      { href: '/app/checklists', label: 'nav.checklists' },
+      { href: '/app/quotes', label: 'nav.quoteCalculator' },
+      { href: '/app/team', label: 'nav.team' },
+      { href: '/app/import', label: 'nav.import' },
+    ],
+  },
+  {
+    items: [
+      { href: '/app/analytics', label: 'nav.analytics' },
+      { href: '/app/subscription', label: 'nav.subscription' },
+      { href: '/app/refer', label: 'nav.referEarn' },
+      { href: '/app/settings#data', label: 'nav.yourData' },
+    ],
+  },
+]
+
+const FOOTER_ITEMS: Array<{ href: string; label: MessageKey }> = [
+  { href: '/account', label: 'nav.yourProfile' },
+  { href: '/app/settings', label: 'nav.settings' },
+]
+
 export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children }) => (
-  <html lang="en">
+  <html lang={getI18n().language}>
     <head>
       <SharedHead title={title} />
       <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
@@ -33,7 +75,7 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
               type="button"
               onclick="document.getElementById('mobile-nav').classList.toggle('hidden')"
               class="p-1.5 text-papaya-200 hover:text-white"
-              aria-label="Toggle menu"
+              aria-label={t('nav.toggleMenu')}
             >
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
@@ -43,37 +85,27 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
         </header>
         <nav id="mobile-nav" class="hidden bg-white border-b border-papaya-300/30 px-4 py-2 shadow-lg shadow-gray-900/5">
           <div class="space-y-1">
-            <MobileNavLink href="/app" label="Dashboard" />
-            <MobileNavLink href="/app/contacts" label="Contacts" />
-            <MobileNavLink href="/app/weddings" label="Weddings" />
-            <MobileNavLink href="/app/calendar" label="Calendar" />
-            <MobileNavLink href="/app/invoices" label="Invoices" />
-            <MobileNavLink href="/app/emails" label="Emails" />
+            {NAV_SECTIONS.map((section, i) => (
+              <div class={i > 0 ? 'border-t border-papaya-300/30 mt-2 pt-2' : ''}>
+                {section.heading && (
+                  <p class="px-3 pt-1 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    {t(section.heading)}
+                  </p>
+                )}
+                {section.items.map((item) => (
+                  <MobileNavLink href={item.href} label={t(item.label)} />
+                ))}
+              </div>
+            ))}
             <div class="border-t border-papaya-300/30 mt-2 pt-2">
-              <p class="px-3 pt-1 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Setup</p>
-              <MobileNavLink href="/app/forms" label="Forms" />
-              <MobileNavLink href="/app/form" label="Enquiry Form" />
-              <MobileNavLink href="/app/booking-form" label="Booking Form" />
-              <MobileNavLink href="/app/contract" label="Contract" />
-              <MobileNavLink href="/app/checklists" label="Checklists" />
-              <MobileNavLink href="/app/quotes" label="Quote Calculator" />
-              <MobileNavLink href="/app/team" label="Team" />
-              <MobileNavLink href="/app/import" label="Import" />
-            </div>
-            <div class="border-t border-papaya-300/30 mt-2 pt-2">
-              <MobileNavLink href="/app/analytics" label="Analytics" />
-              <MobileNavLink href="/app/subscription" label="Subscription" />
-              <MobileNavLink href="/app/refer" label="Refer & earn" />
-              <MobileNavLink href="/app/settings#data" label="Your Data" />
-            </div>
-            <div class="border-t border-papaya-300/30 mt-2 pt-2">
-              <MobileNavLink href="/account" label="Your Profile" />
-              <MobileNavLink href="/app/settings" label="Settings" />
-              {user.is_admin === 1 && <MobileNavLink href="/admin" label="Admin" />}
+              {FOOTER_ITEMS.map((item) => (
+                <MobileNavLink href={item.href} label={t(item.label)} />
+              ))}
+              {user.is_admin === 1 && <MobileNavLink href="/admin" label={t('nav.admin')} />}
               <form method="post" action="/logout">
                 <input type="hidden" name="_csrf" value={csrfToken} />
                 <button type="submit" class="w-full text-left px-3 py-2.5 text-sm font-medium text-gray-500 hover:bg-papaya-100 rounded-xl">
-                  Sign out
+                  {t('common.signOut')}
                 </button>
               </form>
             </div>
@@ -91,38 +123,28 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
             </a>
           </div>
           <nav class="flex-1 px-3 py-4 space-y-1">
-            <SidebarLink href="/app" label="Dashboard" />
-            <SidebarLink href="/app/contacts" label="Contacts" />
-            <SidebarLink href="/app/weddings" label="Weddings" />
-            <SidebarLink href="/app/calendar" label="Calendar" />
-            <SidebarLink href="/app/invoices" label="Invoices" />
-            <SidebarLink href="/app/emails" label="Emails" />
-            <div class="border-t border-white/10 mt-3 pt-3">
-              <p class="px-3 pb-1 text-[10px] font-bold text-papaya-200/50 uppercase tracking-wider">Setup</p>
-              <SidebarLink href="/app/forms" label="Forms" />
-              <SidebarLink href="/app/form" label="Enquiry Form" />
-              <SidebarLink href="/app/booking-form" label="Booking Form" />
-              <SidebarLink href="/app/contract" label="Contract" />
-              <SidebarLink href="/app/checklists" label="Checklists" />
-              <SidebarLink href="/app/quotes" label="Quote Calculator" />
-              <SidebarLink href="/app/team" label="Team" />
-              <SidebarLink href="/app/import" label="Import" />
-            </div>
-            <div class="border-t border-white/10 mt-3 pt-3">
-              <SidebarLink href="/app/analytics" label="Analytics" />
-              <SidebarLink href="/app/subscription" label="Subscription" />
-              <SidebarLink href="/app/refer" label="Refer & earn" />
-              <SidebarLink href="/app/settings#data" label="Your Data" />
-            </div>
+            {NAV_SECTIONS.map((section, i) => (
+              <div class={i > 0 ? 'border-t border-white/10 mt-3 pt-3' : ''}>
+                {section.heading && (
+                  <p class="px-3 pb-1 text-[10px] font-bold text-papaya-200/50 uppercase tracking-wider">
+                    {t(section.heading)}
+                  </p>
+                )}
+                {section.items.map((item) => (
+                  <SidebarLink href={item.href} label={t(item.label)} />
+                ))}
+              </div>
+            ))}
           </nav>
           <div class="px-3 py-4 border-t border-white/10 space-y-1">
-            <SidebarLink href="/account" label="Your Profile" />
-            <SidebarLink href="/app/settings" label="Settings" />
-            {user.is_admin === 1 && <SidebarLink href="/admin" label="Admin" />}
+            {FOOTER_ITEMS.map((item) => (
+              <SidebarLink href={item.href} label={t(item.label)} />
+            ))}
+            {user.is_admin === 1 && <SidebarLink href="/admin" label={t('nav.admin')} />}
             <form method="post" action="/logout" class="block">
               <input type="hidden" name="_csrf" value={csrfToken} />
               <button type="submit" class="block w-full text-left px-3 py-2 text-sm font-medium text-papaya-200 hover:bg-white/10 hover:text-white rounded-xl transition-colors">
-                Sign out
+                {t('common.signOut')}
               </button>
             </form>
           </div>
@@ -130,7 +152,7 @@ export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children 
         {/* Main content */}
         <div class="flex-1 flex flex-col min-w-0">
           <header class="hidden md:flex bg-white border-b border-gray-200 px-8 py-4 items-center justify-between">
-            <div class="text-lg font-bold text-gray-900">{title ?? 'Dashboard'}</div>
+            <div class="text-lg font-bold text-gray-900">{title ?? t('nav.dashboard')}</div>
             <a href="/account" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <span class="text-sm font-medium text-gray-600">{vendor?.business_name ?? user.name}</span>
               {vendor?.logo_r2_key ? (

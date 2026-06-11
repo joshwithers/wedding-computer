@@ -6,6 +6,7 @@ import { Logo } from '../views/logo'
 import { MarketingLayout } from '../views/layouts/marketing'
 import { requireAuth } from '../middleware/auth'
 import { csrf } from '../middleware/csrf'
+import { t, getI18n, SUPPORTED_LOCALES, listTimezones, isValidTimezone } from '../i18n'
 import { rateLimit } from '../middleware/rate-limit'
 import { updateUser, updateUserEmail, getUserByEmail, getUserById, updateNotificationPrefs } from '../db/users'
 import { softDeleteAccount } from '../services/account'
@@ -259,6 +260,41 @@ account.get('/account', async (c) => {
         </form>
       </section>
 
+      {/* ─── Language & region ─── */}
+      <section class="mt-10 pt-8 border-t border-gray-200">
+        <h2 class="text-base font-bold mb-2">{t('account.languageRegion')}</h2>
+        <p class="text-sm text-gray-500 mb-4">{t('account.languageRegionHint')}</p>
+        <form method="post" action="/account/locale" class="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+          <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+          <div class="flex-1 w-full">
+            <label class="block text-sm font-bold text-gray-700 mb-1.5" for="locale">{t('account.language')}</label>
+            <select id="locale" name="locale" class={inputClass}>
+              {SUPPORTED_LOCALES.map((l) => (
+                <option value={l.tag} selected={(user.locale ?? getI18n().locale) === l.tag}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div class="flex-1 w-full">
+            <label class="block text-sm font-bold text-gray-700 mb-1.5" for="timezone">{t('account.timezone')}</label>
+            <select id="timezone" name="timezone" class={inputClass}>
+              {listTimezones().map((tz) => (
+                <option value={tz} selected={(user.timezone ?? getI18n().timezone) === tz}>
+                  {tz.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="submit"
+            class="bg-white border border-gray-200 text-gray-700 py-3 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors shrink-0"
+          >
+            {t('common.save')}
+          </button>
+        </form>
+      </section>
+
       {/* ─── Email notifications ─── */}
       <section class="mt-10 pt-8 border-t border-gray-200">
         <h2 class="text-base font-bold mb-2">Email notifications</h2>
@@ -330,6 +366,26 @@ account.post('/account', async (c) => {
     website: trimOrNull(body.website),
   })
 
+  return c.redirect('/account?saved=1')
+})
+
+// ─── Language & region ───
+
+account.post('/account/locale', async (c) => {
+  const user = c.get('user')
+  const body = await c.req.parseBody()
+
+  const locale = typeof body.locale === 'string' ? body.locale.trim() : ''
+  const timezone = typeof body.timezone === 'string' ? body.timezone.trim() : ''
+
+  if (!SUPPORTED_LOCALES.some((l) => l.tag === locale)) {
+    return c.redirect('/account?error=Unsupported+language')
+  }
+  if (!isValidTimezone(timezone)) {
+    return c.redirect('/account?error=Invalid+timezone')
+  }
+
+  await updateUser(c.env.DB, user.id, { locale, timezone })
   return c.redirect('/account?saved=1')
 })
 

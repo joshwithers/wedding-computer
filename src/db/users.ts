@@ -49,6 +49,8 @@ export type UserUpdates = {
   website?: string | null
   avatar_url?: string | null
   avatar_r2_key?: string | null
+  locale?: string | null
+  timezone?: string | null
 }
 
 const UPDATABLE_FIELDS = [
@@ -56,6 +58,7 @@ const UPDATABLE_FIELDS = [
   'address_line_1', 'address_line_2', 'city', 'state', 'postcode', 'country',
   'instagram', 'facebook', 'tiktok', 'linkedin', 'website',
   'avatar_url', 'avatar_r2_key',
+  'locale', 'timezone',
 ] as const
 
 export async function updateUser(
