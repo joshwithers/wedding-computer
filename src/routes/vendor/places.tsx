@@ -56,6 +56,8 @@ places.get('/api/places/search', async (c) => {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': apiKey,
+        // Referer-restricted keys need an allowlisted referer on server calls.
+        Referer: `${c.env.APP_URL}/`,
       },
       body: JSON.stringify({
         input: q,
@@ -156,6 +158,7 @@ places.get('/api/places/status', async (c) => {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': apiKey,
+        Referer: `${c.env.APP_URL}/`,
       },
       body: JSON.stringify({
         input: 'test',

@@ -125,6 +125,10 @@ async function placesTextSearch(env: Bindings, text: string): Promise<GeocodeAtt
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': env.GOOGLE_MAPS_API_KEY!,
       'X-Goog-FieldMask': 'places.id,places.formattedAddress,places.location,places.addressComponents',
+      // Referer-restricted keys are accepted by the Places API when the
+      // request carries an allowlisted referer — ours, since the worker
+      // calls Google on the site's behalf.
+      Referer: `${env.APP_URL}/`,
     },
     body: JSON.stringify({ textQuery: text, languageCode: 'en', pageSize: 1 }),
   })
