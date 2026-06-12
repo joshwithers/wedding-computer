@@ -7,7 +7,32 @@ type Props = PropsWithChildren<{ title?: string }>
 
 const primaryLanguage = (tag: string) => tag.split('-')[0].toLowerCase()
 
-const LanguageSwitcher: FC<{ placement: 'nav' | 'footer' }> = ({ placement }) => {
+const GlobeIcon: FC<{ class?: string }> = ({ class: className }) => (
+  <svg
+    class={className}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.8"
+    aria-hidden="true"
+  >
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3.6 9h16.8M3.6 15h16.8M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+  </svg>
+)
+
+const ChevronIcon: FC<{ class?: string }> = ({ class: className }) => (
+  <svg
+    class={className}
+    viewBox="0 0 20 20"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd" />
+  </svg>
+)
+
+const LanguageSwitcher: FC<{ placement: 'nav' | 'mobile' | 'footer' }> = ({ placement }) => {
   const currentLocale = getI18n().locale
   const currentLanguage = primaryLanguage(currentLocale)
   const current =
@@ -15,28 +40,58 @@ const LanguageSwitcher: FC<{ placement: 'nav' | 'footer' }> = ({ placement }) =>
     PUBLIC_LOCALES.find((l) => primaryLanguage(l.tag) === currentLanguage) ??
     PUBLIC_LOCALES[0]
   const isNav = placement === 'nav'
+  const isMobile = placement === 'mobile'
+
+  if (isMobile) {
+    return (
+      <form method="post" action="/locale" class="group relative sm:hidden">
+        <label for="locale-mobile" class="sr-only">{t('marketing.nav.language')}</label>
+        <input type="hidden" name="return_to" value="/" data-locale-return-to />
+        <div class="pointer-events-none flex h-11 w-full items-center justify-between rounded-2xl bg-white/10 px-3 text-papaya-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_10px_24px_rgba(39,16,12,0.18)] ring-1 ring-papaya-200/20 transition-colors group-hover:bg-white/15 group-focus-within:bg-white/15 group-focus-within:ring-2 group-focus-within:ring-papaya-200/70">
+          <span class="flex min-w-0 items-center gap-2">
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-papaya-50/15 text-papaya-100">
+              <GlobeIcon class="h-4 w-4" />
+            </span>
+            <span class="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-papaya-200">{t('marketing.nav.language')}</span>
+          </span>
+          <span class="ml-3 flex min-w-0 items-center gap-1.5 text-sm font-bold">
+            <span class="truncate">{current.label}</span>
+            <ChevronIcon class="h-4 w-4 shrink-0 text-papaya-200" />
+          </span>
+        </div>
+        <select
+          id="locale-mobile"
+          name="locale"
+          aria-label={`${t('marketing.nav.language')}: ${current.label}`}
+          onchange="this.form.submit()"
+          class="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        >
+          {PUBLIC_LOCALES.map((locale) => (
+            <option value={locale.tag} selected={locale.tag === current.tag}>
+              {locale.label}
+            </option>
+          ))}
+        </select>
+        <noscript>
+          <button type="submit" class="mt-2 w-full rounded-xl bg-papaya-50 px-3 py-2 text-sm font-bold text-grapefruit-700">
+            {t('common.save')}
+          </button>
+        </noscript>
+      </form>
+    )
+  }
 
   return (
-    <form method="post" action="/locale" class={`relative ${isNav ? 'hidden sm:block' : 'w-full sm:w-auto'}`}>
+    <form method="post" action="/locale" class={`relative hidden sm:block ${isNav ? '' : 'sm:w-auto'}`}>
       <label for={`locale-${placement}`} class="sr-only">{t('marketing.nav.language')}</label>
       <input type="hidden" name="return_to" value="/" data-locale-return-to />
-      <svg
-        class={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${isNav ? 'text-papaya-200' : 'text-gray-400'}`}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.8"
-        aria-hidden="true"
-      >
-        <circle cx="12" cy="12" r="9" />
-        <path d="M3.6 9h16.8M3.6 15h16.8M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
-      </svg>
+      <GlobeIcon class={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${isNav ? 'text-papaya-200' : 'text-gray-400'}`} />
       <select
         id={`locale-${placement}`}
         name="locale"
         aria-label={`${t('marketing.nav.language')}: ${current.label}`}
         onchange="this.form.submit()"
-        class={`${isNav ? 'w-40 bg-grapefruit-800/40 text-papaya-50 border-papaya-300/30 hover:bg-grapefruit-800/60 focus:ring-papaya-300' : 'w-full sm:w-52 bg-white text-gray-700 border-gray-200 hover:border-gray-300 focus:ring-horizon-500'} appearance-none rounded-xl border py-2 pl-9 pr-8 text-sm font-semibold transition-colors focus:outline-none focus:ring-2`}
+        class={`${isNav ? 'w-40 bg-grapefruit-800/40 text-papaya-50 ring-papaya-300/30 hover:bg-grapefruit-800/60 focus:ring-papaya-300' : 'w-52 bg-white text-gray-700 shadow-sm ring-gray-200 hover:ring-gray-300 focus:ring-horizon-500'} h-10 appearance-none rounded-xl py-2 pl-9 pr-8 text-sm font-semibold ring-1 transition-colors focus:outline-none focus:ring-2`}
       >
         {PUBLIC_LOCALES.map((locale) => (
           <option value={locale.tag} selected={locale.tag === current.tag}>
@@ -44,14 +99,7 @@ const LanguageSwitcher: FC<{ placement: 'nav' | 'footer' }> = ({ placement }) =>
           </option>
         ))}
       </select>
-      <svg
-        class={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 ${isNav ? 'text-papaya-200' : 'text-gray-400'}`}
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        aria-hidden="true"
-      >
-        <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd" />
-      </svg>
+      <ChevronIcon class={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 ${isNav ? 'text-papaya-200' : 'text-gray-400'}`} />
       <noscript>
         <button type="submit" class="ml-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700">
           {t('common.save')}
@@ -81,6 +129,9 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => (
               {t('marketing.nav.signIn')}
             </a>
           </div>
+        </div>
+        <div class="sm:hidden border-t border-papaya-300/15 bg-grapefruit-800/25 px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <LanguageSwitcher placement="mobile" />
         </div>
       </nav>
       <main>{children}</main>
