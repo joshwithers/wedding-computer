@@ -15,7 +15,14 @@ stripe.post('/webhooks/stripe', async (c) => {
 
   if (!sig) return c.json({ error: 'Missing signature' }, 400)
 
-  const event = await verifyWebhook(body, sig, c.env.STRIPE_WEBHOOK_SECRET)
+  // Two dashboard endpoints deliver here — one for platform-account events
+  // (subscriptions) and one for Connected-account events (vendor onboarding,
+  // invoice payments) — each with its own signing secret.
+  const event =
+    (await verifyWebhook(body, sig, c.env.STRIPE_WEBHOOK_SECRET)) ??
+    (c.env.STRIPE_CONNECT_WEBHOOK_SECRET
+      ? await verifyWebhook(body, sig, c.env.STRIPE_CONNECT_WEBHOOK_SECRET)
+      : null)
   if (!event) return c.json({ error: 'Invalid signature' }, 400)
 
   // Idempotency: Stripe redelivers events (retries up to ~3 days). Process
@@ -167,7 +174,7 @@ stripe.post('/webhooks/stripe', async (c) => {
   return c.json({ received: true })
 })
 
-async function verifyWebhook(
+export async function verifyWebhook(
   payload: string,
   signature: string,
   secret: string

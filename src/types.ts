@@ -12,7 +12,15 @@ export type Bindings = {
   RESEND_WEBHOOK_SECRET?: string
   ANTHROPIC_API_KEY?: string
   STRIPE_SECRET_KEY: string
+  // Signing secret for the dashboard endpoint listening to events on the
+  // platform account (Pro subscriptions: checkout.session.completed,
+  // customer.subscription.*). Set via: wrangler secret put STRIPE_WEBHOOK_SECRET
   STRIPE_WEBHOOK_SECRET: string
+  // Signing secret for the second dashboard endpoint listening to events on
+  // Connected accounts (account.updated, payment_intent.succeeded). Both
+  // endpoints deliver to POST /webhooks/stripe; verification tries each
+  // secret. Set via: wrangler secret put STRIPE_CONNECT_WEBHOOK_SECRET
+  STRIPE_CONNECT_WEBHOOK_SECRET?: string
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
   APPLE_CLIENT_ID: string
