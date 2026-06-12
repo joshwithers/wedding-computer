@@ -786,4 +786,7 @@ export const de: Dictionary = {
   "weddings.timeline.approve": "Genehmigen",
   "weddings.timeline.decline": "Ablehnen",
   "weddings.timeline.sentForApproval": "Ihre Zeitplan-Änderung wurde zur Genehmigung an die Hochzeitsleitung gesendet.",
+  "weddings.emoji.label": "Hochzeits-Emoji",
+  "weddings.emoji.clear": "Entfernen",
+  "weddings.emoji.help": "Erscheint überall vor dieser Hochzeit — in Listen, Kalendern und Tagesplänen.",
 }

@@ -800,4 +800,7 @@ export const zh: Dictionary = {
   "weddings.timeline.approve": "批准",
   "weddings.timeline.decline": "拒绝",
   "weddings.timeline.sentForApproval": "你的时间线变更已发送给婚礼负责人审批。",
+  "weddings.emoji.label": "婚礼表情符号",
+  "weddings.emoji.clear": "移除",
+  "weddings.emoji.help": "会显示在这场婚礼的名称前 — 列表、日历和流程表中都会出现。",
 }

@@ -802,4 +802,7 @@ export const es: Dictionary = {
   "weddings.timeline.approve": "Aprobar",
   "weddings.timeline.decline": "Rechazar",
   "weddings.timeline.sentForApproval": "Tu cambio de cronograma se envió al organizador de la boda para su aprobación.",
+  "weddings.emoji.label": "Emoji de la boda",
+  "weddings.emoji.clear": "Quitar",
+  "weddings.emoji.help": "Aparece delante de esta boda en todas partes: listas, calendarios y cronogramas.",
 }

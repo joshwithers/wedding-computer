@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
+import { weddingDisplayTitle } from '../../lib/wedding-display'
 import { getI18n, t, tp, type MessageKey } from '../../i18n'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
@@ -39,7 +40,7 @@ dashboard.get('/app', async (c) => {
       await Promise.all([
         db
           .prepare(
-            `SELECT w.id, w.title, w.date, w.location
+            `SELECT w.id, w.title, w.emoji, w.date, w.location
              FROM weddings w
              JOIN wedding_members wm ON wm.wedding_id = w.id
              WHERE wm.user_id = ? AND wm.status = 'active' AND w.date >= ?
@@ -180,7 +181,7 @@ dashboard.get('/app', async (c) => {
                       const days = w.date ? daysUntil(w.date) : null
                       return (
                         <a href={`/app/weddings/${w.id}`} class="block hover:bg-papaya-50 rounded-lg px-2 py-1.5 -mx-2">
-                          <p class="text-sm font-medium text-gray-900">{w.title}</p>
+                          <p class="text-sm font-medium text-gray-900">{weddingDisplayTitle(w)}</p>
                           <p class="text-xs text-gray-500">
                             {w.date ? formatDate(w.date) : t('dashboard.dateTbd')}
                             {days !== null && days >= 0 && <span class="ml-1">({tp('dashboard.day', days)})</span>}

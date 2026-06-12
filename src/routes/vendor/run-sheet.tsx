@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Env, RunSheetItem } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
+import { weddingDisplayTitle } from '../../lib/wedding-display'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
@@ -325,7 +326,7 @@ runSheet.get('/app/weddings/:weddingId/run-sheet', async (c) => {
   const error = c.req.query('error')
 
   return c.html(
-    <AppLayout title={`Run Sheet — ${wedding.title}`} user={user} vendor={vendor} csrfToken={csrfToken}>
+    <AppLayout title={`Run Sheet — ${weddingDisplayTitle(wedding)}`} user={user} vendor={vendor} csrfToken={csrfToken}>
       <div class="max-w-3xl">
         {generated && (
           <div class="bg-green-50 border border-green-200 text-green-800 text-sm rounded-xl p-3 mb-4">
@@ -339,7 +340,7 @@ runSheet.get('/app/weddings/:weddingId/run-sheet', async (c) => {
         )}
         <div class="mb-6">
           <p class="text-sm text-gray-500 mb-1">
-            <a href={`/app/weddings/${weddingId}`} class="hover:text-gray-900">{wedding.title}</a> /
+            <a href={`/app/weddings/${weddingId}`} class="hover:text-gray-900">{weddingDisplayTitle(wedding)}</a> /
           </p>
           <div class="flex items-center justify-between gap-4">
             <div>

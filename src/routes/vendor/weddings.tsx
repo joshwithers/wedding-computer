@@ -41,6 +41,7 @@ import {
   decideTimelineRequest,
 } from '../../db/timeline-requests'
 import { isManagerVendor, categoriesLabel } from '../../lib/categories'
+import { weddingDisplayTitle } from '../../lib/wedding-display'
 import { sendVendorWelcomeInvite } from '../../services/auth'
 import { t } from '../../i18n'
 
@@ -764,7 +765,7 @@ weddings.get('/app/weddings/:id', async (c) => {
 
   return c.html(
     <AppLayout
-      title={wedding.title}
+      title={weddingDisplayTitle(wedding)}
       user={user}
       vendor={vendor}
       csrfToken={c.get('csrfToken')}
@@ -775,7 +776,7 @@ weddings.get('/app/weddings/:id', async (c) => {
             <p class="text-sm text-gray-500 mb-1">
               <a href="/app/weddings" class="hover:text-gray-900">Weddings</a> /
             </p>
-            <h2 class="text-xl font-bold">{wedding.title}</h2>
+            <h2 class="text-xl font-bold">{weddingDisplayTitle(wedding)}</h2>
             {wedding.ceremony_type && wedding.ceremony_type !== 'wedding' && (
               <span class="inline-block mt-1 px-2.5 py-0.5 bg-papaya-200 text-gray-700 text-xs font-medium rounded-full">
                 {wedding.ceremony_type.charAt(0).toUpperCase() + wedding.ceremony_type.slice(1)}
@@ -1748,7 +1749,7 @@ function WeddingGrid({ weddings }: { weddings: WeddingWithRole[] }) {
           >
             <div class="flex items-start justify-between mb-2">
               <div>
-                <h3 class="font-medium text-gray-900">{w.title}</h3>
+                <h3 class="font-medium text-gray-900">{weddingDisplayTitle(w)}</h3>
                 {w.ceremony_type && w.ceremony_type !== 'wedding' && (
                   <span class="inline-block mt-0.5 text-xs text-gray-500">{w.ceremony_type.charAt(0).toUpperCase() + w.ceremony_type.slice(1)}</span>
                 )}
@@ -2533,15 +2534,99 @@ function WeddingForm({
 
           {/* Emoji prefix */}
           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">Emoji prefix for calendar events</label>
-            <input
-              type="text"
-              name="emoji"
-              value={wedding.emoji ?? ''}
-              placeholder="e.g. 💒 🌸 🎉"
-              maxLength={4}
-              class="w-20 border border-gray-200 rounded-xl px-3 py-2.5 text-center text-lg focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-            />
+            <label class="block text-xs font-medium text-gray-500 mb-1">{t('weddings.emoji.label')}</label>
+            <div class="relative" data-emoji-field>
+              <input type="hidden" name="emoji" value={wedding.emoji ?? ''} />
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  data-emoji-button
+                  aria-haspopup="dialog"
+                  aria-expanded="false"
+                  class="w-12 h-12 rounded-xl bg-white text-2xl leading-none flex items-center justify-center shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition-[scale,box-shadow] duration-150 active:scale-[0.96] hover:shadow-[0_0_0_1px_rgba(0,102,230,0.4),0_1px_2px_rgba(0,0,0,0.04)] focus:outline-none focus:ring-2 focus:ring-horizon-600"
+                >
+                  <span data-emoji-current class={wedding.emoji ? '' : 'opacity-30 grayscale'}>{wedding.emoji ?? '💍'}</span>
+                </button>
+                <button
+                  type="button"
+                  data-emoji-clear
+                  class={`text-xs text-gray-400 hover:text-grapefruit-600 transition-colors px-2.5 py-2.5 ${wedding.emoji ? '' : 'hidden'}`}
+                >
+                  {t('weddings.emoji.clear')}
+                </button>
+              </div>
+              <div
+                data-emoji-popover
+                role="dialog"
+                class="absolute left-0 top-full mt-2 z-30 origin-top-left rounded-2xl overflow-hidden bg-white opacity-0 scale-95 pointer-events-none transition-[opacity,scale] duration-150 ease-[cubic-bezier(0.2,0,0,1)] shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_4px_8px_rgba(0,0,0,0.06),0_16px_32px_rgba(0,0,0,0.14)]"
+              ></div>
+            </div>
+            <p class="text-xs text-gray-400 mt-1">{t('weddings.emoji.help')}</p>
+            <script dangerouslySetInnerHTML={{ __html: `
+(function () {
+  var field = document.querySelector('[data-emoji-field]');
+  if (!field) return;
+  var btn = field.querySelector('[data-emoji-button]');
+  var current = field.querySelector('[data-emoji-current]');
+  var input = field.querySelector('input[name="emoji"]');
+  var pop = field.querySelector('[data-emoji-popover]');
+  var clearBtn = field.querySelector('[data-emoji-clear]');
+  var loaded = false;
+  var open = false;
+
+  function show() {
+    pop.classList.remove('opacity-0', 'scale-95', 'pointer-events-none');
+    btn.setAttribute('aria-expanded', 'true');
+    open = true;
+  }
+  function hide() {
+    pop.classList.add('opacity-0', 'scale-95', 'pointer-events-none');
+    btn.setAttribute('aria-expanded', 'false');
+    open = false;
+  }
+  function setEmoji(unicode) {
+    input.value = unicode;
+    current.textContent = unicode || '💍';
+    current.classList.toggle('opacity-30', !unicode);
+    current.classList.toggle('grayscale', !unicode);
+    clearBtn.classList.toggle('hidden', !unicode);
+  }
+
+  btn.addEventListener('click', function () {
+    if (open) { hide(); return; }
+    if (!loaded) {
+      loaded = true;
+      import('https://cdn.jsdelivr.net/npm/emoji-picker-element@1/index.js').then(function () {
+        var picker = document.createElement('emoji-picker');
+        picker.style.setProperty('--border-size', '0');
+        picker.style.setProperty('--background', '#ffffff');
+        picker.style.setProperty('--indicator-color', '#0066E6');
+        picker.style.setProperty('--input-border-color', '#e5e7eb');
+        picker.style.setProperty('--input-border-radius', '10px');
+        picker.style.setProperty('--outline-color', '#0066E6');
+        picker.style.setProperty('--emoji-padding', '0.4rem');
+        picker.addEventListener('emoji-click', function (e) {
+          setEmoji(e.detail.unicode);
+          hide();
+        });
+        pop.appendChild(picker);
+        show();
+      });
+      return;
+    }
+    show();
+  });
+
+  clearBtn.addEventListener('click', function () { setEmoji(''); hide(); });
+
+  document.addEventListener('click', function (e) {
+    if (open && !field.contains(e.target)) hide();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && open) { hide(); btn.focus(); }
+  });
+})();
+            ` }} />
           </div>
 
           {/* Getting ready — two columns */}

@@ -12,6 +12,7 @@ import { listCoupleVendors, getCoupleVendor, getCoupleVendorByProfileId, createC
 import { getVendorByUserId } from '../db/vendors'
 import { findOrCreateUser, sendVendorWelcomeInvite } from '../services/auth'
 import { isManagerVendor } from '../lib/categories'
+import { weddingDisplayTitle } from '../lib/wedding-display'
 import { createTimelineRequest, getTimelineControllers } from '../db/timeline-requests'
 import { t } from '../i18n'
 import { ensureCoupleContact } from '../services/couple-contact'
@@ -152,11 +153,11 @@ couple.get('/wedding/:id', async (c) => {
   const fileDeleted = c.req.query('deleted')
 
   return c.html(
-    <CoupleLayout title={wedding.title} user={user} wedding={wedding} csrfToken={c.get('csrfToken')}>
+    <CoupleLayout title={weddingDisplayTitle(wedding)} user={user} wedding={wedding} csrfToken={c.get('csrfToken')}>
       <div class="max-w-3xl mx-auto space-y-6">
         {/* Hero */}
         <div class="text-center">
-          <h1 class="text-2xl sm:text-3xl font-bold">{wedding.title}</h1>
+          <h1 class="text-2xl sm:text-3xl font-bold">{weddingDisplayTitle(wedding)}</h1>
           {wedding.ceremony_type && wedding.ceremony_type !== 'wedding' && (
             <span class="inline-block mt-1 px-3 py-0.5 bg-papaya-200 text-gray-700 text-xs font-medium rounded-full">
               {wedding.ceremony_type.charAt(0).toUpperCase() + wedding.ceremony_type.slice(1)}

@@ -786,4 +786,7 @@ export const el: Dictionary = {
   "weddings.timeline.approve": "Έγκριση",
   "weddings.timeline.decline": "Απόρριψη",
   "weddings.timeline.sentForApproval": "Η αλλαγή χρονοδιαγράμματος στάλθηκε στον υπεύθυνο του γάμου για έγκριση.",
+  "weddings.emoji.label": "Emoji γάμου",
+  "weddings.emoji.clear": "Αφαίρεση",
+  "weddings.emoji.help": "Εμφανίζεται παντού μπροστά από αυτόν τον γάμο — σε λίστες, ημερολόγια και προγράμματα.",
 }

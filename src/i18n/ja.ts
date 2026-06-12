@@ -801,4 +801,7 @@ export const ja: Dictionary = {
   "weddings.timeline.approve": "承認",
   "weddings.timeline.decline": "却下",
   "weddings.timeline.sentForApproval": "タイムラインの変更はウェディングマネージャーの承認待ちです。",
+  "weddings.emoji.label": "ウェディング絵文字",
+  "weddings.emoji.clear": "削除",
+  "weddings.emoji.help": "リスト、カレンダー、進行表など、どこでもこのウェディングの前に表示されます。",
 }

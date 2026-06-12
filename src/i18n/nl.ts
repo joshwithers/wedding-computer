@@ -802,4 +802,7 @@ export const nl: Dictionary = {
   "weddings.timeline.approve": "Goedkeuren",
   "weddings.timeline.decline": "Afwijzen",
   "weddings.timeline.sentForApproval": "Je tijdlijnwijziging is ter goedkeuring naar de weddingmanager gestuurd.",
+  "weddings.emoji.label": "Bruiloft-emoji",
+  "weddings.emoji.clear": "Verwijderen",
+  "weddings.emoji.help": "Verschijnt overal vóór deze bruiloft — in lijsten, kalenders en draaiboeken.",
 }
