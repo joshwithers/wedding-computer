@@ -416,18 +416,68 @@ describe('calendar resync after wedding.md ingestion', () => {
     expect(events).toHaveLength(2)
   })
 
-  it('skips the resync when no timeline fields changed', async () => {
-    const content = weddingFileContent(makeWedding({ title: 'Renamed wedding' }))
+  it('skips the resync when nothing calendar-relevant changed', async () => {
+    const content = weddingFileContent(makeWedding({ notes: 'Updated shared notes' }))
 
     await applyPulledFile(
       db as unknown as D1Database, VENDOR_ID, FOLDER + 'wedding.md', content, 'etag-c3'
     )
 
-    // Title flowed through to the wedding, but the calendar was untouched
-    expect(db.getTable('weddings')[0].title).toBe('Renamed wedding')
+    // Notes flowed through to the wedding, but the calendar was untouched —
+    // a resync would have derived extra companion events (ceremony prep).
+    expect(db.getTable('weddings')[0].notes).toBe('Updated shared notes')
     const events = db.getTable('calendar_events')
     expect(events).toHaveLength(2)
     expect(events[0].title).toBe('Sarah & James — Ceremony')
+  })
+
+  it('retitles every member vendor\'s events when only title/emoji changed', async () => {
+    // Title and emoji are not timeline fields, but every derived event
+    // title embeds them — a file rename must fan out like the web form.
+    const content = weddingFileContent(
+      makeWedding({ title: 'Renamed wedding', emoji: '💍' })
+    )
+
+    await applyPulledFile(
+      db as unknown as D1Database, VENDOR_ID, FOLDER + 'wedding.md', content, 'etag-c4'
+    )
+
+    const events = db.getTable('calendar_events')
+    const photog = events.find((e) => e.id === 'ce-photog')
+    const florist = events.find((e) => e.id === 'ce-florist')
+    expect(photog?.title).toBe('💍 Renamed wedding — Ceremony')
+    expect(florist?.title).toBe('💍 Renamed wedding — Ceremony')
+    // Times were untouched — only the derived titles changed
+    expect(photog?.start_time).toBe('15:00')
+  })
+
+  it('applies file-set emoji and reception duration to reception events', async () => {
+    db.seed('weddings', [
+      makeWedding({ reception_time: '18:00', reception_location: 'Hall' }) as unknown as Record<string, unknown>,
+    ])
+    db.seed('calendar_events', [
+      ...db.getTable('calendar_events'),
+      {
+        id: 'ce-reception', vendor_id: VENDOR_ID, wedding_id: WEDDING_ID,
+        title: 'Sarah & James — Reception', date: '2026-12-15',
+        start_time: '18:00', end_time: '21:00', all_day: 0,
+        type: 'booking', notes: 'wc:reception',
+      },
+    ])
+    const content = weddingFileContent(
+      makeWedding({
+        reception_time: '18:00', reception_location: 'Hall',
+        emoji: '🌸', reception_duration_hours: 5,
+      })
+    )
+
+    await applyPulledFile(
+      db as unknown as D1Database, VENDOR_ID, FOLDER + 'wedding.md', content, 'etag-c5'
+    )
+
+    const reception = db.getTable('calendar_events').find((e) => e.id === 'ce-reception')
+    expect(reception?.end_time).toBe('23:00')
+    expect(reception?.title).toBe('🌸 Sarah & James — Reception')
   })
 
   it('removes events for a timeline slot the file cleared', async () => {

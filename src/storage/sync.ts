@@ -229,13 +229,18 @@ export async function applyPulledFile(
     // Timeline fields written directly (pending ones were reverted by the
     // partition above) must fan out to every member vendor's calendar
     // events, exactly like the web edit form — otherwise a ceremony moved
-    // in Obsidian leaves stale events and CalDAV/iCal feeds behind.
+    // in Obsidian leaves stale events and CalDAV/iCal feeds behind. Title
+    // and emoji count too: every derived event title embeds them, and
+    // neither routes through approval, so they always apply directly.
     const appliedTimelineFields = changedTimelineFields(current, direct)
+    const eventTitleChanged =
+      String(current.title ?? '') !== String(direct.title ?? '') ||
+      String(current.emoji ?? '') !== String(direct.emoji ?? '')
 
     await syncToWeddingsTable(db, direct)
     await upsertIndexRow(db, vendorId, 'wedding', direct.id, path, etag, weddingCachedData(direct))
 
-    if (appliedTimelineFields.length > 0) {
+    if (appliedTimelineFields.length > 0 || eventTitleChanged) {
       try {
         await resyncWeddingCalendars(db, direct.id, vendorId)
       } catch (err) {
