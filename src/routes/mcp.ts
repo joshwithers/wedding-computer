@@ -132,6 +132,101 @@ const TOOLS = [
     },
   },
   {
+    name: 'update_wedding_todo',
+    description: 'Replace the wedding checklist with new markdown content (GitHub-flavoured checklist: "- [ ] item" / "- [x] done").',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        wedding_id: { type: 'string', description: 'Wedding ID' },
+        content: { type: 'string', description: 'Full checklist markdown' },
+      },
+      required: ['wedding_id', 'content'],
+    },
+  },
+  {
+    name: 'get_wedding_timeline',
+    description: 'Get the wedding day timeline (run sheet) as markdown: your own editable items, other vendors\' items when visible, and pending approval requests.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: { wedding_id: { type: 'string', description: 'Wedding ID' } },
+      required: ['wedding_id'],
+    },
+  },
+  {
+    name: 'update_run_sheet',
+    description: 'Replace your run sheet for a wedding. Items with an id update the existing row; items without an id are created; your existing items missing from the list are deleted. Array order becomes the display order.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        wedding_id: { type: 'string', description: 'Wedding ID' },
+        items: {
+          type: 'array',
+          description: 'The full run sheet, in display order',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Existing item id (omit for new items)' },
+              time: { type: 'string', description: 'Start time, e.g. "14:30"' },
+              end_time: { type: 'string', description: 'End time' },
+              title: { type: 'string', description: 'What happens (required)' },
+              description: { type: 'string', description: 'Details' },
+              location: { type: 'string', description: 'Where' },
+              assigned_to: { type: 'string', description: 'Who' },
+              category: { type: 'string', enum: ['getting_ready', 'ceremony', 'portraits', 'reception', 'other'] },
+            },
+            required: ['title'],
+          },
+        },
+      },
+      required: ['wedding_id', 'items'],
+    },
+  },
+  {
+    name: 'propose_timeline_change',
+    description: 'Change wedding timeline fields (date, time, ceremony/reception/getting-ready/portrait locations and times). Applies immediately when allowed; when a managing planner or venue controls the timeline, the change is queued for their approval instead.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        wedding_id: { type: 'string', description: 'Wedding ID' },
+        changes: {
+          type: 'object',
+          description: 'Field → new value. Allowed fields: date, time, duration_hours, ceremony_location, reception_location, reception_time, getting_ready_location, getting_ready_time, getting_ready_1_label, getting_ready_2_location, getting_ready_2_label, getting_ready_2_time, portrait_location, portrait_time, reception_duration_hours. Use null to clear a field.',
+        },
+      },
+      required: ['wedding_id', 'changes'],
+    },
+  },
+  {
+    name: 'get_wedding_vendors',
+    description: 'Get the wedding team — couple, vendor members, and the couple\'s vendor list — as markdown.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: { wedding_id: { type: 'string', description: 'Wedding ID' } },
+      required: ['wedding_id'],
+    },
+  },
+  {
+    name: 'get_private_notes',
+    description: 'Get your private notes for a wedding (visible only to you, never to the couple or other vendors).',
+    inputSchema: {
+      type: 'object' as const,
+      properties: { wedding_id: { type: 'string', description: 'Wedding ID' } },
+      required: ['wedding_id'],
+    },
+  },
+  {
+    name: 'update_private_notes',
+    description: 'Replace your private notes for a wedding (markdown).',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        wedding_id: { type: 'string', description: 'Wedding ID' },
+        content: { type: 'string', description: 'Full notes markdown (empty string clears)' },
+      },
+      required: ['wedding_id', 'content'],
+    },
+  },
+  {
     name: 'get_wedding_log',
     description: 'Get the changelog/activity log for a wedding.',
     inputSchema: {
@@ -192,12 +287,37 @@ const TOOLS = [
 
 // ─── Tool handlers ───
 
+/** The slice of ExecutionContext we need (Hono and workers-types disagree on the full shape). */
+type WaitUntilContext = { waitUntil(promise: Promise<unknown>): void }
+
+/** Vault refresh after an MCP write — keeps files, app, and AI in step. */
+async function pushVault(
+  env: Bindings,
+  vendor: VendorProfile,
+  weddingId: string,
+  ctx?: WaitUntilContext
+): Promise<void> {
+  const { pushAllWeddingFiles } = await import('../services/storage-push')
+  const push = pushAllWeddingFiles(env, vendor, weddingId)
+  if (ctx) ctx.waitUntil(push)
+  else await push.catch(() => {})
+}
+
+async function vendorUserId(db: D1Database, vendorId: string): Promise<string | null> {
+  const row = await db
+    .prepare('SELECT user_id FROM vendor_profiles WHERE id = ?')
+    .bind(vendorId)
+    .first<{ user_id: string }>()
+  return row?.user_id ?? null
+}
+
 async function handleTool(
   db: D1Database,
   env: Bindings,
   vendor: VendorProfile,
   name: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  ctx?: WaitUntilContext
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
   switch (name) {
     case 'list_contacts': {
@@ -273,6 +393,212 @@ async function handleTool(
       const todo = await getWeddingTodo(db, vendor.id, weddingId)
       if (!todo) return { content: [{ type: 'text', text: 'No checklist for this wedding' }] }
       return { content: [{ type: 'text', text: todo.content }] }
+    }
+
+    case 'update_wedding_todo': {
+      const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const content = String(args.content ?? '').trim()
+      await db
+        .prepare(
+          `INSERT INTO wedding_todos (vendor_id, wedding_id, content)
+           VALUES (?, ?, ?)
+           ON CONFLICT(vendor_id, wedding_id) DO UPDATE SET
+             content = excluded.content,
+             updated_at = datetime('now')`
+        )
+        .bind(vendor.id, weddingId, content)
+        .run()
+      await pushVault(env, vendor, weddingId, ctx)
+      return { content: [{ type: 'text', text: 'Checklist updated.' }] }
+    }
+
+    case 'get_wedding_timeline': {
+      const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const wedding = await db
+        .prepare('SELECT * FROM weddings WHERE id = ?')
+        .bind(weddingId)
+        .first()
+      if (!wedding) return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      const { listRunSheetItems } = await import('../db/run-sheet')
+      const { listPendingTimelineRequests } = await import('../db/timeline-requests')
+      const { listOtherVendorItems } = await import('../services/storage-push')
+      const { timelineToMarkdown } = await import('../storage/run-sheet-md')
+      const md = timelineToMarkdown({
+        wedding: wedding as any,
+        ownItems: await listRunSheetItems(db, weddingId, vendor.id),
+        otherVendors: await listOtherVendorItems(db, wedding as any, vendor.id),
+        pendingRequests: await listPendingTimelineRequests(db, weddingId),
+      })
+      return { content: [{ type: 'text', text: md }] }
+    }
+
+    case 'update_run_sheet': {
+      const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      if (!Array.isArray(args.items)) {
+        throw new Error('items must be an array')
+      }
+      const { RUN_SHEET_CATEGORIES } = await import('../types')
+      const rows = (args.items as Record<string, unknown>[]).map((item, i) => {
+        const title = String(item.title ?? '').trim()
+        if (!title) throw new Error(`items[${i}] is missing a title`)
+        const rawCategory = String(item.category ?? 'other')
+        return {
+          id: item.id ? String(item.id) : null,
+          time: item.time ? String(item.time) : null,
+          end_time: item.end_time ? String(item.end_time) : null,
+          title,
+          description: item.description ? String(item.description) : null,
+          location: item.location ? String(item.location) : null,
+          assigned_to: item.assigned_to ? String(item.assigned_to) : null,
+          category: (RUN_SHEET_CATEGORIES as readonly string[]).includes(rawCategory)
+            ? (rawCategory as (typeof RUN_SHEET_CATEGORIES)[number])
+            : ('other' as const),
+        }
+      })
+      const { listRunSheetItems, applyRunSheetDiff } = await import('../db/run-sheet')
+      const { diffRunSheetRows } = await import('../storage/run-sheet-md')
+      const existing = await listRunSheetItems(db, weddingId, vendor.id)
+      const diff = diffRunSheetRows(existing, rows)
+      await applyRunSheetDiff(db, weddingId, vendor.id, diff)
+      await pushVault(env, vendor, weddingId, ctx)
+      return {
+        content: [{
+          type: 'text',
+          text: `Run sheet updated: ${diff.creates.length} added, ${diff.updates.length} changed, ${diff.deletes.length} removed.`,
+        }],
+      }
+    }
+
+    case 'propose_timeline_change': {
+      const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const changes = args.changes as Record<string, unknown> | undefined
+      if (!changes || typeof changes !== 'object') {
+        throw new Error('changes must be an object of field → value')
+      }
+      const {
+        TIMELINE_FIELDS, changedTimelineFields, summarizeTimelineChanges,
+        getTimelineControl, queueTimelineChangeRequest,
+      } = await import('../services/timeline-edit')
+      const incoming: Record<string, string | number | null> = {}
+      for (const [key, value] of Object.entries(changes)) {
+        if (!(TIMELINE_FIELDS as readonly string[]).includes(key)) {
+          throw new Error(`"${key}" is not a timeline field. Allowed: ${TIMELINE_FIELDS.join(', ')}`)
+        }
+        if (key === 'duration_hours' || key === 'reception_duration_hours') {
+          incoming[key] = value === null || value === '' ? null : Number(value)
+        } else {
+          incoming[key] = value === null ? null : String(value)
+        }
+      }
+      const current = await db
+        .prepare('SELECT * FROM weddings WHERE id = ?')
+        .bind(weddingId)
+        .first()
+      if (!current) return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      const changed = changedTimelineFields(current as any, incoming as any)
+      if (changed.length === 0) {
+        return { content: [{ type: 'text', text: 'No changes — the wedding already has those values.' }] }
+      }
+      const userId = await vendorUserId(db, vendor.id)
+      if (!userId) return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      const control = await getTimelineControl(db, weddingId, userId)
+      const summary = summarizeTimelineChanges(current as any, incoming as any, changed)
+
+      if (control.hasControllers && !control.isController) {
+        const payload: Record<string, unknown> = {}
+        for (const f of changed) payload[f] = incoming[f] ?? null
+        await queueTimelineChangeRequest(db, {
+          wedding: current as any,
+          requestedByUserId: userId,
+          requestedByLabel: vendor.business_name,
+          payload,
+          summary,
+          controllerUserIds: control.controllerUserIds,
+          queue: env.EMAIL_QUEUE,
+        })
+        await pushVault(env, vendor, weddingId, ctx)
+        return {
+          content: [{
+            type: 'text',
+            text: `A managing planner/venue controls this timeline — your change was sent for approval: ${summary}`,
+          }],
+        }
+      }
+
+      const { updateWedding } = await import('../db/weddings')
+      const applied: Record<string, string | number | null> = {}
+      for (const f of changed) applied[f] = incoming[f] ?? null
+      await updateWedding(db, weddingId, applied as any)
+      const { appendWeddingLog } = await import('../db/wedding-log')
+      await appendWeddingLog(db, weddingId, userId, 'Wedding updated', summary).catch(() => {})
+      const { resyncWeddingCalendars } = await import('../services/wedding-calendar')
+      try {
+        await resyncWeddingCalendars(db, weddingId, vendor.id)
+      } catch (err) {
+        console.error(`[mcp] calendar resync failed for wedding ${weddingId}:`, err)
+      }
+      await pushVault(env, vendor, weddingId, ctx)
+      return { content: [{ type: 'text', text: `Applied: ${summary}` }] }
+    }
+
+    case 'get_wedding_vendors': {
+      const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const wedding = await db
+        .prepare('SELECT id, title, vendor_visibility FROM weddings WHERE id = ?')
+        .bind(weddingId)
+        .first<{ id: string; title: string; vendor_visibility: 'private' | 'visible' }>()
+      if (!wedding) return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      const { exportWeddingVendorsMarkdown } = await import('../db/wedding-vendors-export')
+      const md = await exportWeddingVendorsMarkdown(db, wedding, vendor.id)
+      return { content: [{ type: 'text', text: md }] }
+    }
+
+    case 'get_private_notes': {
+      const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const userId = await vendorUserId(db, vendor.id)
+      const row = userId
+        ? await db
+            .prepare('SELECT vendor_notes FROM wedding_members WHERE wedding_id = ? AND user_id = ?')
+            .bind(weddingId, userId)
+            .first<{ vendor_notes: string | null }>()
+        : null
+      return {
+        content: [{ type: 'text', text: row?.vendor_notes || 'No private notes for this wedding yet.' }],
+      }
+    }
+
+    case 'update_private_notes': {
+      const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const userId = await vendorUserId(db, vendor.id)
+      if (!userId) return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      const content = String(args.content ?? '').trim()
+      await db
+        .prepare('UPDATE wedding_members SET vendor_notes = ? WHERE wedding_id = ? AND user_id = ?')
+        .bind(content || null, weddingId, userId)
+        .run()
+      await pushVault(env, vendor, weddingId, ctx)
+      return { content: [{ type: 'text', text: content ? 'Private notes updated.' : 'Private notes cleared.' }] }
     }
 
     case 'get_wedding_log': {
@@ -414,7 +740,7 @@ mcp.post('/mcp', async (c) => {
         return c.json(rpcError(req.id, -32602, 'Missing tool name'))
       }
       try {
-        const result = await handleTool(c.env.DB, c.env, vendor, params.name, params.arguments ?? {})
+        const result = await handleTool(c.env.DB, c.env, vendor, params.name, params.arguments ?? {}, c.executionCtx)
         return c.json(rpcResult(req.id, result))
       } catch (err: any) {
         return c.json(rpcError(req.id, -32000, err.message))
@@ -434,7 +760,7 @@ mcp.get('/mcp', (c) => {
   return c.json({
     name: 'wedding-computer',
     version: '1.0.0',
-    description: 'Access your Wedding Computer contacts, weddings, checklists, and calendar via MCP.',
+    description: 'Read and update your Wedding Computer contacts, weddings, run sheets, checklists, private notes, and calendar via MCP.',
     instructions: 'Authenticate with Bearer token from Settings > Calendar & Sync.',
   })
 })

@@ -3,3 +3,4 @@ node_modules/
 .dev.vars
 backups/
 tardis-*.json
+wedding-computer.db

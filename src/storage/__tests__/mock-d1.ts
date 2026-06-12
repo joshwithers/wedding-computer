@@ -69,6 +69,17 @@ export class MockD1Database {
         self.queries.push({ sql, params: boundParams })
         const err = self.throwOnQuery?.(sql)
         if (err) throw err
+        // INSERT ... RETURNING — execute, then hand back the affected row
+        const normalised = sql.replace(/\s+/g, ' ').trim().toUpperCase()
+        if (normalised.startsWith('INSERT')) {
+          self._execute(sql, boundParams)
+          if (normalised.includes('RETURNING')) {
+            const tableMatch = sql.match(/INSERT INTO\s+(\w+)/i)
+            const rows = tableMatch ? self.tables.get(tableMatch[1]) ?? [] : []
+            return (rows[rows.length - 1] as T) ?? null
+          }
+          return null
+        }
         const results = self._query(sql, boundParams)
         return (results[0] as T) ?? null
       },
@@ -266,6 +277,12 @@ export class MockD1Database {
       const litMatch = trimCond.match(/(\w+)\s*=\s*'([^']*)'/i)
       if (litMatch) {
         filters.push({ col: litMatch[1], val: litMatch[2] })
+        continue
+      }
+      // col = 123 (numeric literal, e.g. can_manage = 1)
+      const numMatch = trimCond.match(/^(?:\w+\.)?(\w+)\s*=\s*(\d+(?:\.\d+)?)$/)
+      if (numMatch) {
+        filters.push({ col: numMatch[1], val: Number(numMatch[2]) })
         continue
       }
       // Simple col = ?

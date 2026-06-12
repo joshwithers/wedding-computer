@@ -13,6 +13,9 @@
  * The weddings/ directory holds one folder per wedding:
  *   weddings/2026-07-12-sarah-james/wedding.md   → weddings table
  *   weddings/2026-07-12-sarah-james/todo.md      → wedding_todos table
+ *   weddings/2026-07-12-sarah-james/timeline.md  → run_sheet_items (own rows two-way)
+ *   weddings/2026-07-12-sarah-james/notes.md     → wedding_members.vendor_notes (private)
+ *   weddings/2026-07-12-sarah-james/vendors.md   → push-only (derived team list, never pulled)
  *   weddings/2026-07-12-sarah-james/log.md       → push-only (derived changelog, never pulled)
  *   weddings/<flat>.md                           → legacy format, ignored
  *
@@ -26,8 +29,18 @@ import type { StorageBackend, FileMeta } from './types'
 import { parseMarkdown, ParseError } from './markdown'
 import { markdownToContact, contactCachedData, syncToContactsTable } from './contacts'
 import { markdownToWedding, weddingCachedData } from './weddings'
+import { parseTimelineMarkdown, diffRunSheetRows } from './run-sheet-md'
 import { isIgnoredPath } from './github'
 import { getWeddingTodo } from '../db/todos'
+import { listRunSheetItems, applyRunSheetDiff } from '../db/run-sheet'
+import {
+  partitionVendorWeddingUpdate,
+  getTimelineControl,
+  summarizeTimelineChanges,
+  queueTimelineChangeRequest,
+  changedTimelineFields,
+} from '../services/timeline-edit'
+import { resyncWeddingCalendars } from '../services/wedding-calendar'
 export { checkForExternalChange, recordConflict } from './conflicts'
 
 export type SyncResult = {
@@ -55,7 +68,7 @@ function mergeInto(target: SyncResult, source: SyncResult): void {
  */
 export function classifyWeddingPath(
   path: string
-): 'wedding' | 'todo' | 'log' | 'legacy' | 'other' {
+): 'wedding' | 'todo' | 'timeline' | 'notes' | 'vendors' | 'log' | 'legacy' | 'other' {
   if (!path.startsWith('weddings/')) return 'other'
   const parts = path.slice('weddings/'.length).split('/')
   if (parts.length === 1) {
@@ -65,6 +78,9 @@ export function classifyWeddingPath(
   if (parts.length === 2) {
     if (parts[1] === 'wedding.md') return 'wedding'
     if (parts[1] === 'todo.md') return 'todo'
+    if (parts[1] === 'timeline.md') return 'timeline'
+    if (parts[1] === 'notes.md') return 'notes'
+    if (parts[1] === 'vendors.md') return 'vendors'
     if (parts[1] === 'log.md') return 'log'
   }
   return 'other' // files/ uploads, deeper nesting
@@ -78,7 +94,8 @@ export function classifyWeddingPath(
 export async function syncVendor(
   storage: StorageBackend,
   db: D1Database,
-  vendorId: string
+  vendorId: string,
+  opts: Pick<ApplyOptions, 'queue' | 'requestedByLabel'> = {}
 ): Promise<SyncResult> {
   const result = emptyResult()
 
@@ -86,7 +103,7 @@ export async function syncVendor(
   // should not prevent the other from completing.
   const results = await Promise.allSettled([
     syncContacts(storage, db, vendorId),
-    syncWeddingsDir(storage, db, vendorId),
+    syncWeddingsDir(storage, db, vendorId, opts),
   ])
 
   for (const r of results) {
@@ -102,8 +119,23 @@ export async function syncVendor(
 }
 
 export type ApplyOutcome =
-  | { applied: 'contact' | 'wedding' | 'todo'; entityId: string }
+  | {
+      applied: 'contact' | 'wedding' | 'todo' | 'timeline' | 'notes'
+      entityId: string
+      /** Timeline fields routed to a change request instead of written. */
+      pendingApproval?: string[]
+      /** The canonical file now differs from what was written — re-push it. */
+      needsRepush?: boolean
+    }
   | { applied: 'ignored'; reason: string }
+
+export type ApplyOptions = {
+  resolveWeddingFolder?: (folder: string) => string | undefined
+  /** EMAIL_QUEUE, for notifying timeline controllers about change requests. */
+  queue?: Queue
+  /** Label for change requests, e.g. the vendor's business name. */
+  requestedByLabel?: string
+}
 
 /**
  * Ingest a single pulled file into D1 and the file index. Shared by the
@@ -119,7 +151,7 @@ export async function applyPulledFile(
   path: string,
   content: string,
   etag: string,
-  opts: { resolveWeddingFolder?: (folder: string) => string | undefined } = {}
+  opts: ApplyOptions = {}
 ): Promise<ApplyOutcome> {
   if (path.startsWith('contacts/')) {
     const doc = parseMarkdown(content)
@@ -133,7 +165,7 @@ export async function applyPulledFile(
 
   if (kind === 'wedding') {
     const doc = parseMarkdown(content)
-    const wedding = markdownToWedding(doc)
+    const incoming = markdownToWedding(doc)
 
     // SECURITY: the wedding id comes from vendor-controlled frontmatter and
     // the weddings table is shared across all tenants. Without this gate a
@@ -141,48 +173,140 @@ export async function applyPulledFile(
     // self-grant a managing membership. Only allow the write when the
     // wedding is new (this vendor is creating it) or this vendor is already
     // an active member.
-    const access = await weddingWriteAccess(db, vendorId, wedding.id)
+    const access = await weddingWriteAccess(db, vendorId, incoming.id)
     if (access === 'forbidden') {
       return { applied: 'ignored', reason: 'wedding belongs to another account' }
     }
 
-    await syncToWeddingsTable(db, wedding)
     if (access === 'new') {
-      await ensureSyncedWeddingMembership(db, vendorId, wedding)
+      await syncToWeddingsTable(db, incoming)
+      await ensureSyncedWeddingMembership(db, vendorId, incoming)
+      await upsertIndexRow(db, vendorId, 'wedding', incoming.id, path, etag, weddingCachedData(incoming))
+      return { applied: 'wedding', entityId: incoming.id }
     }
-    await upsertIndexRow(db, vendorId, 'wedding', wedding.id, path, etag, weddingCachedData(wedding))
-    return { applied: 'wedding', entityId: wedding.id }
+
+    // Existing wedding: a vendor's file edit must obey the same rules as
+    // the web form. Couple-only fields are kept as-is, and timeline-field
+    // changes from a non-controlling vendor become a pending change
+    // request instead of a direct write.
+    const current = await db
+      .prepare('SELECT * FROM weddings WHERE id = ?')
+      .bind(incoming.id)
+      .first<Wedding>()
+    if (!current) {
+      return { applied: 'ignored', reason: 'wedding disappeared mid-sync' }
+    }
+
+    const vendor = await db
+      .prepare('SELECT user_id, business_name FROM vendor_profiles WHERE id = ?')
+      .bind(vendorId)
+      .first<{ user_id: string; business_name: string | null }>()
+    const control = vendor?.user_id
+      ? await getTimelineControl(db, incoming.id, vendor.user_id)
+      : { hasControllers: false, isController: false, controllerUserIds: [] }
+
+    const { direct, pendingFields, pendingPayload } = partitionVendorWeddingUpdate(
+      current,
+      incoming,
+      control
+    )
+
+    if (pendingFields.length > 0 && vendor?.user_id) {
+      await queueTimelineChangeRequest(db, {
+        wedding: current,
+        requestedByUserId: vendor.user_id,
+        requestedByLabel: opts.requestedByLabel ?? vendor.business_name ?? null,
+        payload: pendingPayload,
+        summary: summarizeTimelineChanges(current, incoming, pendingFields),
+        controllerUserIds: control.controllerUserIds,
+        queue: opts.queue,
+      })
+      // The file holds unapproved values — bump updated_at past the index's
+      // last_synced_at so the sweep re-pushes the canonical wedding.md.
+      direct.updated_at = new Date().toISOString()
+    }
+
+    // Timeline fields written directly (pending ones were reverted by the
+    // partition above) must fan out to every member vendor's calendar
+    // events, exactly like the web edit form — otherwise a ceremony moved
+    // in Obsidian leaves stale events and CalDAV/iCal feeds behind.
+    const appliedTimelineFields = changedTimelineFields(current, direct)
+
+    await syncToWeddingsTable(db, direct)
+    await upsertIndexRow(db, vendorId, 'wedding', direct.id, path, etag, weddingCachedData(direct))
+
+    if (appliedTimelineFields.length > 0) {
+      try {
+        await resyncWeddingCalendars(db, direct.id, vendorId)
+      } catch (err) {
+        console.error(`[sync] calendar resync failed for wedding ${direct.id}:`, err)
+      }
+    }
+
+    return {
+      applied: 'wedding',
+      entityId: direct.id,
+      ...(pendingFields.length > 0
+        ? { pendingApproval: pendingFields, needsRepush: true }
+        : {}),
+    }
   }
 
-  if (kind === 'todo') {
+  if (kind === 'timeline') {
     const doc = parseMarkdown(content)
     const folder = folderOf(path)
-    const fmWeddingId =
-      typeof doc.frontmatter.wedding_id === 'string' ? doc.frontmatter.wedding_id : null
-    let weddingId = fmWeddingId ?? opts.resolveWeddingFolder?.(folder) ?? null
+    const weddingId = await resolveCompanionWeddingId(db, vendorId, doc.frontmatter, folder, opts)
+    if (!weddingId) return { applied: 'ignored', reason: 'timeline.md has no resolvable wedding' }
 
-    if (!weddingId) {
-      const row = await db
-        .prepare('SELECT entity_id FROM file_index WHERE vendor_id = ? AND file_path = ?')
-        .bind(vendorId, folder + 'wedding.md')
-        .first<{ entity_id: string }>()
-      weddingId = row?.entity_id ?? null
+    if (!(await isActiveWeddingMember(db, vendorId, weddingId))) {
+      return { applied: 'ignored', reason: 'not a member of that wedding' }
     }
-    if (!weddingId) return { applied: 'ignored', reason: 'todo.md has no resolvable wedding' }
+
+    const rows = parseTimelineMarkdown(content)
+    const existing = await listRunSheetItems(db, weddingId, vendorId)
+    const diff = diffRunSheetRows(existing, rows)
+    await applyRunSheetDiff(db, weddingId, vendorId, diff)
+
+    // New rows were assigned ids the file doesn't have — leave cached_data
+    // NULL so the sweep re-pushes the canonical table (otherwise the next
+    // ingest would create them all again).
+    const needsRepush = diff.creates.length > 0
+    const cached = needsRepush ? null : await timelineCachedData(db, weddingId)
+    await upsertIndexRow(db, vendorId, 'timeline', weddingId, path, etag, cached)
+    return { applied: 'timeline', entityId: weddingId, ...(needsRepush ? { needsRepush } : {}) }
+  }
+
+  if (kind === 'notes') {
+    const doc = parseMarkdown(content)
+    const folder = folderOf(path)
+    const weddingId = await resolveCompanionWeddingId(db, vendorId, doc.frontmatter, folder, opts)
+    if (!weddingId) return { applied: 'ignored', reason: 'notes.md has no resolvable wedding' }
 
     const vendorUser = await db
       .prepare('SELECT user_id FROM vendor_profiles WHERE id = ?')
       .bind(vendorId)
       .first<{ user_id: string }>()
-    const isMember = vendorUser?.user_id
-      ? await db
-          .prepare(
-            "SELECT id FROM wedding_members WHERE wedding_id = ? AND user_id = ? AND status = 'active'"
-          )
-          .bind(weddingId, vendorUser.user_id)
-          .first()
-      : null
-    if (!isMember) return { applied: 'ignored', reason: 'not a member of that wedding' }
+    if (!vendorUser?.user_id || !(await isActiveWeddingMember(db, vendorId, weddingId))) {
+      return { applied: 'ignored', reason: 'not a member of that wedding' }
+    }
+
+    await db
+      .prepare('UPDATE wedding_members SET vendor_notes = ? WHERE wedding_id = ? AND user_id = ?')
+      .bind(doc.body.trim() || null, weddingId, vendorUser.user_id)
+      .run()
+    await upsertIndexRow(db, vendorId, 'notes', weddingId, path, etag, null)
+    return { applied: 'notes', entityId: weddingId }
+  }
+
+  if (kind === 'todo') {
+    const doc = parseMarkdown(content)
+    const folder = folderOf(path)
+    const weddingId = await resolveCompanionWeddingId(db, vendorId, doc.frontmatter, folder, opts)
+    if (!weddingId) return { applied: 'ignored', reason: 'todo.md has no resolvable wedding' }
+
+    if (!(await isActiveWeddingMember(db, vendorId, weddingId))) {
+      return { applied: 'ignored', reason: 'not a member of that wedding' }
+    }
 
     const body = doc.body.trim()
     const existing = await getWeddingTodo(db, vendorId, weddingId)
@@ -203,8 +327,82 @@ export async function applyPulledFile(
   }
 
   if (kind === 'log') return { applied: 'ignored', reason: 'log.md is generated by the app' }
+  if (kind === 'vendors') return { applied: 'ignored', reason: 'vendors.md is generated by the app' }
   if (kind === 'legacy') return { applied: 'ignored', reason: 'legacy flat file' }
   return { applied: 'ignored', reason: 'not a syncable file' }
+}
+
+/**
+ * Resolve which wedding a companion file (todo.md, timeline.md, notes.md)
+ * belongs to: frontmatter wedding_id, then the folder map built during the
+ * scan, then the indexed wedding.md in the same folder.
+ */
+async function resolveCompanionWeddingId(
+  db: D1Database,
+  vendorId: string,
+  frontmatter: Record<string, unknown>,
+  folder: string,
+  opts: ApplyOptions
+): Promise<string | null> {
+  const fmWeddingId =
+    typeof frontmatter.wedding_id === 'string' ? frontmatter.wedding_id : null
+  const weddingId = fmWeddingId ?? opts.resolveWeddingFolder?.(folder) ?? null
+  if (weddingId) return weddingId
+
+  const row = await db
+    .prepare('SELECT entity_id FROM file_index WHERE vendor_id = ? AND file_path = ?')
+    .bind(vendorId, folder + 'wedding.md')
+    .first<{ entity_id: string }>()
+  return row?.entity_id ?? null
+}
+
+/** Is this vendor's user an active member of the wedding? */
+async function isActiveWeddingMember(
+  db: D1Database,
+  vendorId: string,
+  weddingId: string
+): Promise<boolean> {
+  const vendorUser = await db
+    .prepare('SELECT user_id FROM vendor_profiles WHERE id = ?')
+    .bind(vendorId)
+    .first<{ user_id: string }>()
+  if (!vendorUser?.user_id) return false
+  const member = await db
+    .prepare(
+      "SELECT id FROM wedding_members WHERE wedding_id = ? AND user_id = ? AND status = 'active'"
+    )
+    .bind(weddingId, vendorUser.user_id)
+    .first()
+  return !!member
+}
+
+/**
+ * Snapshot of everything timeline.md renders from, stored in the index
+ * row's cached_data. The push sweep compares this against the live tables
+ * to decide whether the file needs regenerating.
+ */
+export async function timelineCachedData(
+  db: D1Database,
+  weddingId: string
+): Promise<string> {
+  const items = await db
+    .prepare(
+      'SELECT COUNT(*) AS c, MAX(updated_at) AS l FROM run_sheet_items WHERE wedding_id = ?'
+    )
+    .bind(weddingId)
+    .first<{ c: number; l: string | null }>()
+  const pending = await db
+    .prepare(
+      "SELECT COUNT(*) AS p, MAX(created_at) AS pl FROM timeline_change_requests WHERE wedding_id = ? AND status = 'pending'"
+    )
+    .bind(weddingId)
+    .first<{ p: number; pl: string | null }>()
+  return JSON.stringify({
+    c: items?.c ?? 0,
+    l: items?.l ?? null,
+    p: pending?.p ?? 0,
+    pl: pending?.pl ?? null,
+  })
 }
 
 /**
@@ -226,12 +424,19 @@ export function validatePulledFile(
       markdownToWedding(parseMarkdown(content))
       return { ok: true }
     }
-    if (kind === 'todo') {
+    if (kind === 'todo' || kind === 'notes') {
       parseMarkdown(content)
+      return { ok: true }
+    }
+    if (kind === 'timeline') {
+      parseTimelineMarkdown(content)
       return { ok: true }
     }
     if (kind === 'log') {
       return { ok: false, error: 'log.md is generated by Wedding Computer and is read-only' }
+    }
+    if (kind === 'vendors') {
+      return { ok: false, error: 'vendors.md is generated by Wedding Computer and is read-only — manage the wedding team in the app' }
     }
     return { ok: false, error: 'Not a syncable path. Files live under contacts/ or weddings/<folder>/.' }
   } catch (err) {
@@ -322,7 +527,8 @@ async function syncContacts(
 async function syncWeddingsDir(
   storage: StorageBackend,
   db: D1Database,
-  vendorId: string
+  vendorId: string,
+  opts: Pick<ApplyOptions, 'queue' | 'requestedByLabel'> = {}
 ): Promise<SyncResult> {
   const result = emptyResult()
 
@@ -335,8 +541,9 @@ async function syncWeddingsDir(
     )
     .bind(vendorId)
     .all<{ entity_id: string; entity_type: string; file_path: string; etag: string; last_synced_at: string }>()
+  const WEDDING_ENTITY_TYPES = ['wedding', 'todo', 'timeline', 'notes', 'vendors', 'log']
   const weddingScoped = allIndexRows.results.filter((r) =>
-    r.entity_type === 'wedding' || r.entity_type === 'todo' || r.entity_type === 'log'
+    WEDDING_ENTITY_TYPES.includes(r.entity_type)
   )
   const indexByPath = new Map(weddingScoped.map((r) => [r.file_path, r]))
 
@@ -375,7 +582,7 @@ async function syncWeddingsDir(
       const file = await storage.read(path)
       if (!file) continue
 
-      const outcome = await applyPulledFile(db, vendorId, path, file.content, file.meta.etag)
+      const outcome = await applyPulledFile(db, vendorId, path, file.content, file.meta.etag, opts)
       if (outcome.applied === 'wedding') {
         folderToWeddingId.set(folderOf(path), outcome.entityId)
       }
@@ -388,9 +595,10 @@ async function syncWeddingsDir(
     }
   }
 
-  // ── Pass 2: todo.md files ──
+  // ── Pass 2: companion files (todo.md, timeline.md, notes.md) ──
   for (const [path, fileMeta] of storageByPath) {
-    if (classifyWeddingPath(path) !== 'todo') continue
+    const kind = classifyWeddingPath(path)
+    if (kind !== 'todo' && kind !== 'timeline' && kind !== 'notes') continue
 
     const indexEntry = indexByPath.get(path)
     if (indexEntry && indexEntry.etag === fileMeta.etag) {
@@ -403,6 +611,7 @@ async function syncWeddingsDir(
       if (!file) continue
 
       const outcome = await applyPulledFile(db, vendorId, path, file.content, file.meta.etag, {
+        ...opts,
         resolveWeddingFolder: (folder) => folderToWeddingId.get(folder),
       })
 
@@ -503,7 +712,7 @@ function logFileError(path: string, err: unknown): void {
 async function upsertIndexRow(
   db: D1Database,
   vendorId: string,
-  entityType: 'contact' | 'wedding' | 'todo' | 'log',
+  entityType: 'contact' | 'wedding' | 'todo' | 'log' | 'timeline' | 'notes' | 'vendors',
   entityId: string,
   filePath: string,
   etag: string,
@@ -708,10 +917,11 @@ async function syncToWeddingsTable(
         status, ceremony_type, vendor_visibility, ceremony_location, reception_location,
         reception_time, getting_ready_location, getting_ready_time, getting_ready_1_label,
         getting_ready_2_location, getting_ready_2_label, getting_ready_2_time,
-        portrait_location, portrait_time, timeline_notes, dress_code, guest_count,
+        portrait_location, portrait_time, emoji, reception_duration_hours,
+        timeline_notes, dress_code, guest_count,
         notes, created_by_user_id, created_at, updated_at
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          title = excluded.title,
          date = excluded.date,
@@ -734,6 +944,8 @@ async function syncToWeddingsTable(
          getting_ready_2_time = excluded.getting_ready_2_time,
          portrait_location = excluded.portrait_location,
          portrait_time = excluded.portrait_time,
+         emoji = excluded.emoji,
+         reception_duration_hours = excluded.reception_duration_hours,
          timeline_notes = excluded.timeline_notes,
          dress_code = excluded.dress_code,
          guest_count = excluded.guest_count,
@@ -763,6 +975,8 @@ async function syncToWeddingsTable(
       wedding.getting_ready_2_time,
       wedding.portrait_location,
       wedding.portrait_time,
+      wedding.emoji,
+      wedding.reception_duration_hours,
       wedding.timeline_notes,
       wedding.dress_code,
       wedding.guest_count,

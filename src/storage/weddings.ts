@@ -3,9 +3,12 @@
  *
  * Each wedding gets its own folder in the vendor's storage:
  *   weddings/2026-07-12-sarah-james/
- *     wedding.md    ← wedding details
+ *     wedding.md    ← wedding details + shared notes
  *     todo.md       ← checklist (written by checklists route)
- *     log.md        ← changelog (written by weddings route)
+ *     timeline.md   ← run sheet (own rows two-way editable)
+ *     notes.md      ← this vendor's private notes (two-way)
+ *     vendors.md    ← wedding team (generated, read-only)
+ *     log.md        ← changelog (generated, read-only)
  *     files/        ← uploaded documents and images
  *
  * D1 remains the primary query path for weddings (joins with
@@ -45,8 +48,6 @@ type WeddingFrontmatter = {
   portrait_location?: string | null
   portrait_time?: string | null
   emoji?: string | null
-  bump_in_time?: string | null
-  bump_out_time?: string | null
   reception_duration_hours?: number | null
   dress_code?: string | null
   guest_count?: number | null
@@ -97,8 +98,8 @@ export function weddingToMarkdown(wedding: Wedding): MarkdownDocument<WeddingFro
     portrait_location: wedding.portrait_location,
     portrait_time: wedding.portrait_time,
     emoji: wedding.emoji,
-    bump_in_time: wedding.bump_in_time,
-    bump_out_time: wedding.bump_out_time,
+    // Bump in/out times are per-vendor (wedding_members) since migration
+    // 026 and are exported in vendors.md, not here.
     reception_duration_hours: wedding.reception_duration_hours,
     dress_code: wedding.dress_code,
     guest_count: wedding.guest_count,
@@ -155,8 +156,10 @@ export function markdownToWedding(
     portrait_location: fm.portrait_location ?? null,
     portrait_time: fm.portrait_time ?? null,
     emoji: fm.emoji ?? null,
-    bump_in_time: fm.bump_in_time ?? null,
-    bump_out_time: fm.bump_out_time ?? null,
+    // Legacy fields still present in older files; parsed for compatibility
+    // but no longer written (per-vendor values live in wedding_members).
+    bump_in_time: (fm as Record<string, unknown>).bump_in_time as string | null ?? null,
+    bump_out_time: (fm as Record<string, unknown>).bump_out_time as string | null ?? null,
     reception_duration_hours: fm.reception_duration_hours ?? null,
     dress_code: fm.dress_code ?? null,
     guest_count: fm.guest_count ?? null,
@@ -290,8 +293,8 @@ export async function writeWeddingFile(
   // 1. Write wedding.md to the new folder
   const etag = await storage.write(desiredPath, content)
 
-  // 2. Move companion files (todo.md, log.md) — best-effort
-  for (const companion of ['todo.md', 'log.md']) {
+  // 2. Move companion files — best-effort
+  for (const companion of ['todo.md', 'timeline.md', 'notes.md', 'vendors.md', 'log.md']) {
     try {
       const oldCompanion = await storage.read(oldFolder + companion)
       if (oldCompanion) {
@@ -440,12 +443,19 @@ export async function deleteWeddingFile(
     // cleaned up on next sync. The reverse would leave a dangling index.
     await db
       .prepare(
-        "DELETE FROM file_index WHERE vendor_id = ? AND entity_type IN ('wedding', 'todo', 'log') AND entity_id = ?"
+        "DELETE FROM file_index WHERE vendor_id = ? AND entity_type IN ('wedding', 'todo', 'timeline', 'notes', 'vendors', 'log') AND entity_id = ?"
       )
       .bind(vendorId, weddingId)
       .run()
     const folder = indexRow.file_path.substring(0, indexRow.file_path.lastIndexOf('/') + 1)
-    for (const path of [indexRow.file_path, folder + 'todo.md', folder + 'log.md']) {
+    for (const path of [
+      indexRow.file_path,
+      folder + 'todo.md',
+      folder + 'timeline.md',
+      folder + 'notes.md',
+      folder + 'vendors.md',
+      folder + 'log.md',
+    ]) {
       try {
         await storage.delete(path)
       } catch (err) {

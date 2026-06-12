@@ -24,6 +24,7 @@ import { getVendorByIcalToken } from '../db/vendors'
 import { isProVendor } from '../db/subscriptions'
 import { getStorageWithSecrets } from '../storage'
 import { applyPulledFile, validatePulledFile } from '../storage/sync'
+import { pushAllWeddingFiles } from '../services/storage-push'
 import { isIgnoredPath } from '../storage/github'
 import { clientIp, isAuthThrottled, recordAuthFailure, rateLimitByName, consumeRateLimit } from '../middleware/rate-limit'
 import { auditLog } from '../middleware/audit'
@@ -214,19 +215,44 @@ vaultApi.put('/vault/v1/file/*', async (c) => {
 
   // Ingest into D1 so the web app reflects the edit immediately
   let ingested = false
+  let pendingApproval: string[] | undefined
+  let revised = false
   try {
-    const outcome = await applyPulledFile(c.env.DB, vendor.id, path, content, etag)
+    const outcome = await applyPulledFile(c.env.DB, vendor.id, path, content, etag, {
+      queue: c.env.EMAIL_QUEUE,
+      requestedByLabel: vendor.business_name,
+    })
     ingested = outcome.applied !== 'ignored'
+    if (outcome.applied !== 'ignored') {
+      pendingApproval = outcome.pendingApproval
+      // Parts of the write were routed elsewhere (timeline approval) or
+      // assigned server-side ids (new run sheet rows): the canonical file
+      // differs from what the client sent, so regenerate it. Clients see
+      // a changed etag on their next sync and pull the revision.
+      if (outcome.needsRepush) {
+        revised = true
+        c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, outcome.entityId))
+      }
+    }
   } catch (err: any) {
     // Validation passed but ingest failed — file is in storage, the
     // background sweep will retry. Don't fail the client write.
     console.error(`[vault-api] ingest failed for ${path}:`, err.message)
   }
 
-  return c.body(JSON.stringify({ etag, ingested }), 200, {
-    'Content-Type': 'application/json',
-    ETag: `"${etag}"`,
-  })
+  return c.body(
+    JSON.stringify({
+      etag,
+      ingested,
+      ...(pendingApproval ? { pending_approval: pendingApproval } : {}),
+      ...(revised ? { revised: true } : {}),
+    }),
+    200,
+    {
+      'Content-Type': 'application/json',
+      ETag: `"${etag}"`,
+    }
+  )
 })
 
 export default vaultApi

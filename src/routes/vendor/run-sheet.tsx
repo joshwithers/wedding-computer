@@ -9,6 +9,7 @@ import { requireString, trimOrNull } from '../../lib/validation'
 import { getWedding, getMembership } from '../../db/weddings'
 import { generateRunSheet } from '../../services/ai'
 import { resolveSecret } from '../../services/secrets'
+import { pushAllWeddingFiles } from '../../services/storage-push'
 import {
   listRunSheetItems,
   getRunSheetItem,
@@ -453,6 +454,7 @@ runSheet.post('/app/weddings/:weddingId/run-sheet', async (c) => {
   }
 
   const items = await listRunSheetItems(c.env.DB, weddingId, vendor.id)
+  c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
 
   if (c.req.header('hx-request')) {
     return c.html(<RunSheetList items={items} weddingId={weddingId} csrfToken={csrfToken} />)
@@ -476,6 +478,7 @@ runSheet.post('/app/weddings/:weddingId/run-sheet/reorder', async (c) => {
   if (!Array.isArray(ids)) return c.json({ error: 'ids must be an array' }, 400)
 
   await reorderRunSheetItems(c.env.DB, weddingId, vendor.id, ids)
+  c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
 
   return c.json({ ok: true })
 })
@@ -547,6 +550,7 @@ runSheet.post('/app/weddings/:weddingId/run-sheet/generate', async (c) => {
       })
     }
 
+    c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
     return c.redirect(`${base}?generated=${items.length}`)
   } catch (e: any) {
     console.error('[run-sheet] AI generation failed', e?.message ?? e)
@@ -588,6 +592,8 @@ runSheet.post('/app/weddings/:weddingId/run-sheet/:itemId', async (c) => {
   const item = await getRunSheetItem(c.env.DB, itemId, vendor.id)
   if (!item) return c.text('Not found', 404)
 
+  c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
+
   if (c.req.header('hx-request')) {
     return c.html(
       <ItemCard item={item} weddingId={weddingId} csrfToken={csrfToken} />
@@ -611,6 +617,7 @@ runSheet.post('/app/weddings/:weddingId/run-sheet/:itemId/delete', async (c) => 
   await deleteRunSheetItem(c.env.DB, itemId, vendor.id)
 
   const items = await listRunSheetItems(c.env.DB, weddingId, vendor.id)
+  c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
 
   if (c.req.header('hx-request')) {
     return c.html(<RunSheetList items={items} weddingId={weddingId} csrfToken={csrfToken} />)

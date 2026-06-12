@@ -23,8 +23,9 @@ import type { Bindings, VendorProfile, Wedding } from '../../types'
 import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { getUserByEmail } from '../../db/users'
 import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
-import { formatDate, formatDateTime, formatTime, daysUntil, addHoursToTime, subtractHoursFromTime } from '../../lib/date'
+import { formatDate, formatDateTime, formatTime, daysUntil, addHoursToTime } from '../../lib/date'
 import { createEvent, updateEvent, deleteEvent } from '../../db/calendar'
+import { resyncWeddingCalendars } from '../../services/wedding-calendar'
 import { track } from '../../services/analytics'
 import { geocodeWeddingLocation } from '../../services/geocode'
 import { getWeddingTodo, upsertWeddingTodo } from '../../db/todos'
@@ -43,176 +44,8 @@ import {
 import { isManagerVendor, categoriesLabel } from '../../lib/categories'
 import { weddingDisplayTitle } from '../../lib/wedding-display'
 import { sendVendorWelcomeInvite } from '../../services/auth'
+import { TIMELINE_FIELDS } from '../../services/timeline-edit'
 import { t } from '../../i18n'
-
-/** Wedding fields whose changes a controlling planner/venue must approve. */
-const TIMELINE_FIELDS = [
-  'date', 'time', 'duration_hours',
-  'ceremony_location', 'reception_location', 'reception_time',
-  'getting_ready_location', 'getting_ready_time', 'getting_ready_1_label',
-  'getting_ready_2_location', 'getting_ready_2_label', 'getting_ready_2_time',
-  'portrait_location', 'portrait_time', 'reception_duration_hours',
-] as const
-
-/**
- * Sync per-location calendar events for a wedding.
- * Each location with a time gets its own calendar event, tagged with notes like
- * "wc:ceremony" so they can be found and updated on subsequent saves.
- *
- * Default durations:
- *   Getting ready 1/2 = 1h
- *   Ceremony = duration_hours or 1h, with 1h ceremony prep event before
- *   Portraits = 1h
- *   Reception = 3h
- */
-async function syncWeddingCalendarEvents(
-  db: D1Database,
-  vendorId: string,
-  weddingId: string,
-  weddingTitle: string,
-  weddingDate: string,
-  data: {
-    emoji: string | null
-    ceremonyTime: string | null
-    ceremonyDuration: number
-    ceremonyLocation: string | null
-    gettingReadyTime: string | null
-    gettingReadyLocation: string | null
-    gettingReady1Label: string | null
-    gettingReady2Time: string | null
-    gettingReady2Location: string | null
-    gettingReady2Label: string | null
-    portraitTime: string | null
-    portraitLocation: string | null
-    receptionTime: string | null
-    receptionLocation: string | null
-    receptionDuration: number
-  }
-) {
-  // Define the events we want to exist
-  type PlannedEvent = {
-    tag: string                   // e.g. "wc:ceremony"
-    title: string
-    startTime: string | null
-    endTime: string | null
-    location: string | null
-    shouldExist: boolean          // false → delete if present
-  }
-
-  // Emoji prefix for all event titles
-  const pfx = data.emoji ? `${data.emoji} ` : ''
-
-  const events: PlannedEvent[] = [
-    {
-      tag: 'wc:getting_ready_1',
-      title: `${pfx}${weddingTitle} — Getting ready${data.gettingReady1Label ? ` (${data.gettingReady1Label})` : ''}`,
-      startTime: data.gettingReadyTime,
-      endTime: data.gettingReadyTime ? addHoursToTime(data.gettingReadyTime, 1) : null,
-      location: data.gettingReadyLocation,
-      shouldExist: !!(data.gettingReadyTime && data.gettingReadyLocation),
-    },
-    {
-      tag: 'wc:getting_ready_2',
-      title: `${pfx}${weddingTitle} — Getting ready${data.gettingReady2Label ? ` (${data.gettingReady2Label})` : ''}`,
-      startTime: data.gettingReady2Time,
-      endTime: data.gettingReady2Time ? addHoursToTime(data.gettingReady2Time, 1) : null,
-      location: data.gettingReady2Location,
-      shouldExist: !!(data.gettingReady2Time && data.gettingReady2Location),
-    },
-    {
-      tag: 'wc:ceremony_prep',
-      title: `${pfx}${weddingTitle} — Ceremony prep`,
-      startTime: data.ceremonyTime ? subtractHoursFromTime(data.ceremonyTime, 1) : null,
-      endTime: data.ceremonyTime,
-      location: data.ceremonyLocation,
-      shouldExist: !!data.ceremonyTime,
-    },
-    {
-      tag: 'wc:ceremony',
-      title: `${pfx}${weddingTitle} — Ceremony`,
-      startTime: data.ceremonyTime,
-      endTime: data.ceremonyTime ? addHoursToTime(data.ceremonyTime, data.ceremonyDuration) : null,
-      location: data.ceremonyLocation,
-      shouldExist: true, // always keep the main event
-    },
-    {
-      tag: 'wc:portraits',
-      title: `${pfx}${weddingTitle} — Portraits`,
-      startTime: data.portraitTime,
-      endTime: data.portraitTime ? addHoursToTime(data.portraitTime, 1) : null,
-      location: data.portraitLocation,
-      shouldExist: !!(data.portraitTime && data.portraitLocation),
-    },
-    {
-      tag: 'wc:reception',
-      title: `${pfx}${weddingTitle} — Reception`,
-      startTime: data.receptionTime,
-      endTime: data.receptionTime ? addHoursToTime(data.receptionTime, data.receptionDuration) : null,
-      location: data.receptionLocation,
-      shouldExist: !!(data.receptionTime && data.receptionLocation),
-    },
-  ]
-
-  // Fetch all existing tagged events for this wedding
-  const existing = await db
-    .prepare(
-      `SELECT id, notes FROM calendar_events
-       WHERE vendor_id = ? AND wedding_id = ? AND notes LIKE 'wc:%'`
-    )
-    .bind(vendorId, weddingId)
-    .all<{ id: string; notes: string }>()
-    .then((r) => r.results)
-
-  const existingByTag = new Map(existing.map((e) => [e.notes, e.id]))
-
-  // Also find the legacy "booking" event (no tag) — migrate it to wc:ceremony
-  if (!existingByTag.has('wc:ceremony')) {
-    const legacy = await db
-      .prepare(
-        `SELECT id FROM calendar_events
-         WHERE vendor_id = ? AND wedding_id = ? AND type = 'booking' AND (notes IS NULL OR notes NOT LIKE 'wc:%')
-         LIMIT 1`
-      )
-      .bind(vendorId, weddingId)
-      .first<{ id: string }>()
-    if (legacy) {
-      existingByTag.set('wc:ceremony', legacy.id)
-    }
-  }
-
-  for (const planned of events) {
-    const existingId = existingByTag.get(planned.tag)
-
-    if (planned.shouldExist) {
-      if (existingId) {
-        // Update existing
-        await updateEvent(db, vendorId, existingId, {
-          title: planned.title,
-          date: weddingDate,
-          start_time: planned.startTime,
-          end_time: planned.endTime,
-          all_day: planned.startTime ? 0 : 1,
-          notes: planned.tag,
-        })
-      } else {
-        // Create new
-        await createEvent(db, vendorId, {
-          title: planned.title,
-          date: weddingDate,
-          start_time: planned.startTime,
-          end_time: planned.endTime,
-          all_day: !planned.startTime,
-          type: 'booking',
-          wedding_id: weddingId,
-          notes: planned.tag,
-        })
-      }
-    } else if (existingId) {
-      // Should not exist but does → remove
-      await deleteEvent(db, vendorId, existingId)
-    }
-  }
-}
 
 /**
  * Sync per-vendor bump in/out calendar events.
@@ -1220,6 +1053,10 @@ weddings.post('/app/weddings/:id/private-notes', async (c) => {
     .bind(notes || null, weddingId, user.id)
     .run()
 
+  // Mirror to the vault's notes.md
+  const vendor = c.get('vendor')
+  if (vendor) c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
+
   return c.json({ saved: true, at: new Date().toISOString() })
 })
 
@@ -1256,6 +1093,9 @@ weddings.post('/app/weddings/:id/bumps', async (c) => {
       )
     } catch { /* best-effort */ }
   }
+
+  // Bump times appear in vendors.md — refresh the vault
+  c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
 
   return c.html(
     <div>
@@ -1425,6 +1265,8 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
             controllerUserIds: controllers.map((tc) => tc.user_id),
           }),
         }).catch((e: any) => console.error('[weddings] timeline request notify enqueue failed', e.message))
+        // The pending request appears in timeline.md — refresh the vault
+        c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, requesterVendor, weddingId))
         return c.redirect(`/app/weddings/${weddingId}?timeline_pending=1`)
       }
     }
@@ -1466,54 +1308,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     // Sync calendar events for ALL vendors on this wedding
     const vendor = c.get('vendor')!
     try {
-      const weddingDate = trimOrNull(body.date)
-      if (weddingDate) {
-        const timelineData = {
-          emoji,
-          ceremonyTime: startTime,
-          ceremonyDuration: oldWedding?.duration_hours ?? 1,
-          ceremonyLocation: trimOrNull(body.ceremony_location),
-          gettingReadyTime: gettingReadyTime,
-          gettingReadyLocation: trimOrNull(body.getting_ready_location),
-          gettingReady1Label: trimOrNull(body.getting_ready_1_label),
-          gettingReady2Time: gettingReady2Time,
-          gettingReady2Location: trimOrNull(body.getting_ready_2_location),
-          gettingReady2Label: trimOrNull(body.getting_ready_2_label),
-          portraitTime: portraitTime,
-          portraitLocation: trimOrNull(body.portrait_location),
-          receptionTime: receptionTime,
-          receptionLocation: trimOrNull(body.reception_location),
-          receptionDuration: (() => {
-            const raw = trimOrNull(body.reception_duration_hours)
-            const val = raw ? parseFloat(raw) : null
-            return val && !isNaN(val) ? val : 3
-          })(),
-        }
-
-        // Get all vendor members on this wedding
-        const vendorMembers = await c.env.DB
-          .prepare(
-            `SELECT DISTINCT vendor_profile_id FROM wedding_members
-             WHERE wedding_id = ? AND status = 'active' AND vendor_profile_id IS NOT NULL`
-          )
-          .bind(weddingId)
-          .all<{ vendor_profile_id: string }>()
-          .then((r) => r.results)
-
-        // Sync events for each vendor
-        for (const vm of vendorMembers) {
-          try {
-            await syncWeddingCalendarEvents(c.env.DB, vm.vendor_profile_id, weddingId, title, weddingDate, timelineData)
-          } catch (err) {
-            console.error(`[weddings] calendar sync failed for vendor ${vm.vendor_profile_id}:`, err)
-          }
-        }
-
-        // If no vendor members found (shouldn't happen), at least sync for current vendor
-        if (vendorMembers.length === 0) {
-          await syncWeddingCalendarEvents(c.env.DB, vendor.id, weddingId, title, weddingDate, timelineData)
-        }
-      }
+      await resyncWeddingCalendars(c.env.DB, weddingId, vendor.id)
     } catch (calErr) {
       console.error('[weddings] Failed to sync calendar events:', calErr)
     }
@@ -1568,56 +1363,10 @@ async function applyTimelinePayload(
   db: D1Database,
   weddingId: string,
   payload: Record<string, any>,
-  fallbackVendorId: string,
-  ceremonyDuration: number | null
+  fallbackVendorId: string
 ): Promise<void> {
   await updateWedding(db, weddingId, payload as any)
-
-  const title = typeof payload.title === 'string' ? payload.title : null
-  const weddingDate = typeof payload.date === 'string' ? payload.date : null
-  if (!title || !weddingDate) return
-
-  const num = (v: unknown, d: number) => {
-    const n = typeof v === 'string' ? parseFloat(v) : typeof v === 'number' ? v : NaN
-    return n && !isNaN(n) ? n : d
-  }
-  const timelineData = {
-    emoji: payload.emoji ?? null,
-    ceremonyTime: payload.time ?? null,
-    ceremonyDuration: ceremonyDuration ?? 1,
-    ceremonyLocation: payload.ceremony_location ?? null,
-    gettingReadyTime: payload.getting_ready_time ?? null,
-    gettingReadyLocation: payload.getting_ready_location ?? null,
-    gettingReady1Label: payload.getting_ready_1_label ?? null,
-    gettingReady2Time: payload.getting_ready_2_time ?? null,
-    gettingReady2Location: payload.getting_ready_2_location ?? null,
-    gettingReady2Label: payload.getting_ready_2_label ?? null,
-    portraitTime: payload.portrait_time ?? null,
-    portraitLocation: payload.portrait_location ?? null,
-    receptionTime: payload.reception_time ?? null,
-    receptionLocation: payload.reception_location ?? null,
-    receptionDuration: num(payload.reception_duration_hours, 3),
-  }
-
-  const vendorMembers = await db
-    .prepare(
-      `SELECT DISTINCT vendor_profile_id FROM wedding_members
-       WHERE wedding_id = ? AND status = 'active' AND vendor_profile_id IS NOT NULL`
-    )
-    .bind(weddingId)
-    .all<{ vendor_profile_id: string }>()
-    .then((r) => r.results)
-
-  for (const vm of vendorMembers) {
-    try {
-      await syncWeddingCalendarEvents(db, vm.vendor_profile_id, weddingId, title, weddingDate, timelineData)
-    } catch (err) {
-      console.error(`[weddings] approved-change calendar sync failed for ${vm.vendor_profile_id}:`, err)
-    }
-  }
-  if (vendorMembers.length === 0) {
-    await syncWeddingCalendarEvents(db, fallbackVendorId, weddingId, title, weddingDate, timelineData)
-  }
+  await resyncWeddingCalendars(db, weddingId, fallbackVendorId)
 }
 
 weddings.post('/app/weddings/:id/timeline-requests/:rid/:decision{approve|decline}', async (c) => {
@@ -1647,9 +1396,8 @@ weddings.post('/app/weddings/:id/timeline-requests/:rid/:decision{approve|declin
     } catch {
       // empty payload — nothing to apply
     }
-    const wedding = await getWedding(c.env.DB, weddingId)
     try {
-      await applyTimelinePayload(c.env.DB, weddingId, payload, vendor.id, wedding?.duration_hours ?? 1)
+      await applyTimelinePayload(c.env.DB, weddingId, payload, vendor.id)
     } catch (err) {
       console.error('[weddings] applying approved timeline change failed:', err)
       return c.redirect(`/app/weddings/${weddingId}?error=${encodeURIComponent('Applying the change failed')}`)
@@ -1657,7 +1405,6 @@ weddings.post('/app/weddings/:id/timeline-requests/:rid/:decision{approve|declin
     c.executionCtx.waitUntil(
       geocodeWeddingLocation(c.env, weddingId).catch((err) => console.error('[weddings] geocode failed:', err))
     )
-    c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
   }
 
   await appendWeddingLog(
@@ -1665,6 +1412,10 @@ weddings.post('/app/weddings/:id/timeline-requests/:rid/:decision{approve|declin
     decision === 'approved' ? 'Timeline change approved' : 'Timeline change declined',
     request.summary
   ).catch(() => {})
+
+  // Approved changes alter wedding.md; either decision clears the pending
+  // section in timeline.md — refresh the vault both ways.
+  c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
 
   await c.env.EMAIL_QUEUE.send({
     type: 'notify_timeline_change_decided',

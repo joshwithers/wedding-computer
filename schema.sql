@@ -148,6 +148,9 @@ CREATE TABLE IF NOT EXISTS wedding_members (
   permissions TEXT NOT NULL DEFAULT '{}',
   status TEXT NOT NULL DEFAULT 'active'
     CHECK (status IN ('invited','active','removed')),
+  bump_in_time TEXT,
+  bump_out_time TEXT,
+  vendor_notes TEXT,
   invited_at TEXT NOT NULL DEFAULT (datetime('now')),
   accepted_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -562,7 +565,7 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe ON subscriptions(stripe_subs
 CREATE TABLE IF NOT EXISTS file_index (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
   vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
-  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding', 'todo', 'log')),
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding', 'todo', 'log', 'timeline', 'notes', 'vendors')),
   entity_id TEXT NOT NULL,
   file_path TEXT NOT NULL,
   etag TEXT NOT NULL,
@@ -577,7 +580,7 @@ CREATE TABLE IF NOT EXISTS file_index (
 CREATE TABLE IF NOT EXISTS file_conflicts (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
   vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
-  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding', 'todo', 'log')),
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding', 'todo', 'log', 'timeline', 'notes', 'vendors')),
   entity_id TEXT NOT NULL,
   file_path TEXT NOT NULL,
   local_content TEXT NOT NULL,

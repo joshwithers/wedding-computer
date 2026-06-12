@@ -205,10 +205,13 @@ A **wedding** is the central object. Users join it via `wedding_members`:
 
 ### Markdown first, D1 as index
 
-Vendor data (contacts, weddings, checklists, logs) is stored as **markdown files with YAML frontmatter** in a pluggable storage backend (`src/storage/`): R2 by default, or the vendor's own GitHub repo (`storage_type='git'`). D1 holds a queryable index of the same data (`file_index`, `file_conflicts` track sync state).
+Vendor data is stored as **markdown files with YAML frontmatter** in a pluggable storage backend (`src/storage/`): R2 by default, or the vendor's own GitHub repo (`storage_type='git'`). D1 holds a queryable index of the same data (`file_index`, `file_conflicts` track sync state).
+
+Each wedding is a folder of companion files: `wedding.md` (details + shared notes), `todo.md` (checklist), `timeline.md` (run sheet — own rows two-way, other vendors' rows and pending approvals generated), `notes.md` (the vendor's private notes), `vendors.md` (wedding team — generated, read-only), `log.md` (changelog — generated, read-only), plus `files/` uploads. Contacts are flat files under `contacts/`.
 
 - Writes from the web app go through the storage backend and D1 together.
 - External edits (Obsidian, GitHub, vault API) are ingested into D1 — immediately for vault-API writes, otherwise by the background sync sweep (every 5 minutes, one shard of vendors is enqueued).
+- **File edits obey app permissions** (`src/services/timeline-edit.ts`): timeline-field changes in `wedding.md` from a non-controlling vendor become `timeline_change_requests` (planner/venue approval) instead of direct writes, and couple-only fields (`vendor_visibility`) are protected. The same routing backs the MCP write tools.
 - Conflicts are etag-detected (`If-Match`), never silently overwritten: both versions are kept and a `file_conflicts` row is recorded. `StorageConflictError` is handled globally in `index.tsx`.
 
 ---

@@ -106,6 +106,54 @@ export async function deleteRunSheetItem(
     .run()
 }
 
+export type RunSheetRowInput = {
+  time: string | null
+  end_time: string | null
+  title: string
+  description: string | null
+  location: string | null
+  assigned_to: string | null
+  category: RunSheetItem['category']
+  sort_order: number
+}
+
+/**
+ * Apply a computed run-sheet diff (see storage/run-sheet-md.ts) to the
+ * vendor's items. Shared by the file-sync ingest and the MCP tool so both
+ * doors apply edits identically.
+ */
+export async function applyRunSheetDiff(
+  db: D1Database,
+  weddingId: string,
+  vendorId: string,
+  diff: {
+    creates: RunSheetRowInput[]
+    updates: { id: string; changes: Parameters<typeof updateRunSheetItem>[3] }[]
+    deletes: string[]
+  }
+): Promise<void> {
+  for (const id of diff.deletes) {
+    await deleteRunSheetItem(db, id, vendorId)
+  }
+  for (const update of diff.updates) {
+    await updateRunSheetItem(db, update.id, vendorId, update.changes)
+  }
+  for (const create of diff.creates) {
+    await createRunSheetItem(db, {
+      wedding_id: weddingId,
+      vendor_id: vendorId,
+      time: create.time,
+      end_time: create.end_time,
+      title: create.title,
+      description: create.description,
+      location: create.location,
+      assigned_to: create.assigned_to,
+      category: create.category,
+      sort_order: create.sort_order,
+    })
+  }
+}
+
 export async function reorderRunSheetItems(
   db: D1Database,
   weddingId: string,
