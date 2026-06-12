@@ -780,4 +780,10 @@ export const el: Dictionary = {
   'marketing.docs.cta.standard': 'Διαβάστε το ανοιχτό πρότυπο',
   'marketing.link.openFormat': 'Ανοίξτε την Προδιαγραφή Μορφής',
   'marketing.link.plainTextDocs': 'Τεκμηρίωση δεδομένων απλού κειμένου',
+  "settings.categories.help": "Επίλεξε όλα όσα κάνεις — πολλοί επαγγελματίες έχουν περισσότερους από έναν ρόλους.",
+  "weddings.timeline.pendingTitle": "Εκκρεμείς αλλαγές χρονοδιαγράμματος",
+  "weddings.timeline.requestedBy": "Αίτημα από {name}",
+  "weddings.timeline.approve": "Έγκριση",
+  "weddings.timeline.decline": "Απόρριψη",
+  "weddings.timeline.sentForApproval": "Η αλλαγή χρονοδιαγράμματος στάλθηκε στον υπεύθυνο του γάμου για έγκριση.",
 }

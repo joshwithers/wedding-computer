@@ -795,4 +795,10 @@ export const ja: Dictionary = {
   "marketing.link.openFormat": "オープンフォーマット仕様",
   "marketing.link.plainTextDocs": "プレーンテキストデータのドキュメント",
 
+  "settings.categories.help": "あなたの仕事をすべて選んでください — 複数の役割を持つベンダーも多くいます。",
+  "weddings.timeline.pendingTitle": "承認待ちのタイムライン変更",
+  "weddings.timeline.requestedBy": "{name} からのリクエスト",
+  "weddings.timeline.approve": "承認",
+  "weddings.timeline.decline": "却下",
+  "weddings.timeline.sentForApproval": "タイムラインの変更はウェディングマネージャーの承認待ちです。",
 }

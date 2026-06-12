@@ -794,4 +794,10 @@ export const zh: Dictionary = {
   "marketing.link.openFormat": "开放格式规范",
   "marketing.link.plainTextDocs": "纯文本数据文档",
 
+  "settings.categories.help": "选择你提供的所有服务 — 许多婚礼服务商身兼多职。",
+  "weddings.timeline.pendingTitle": "待审批的时间线变更",
+  "weddings.timeline.requestedBy": "由 {name} 提交",
+  "weddings.timeline.approve": "批准",
+  "weddings.timeline.decline": "拒绝",
+  "weddings.timeline.sentForApproval": "你的时间线变更已发送给婚礼负责人审批。",
 }

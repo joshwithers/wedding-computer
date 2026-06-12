@@ -796,4 +796,10 @@ export const fr: Dictionary = {
   "marketing.link.openFormat": "Spécification du format ouvert",
   "marketing.link.plainTextDocs": "Documentation sur les données en texte brut",
 
+  "settings.categories.help": "Sélectionnez tout ce que vous faites — beaucoup de prestataires portent plusieurs casquettes.",
+  "weddings.timeline.pendingTitle": "Modifications du planning en attente",
+  "weddings.timeline.requestedBy": "Demandé par {name}",
+  "weddings.timeline.approve": "Approuver",
+  "weddings.timeline.decline": "Refuser",
+  "weddings.timeline.sentForApproval": "Votre modification du planning a été envoyée au responsable du mariage pour approbation.",
 }

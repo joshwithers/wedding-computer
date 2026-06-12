@@ -796,4 +796,10 @@ export const nl: Dictionary = {
   "marketing.link.openFormat": "Formaatspecificatie openen",
   "marketing.link.plainTextDocs": "Gegevensdocumentatie in platte tekst",
 
+  "settings.categories.help": "Kies alles wat je doet — veel leveranciers hebben meer dan één rol.",
+  "weddings.timeline.pendingTitle": "Tijdlijnwijzigingen in afwachting",
+  "weddings.timeline.requestedBy": "Aangevraagd door {name}",
+  "weddings.timeline.approve": "Goedkeuren",
+  "weddings.timeline.decline": "Afwijzen",
+  "weddings.timeline.sentForApproval": "Je tijdlijnwijziging is ter goedkeuring naar de weddingmanager gestuurd.",
 }

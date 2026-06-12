@@ -780,4 +780,10 @@ export const de: Dictionary = {
   'marketing.docs.cta.standard': 'Lesen Sie den offenen Standard',
   'marketing.link.openFormat': 'Öffnen Sie die Formatspezifikation',
   'marketing.link.plainTextDocs': 'Klartext-Datendokumentation',
+  "settings.categories.help": "Wählen Sie alles aus, was Sie anbieten — viele Dienstleister tragen mehr als einen Hut.",
+  "weddings.timeline.pendingTitle": "Ausstehende Zeitplan-Änderungen",
+  "weddings.timeline.requestedBy": "Angefragt von {name}",
+  "weddings.timeline.approve": "Genehmigen",
+  "weddings.timeline.decline": "Ablehnen",
+  "weddings.timeline.sentForApproval": "Ihre Zeitplan-Änderung wurde zur Genehmigung an die Hochzeitsleitung gesendet.",
 }

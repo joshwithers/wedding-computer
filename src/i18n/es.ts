@@ -796,4 +796,10 @@ export const es: Dictionary = {
   "marketing.link.openFormat": "Especificación de formato abierto",
   "marketing.link.plainTextDocs": "Documentación de datos de texto sin formato",
 
+  "settings.categories.help": "Elige todo lo que haces — muchos proveedores tienen más de un rol.",
+  "weddings.timeline.pendingTitle": "Cambios de cronograma pendientes",
+  "weddings.timeline.requestedBy": "Solicitado por {name}",
+  "weddings.timeline.approve": "Aprobar",
+  "weddings.timeline.decline": "Rechazar",
+  "weddings.timeline.sentForApproval": "Tu cambio de cronograma se envió al organizador de la boda para su aprobación.",
 }
