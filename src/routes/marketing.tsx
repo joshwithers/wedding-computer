@@ -307,6 +307,23 @@ function HomePage() {
           </div>
         </section>
 
+        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
+          <div class="max-w-3xl mx-auto text-center mb-8">
+            <div class="w-12 h-12 rounded-2xl bg-horizon-50 flex items-center justify-center mx-auto mb-4"><div class="w-6 h-6 text-horizon-600" dangerouslySetInnerHTML={{ __html: featureIcons.mcp }} /></div>
+            <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.home.ai.title')}</h2>
+            <p class="text-gray-600 leading-relaxed">{t('marketing.home.ai.body')}</p>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 max-w-3xl mx-auto mb-6">
+            {HOME_AI_EXAMPLES.map((example) => (
+              <div class="bg-white border border-papaya-300/30 rounded-2xl p-4 sm:p-5 text-left">
+                <p class="text-sm font-bold text-gray-900 mb-1.5">“{t(example.q)}”</p>
+                <p class="text-xs text-gray-500 leading-relaxed">{t(example.a)}</p>
+              </div>
+            ))}
+          </div>
+          <p class="text-center text-xs text-gray-400 max-w-lg mx-auto">{t('marketing.home.ai.note')}</p>
+        </section>
+
         <section class="py-10 sm:py-16">
           <h2 class="text-xl sm:text-2xl font-bold text-center mb-3">{t('marketing.home.features.title')}</h2>
           <p class="text-center text-gray-500 text-sm mb-8 sm:mb-12 max-w-lg mx-auto">{t('marketing.home.features.body')}</p>
@@ -400,6 +417,10 @@ function AboutPage() {
         <p class="text-gray-500 text-sm mb-6">{t('marketing.about.data.subtitle')}</p>
         <CopyParagraphs keys={ABOUT_DATA_PARAGRAPHS} className="space-y-4 text-gray-600 leading-relaxed mb-6" />
         <div class="space-y-3 mb-12">{ABOUT_DATA_FEATURES.map((feature) => <AboutFeature title={t(feature.title)} desc={t(feature.desc)} />)}</div>
+        <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.about.ai.title')}</h2>
+        <p class="text-gray-500 text-sm mb-6">{t('marketing.about.ai.subtitle')}</p>
+        <CopyParagraphs keys={ABOUT_AI_PARAGRAPHS} className="space-y-4 text-gray-600 leading-relaxed mb-6" />
+        <div class="space-y-3 mb-12">{ABOUT_AI_FEATURES.map((feature) => <AboutFeature title={t(feature.title)} desc={t(feature.desc)} />)}</div>
         {ABOUT_MORE_SECTIONS.map((section) => <PageFeatureSection section={section} />)}
         <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.about.openData.title')}</h2>
         <CopyParagraphs keys={ABOUT_OPEN_DATA_PARAGRAPHS} className="space-y-4 text-gray-600 leading-relaxed mb-6" />
@@ -595,8 +616,21 @@ const ABOUT_SECTIONS: FeatureSection[] = [{ title: 'marketing.about.difference.t
 const ABOUT_WORKSPACE_PARAGRAPHS: MessageKey[] = ['marketing.about.workspaces.p1', 'marketing.about.workspaces.p2', 'marketing.about.workspaces.p3', 'marketing.about.workspaces.p4']
 const ABOUT_DATA_PARAGRAPHS: MessageKey[] = ['marketing.about.data.p1', 'marketing.about.data.p2', 'marketing.about.data.p3']
 const ABOUT_DATA_FEATURES: CardDef[] = [{ title: 'marketing.about.data.markdown.title', desc: 'marketing.about.data.markdown.desc' },{ title: 'marketing.about.data.lockIn.title', desc: 'marketing.about.data.lockIn.desc' },{ title: 'marketing.about.data.standard.title', desc: 'marketing.about.data.standard.desc' }]
-const ABOUT_MORE_SECTIONS: FeatureSection[] = [{ title: 'marketing.about.roadmap.title', subtitle: 'marketing.about.roadmap.subtitle', features: [{ title: 'marketing.about.roadmap.dateFinder.title', desc: 'marketing.about.roadmap.dateFinder.desc' },{ title: 'marketing.about.roadmap.collab.title', desc: 'marketing.about.roadmap.collab.desc' },{ title: 'marketing.about.roadmap.ai.title', desc: 'marketing.about.roadmap.ai.desc' },{ title: 'marketing.about.roadmap.google.title', desc: 'marketing.about.roadmap.google.desc' },{ title: 'marketing.about.roadmap.documents.title', desc: 'marketing.about.roadmap.documents.desc' }] },{ title: 'marketing.about.technical.title', subtitle: 'marketing.about.technical.subtitle', features: [{ title: 'marketing.about.technical.workers.title', desc: 'marketing.about.technical.workers.desc' },{ title: 'marketing.about.technical.hono.title', desc: 'marketing.about.technical.hono.desc' },{ title: 'marketing.about.technical.files.title', desc: 'marketing.about.technical.files.desc' },{ title: 'marketing.about.technical.dav.title', desc: 'marketing.about.technical.dav.desc' },{ title: 'marketing.about.technical.auth.title', desc: 'marketing.about.technical.auth.desc' },{ title: 'marketing.about.technical.stripe.title', desc: 'marketing.about.technical.stripe.desc' },{ title: 'marketing.about.technical.email.title', desc: 'marketing.about.technical.email.desc' },{ title: 'marketing.about.technical.queues.title', desc: 'marketing.about.technical.queues.desc' },{ title: 'marketing.about.technical.tenant.title', desc: 'marketing.about.technical.tenant.desc' },{ title: 'marketing.about.technical.tracking.title', desc: 'marketing.about.technical.tracking.desc' }] }]
+const ABOUT_MORE_SECTIONS: FeatureSection[] = [{ title: 'marketing.about.roadmap.title', subtitle: 'marketing.about.roadmap.subtitle', features: [{ title: 'marketing.about.roadmap.dateFinder.title', desc: 'marketing.about.roadmap.dateFinder.desc' },{ title: 'marketing.about.roadmap.ai.title', desc: 'marketing.about.roadmap.ai.desc' },{ title: 'marketing.about.roadmap.google.title', desc: 'marketing.about.roadmap.google.desc' }] },{ title: 'marketing.about.technical.title', subtitle: 'marketing.about.technical.subtitle', features: [{ title: 'marketing.about.technical.workers.title', desc: 'marketing.about.technical.workers.desc' },{ title: 'marketing.about.technical.hono.title', desc: 'marketing.about.technical.hono.desc' },{ title: 'marketing.about.technical.files.title', desc: 'marketing.about.technical.files.desc' },{ title: 'marketing.about.technical.dav.title', desc: 'marketing.about.technical.dav.desc' },{ title: 'marketing.about.technical.auth.title', desc: 'marketing.about.technical.auth.desc' },{ title: 'marketing.about.technical.stripe.title', desc: 'marketing.about.technical.stripe.desc' },{ title: 'marketing.about.technical.email.title', desc: 'marketing.about.technical.email.desc' },{ title: 'marketing.about.technical.queues.title', desc: 'marketing.about.technical.queues.desc' },{ title: 'marketing.about.technical.tenant.title', desc: 'marketing.about.technical.tenant.desc' },{ title: 'marketing.about.technical.tracking.title', desc: 'marketing.about.technical.tracking.desc' }] }]
 const ABOUT_OPEN_DATA_PARAGRAPHS: MessageKey[] = ['marketing.about.openData.p1', 'marketing.about.openData.p2']
+const ABOUT_AI_PARAGRAPHS: MessageKey[] = ['marketing.about.ai.p1', 'marketing.about.ai.p2', 'marketing.about.ai.p3']
+const ABOUT_AI_FEATURES: CardDef[] = [
+  { title: 'marketing.about.ai.brief.title', desc: 'marketing.about.ai.brief.desc' },
+  { title: 'marketing.about.ai.update.title', desc: 'marketing.about.ai.update.desc' },
+  { title: 'marketing.about.ai.rules.title', desc: 'marketing.about.ai.rules.desc' },
+  { title: 'marketing.about.ai.open.title', desc: 'marketing.about.ai.open.desc' },
+]
+const HOME_AI_EXAMPLES: Array<{ q: MessageKey; a: MessageKey }> = [
+  { q: 'marketing.home.ai.example1.q', a: 'marketing.home.ai.example1.a' },
+  { q: 'marketing.home.ai.example2.q', a: 'marketing.home.ai.example2.a' },
+  { q: 'marketing.home.ai.example3.q', a: 'marketing.home.ai.example3.a' },
+  { q: 'marketing.home.ai.example4.q', a: 'marketing.home.ai.example4.a' },
+]
 const PRICING_FREE_FEATURES: MessageKey[] = ['marketing.pricing.feature.pipeline','marketing.pricing.feature.forms','marketing.pricing.feature.calendar','marketing.pricing.feature.invoicing','marketing.pricing.feature.email','marketing.pricing.feature.workspaces','marketing.pricing.feature.import','marketing.pricing.feature.team','marketing.pricing.feature.runsheet','marketing.pricing.feature.quote','marketing.pricing.feature.publicCalendar','marketing.pricing.feature.directory','marketing.pricing.feature.coupleDashboard','marketing.pricing.feature.plainText','marketing.pricing.feature.passkeys']
 const PRICING_PRO_FEATURES: MessageKey[] = ['marketing.pricing.feature.everythingFree','marketing.pricing.feature.github','marketing.pricing.feature.caldav','marketing.pricing.feature.carddav','marketing.pricing.feature.analyticsDashboard','marketing.pricing.feature.revenueInsights','marketing.pricing.feature.goals','marketing.pricing.feature.aiDrafting','marketing.pricing.feature.demandScores','marketing.pricing.feature.benchmarks','marketing.pricing.feature.aiReplies','marketing.pricing.feature.mcp']
 const PRICING_COMPARISON: PlanGroupDef[] = [{ label: 'marketing.pricing.group.leads', rows: [{ feature: 'marketing.pricing.compare.pipeline', free: true, pro: true },{ feature: 'marketing.pricing.compare.forms', free: true, pro: true },{ feature: 'marketing.pricing.compare.htmlForm', free: true, pro: true },{ feature: 'marketing.pricing.compare.spam', free: true, pro: true },{ feature: 'marketing.pricing.compare.import', free: true, pro: true },{ feature: 'marketing.pricing.compare.aiDrafting', pro: true },{ feature: 'marketing.pricing.compare.aiReplies', pro: true },{ feature: 'marketing.pricing.compare.webhooks', pro: true },{ feature: 'marketing.pricing.compare.agentLead', pro: true }] },{ label: 'marketing.pricing.group.calendar', rows: [{ feature: 'marketing.pricing.compare.calendar', free: true, pro: true },{ feature: 'marketing.pricing.compare.availability', free: true, pro: true },{ feature: 'marketing.pricing.compare.publicCalendar', free: true, pro: true },{ feature: 'marketing.pricing.compare.directory', free: true, pro: true },{ feature: 'marketing.pricing.compare.caldav', pro: true },{ feature: 'marketing.pricing.compare.carddav', pro: true }] },{ label: 'marketing.pricing.group.money', rows: [{ feature: 'marketing.pricing.compare.invoicing', free: true, pro: true },{ feature: 'marketing.pricing.compare.quote', free: true, pro: true },{ feature: 'marketing.pricing.compare.contracts', free: true, pro: true }] },{ label: 'marketing.pricing.group.weddings', rows: [{ feature: 'marketing.pricing.compare.workspaces', free: true, pro: true },{ feature: 'marketing.pricing.compare.runsheet', free: true, pro: true },{ feature: 'marketing.pricing.compare.checklists', free: true, pro: true },{ feature: 'marketing.pricing.compare.team', free: true, pro: true },{ feature: 'marketing.pricing.compare.coupleDashboard', free: true, pro: true }] },{ label: 'marketing.pricing.group.data', rows: [{ feature: 'marketing.pricing.compare.plainText', free: true, pro: true },{ feature: 'marketing.pricing.compare.passkeys', free: true, pro: true },{ feature: 'marketing.pricing.compare.github', pro: true }] },{ label: 'marketing.pricing.group.insights', rows: [{ feature: 'marketing.pricing.compare.analytics', pro: true },{ feature: 'marketing.pricing.compare.revenue', pro: true },{ feature: 'marketing.pricing.compare.goals', pro: true },{ feature: 'marketing.pricing.compare.demand', pro: true },{ feature: 'marketing.pricing.compare.benchmarks', pro: true },{ feature: 'marketing.pricing.compare.mcp', pro: true }] }]
