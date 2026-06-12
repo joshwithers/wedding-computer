@@ -9,6 +9,8 @@ import { isProVendor } from '../../db/subscriptions'
 import { softDeleteAccount } from '../../services/account'
 import { VENDOR_CATEGORIES } from '../../types'
 import { trimOrNull, requireString } from '../../lib/validation'
+import { vendorCategories } from '../../lib/categories'
+import { t } from '../../i18n'
 import { auditLog } from '../../middleware/audit'
 import { listContacts } from '../../storage/contacts'
 import { listInvoices } from '../../db/invoices'
@@ -87,19 +89,22 @@ settings.get('/app/settings', async (c) => {
             <div class="space-y-4">
               <Field label="Business name" name="business_name" value={vendor.business_name} required />
               <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="category">Category</label>
-                <select
-                  id="category"
-                  name="category"
-                  required
-                  class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-                >
+                <span class="block text-sm font-bold text-gray-700 mb-1.5">Category</span>
+                <p class="text-xs text-gray-500 mb-2">{t('settings.categories.help')}</p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {VENDOR_CATEGORIES.map((cat) => (
-                    <option value={cat} selected={cat === vendor.category}>
-                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                    </option>
+                    <label class="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 text-sm cursor-pointer hover:border-horizon-600/40 has-[:checked]:border-horizon-600 has-[:checked]:bg-horizon-50">
+                      <input
+                        type="checkbox"
+                        name="category"
+                        value={cat}
+                        checked={vendorCategories(vendor).includes(cat)}
+                        class="rounded border-gray-300 text-horizon-600 focus:ring-horizon-600"
+                      />
+                      <span>{cat.charAt(0).toUpperCase() + cat.slice(1)}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
               </div>
               <Field label="Phone" name="phone" value={vendor.phone ?? ''} type="tel" />
               <Field label="Website" name="website" value={vendor.website ?? ''} type="url" />
@@ -864,17 +869,27 @@ settings.get('/app/settings', async (c) => {
 settings.post('/app/settings', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
-  const body = await c.req.parseBody()
+  const body = await c.req.parseBody({ all: true })
 
   try {
     const businessName = requireString(body.business_name, 'Business name')
-    const category = requireString(body.category, 'Category')
+
+    const rawCats = body.category
+    const selected = (Array.isArray(rawCats) ? rawCats : rawCats ? [rawCats] : [])
+      .map((v) => String(v).trim().toLowerCase())
+    const categories = VENDOR_CATEGORIES.filter((cat) => selected.includes(cat))
+    if (categories.length === 0) {
+      return c.redirect('/app/settings?error=Pick+at+least+one+category')
+    }
+    // Keep the existing primary if it's still selected; otherwise the first.
+    const category = categories.includes(vendor.category as any) ? vendor.category : categories[0]
 
     const location = trimOrNull(body.location)
 
     const updates: Parameters<typeof updateVendor>[2] = {
       business_name: businessName,
       category,
+      categories: JSON.stringify(categories),
       phone: trimOrNull(body.phone),
       website: trimOrNull(body.website),
       instagram: trimOrNull(body.instagram),

@@ -79,6 +79,8 @@ export type VendorProfile = {
   user_id: string
   business_name: string
   category: string
+  /** JSON array of all vendor types; `category` is the primary. */
+  categories: string | null
   phone: string | null
   website: string | null
   instagram: string | null
@@ -607,6 +609,23 @@ export type ImportJob = {
   preview_data: string | null
   created_at: string
   completed_at: string | null
+}
+
+export type TimelineChangeRequest = {
+  id: string
+  wedding_id: string
+  requested_by_user_id: string
+  requested_by_label: string | null
+  target: 'wedding' | 'run_sheet'
+  op: 'create' | 'update' | 'delete'
+  run_sheet_item_id: string | null
+  vendor_profile_id: string | null
+  payload: string
+  summary: string | null
+  status: 'pending' | 'approved' | 'declined'
+  decided_by_user_id: string | null
+  decided_at: string | null
+  created_at: string
 }
 
 export type ImportRecord = {

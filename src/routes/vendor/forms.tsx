@@ -3,6 +3,7 @@ import type { Env } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
 import { createForm, getForm, listForms, updateForm, deleteForm, listFormSubmissions, getFormSubmission, updateFormSubmission } from '../../db/forms'
 import { noimFormConfig } from '../../forms/noim/schema'
+import { hasCategory } from '../../lib/categories'
 import type { FormConfig, FormStep } from '../../lib/form-schema'
 import { defaultFormConfig, generateFieldId } from '../../lib/form-schema'
 
@@ -90,7 +91,7 @@ forms.get('/app/forms/new', async (c) => {
             </button>
           </form>
 
-          {vendor.category === 'celebrant' && (
+          {hasCategory(vendor, 'celebrant') && (
             <form method="post" action="/app/forms/new">
               <input type="hidden" name="type" value="noim" />
               <input type="hidden" name="_csrf" value={c.get('csrfToken')} />

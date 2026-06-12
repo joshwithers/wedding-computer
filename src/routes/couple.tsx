@@ -10,7 +10,10 @@ import { getWedding, getWeddingMembers, getMembership, getAnyMembership, addWedd
 import { updateUser } from '../db/users'
 import { listCoupleVendors, getCoupleVendor, getCoupleVendorByProfileId, createCoupleVendor, updateCoupleVendor, deleteCoupleVendor, syncPlatformVendors, findCoupleVendorByEmail } from '../db/couple-vendors'
 import { getVendorByUserId } from '../db/vendors'
-import { findOrCreateUser, sendVendorInvite } from '../services/auth'
+import { findOrCreateUser, sendVendorWelcomeInvite } from '../services/auth'
+import { isManagerVendor } from '../lib/categories'
+import { createTimelineRequest, getTimelineControllers } from '../db/timeline-requests'
+import { t } from '../i18n'
 import { ensureCoupleContact } from '../services/couple-contact'
 import { isValidEmail } from '../lib/validation'
 import { consumeRateLimit } from '../middleware/rate-limit'
@@ -644,13 +647,18 @@ couple.post('/wedding/:id/vendors/add', async (c) => {
 
   const vendorProfile = await getVendorByUserId(c.env.DB, vendorUser.id)
 
+  // Planners and venues administer the weddings they're on.
+  const isManager = vendorProfile
+    ? isManagerVendor(vendorProfile)
+    : category === 'planner' || category === 'venue'
+
   await addWeddingMember(c.env.DB, {
     wedding_id: weddingId,
     user_id: vendorUser.id,
     role: 'vendor',
     vendor_profile_id: vendorProfile?.id ?? null,
     vendor_role: category,
-    can_manage: false,
+    can_manage: isManager,
     is_financial_party: false,
   })
 
@@ -676,11 +684,12 @@ couple.post('/wedding/:id/vendors/add', async (c) => {
     } else {
       await createCoupleVendor(c.env.DB, weddingId, { name: email.split('@')[0], category, email, status: 'contacted' })
     }
-    await sendVendorInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
+    await sendVendorWelcomeInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
       email,
-      coupleName: user.name,
+      inviterName: user.name,
       weddingTitle: wedding.title,
-      weddingDate: wedding.date,
+      weddingDate: wedding.date ? formatDate(wedding.date) : null,
+      vendorRole: category,
     }).catch((e: any) => console.error('[couple] vendor invite send failed', e.message))
   }
 
@@ -1032,7 +1041,7 @@ couple.post('/wedding/:id/edit', async (c) => {
     if (!editableCoupleUserIds.has(userId)) return c.text('Forbidden', 403)
   }
 
-  await updateWedding(c.env.DB, weddingId, {
+  const weddingUpdates: Record<string, string | number | null> = {
     title,
     date: str('date'),
     time: str('time'),
@@ -1045,7 +1054,55 @@ couple.post('/wedding/:id/edit', async (c) => {
     timeline_notes: str('timeline_notes'),
     dress_code: str('dress_code'),
     guest_count,
-  })
+  }
+
+  // Timeline control: a managing planner/venue approves timeline changes,
+  // including the couple's. Non-timeline fields still apply immediately.
+  const COUPLE_TIMELINE_FIELDS = [
+    'date', 'time', 'reception_location', 'reception_time',
+    'getting_ready_location', 'getting_ready_time', 'timeline_notes',
+  ]
+  const currentWedding = await getWedding(c.env.DB, weddingId)
+  const changedTimelineFields = currentWedding
+    ? COUPLE_TIMELINE_FIELDS.filter(
+        (f) => (weddingUpdates[f] ?? null) !== ((currentWedding as any)[f] ?? null)
+      )
+    : []
+  let timelineDiverted = false
+  if (changedTimelineFields.length > 0) {
+    const controllers = await getTimelineControllers(c.env.DB, weddingId)
+    if (controllers.length > 0) {
+      timelineDiverted = true
+      const summary = changedTimelineFields
+        .map((f) => `${f.replace(/_/g, ' ')}: ${(currentWedding as any)?.[f] ?? '—'} → ${weddingUpdates[f] ?? '—'}`)
+        .join('; ')
+      const request = await createTimelineRequest(c.env.DB, {
+        wedding_id: weddingId,
+        requested_by_user_id: user.id,
+        requested_by_label: user.name,
+        target: 'wedding',
+        op: 'update',
+        payload: weddingUpdates,
+        summary,
+      })
+      await c.env.EMAIL_QUEUE.send({
+        type: 'notify_timeline_change_requested',
+        payload: JSON.stringify({
+          weddingId,
+          requesterLabel: user.name,
+          summary: request.summary,
+          controllerUserIds: controllers.map((tc) => tc.user_id),
+        }),
+      }).catch((e: any) => console.error('[couple] timeline request notify enqueue failed', e.message))
+      // Apply only the non-timeline fields now.
+      const safeUpdates = { ...weddingUpdates }
+      for (const f of COUPLE_TIMELINE_FIELDS) delete safeUpdates[f]
+      await updateWedding(c.env.DB, weddingId, safeUpdates as any)
+    }
+  }
+  if (!timelineDiverted) {
+    await updateWedding(c.env.DB, weddingId, weddingUpdates as any)
+  }
 
   // Update couple contact details
   for (let i = 0; i < 10; i++) {
@@ -1064,12 +1121,18 @@ couple.post('/wedding/:id/edit', async (c) => {
   }
 
   // Notify vendors
-  await c.env.EMAIL_QUEUE.send({
-    type: 'notify_wedding_details_updated',
-    payload: JSON.stringify({ weddingId, coupleName: user.name }),
-  })
+  if (!timelineDiverted) {
+    await c.env.EMAIL_QUEUE.send({
+      type: 'notify_wedding_details_updated',
+      payload: JSON.stringify({ weddingId, coupleName: user.name }),
+    })
+  }
 
-  return c.redirect(`/wedding/${weddingId}`)
+  return c.redirect(
+    timelineDiverted
+      ? `/wedding/${weddingId}?info=${encodeURIComponent(t('weddings.timeline.sentForApproval'))}`
+      : `/wedding/${weddingId}`
+  )
 })
 
 // ─── Remove vendor (safety feature) ───

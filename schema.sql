@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
   business_name TEXT NOT NULL,
   category TEXT NOT NULL,
+  categories TEXT, -- JSON array of all vendor types; category is the primary
   phone TEXT,
   website TEXT,
   instagram TEXT,
@@ -338,6 +339,25 @@ CREATE TABLE IF NOT EXISTS service_contracts (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Timeline change requests: when a wedding has a managing planner/venue, other
+-- members' timeline edits are stored here until a controller approves them.
+CREATE TABLE IF NOT EXISTS timeline_change_requests (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  wedding_id TEXT NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
+  requested_by_user_id TEXT NOT NULL REFERENCES users(id),
+  requested_by_label TEXT,
+  target TEXT NOT NULL CHECK (target IN ('wedding', 'run_sheet')),
+  op TEXT NOT NULL DEFAULT 'update' CHECK (op IN ('create', 'update', 'delete')),
+  run_sheet_item_id TEXT,
+  vendor_profile_id TEXT REFERENCES vendor_profiles(id),
+  payload TEXT NOT NULL DEFAULT '{}',
+  summary TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'declined')),
+  decided_by_user_id TEXT REFERENCES users(id),
+  decided_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Sessions
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
@@ -507,6 +527,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_wedding ON documents(wedding_id);
 CREATE INDEX IF NOT EXISTS idx_document_shares_document ON document_shares(document_id);
 CREATE INDEX IF NOT EXISTS idx_document_shares_user ON document_shares(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_timeline_requests_wedding ON timeline_change_requests(wedding_id, status);
 CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource_type, resource_id);
 CREATE INDEX IF NOT EXISTS idx_email_queue_status ON email_queue(status, scheduled_at);

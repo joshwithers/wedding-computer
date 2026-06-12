@@ -33,6 +33,25 @@ import { TodoSection } from './checklists'
 import { appendWeddingLog, listWeddingLog } from '../../db/wedding-log'
 import { listCoupleVendors } from '../../db/couple-vendors'
 import { buildCredits, formatInstagramCredits, formatWebCredits, formatHtmlCredits } from '../../services/wedding-credits'
+import {
+  getTimelineControllers,
+  createTimelineRequest,
+  listPendingTimelineRequests,
+  getTimelineRequest,
+  decideTimelineRequest,
+} from '../../db/timeline-requests'
+import { isManagerVendor, categoriesLabel } from '../../lib/categories'
+import { sendVendorWelcomeInvite } from '../../services/auth'
+import { t } from '../../i18n'
+
+/** Wedding fields whose changes a controlling planner/venue must approve. */
+const TIMELINE_FIELDS = [
+  'date', 'time', 'duration_hours',
+  'ceremony_location', 'reception_location', 'reception_time',
+  'getting_ready_location', 'getting_ready_time', 'getting_ready_1_label',
+  'getting_ready_2_location', 'getting_ready_2_label', 'getting_ready_2_time',
+  'portrait_location', 'portrait_time', 'reception_duration_hours',
+] as const
 
 /**
  * Sync per-location calendar events for a wedding.
@@ -627,28 +646,48 @@ weddings.post('/app/weddings/:id/add-vendor', async (c) => {
   const { getVendorByUserId } = await import('../../db/vendors')
   const vendorProfile = await getVendorByUserId(c.env.DB, vendorUser.id)
 
+  // Planners and venues administer the weddings they're on.
+  const assignedRole = vendorRole ?? vendorProfile?.category ?? null
+  const isManager = vendorProfile
+    ? isManagerVendor(vendorProfile)
+    : assignedRole === 'planner' || assignedRole === 'venue'
+
   await addWeddingMember(c.env.DB, {
     wedding_id: weddingId,
     user_id: vendorUser.id,
     role: 'vendor',
     vendor_profile_id: vendorProfile?.id ?? null,
-    vendor_role: vendorRole ?? vendorProfile?.category ?? null,
-    can_manage: canManage,
+    vendor_role: assignedRole,
+    can_manage: canManage || isManager,
     is_financial_party: isFinancialParty,
   })
 
-  // Notify the vendor they've been added
-  try {
-    await c.env.EMAIL_QUEUE.send({
-      type: 'notify_vendor_added_to_wedding',
-      payload: JSON.stringify({
-        weddingId,
-        vendorEmail: email,
-        vendorName: name,
-        addedBy: vendor.business_name,
-      }),
-    })
-  } catch { /* best-effort */ }
+  if (vendorProfile) {
+    // Already on the platform — a short heads-up is enough.
+    try {
+      await c.env.EMAIL_QUEUE.send({
+        type: 'notify_vendor_added_to_wedding',
+        payload: JSON.stringify({
+          weddingId,
+          vendorEmail: email,
+          vendorName: name,
+          addedBy: vendor.business_name,
+        }),
+      })
+    } catch { /* best-effort */ }
+  } else {
+    // New to Wedding Computer — introduce the platform, not just the wedding.
+    const wedding = await getWedding(c.env.DB, weddingId)
+    if (wedding) {
+      await sendVendorWelcomeInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
+        email,
+        inviterName: vendor.business_name,
+        weddingTitle: wedding.title,
+        weddingDate: wedding.date ? formatDate(wedding.date) : null,
+        vendorRole: assignedRole,
+      }).catch((e: any) => console.error('[weddings] vendor welcome invite failed', e.message))
+    }
+  }
 
   track(c.env.DB, vendor.id, 'vendor_added', { weddingId, metadata: { vendorEmail: email } })
 
@@ -711,6 +750,18 @@ weddings.get('/app/weddings/:id', async (c) => {
     // Table might not exist yet
   }
 
+  // Timeline approvals — pending requests + whether the viewer can decide them
+  let pendingTimelineRequests: Awaited<ReturnType<typeof listPendingTimelineRequests>> = []
+  let isTimelineController = false
+  try {
+    pendingTimelineRequests = await listPendingTimelineRequests(c.env.DB, weddingId)
+    const controllers = await getTimelineControllers(c.env.DB, weddingId)
+    isTimelineController = controllers.some((tc) => tc.user_id === user.id)
+  } catch {
+    // Table might not exist yet
+  }
+  const timelinePending = c.req.query('timeline_pending')
+
   return c.html(
     <AppLayout
       title={wedding.title}
@@ -748,6 +799,46 @@ weddings.get('/app/weddings/:id', async (c) => {
             </a>
           )}
         </div>
+
+        {timelinePending && (
+          <div class="bg-papaya-100 border border-papaya-300/50 text-gray-700 text-sm rounded-xl p-3 mb-4">
+            {t('weddings.timeline.sentForApproval')}
+          </div>
+        )}
+
+        {pendingTimelineRequests.length > 0 && (
+          <div class="bg-white border border-horizon-600/30 rounded-2xl p-4 mb-6">
+            <h3 class="text-sm font-bold text-gray-900 mb-3">{t('weddings.timeline.pendingTitle')}</h3>
+            <div class="space-y-3">
+              {pendingTimelineRequests.map((req) => (
+                <div class="flex items-start justify-between gap-3 text-sm border-b border-gray-100 last:border-0 pb-3 last:pb-0">
+                  <div>
+                    <p class="text-xs text-gray-500">
+                      {t('weddings.timeline.requestedBy', { name: req.requested_by_label ?? '' })} · {formatDateTime(req.created_at)}
+                    </p>
+                    <p class="text-gray-900 mt-1">{req.summary ?? '—'}</p>
+                  </div>
+                  {isTimelineController && (
+                    <div class="flex gap-2 shrink-0">
+                      <form method="post" action={`/app/weddings/${wedding.id}/timeline-requests/${req.id}/approve`}>
+                        <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                        <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700">
+                          {t('weddings.timeline.approve')}
+                        </button>
+                      </form>
+                      <form method="post" action={`/app/weddings/${wedding.id}/timeline-requests/${req.id}/decline`}>
+                        <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                        <button type="submit" class="border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-papaya-50">
+                          {t('weddings.timeline.decline')}
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
           <div class="lg:col-span-2 space-y-6">
@@ -819,7 +910,7 @@ weddings.get('/app/weddings/:id', async (c) => {
               />
             )}
             {wedding.location && <InfoCard label="City / Region" value={wedding.location} />}
-            <InfoCard label="Your role" value={`${vendor.category.charAt(0).toUpperCase() + vendor.category.slice(1)}${membership.can_manage ? ' (manager)' : ''}`} />
+            <InfoCard label="Your role" value={`${membership.vendor_role ? membership.vendor_role.charAt(0).toUpperCase() + membership.vendor_role.slice(1) : categoriesLabel(vendor)}${membership.can_manage ? ' (manager)' : ''}`} />
             <InfoCard label="Created" value={formatDate(wedding.created_at)} />
           </div>
         </div>
@@ -1299,6 +1390,44 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       updateData.duration_hours = durationHours && !isNaN(durationHours) ? durationHours : null
     }
 
+    // Timeline control: when a managing planner/venue is on this wedding,
+    // timeline changes from anyone else are queued for their approval.
+    const touchesTimeline = TIMELINE_FIELDS.some(
+      (f) =>
+        f in updateData &&
+        ((updateData[f] ?? null) !== ((oldWedding as any)?.[f] ?? null))
+    )
+    if (touchesTimeline) {
+      const controllers = await getTimelineControllers(c.env.DB, weddingId)
+      const isController = controllers.some((tc) => tc.user_id === user.id)
+      if (controllers.length > 0 && !isController) {
+        const requesterVendor = c.get('vendor')!
+        const changes = oldWedding
+          ? diffWeddingChanges(oldWedding, updateData as any)
+          : []
+        const request = await createTimelineRequest(c.env.DB, {
+          wedding_id: weddingId,
+          requested_by_user_id: user.id,
+          requested_by_label: requesterVendor.business_name,
+          target: 'wedding',
+          op: 'update',
+          payload: updateData,
+          summary: changes.length > 0 ? changes.join('; ') : null,
+        })
+        await appendWeddingLog(c.env.DB, weddingId, user.id, 'Timeline change requested', request.summary).catch(() => {})
+        await c.env.EMAIL_QUEUE.send({
+          type: 'notify_timeline_change_requested',
+          payload: JSON.stringify({
+            weddingId,
+            requesterLabel: requesterVendor.business_name,
+            summary: request.summary,
+            controllerUserIds: controllers.map((tc) => tc.user_id),
+          }),
+        }).catch((e: any) => console.error('[weddings] timeline request notify enqueue failed', e.message))
+        return c.redirect(`/app/weddings/${weddingId}?timeline_pending=1`)
+      }
+    }
+
     console.log('[weddings] edit', weddingId, 'fields:', Object.keys(updateData).join(','))
     await updateWedding(c.env.DB, weddingId, updateData as any)
     console.log('[weddings] edit', weddingId, 'updateWedding succeeded')
@@ -1429,6 +1558,125 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     console.error('[weddings] edit failed:', weddingId, e.message, e.stack?.split('\n').slice(0, 3).join(' | '))
     return c.redirect(`/app/weddings/${weddingId}/edit?error=${encodeURIComponent(e.message)}`)
   }
+})
+
+// ─── Timeline change approvals ───
+
+/** Apply an approved wedding-timeline payload and resync everyone's calendars. */
+async function applyTimelinePayload(
+  db: D1Database,
+  weddingId: string,
+  payload: Record<string, any>,
+  fallbackVendorId: string,
+  ceremonyDuration: number | null
+): Promise<void> {
+  await updateWedding(db, weddingId, payload as any)
+
+  const title = typeof payload.title === 'string' ? payload.title : null
+  const weddingDate = typeof payload.date === 'string' ? payload.date : null
+  if (!title || !weddingDate) return
+
+  const num = (v: unknown, d: number) => {
+    const n = typeof v === 'string' ? parseFloat(v) : typeof v === 'number' ? v : NaN
+    return n && !isNaN(n) ? n : d
+  }
+  const timelineData = {
+    emoji: payload.emoji ?? null,
+    ceremonyTime: payload.time ?? null,
+    ceremonyDuration: ceremonyDuration ?? 1,
+    ceremonyLocation: payload.ceremony_location ?? null,
+    gettingReadyTime: payload.getting_ready_time ?? null,
+    gettingReadyLocation: payload.getting_ready_location ?? null,
+    gettingReady1Label: payload.getting_ready_1_label ?? null,
+    gettingReady2Time: payload.getting_ready_2_time ?? null,
+    gettingReady2Location: payload.getting_ready_2_location ?? null,
+    gettingReady2Label: payload.getting_ready_2_label ?? null,
+    portraitTime: payload.portrait_time ?? null,
+    portraitLocation: payload.portrait_location ?? null,
+    receptionTime: payload.reception_time ?? null,
+    receptionLocation: payload.reception_location ?? null,
+    receptionDuration: num(payload.reception_duration_hours, 3),
+  }
+
+  const vendorMembers = await db
+    .prepare(
+      `SELECT DISTINCT vendor_profile_id FROM wedding_members
+       WHERE wedding_id = ? AND status = 'active' AND vendor_profile_id IS NOT NULL`
+    )
+    .bind(weddingId)
+    .all<{ vendor_profile_id: string }>()
+    .then((r) => r.results)
+
+  for (const vm of vendorMembers) {
+    try {
+      await syncWeddingCalendarEvents(db, vm.vendor_profile_id, weddingId, title, weddingDate, timelineData)
+    } catch (err) {
+      console.error(`[weddings] approved-change calendar sync failed for ${vm.vendor_profile_id}:`, err)
+    }
+  }
+  if (vendorMembers.length === 0) {
+    await syncWeddingCalendarEvents(db, fallbackVendorId, weddingId, title, weddingDate, timelineData)
+  }
+}
+
+weddings.post('/app/weddings/:id/timeline-requests/:rid/:decision{approve|decline}', async (c) => {
+  const user = c.get('user')
+  const vendor = c.get('vendor')!
+  const weddingId = c.req.param('id')
+  const requestId = c.req.param('rid')
+  const decision = c.req.param('decision') === 'approve' ? 'approved' : 'declined'
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership) return c.text('Not found', 404)
+
+  const controllers = await getTimelineControllers(c.env.DB, weddingId)
+  if (!controllers.some((tc) => tc.user_id === user.id)) return c.text('Not found', 404)
+
+  const request = await getTimelineRequest(c.env.DB, weddingId, requestId)
+  if (!request || request.status !== 'pending') {
+    return c.redirect(`/app/weddings/${weddingId}`)
+  }
+
+  await decideTimelineRequest(c.env.DB, requestId, user.id, decision)
+
+  if (decision === 'approved' && request.target === 'wedding') {
+    let payload: Record<string, any> = {}
+    try {
+      payload = JSON.parse(request.payload)
+    } catch {
+      // empty payload — nothing to apply
+    }
+    const wedding = await getWedding(c.env.DB, weddingId)
+    try {
+      await applyTimelinePayload(c.env.DB, weddingId, payload, vendor.id, wedding?.duration_hours ?? 1)
+    } catch (err) {
+      console.error('[weddings] applying approved timeline change failed:', err)
+      return c.redirect(`/app/weddings/${weddingId}?error=${encodeURIComponent('Applying the change failed')}`)
+    }
+    c.executionCtx.waitUntil(
+      geocodeWeddingLocation(c.env, weddingId).catch((err) => console.error('[weddings] geocode failed:', err))
+    )
+    c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
+  }
+
+  await appendWeddingLog(
+    c.env.DB, weddingId, user.id,
+    decision === 'approved' ? 'Timeline change approved' : 'Timeline change declined',
+    request.summary
+  ).catch(() => {})
+
+  await c.env.EMAIL_QUEUE.send({
+    type: 'notify_timeline_change_decided',
+    payload: JSON.stringify({
+      weddingId,
+      requesterUserId: request.requested_by_user_id,
+      deciderLabel: vendor.business_name,
+      approved: decision === 'approved',
+      summary: request.summary,
+    }),
+  }).catch((e: any) => console.error('[weddings] timeline decision notify enqueue failed', e.message))
+
+  return c.redirect(`/app/weddings/${weddingId}`)
 })
 
 // ─── Promote contact to wedding ───

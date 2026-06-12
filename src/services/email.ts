@@ -318,6 +318,81 @@ export function vendorInviteEmail(data: {
   `, { preheader: `${esc(data.coupleName)} invited you to join their wedding on Wedding Computer` })
 }
 
+/**
+ * First-touch invite for a vendor who has never used Wedding Computer.
+ * They almost certainly haven't heard of us — lead with the wedding they're
+ * already working on, then explain what we are and why it's free.
+ */
+export function vendorWelcomeInviteEmail(data: {
+  inviterName: string
+  weddingTitle: string
+  weddingDate: string | null
+  vendorRole: string | null
+  loginUrl: string
+}): string {
+  const role = data.vendorRole ? ` as the ${esc(data.vendorRole)}` : ''
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">You're on the team for ${esc(data.weddingTitle)}</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      ${esc(data.inviterName)} is organising <strong>${esc(data.weddingTitle)}</strong>${data.weddingDate ? ` on ${esc(data.weddingDate)}` : ''} on Wedding Computer,
+      and has added you${role}. Everything you need for the day is waiting for you — here's what that means.
+    </p>
+    <div style="background:#faf5ef;border-radius:12px;padding:16px 18px;margin-bottom:20px;font-size:14px;line-height:1.7;color:#333;">
+      <p style="margin:0 0 12px;"><strong>One source of truth for the day.</strong> The date, times, locations, run sheet and who else is working this wedding — always current. No more "what time is bump-in?" texts the week before.</p>
+      <p style="margin:0 0 12px;"><strong>Free tools for your whole business.</strong> Enquiry forms, contacts, calendar, invoicing, contracts and a booking pipeline — a full vendor CRM, free. Not a trial, not "early access". Free.</p>
+      <p style="margin:0;"><strong>Your data stays yours.</strong> Export everything any time, or sync it straight to your own files. Leaving is as easy as joining — which is why people stay.</p>
+    </div>
+    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">See ${esc(data.weddingTitle)}</a>
+    <p style="margin:24px 0 0;font-size:13px;color:#999;line-height:1.5;">
+      This link signs you in — no password needed — and is valid for 7 days. After that, sign in at wedding.computer with this email address.
+      Setting up your profile takes about a minute.
+    </p>
+    <p style="margin:16px 0 0;font-size:13px;color:#999;line-height:1.5;">
+      Wedding Computer is built by working wedding vendors who got tired of every wedding's details living in six different inboxes.
+      If you weren't expecting this, you can safely ignore it — ${esc(data.inviterName)} added your email to their wedding team.
+    </p>
+  `, { preheader: `${esc(data.inviterName)} added you to ${esc(data.weddingTitle)} — here's what Wedding Computer is` })
+}
+
+export function timelineChangeRequestedEmail(data: {
+  managerName: string
+  requesterLabel: string
+  weddingTitle: string
+  summary: string | null
+  appUrl: string
+  weddingId: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Timeline change awaiting your approval</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      Hi ${esc(data.managerName)}, ${esc(data.requesterLabel)} proposed a change to the timeline for <strong>${esc(data.weddingTitle)}</strong>.
+      Nothing is applied until you approve it.
+    </p>
+    ${data.summary ? `<div style="background:#faf5ef;border-radius:12px;padding:14px 16px;margin-bottom:20px;font-size:14px;line-height:1.7;color:#333;">${esc(data.summary)}</div>` : ''}
+    <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">Review change</a>
+  `, { preheader: `${esc(data.requesterLabel)} proposed a timeline change for ${esc(data.weddingTitle)}` })
+}
+
+export function timelineChangeDecidedEmail(data: {
+  requesterName: string
+  deciderLabel: string
+  weddingTitle: string
+  approved: boolean
+  summary: string | null
+  appUrl: string
+  weddingId: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Timeline change ${data.approved ? 'approved' : 'declined'}</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      Hi ${esc(data.requesterName)}, ${esc(data.deciderLabel)} ${data.approved ? 'approved' : 'declined'} your timeline change for <strong>${esc(data.weddingTitle)}</strong>.
+      ${data.approved ? "It's live now — calendars for everyone on the wedding have been updated." : 'The timeline is unchanged. Get in touch with them if you want to talk it through.'}
+    </p>
+    ${data.summary ? `<div style="background:#faf5ef;border-radius:12px;padding:14px 16px;margin-bottom:20px;font-size:14px;line-height:1.7;color:#333;">${esc(data.summary)}</div>` : ''}
+    <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View wedding</a>
+  `, { preheader: `Your timeline change for ${esc(data.weddingTitle)} was ${data.approved ? 'approved' : 'declined'}` })
+}
+
 export function magicLinkEmail(url: string): string {
   return emailWrapper(`
     <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#1a1a1a;">Sign in to Wedding Computer</h1>

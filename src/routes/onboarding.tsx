@@ -10,6 +10,7 @@ import { linkPendingInvites } from '../db/couple-vendors'
 import { ensureCoupleContact } from '../services/couple-contact'
 import { requireString, trimOrNull } from '../lib/validation'
 import { VENDOR_CATEGORIES } from '../types'
+import { t } from '../i18n'
 import { categorySetup } from '../lib/onboarding'
 
 const onboarding = new Hono<Env>()
@@ -167,22 +168,23 @@ onboarding.get('/onboarding/business', async (c) => {
               />
             </div>
             <div>
-              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="category">
+              <span class="block text-sm font-bold text-gray-700 mb-1.5">
                 What do you do?
-              </label>
-              <select
-                id="category"
-                name="category"
-                required
-                class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
-              >
-                <option value="">Select a category</option>
+              </span>
+              <p class="text-xs text-gray-500 mb-2">{t('settings.categories.help')}</p>
+              <div class="grid grid-cols-2 gap-2">
                 {VENDOR_CATEGORIES.map((cat) => (
-                  <option value={cat}>
-                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                  </option>
+                  <label class="flex items-center gap-2 border border-gray-300 rounded-xl px-3 py-2.5 text-sm cursor-pointer hover:border-horizon-600/40 has-[:checked]:border-horizon-600 has-[:checked]:bg-horizon-50">
+                    <input
+                      type="checkbox"
+                      name="category"
+                      value={cat}
+                      class="rounded border-gray-300 text-horizon-600 focus:ring-horizon-600"
+                    />
+                    <span>{cat.charAt(0).toUpperCase() + cat.slice(1)}</span>
+                  </label>
                 ))}
-              </select>
+              </div>
             </div>
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5" for="email_handle">
@@ -222,15 +224,20 @@ onboarding.get('/onboarding/business', async (c) => {
 
 onboarding.post('/onboarding/business', async (c) => {
   const user = c.get('user')
-  const body = await c.req.parseBody()
+  const body = await c.req.parseBody({ all: true })
 
   try {
     const businessName = requireString(body.business_name, 'Business name')
-    const category = requireString(body.category, 'Category')
 
-    if (!VENDOR_CATEGORIES.includes(category as any)) {
-      return c.redirect('/onboarding/business?error=Invalid+category')
+    const rawCats = body.category
+    const selected = (Array.isArray(rawCats) ? rawCats : rawCats ? [rawCats] : [])
+      .map((v) => String(v).trim().toLowerCase())
+    // Whitelist and keep canonical order; the first becomes the primary type.
+    const categories = VENDOR_CATEGORIES.filter((cat) => selected.includes(cat))
+    if (categories.length === 0) {
+      return c.redirect('/onboarding/business?error=Pick+at+least+one+category')
     }
+    const category = categories[0]
 
     // Save name if provided (new user)
     const name = typeof body.name === 'string' ? body.name.trim() : ''
@@ -267,7 +274,7 @@ onboarding.post('/onboarding/business', async (c) => {
       }
     }
 
-    const vendor = await createVendor(c.env.DB, user.id, businessName, category, emailHandle, referrerVendorId)
+    const vendor = await createVendor(c.env.DB, user.id, businessName, category, emailHandle, referrerVendorId, categories)
     if (referrerVendorId) {
       await createReferral(c.env.DB, referrerVendorId, vendor.id)
     }
@@ -283,7 +290,7 @@ onboarding.post('/onboarding/business', async (c) => {
     deleteCookie(c, 'wc_ref', { path: '/' })
     await c.env.EMAIL_QUEUE.send({
       type: 'notify_admin_signup',
-      payload: JSON.stringify({ kind: 'vendor', name: user.name, email: user.email, businessName, category }),
+      payload: JSON.stringify({ kind: 'vendor', name: user.name, email: user.email, businessName, category: categories.join(', ') }),
     }).catch((e: any) => console.error('[ONBOARDING] admin signup enqueue failed', e.message))
     return c.redirect('/onboarding/profile')
   } catch (e: any) {

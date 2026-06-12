@@ -17,6 +17,8 @@ import {
   weddingDetailsUpdatedEmail,
   adminSignupEmail,
   dailyDigestEmail,
+  timelineChangeRequestedEmail,
+  timelineChangeDecidedEmail,
 } from './email'
 import { getWedding, getWeddingMembers } from '../db/weddings'
 import { getVendorWithEmail } from '../db/vendors'
@@ -611,6 +613,62 @@ export async function notifyWeddingDetailsUpdated(env: NotifyEnv, data: {
       vendorId: vendor.vendor_profile_id,
     })
   }
+}
+
+export async function notifyTimelineChangeRequested(env: NotifyEnv, data: {
+  weddingId: string
+  requesterLabel: string
+  summary: string | null
+  controllerUserIds: string[]
+}): Promise<void> {
+  const wedding = await getWedding(env.db, data.weddingId)
+  if (!wedding) return
+
+  for (const userId of data.controllerUserIds) {
+    const recipient = await recipientById(env.db, userId)
+    if (!recipient) continue
+    await deliver(env, {
+      key: 'wedding_updates',
+      recipient,
+      subject: `Timeline change for ${wedding.title} needs your approval`,
+      html: timelineChangeRequestedEmail({
+        managerName: recipient.name,
+        requesterLabel: data.requesterLabel,
+        weddingTitle: wedding.title,
+        summary: data.summary,
+        appUrl: env.appUrl,
+        weddingId: data.weddingId,
+      }),
+    })
+  }
+}
+
+export async function notifyTimelineChangeDecided(env: NotifyEnv, data: {
+  weddingId: string
+  requesterUserId: string
+  deciderLabel: string
+  approved: boolean
+  summary: string | null
+}): Promise<void> {
+  const wedding = await getWedding(env.db, data.weddingId)
+  if (!wedding) return
+
+  const recipient = await recipientById(env.db, data.requesterUserId)
+  if (!recipient) return
+  await deliver(env, {
+    key: 'wedding_updates',
+    recipient,
+    subject: `Your timeline change for ${wedding.title} was ${data.approved ? 'approved' : 'declined'}`,
+    html: timelineChangeDecidedEmail({
+      requesterName: recipient.name,
+      deciderLabel: data.deciderLabel,
+      weddingTitle: wedding.title,
+      approved: data.approved,
+      summary: data.summary,
+      appUrl: env.appUrl,
+      weddingId: data.weddingId,
+    }),
+  })
 }
 
 // ─── Admin notifications ───

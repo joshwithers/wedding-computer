@@ -27,16 +27,18 @@ export async function createVendor(
   businessName: string,
   category: string,
   emailHandle?: string | null,
-  referrerVendorId?: string | null
+  referrerVendorId?: string | null,
+  categories?: string[] | null
 ): Promise<VendorProfile> {
   const referralCode = await generateToken(8)
+  const all = categories && categories.length > 0 ? categories : [category]
   const result = await db
     .prepare(
-      `INSERT INTO vendor_profiles (user_id, business_name, category, email_handle, referral_code, referred_by_vendor_id)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO vendor_profiles (user_id, business_name, category, categories, email_handle, referral_code, referred_by_vendor_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
-    .bind(userId, businessName, category, emailHandle ?? null, referralCode, referrerVendorId ?? null)
+    .bind(userId, businessName, category, JSON.stringify(all), emailHandle ?? null, referralCode, referrerVendorId ?? null)
     .first<VendorProfile>()
   return result!
 }
@@ -138,6 +140,7 @@ export async function updateVendor(
       VendorProfile,
       | 'business_name'
       | 'category'
+      | 'categories'
       | 'phone'
       | 'website'
       | 'instagram'

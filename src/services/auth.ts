@@ -2,7 +2,7 @@ import { generateToken } from '../lib/crypto'
 import type { User, Session } from '../types'
 import { getUserByEmail, createUser } from '../db/users'
 import { createSession } from '../db/sessions'
-import { sendEmailMessage, magicLinkEmail, coupleInviteEmail, vendorInviteEmail } from './email'
+import { sendEmailMessage, magicLinkEmail, coupleInviteEmail, vendorInviteEmail, vendorWelcomeInviteEmail } from './email'
 
 const MAGIC_LINK_TTL = 60 * 15 // 15 minutes
 const SESSION_TTL = 60 * 60 * 24 * 30 // 30 days
@@ -150,6 +150,49 @@ export async function sendVendorInvite(
       coupleName: data.coupleName,
       weddingTitle: data.weddingTitle,
       weddingDate: data.weddingDate,
+      loginUrl,
+    }),
+    isSystem: true,
+  })
+}
+
+/**
+ * First-touch invite for a vendor with no Wedding Computer profile yet —
+ * introduces the platform before the wedding context, since they've almost
+ * certainly never heard of us. Token lives 7 days (cold recipients don't
+ * open email within 15 minutes), with a plain-login fallback after that.
+ */
+export async function sendVendorWelcomeInvite(
+  db: D1Database,
+  kv: KVNamespace,
+  resendApiKey: string,
+  appUrl: string,
+  data: {
+    email: string
+    inviterName: string
+    weddingTitle: string
+    weddingDate: string | null
+    vendorRole: string | null
+  }
+): Promise<void> {
+  const token = await generateToken(32)
+  await kv.put(
+    `magic:${token}`,
+    JSON.stringify({ email: data.email.toLowerCase() }),
+    { expirationTtl: 60 * 60 * 24 * 7 }
+  )
+  const loginUrl = `${appUrl}/login/verify?token=${token}`
+  await sendEmailMessage({
+    db,
+    resendApiKey,
+    vendorId: null,
+    to: data.email,
+    subject: `${data.inviterName} added you to ${data.weddingTitle} — here's what that means`,
+    html: vendorWelcomeInviteEmail({
+      inviterName: data.inviterName,
+      weddingTitle: data.weddingTitle,
+      weddingDate: data.weddingDate,
+      vendorRole: data.vendorRole,
       loginUrl,
     }),
     isSystem: true,

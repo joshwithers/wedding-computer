@@ -51,7 +51,7 @@ import { StorageConflictError } from './storage/conflicts'
 import { sendEmailMessage, EmailSendError, broadcastEmail, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail, enquiryConfirmationEmail, referralRewardEmail } from './services/email'
 import { getBroadcast } from './db/broadcast'
 import { handleInboundEmail } from './services/inbound-email'
-import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
+import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, notifyTimelineChangeRequested, notifyTimelineChangeDecided, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
 import { aggregateBusynessScores, aggregateDemandHistory } from './db/busyness'
 import { geocodePendingLocations } from './services/geocode'
 import { runWithI18n, resolveLocale } from './i18n'
@@ -680,6 +680,20 @@ export default {
             JSON.parse(body.payload)
           )
           console.log('[QUEUE] notify_wedding_details_updated processed')
+
+        } else if (body.type === 'notify_timeline_change_requested') {
+          await notifyTimelineChangeRequested(
+            notifyEnv(env),
+            JSON.parse(body.payload)
+          )
+          console.log('[QUEUE] notify_timeline_change_requested processed')
+
+        } else if (body.type === 'notify_timeline_change_decided') {
+          await notifyTimelineChangeDecided(
+            notifyEnv(env),
+            JSON.parse(body.payload)
+          )
+          console.log('[QUEUE] notify_timeline_change_decided processed')
 
         } else if (body.type === 'notify_payment_received') {
           await notifyPaymentReceived(

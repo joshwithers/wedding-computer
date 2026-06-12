@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { Env } from '../../types'
+import { vendorCategories } from '../../lib/categories'
 
 const directory = new Hono<Env>()
 
@@ -46,7 +47,10 @@ directory.get('/api/directory/vendors', async (c) => {
   const binds: (string | number)[] = []
 
   if (category) {
-    conditions.push('vp.category = ?')
+    // Match any of the vendor's types, not just the primary.
+    conditions.push(
+      `EXISTS (SELECT 1 FROM json_each(COALESCE(vp.categories, json_array(vp.category))) j WHERE j.value = ?)`
+    )
     binds.push(category)
   }
   if (city) {
@@ -74,7 +78,7 @@ directory.get('/api/directory/vendors', async (c) => {
   // Fetch page
   const result = await c.env.DB
     .prepare(
-      `SELECT vp.id, vp.business_name, vp.category, vp.location_city, vp.location_state, vp.location_country, vp.bio, vp.website, vp.instagram, vp.logo_r2_key, u.avatar_url
+      `SELECT vp.id, vp.business_name, vp.category, vp.categories, vp.location_city, vp.location_state, vp.location_country, vp.bio, vp.website, vp.instagram, vp.logo_r2_key, u.avatar_url
        FROM vendor_profiles vp
        JOIN users u ON u.id = vp.user_id
        WHERE ${where}
@@ -86,6 +90,7 @@ directory.get('/api/directory/vendors', async (c) => {
       id: string
       business_name: string
       category: string
+      categories: string | null
       location_city: string | null
       location_state: string | null
       location_country: string | null
@@ -97,8 +102,11 @@ directory.get('/api/directory/vendors', async (c) => {
     }>()
 
   const appUrl = c.env.APP_URL
-  const vendors = result.results.map(({ logo_r2_key, ...v }) => ({
+  // `category` stays a single string (consumers depend on the shape);
+  // `categories` is additive — every type the vendor works as.
+  const vendors = result.results.map(({ logo_r2_key, categories, ...v }) => ({
     ...v,
+    categories: vendorCategories({ category: v.category, categories }),
     logo_url: logo_r2_key ? `${appUrl}/vendor-logo/${v.id}` : null,
   }))
 
@@ -117,7 +125,7 @@ directory.get('/api/directory/vendors/:id', async (c) => {
 
   const row = await c.env.DB
     .prepare(
-      `SELECT vp.id, vp.business_name, vp.category, vp.location_city, vp.location_state, vp.location_country, vp.bio, vp.website, vp.instagram, vp.phone, vp.ceremony_types, vp.logo_r2_key, u.avatar_url
+      `SELECT vp.id, vp.business_name, vp.category, vp.categories, vp.location_city, vp.location_state, vp.location_country, vp.bio, vp.website, vp.instagram, vp.phone, vp.ceremony_types, vp.logo_r2_key, u.avatar_url
        FROM vendor_profiles vp
        JOIN users u ON u.id = vp.user_id
        WHERE vp.id = ? AND vp.directory_listed = 1 AND u.deleted_at IS NULL`
@@ -127,6 +135,7 @@ directory.get('/api/directory/vendors/:id', async (c) => {
       id: string
       business_name: string
       category: string
+      categories: string | null
       location_city: string | null
       location_state: string | null
       location_country: string | null
@@ -143,10 +152,11 @@ directory.get('/api/directory/vendors/:id', async (c) => {
     return c.json({ error: 'Vendor not found' }, 404)
   }
 
-  const { logo_r2_key, ...vendor } = row
+  const { logo_r2_key, categories, ...vendor } = row
   return c.json({
     vendor: {
       ...vendor,
+      categories: vendorCategories({ category: vendor.category, categories }),
       logo_url: logo_r2_key ? `${c.env.APP_URL}/vendor-logo/${vendor.id}` : null,
     },
   })
@@ -155,12 +165,13 @@ directory.get('/api/directory/vendors/:id', async (c) => {
 // ─── GET /api/directory/categories — Category counts ───
 
 directory.get('/api/directory/categories', async (c) => {
+  // A multi-type vendor counts towards each of their categories.
   const result = await c.env.DB
     .prepare(
-      `SELECT category, COUNT(*) as count
-       FROM vendor_profiles
-       WHERE directory_listed = 1
-       GROUP BY category
+      `SELECT j.value AS category, COUNT(*) as count
+       FROM vendor_profiles vp, json_each(COALESCE(vp.categories, json_array(vp.category))) j
+       WHERE vp.directory_listed = 1
+       GROUP BY j.value
        ORDER BY count DESC`
     )
     .all<{ category: string; count: number }>()
