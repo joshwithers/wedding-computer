@@ -25,6 +25,7 @@ import { exportWeddingLogMarkdown } from '../db/wedding-log'
 import { exportWeddingVendorsMarkdown, vendorsCachedData } from '../db/wedding-vendors-export'
 import { listRunSheetItems } from '../db/run-sheet'
 import { listPendingTimelineRequests } from '../db/timeline-requests'
+import { getVendorsDocContent } from '../db/wedding-docs'
 
 export type PushResult = {
   folder: string
@@ -145,6 +146,33 @@ export async function pushWeddingFiles(
     console.error(`[storage] FAILED push notes.md ${wedding.id}:`, err.message)
   }
 
+  // 4b. team.md — the vendors-only collaborative doc (shared across vendors,
+  // two-way; the couple never sees this file).
+  try {
+    const teamBody = await getVendorsDocContent(db, wedding.id)
+    const teamIndexRow = await db
+      .prepare(
+        "SELECT id FROM file_index WHERE vendor_id = ? AND entity_type = 'doc' AND entity_id = ?"
+      )
+      .bind(vendorId, wedding.id)
+      .first()
+    if (teamBody || teamIndexRow) {
+      const body = teamBody ?? ''
+      const md = serializeMarkdown({
+        frontmatter: { wedding: wedding.title, wedding_id: wedding.id, scope: 'vendors' },
+        body,
+      })
+      const cached = JSON.stringify({ sha: await gitBlobSha(body) })
+      if (
+        await writeCompanion(db, storage, vendorId, wedding.id, 'doc', folder + 'team.md', md, cached)
+      ) {
+        wrote.push('team.md')
+      }
+    }
+  } catch (err: any) {
+    console.error(`[storage] FAILED push team.md ${wedding.id}:`, err.message)
+  }
+
   // 5. vendors.md — the wedding team (generated, read-only)
   try {
     const md = await exportWeddingVendorsMarkdown(db, wedding, vendorId)
@@ -245,7 +273,7 @@ async function writeCompanion(
   storage: StorageBackend,
   vendorId: string,
   weddingId: string,
-  entityType: 'todo' | 'log' | 'timeline' | 'notes' | 'vendors',
+  entityType: 'todo' | 'log' | 'timeline' | 'notes' | 'vendors' | 'doc',
   path: string,
   content: string,
   cachedData: string | null = null

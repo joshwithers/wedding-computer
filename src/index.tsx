@@ -11,6 +11,8 @@ import dashboard from './routes/vendor/dashboard'
 import settings from './routes/vendor/settings'
 import contacts from './routes/vendor/contacts'
 import weddings from './routes/vendor/weddings'
+import weddingDocs from './routes/vendor/wedding-docs'
+import weddingWebLinks from './routes/vendor/web-links'
 import formEditor from './routes/vendor/form'
 import calendarRoute from './routes/vendor/calendar'
 import invoices from './routes/vendor/invoices'
@@ -343,6 +345,8 @@ app.route('/', dashboard)
 app.route('/', settings)
 app.route('/', contacts)
 app.route('/', weddings)
+app.route('/', weddingDocs)
+app.route('/', weddingWebLinks)
 app.route('/', formEditor)
 app.route('/', calendarRoute)
 app.route('/', invoices)

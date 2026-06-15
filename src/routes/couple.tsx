@@ -15,6 +15,13 @@ import { isManagerVendor } from '../lib/categories'
 import { weddingDisplayTitle } from '../lib/wedding-display'
 import { createTimelineRequest, getTimelineControllers } from '../db/timeline-requests'
 import { t } from '../i18n'
+import { WeddingDoc } from '../views/wedding-doc'
+import { loadDocTabs } from '../db/wedding-docs'
+import { isDocScope } from '../services/doc-permissions'
+import { docSave, docHeartbeat, docClaim, docRelease } from './wedding-docs-handlers'
+import { WebLinks } from '../views/web-links'
+import { listWebLinks } from '../db/web-links'
+import { addLink, togglePin, removeLink } from './web-links-handlers'
 import { ensureCoupleContact } from '../services/couple-contact'
 import { isValidEmail } from '../lib/validation'
 import { consumeRateLimit } from '../middleware/rate-limit'
@@ -146,6 +153,14 @@ couple.get('/wedding/:id', async (c) => {
   // Members for collaboration toggle
   const members = await getWeddingMembers(c.env.DB, weddingId)
   const platformVendorCount = members.filter((m) => m.role === 'vendor').length
+
+  // Collaborative scoped docs — Everyone (read-only) + Couple-only (editable)
+  const docTabs = membership.role === 'couple'
+    ? await loadDocTabs(c.env.DB, weddingId, membership, user.id)
+    : []
+
+  // Web links (galleries, Pinterest, playlists…)
+  const webLinks = await listWebLinks(c.env.DB, weddingId)
 
   // Documents
   const documents = await listDocumentsForWedding(c.env.DB, weddingId, user.id)
@@ -437,51 +452,24 @@ couple.get('/wedding/:id', async (c) => {
           </div>
         </section>
 
-        {wedding.notes && (
+        {docTabs.length > 0 && (
           <section>
-            <h2 class="text-sm font-bold text-gray-500 mb-3">Notes from your vendor</h2>
-            <div class="bg-white border border-papaya-300/30 rounded-2xl p-5">
-              <div id="vendor-notes-preview" class="md-preview text-sm text-gray-700 min-h-[40px]">
-                <p class="text-gray-400 italic">Loading...</p>
-              </div>
-            </div>
-            <style dangerouslySetInnerHTML={{ __html: `
-              .md-preview h1 { font-size: 1.5em; font-weight: 700; margin: 1em 0 0.5em; }
-              .md-preview h2 { font-size: 1.25em; font-weight: 700; margin: 1em 0 0.5em; }
-              .md-preview h3 { font-size: 1.1em; font-weight: 700; margin: 0.75em 0 0.4em; }
-              .md-preview p { margin: 0.5em 0; }
-              .md-preview ul, .md-preview ol { margin: 0.5em 0; padding-left: 1.5em; }
-              .md-preview ul { list-style: disc; }
-              .md-preview ol { list-style: decimal; }
-              .md-preview li { margin: 0.25em 0; }
-              .md-preview a { color: #0066E6; text-decoration: underline; }
-              .md-preview strong { font-weight: 700; }
-              .md-preview em { font-style: italic; }
-              .md-preview code { background: #f3f4f6; padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.9em; }
-              .md-preview pre { background: #f3f4f6; padding: 0.75em 1em; border-radius: 8px; overflow-x: auto; margin: 0.75em 0; }
-              .md-preview pre code { background: none; padding: 0; }
-              .md-preview blockquote { border-left: 3px solid #d1d5db; padding-left: 1em; color: #6b7280; margin: 0.75em 0; }
-              .md-preview hr { border: none; border-top: 1px solid #e5e7eb; margin: 1em 0; }
-            ` }} />
-            <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-            <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
-            <script dangerouslySetInnerHTML={{ __html: `
-(function() {
-  function safeMarkdown(src) {
-    if (!src) return '';
-    if (typeof marked === "undefined" || !marked.parse || !window.DOMPurify) return '';
-    return DOMPurify.sanitize(marked.parse(src));
-  }
-  function render() {
-    var el = document.getElementById("vendor-notes-preview");
-    if (!el || typeof marked === "undefined") return;
-    var src = ${JSON.stringify(wedding.notes)};
-    el.innerHTML = safeMarkdown(src);
-  }
-  if (typeof marked !== "undefined") render();
-  else window.addEventListener("load", render);
-})();
-            ` }} />
+            <WeddingDoc
+              tabs={docTabs}
+              baseUrl={`/wedding/${weddingId}/docs`}
+              csrfToken={c.get('csrfToken')}
+            />
+          </section>
+        )}
+
+        {membership.role === 'couple' && (
+          <section>
+            <WebLinks
+              links={webLinks}
+              basePath={`/wedding/${weddingId}`}
+              currentUserId={user.id}
+              canManage={membership.can_manage === 1}
+            />
           </section>
         )}
 
@@ -834,6 +822,78 @@ couple.post('/wedding/:id/visibility', async (c) => {
   })
 
   return c.redirect(`/wedding/${weddingId}`)
+})
+
+// ─── Collaborative scoped docs (couple side) ───
+// Shared handlers enforce the per-scope gate; the route only resolves the
+// couple's membership. Couples write the couple-only doc; the shared doc is
+// read-only to them (canWriteDoc gates it), and the vendors-only doc is hidden.
+
+async function coupleDocMembership(c: any, weddingId: string) {
+  const user = c.get('user')
+  if (!user) return null
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership || membership.role !== 'couple') return null
+  return { user, membership }
+}
+
+couple.post('/wedding/:id/docs/:scope', async (c) => {
+  const weddingId = c.req.param('id')
+  const scope = c.req.param('scope')
+  if (!isDocScope(scope)) return c.json({ error: 'bad scope' }, 400)
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.json({ error: 'forbidden' }, 403)
+  return docSave(c, weddingId, scope, ctx.membership, ctx.user)
+})
+
+couple.post('/wedding/:id/docs/:scope/heartbeat', async (c) => {
+  const weddingId = c.req.param('id')
+  const scope = c.req.param('scope')
+  if (!isDocScope(scope)) return c.json({ error: 'bad scope' }, 400)
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.json({ error: 'forbidden' }, 403)
+  return docHeartbeat(c, weddingId, scope, ctx.membership, ctx.user)
+})
+
+couple.post('/wedding/:id/docs/:scope/claim', async (c) => {
+  const weddingId = c.req.param('id')
+  const scope = c.req.param('scope')
+  if (!isDocScope(scope)) return c.json({ error: 'bad scope' }, 400)
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.json({ error: 'forbidden' }, 403)
+  return docClaim(c, weddingId, scope, ctx.membership, ctx.user)
+})
+
+couple.post('/wedding/:id/docs/:scope/release', async (c) => {
+  const weddingId = c.req.param('id')
+  const scope = c.req.param('scope')
+  if (!isDocScope(scope)) return c.json({ error: 'bad scope' }, 400)
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.json({ error: 'forbidden' }, 403)
+  return docRelease(c, weddingId, scope, ctx.membership, ctx.user)
+})
+
+// ─── Web links (couple side) ───
+
+couple.post('/wedding/:id/links', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return addLink(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`)
+})
+
+couple.post('/wedding/:id/links/:linkId/pin', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return togglePin(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('linkId'))
+})
+
+couple.post('/wedding/:id/links/:linkId/delete', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return removeLink(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('linkId'))
 })
 
 // ─── Wedding details edit ───
@@ -1986,9 +2046,10 @@ const CoupleLayout: FC<LayoutProps> = ({ title, user, wedding, csrfToken, childr
   <html lang="en">
     <head>
       <SharedHead title={title} />
+      <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
       <meta name="csrf-token" content={csrfToken} />
     </head>
-    <body class="bg-papaya-50 text-gray-900 antialiased font-sans">
+    <body class="bg-papaya-50 text-gray-900 antialiased font-sans" hx-headers={`{"X-CSRF-Token": "${csrfToken}"}`}>
       <header class="bg-grapefruit-700 px-4 sm:px-8 py-4">
         <div class="max-w-3xl mx-auto flex items-center justify-between">
           <a href={`/wedding/${wedding.id}`} class="flex items-center gap-2 text-sm sm:text-base font-bold tracking-tight text-papaya whitespace-nowrap">

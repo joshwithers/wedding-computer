@@ -24,6 +24,9 @@ import { getVendorByIcalToken } from '../db/vendors'
 import { isProVendor } from '../db/subscriptions'
 import { processJsonSubmission, createEnquiry } from '../services/enquiry'
 import { clientIp, isAuthThrottled, recordAuthFailure, consumeRateLimit } from '../middleware/rate-limit'
+import { getMembership } from '../db/weddings'
+import { isDocScope, canReadDoc, canWriteDoc } from '../services/doc-permissions'
+import { getDoc, appendToDoc } from '../db/wedding-docs'
 
 const mcp = new Hono<Env>()
 
@@ -227,6 +230,31 @@ const TOOLS = [
     },
   },
   {
+    name: 'read_wedding_notes',
+    description: 'Read a wedding\'s collaborative notes for a scope: "shared" (everyone — vendors + couple), "vendors" (vendors only) or "private" (your own note). Returns markdown.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        wedding_id: { type: 'string', description: 'Wedding ID' },
+        scope: { type: 'string', enum: ['shared', 'vendors', 'private'], description: 'Which note to read (default: shared)' },
+      },
+      required: ['wedding_id'],
+    },
+  },
+  {
+    name: 'append_wedding_note',
+    description: 'Append text to the BOTTOM of a wedding note (markdown). scope: "shared", "vendors" or "private". Existing content is kept; your text is added below and synced to your files. Shared edits require manage rights (planner/venue).',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        wedding_id: { type: 'string', description: 'Wedding ID' },
+        scope: { type: 'string', enum: ['shared', 'vendors', 'private'], description: 'Which note to append to (default: shared)' },
+        text: { type: 'string', description: 'Markdown text to add at the bottom' },
+      },
+      required: ['wedding_id', 'text'],
+    },
+  },
+  {
     name: 'get_wedding_log',
     description: 'Get the changelog/activity log for a wedding.',
     inputSchema: {
@@ -323,7 +351,9 @@ async function handleTool(
     case 'list_contacts': {
       const rows = await db
         .prepare(
-          `SELECT id, first_name, last_name, email, phone, status, wedding_date, wedding_location
+          `SELECT id, first_name, last_name, email, phone,
+                  partner_first_name, partner_last_name, partner_email, partner_phone,
+                  status, wedding_date, wedding_location
            FROM contacts WHERE vendor_id = ? ORDER BY created_at DESC LIMIT 200`
         )
         .bind(vendor.id)
@@ -349,6 +379,8 @@ async function handleTool(
         `- **Source:** ${c.source ?? 'N/A'}`,
       ]
       if (c.partner_first_name) lines.push(`- **Partner:** ${c.partner_first_name} ${c.partner_last_name ?? ''}`)
+      if (c.partner_email) lines.push(`- **Partner email:** ${c.partner_email}`)
+      if (c.partner_phone) lines.push(`- **Partner phone:** ${c.partner_phone}`)
       if (c.wedding_date) lines.push(`- **Wedding date:** ${c.wedding_date}`)
       if (c.wedding_location) lines.push(`- **Wedding location:** ${c.wedding_location}`)
       if (c.notes) lines.push('', '## Notes', '', String(c.notes))
@@ -601,6 +633,49 @@ async function handleTool(
       return { content: [{ type: 'text', text: content ? 'Private notes updated.' : 'Private notes cleared.' }] }
     }
 
+    case 'read_wedding_notes': {
+      const weddingId = String(args.wedding_id ?? '')
+      const scope = String(args.scope ?? 'shared')
+      if (!isDocScope(scope) || scope === 'couple') {
+        return { content: [{ type: 'text', text: 'Invalid scope. Use shared, vendors, or private.' }] }
+      }
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const userId = await vendorUserId(db, vendor.id)
+      const membership = userId ? await getMembership(db, weddingId, userId) : null
+      if (!userId || !membership || !canReadDoc(membership, scope)) {
+        return { content: [{ type: 'text', text: 'You don\'t have access to that note.' }] }
+      }
+      const { content } = await getDoc(db, weddingId, scope, userId)
+      return { content: [{ type: 'text', text: content || 'No notes yet for this scope.' }] }
+    }
+
+    case 'append_wedding_note': {
+      const weddingId = String(args.wedding_id ?? '')
+      const scope = String(args.scope ?? 'shared')
+      const text = String(args.text ?? '')
+      if (!isDocScope(scope) || scope === 'couple') {
+        return { content: [{ type: 'text', text: 'Invalid scope. Use shared, vendors, or private.' }] }
+      }
+      if (!text.trim()) return { content: [{ type: 'text', text: 'Nothing to append.' }] }
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const userId = await vendorUserId(db, vendor.id)
+      const membership = userId ? await getMembership(db, weddingId, userId) : null
+      if (!userId || !membership || !canWriteDoc(membership, scope)) {
+        return {
+          content: [{ type: 'text', text: scope === 'shared'
+            ? 'Only a managing vendor (planner/venue) can edit the shared note.'
+            : 'You don\'t have permission to edit that note.' }],
+        }
+      }
+      await appendToDoc(db, weddingId, scope, userId, text)
+      await pushVault(env, vendor, weddingId, ctx)
+      return { content: [{ type: 'text', text: 'Appended to the ' + scope + ' note.' }] }
+    }
+
     case 'get_wedding_log': {
       const weddingId = String(args.wedding_id ?? '')
       if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
@@ -634,14 +709,18 @@ async function handleTool(
       const q = String(args.query ?? '')
       const rows = await db
         .prepare(
-          `SELECT id, first_name, last_name, email, status, wedding_date
+          `SELECT id, first_name, last_name, email, phone,
+                  partner_first_name, partner_last_name, partner_email, partner_phone,
+                  status, wedding_date, wedding_location
            FROM contacts
            WHERE vendor_id = ? AND (
-             first_name LIKE ? OR last_name LIKE ? OR email LIKE ? OR status = ?
+             first_name LIKE ? OR last_name LIKE ? OR email LIKE ?
+             OR partner_first_name LIKE ? OR partner_last_name LIKE ? OR partner_email LIKE ?
+             OR status = ?
            )
            ORDER BY created_at DESC LIMIT 50`
         )
-        .bind(vendor.id, `%${q}%`, `%${q}%`, `%${q}%`, q)
+        .bind(vendor.id, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, q)
         .all()
       return { content: [{ type: 'text', text: JSON.stringify(rows.results, null, 2) }] }
     }

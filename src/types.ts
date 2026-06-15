@@ -448,6 +448,22 @@ export type DocumentShare = {
   created_at: string
 }
 
+export type WebLink = {
+  id: string
+  wedding_id: string
+  url: string
+  title: string
+  site_name: string | null
+  image_url: string | null
+  added_by_user_id: string | null
+  added_by_name: string
+  added_by_role: string
+  pinned: number
+  pinned_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type Session = {
   id: string
   user_id: string

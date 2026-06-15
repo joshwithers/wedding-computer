@@ -33,6 +33,7 @@ import { parseTimelineMarkdown, diffRunSheetRows } from './run-sheet-md'
 import { isIgnoredPath } from './github'
 import { getWeddingTodo } from '../db/todos'
 import { listRunSheetItems, applyRunSheetDiff } from '../db/run-sheet'
+import { setVendorsDocContent } from '../db/wedding-docs'
 import {
   partitionVendorWeddingUpdate,
   getTimelineControl,
@@ -68,7 +69,7 @@ function mergeInto(target: SyncResult, source: SyncResult): void {
  */
 export function classifyWeddingPath(
   path: string
-): 'wedding' | 'todo' | 'timeline' | 'notes' | 'vendors' | 'log' | 'legacy' | 'other' {
+): 'wedding' | 'todo' | 'timeline' | 'notes' | 'doc' | 'vendors' | 'log' | 'legacy' | 'other' {
   if (!path.startsWith('weddings/')) return 'other'
   const parts = path.slice('weddings/'.length).split('/')
   if (parts.length === 1) {
@@ -80,6 +81,7 @@ export function classifyWeddingPath(
     if (parts[1] === 'todo.md') return 'todo'
     if (parts[1] === 'timeline.md') return 'timeline'
     if (parts[1] === 'notes.md') return 'notes'
+    if (parts[1] === 'team.md') return 'doc'
     if (parts[1] === 'vendors.md') return 'vendors'
     if (parts[1] === 'log.md') return 'log'
   }
@@ -120,7 +122,7 @@ export async function syncVendor(
 
 export type ApplyOutcome =
   | {
-      applied: 'contact' | 'wedding' | 'todo' | 'timeline' | 'notes'
+      applied: 'contact' | 'wedding' | 'todo' | 'timeline' | 'notes' | 'doc'
       entityId: string
       /** Timeline fields routed to a change request instead of written. */
       pendingApproval?: string[]
@@ -303,6 +305,26 @@ export async function applyPulledFile(
     return { applied: 'notes', entityId: weddingId }
   }
 
+  if (kind === 'doc') {
+    // team.md — the vendors-only collaborative doc (shared across vendors).
+    const doc = parseMarkdown(content)
+    const folder = folderOf(path)
+    const weddingId = await resolveCompanionWeddingId(db, vendorId, doc.frontmatter, folder, opts)
+    if (!weddingId) return { applied: 'ignored', reason: 'team.md has no resolvable wedding' }
+
+    const vendorUser = await db
+      .prepare('SELECT user_id FROM vendor_profiles WHERE id = ?')
+      .bind(vendorId)
+      .first<{ user_id: string }>()
+    if (!vendorUser?.user_id || !(await isActiveWeddingMember(db, vendorId, weddingId))) {
+      return { applied: 'ignored', reason: 'not a member of that wedding' }
+    }
+
+    await setVendorsDocContent(db, weddingId, doc.body.trim(), vendorUser.user_id)
+    await upsertIndexRow(db, vendorId, 'doc', weddingId, path, etag, null)
+    return { applied: 'doc', entityId: weddingId }
+  }
+
   if (kind === 'todo') {
     const doc = parseMarkdown(content)
     const folder = folderOf(path)
@@ -429,7 +451,7 @@ export function validatePulledFile(
       markdownToWedding(parseMarkdown(content))
       return { ok: true }
     }
-    if (kind === 'todo' || kind === 'notes') {
+    if (kind === 'todo' || kind === 'notes' || kind === 'doc') {
       parseMarkdown(content)
       return { ok: true }
     }
@@ -546,7 +568,7 @@ async function syncWeddingsDir(
     )
     .bind(vendorId)
     .all<{ entity_id: string; entity_type: string; file_path: string; etag: string; last_synced_at: string }>()
-  const WEDDING_ENTITY_TYPES = ['wedding', 'todo', 'timeline', 'notes', 'vendors', 'log']
+  const WEDDING_ENTITY_TYPES = ['wedding', 'todo', 'timeline', 'notes', 'doc', 'vendors', 'log']
   const weddingScoped = allIndexRows.results.filter((r) =>
     WEDDING_ENTITY_TYPES.includes(r.entity_type)
   )
@@ -600,10 +622,10 @@ async function syncWeddingsDir(
     }
   }
 
-  // ── Pass 2: companion files (todo.md, timeline.md, notes.md) ──
+  // ── Pass 2: companion files (todo.md, timeline.md, notes.md, team.md) ──
   for (const [path, fileMeta] of storageByPath) {
     const kind = classifyWeddingPath(path)
-    if (kind !== 'todo' && kind !== 'timeline' && kind !== 'notes') continue
+    if (kind !== 'todo' && kind !== 'timeline' && kind !== 'notes' && kind !== 'doc') continue
 
     const indexEntry = indexByPath.get(path)
     if (indexEntry && indexEntry.etag === fileMeta.etag) {
@@ -717,7 +739,7 @@ function logFileError(path: string, err: unknown): void {
 async function upsertIndexRow(
   db: D1Database,
   vendorId: string,
-  entityType: 'contact' | 'wedding' | 'todo' | 'log' | 'timeline' | 'notes' | 'vendors',
+  entityType: 'contact' | 'wedding' | 'todo' | 'log' | 'timeline' | 'notes' | 'vendors' | 'doc',
   entityId: string,
   filePath: string,
   etag: string,

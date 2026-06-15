@@ -15,6 +15,8 @@ import { account } from './en/account'
 import { auth } from './en/auth'
 import { contacts } from './en/contacts'
 import { weddings } from './en/weddings'
+import { docs } from './en/docs'
+import { links } from './en/links'
 import { couple } from './en/couple'
 import { settings } from './en/settings'
 import { billing } from './en/billing'
@@ -31,6 +33,8 @@ export const en = {
   ...auth,
   ...contacts,
   ...weddings,
+  ...docs,
+  ...links,
   ...couple,
   ...settings,
   ...billing,

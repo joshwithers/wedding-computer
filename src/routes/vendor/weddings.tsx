@@ -46,6 +46,10 @@ import { weddingDisplayTitle } from '../../lib/wedding-display'
 import { sendVendorWelcomeInvite } from '../../services/auth'
 import { TIMELINE_FIELDS } from '../../services/timeline-edit'
 import { t } from '../../i18n'
+import { WeddingDoc } from '../../views/wedding-doc'
+import { loadDocTabs } from '../../db/wedding-docs'
+import { WebLinks } from '../../views/web-links'
+import { listWebLinks } from '../../db/web-links'
 
 /**
  * Sync per-vendor bump in/out calendar events.
@@ -566,6 +570,12 @@ weddings.get('/app/weddings/:id', async (c) => {
   const weddingTodo = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
   const todoTemplates = await listTemplates(c.env.DB, vendor.id)
 
+  // Collaborative scoped docs — Everyone + Vendors only + Private tabs
+  const docTabs = await loadDocTabs(c.env.DB, weddingId, membership, user.id)
+
+  // Web links (galleries, Pinterest, playlists…)
+  const webLinks = await listWebLinks(c.env.DB, weddingId)
+
   // Credits — couple_vendors may not exist yet, so handle gracefully
   let credits: ReturnType<typeof buildCredits> = []
   try {
@@ -807,26 +817,19 @@ weddings.get('/app/weddings/:id', async (c) => {
           contactId={linkedContact?.id ?? null}
         />
 
-        {/* Shared notes — visible to all vendors and the couple */}
-        <WeddingNotes
-          weddingId={wedding.id}
-          notes={wedding.notes ?? ''}
-          canManage={canManage}
+        {/* Collaborative notes — Everyone + Vendors only + Private tabs */}
+        <WeddingDoc
+          tabs={docTabs}
+          baseUrl={`/app/weddings/${wedding.id}/docs`}
           csrfToken={c.get('csrfToken')}
-          label="Wedding Notes"
-          hint="Visible to all vendors and the couple"
-          shared
         />
 
-        {/* Private vendor notes — only this vendor can see */}
-        <WeddingNotes
-          weddingId={wedding.id}
-          notes={membership.vendor_notes ?? ''}
-          canManage={true}
-          csrfToken={c.get('csrfToken')}
-          label="Your Private Notes"
-          hint="Only you can see these"
-          endpoint={`/app/weddings/${wedding.id}/private-notes`}
+        {/* Web links */}
+        <WebLinks
+          links={webLinks}
+          basePath={`/app/weddings/${wedding.id}`}
+          currentUserId={user.id}
+          canManage={canManage}
         />
 
         {/* Run Sheet */}
@@ -1021,44 +1024,8 @@ weddings.get('/app/weddings/:id', async (c) => {
   )
 })
 
-// ─── Auto-save notes (JSON API for the live editor) ───
-weddings.post('/app/weddings/:id/notes', async (c) => {
-  const user = c.get('user')
-  const weddingId = c.req.param('id')
-
-  const membership = await getMembership(c.env.DB, weddingId, user.id)
-  if (!membership || !membership.can_manage) return c.json({ error: 'forbidden' }, 403)
-
-  const body = await c.req.json<{ notes: string }>()
-  const notes = typeof body.notes === 'string' ? body.notes : ''
-
-  await updateWedding(c.env.DB, weddingId, { notes: notes || null })
-
-  return c.json({ saved: true, at: new Date().toISOString() })
-})
-
-// ─── Per-vendor private notes ───
-weddings.post('/app/weddings/:id/private-notes', async (c) => {
-  const user = c.get('user')
-  const weddingId = c.req.param('id')
-
-  const membership = await getMembership(c.env.DB, weddingId, user.id)
-  if (!membership) return c.json({ error: 'forbidden' }, 403)
-
-  const body = await c.req.json<{ notes: string }>()
-  const notes = typeof body.notes === 'string' ? body.notes : ''
-
-  await c.env.DB
-    .prepare('UPDATE wedding_members SET vendor_notes = ? WHERE wedding_id = ? AND user_id = ?')
-    .bind(notes || null, weddingId, user.id)
-    .run()
-
-  // Mirror to the vault's notes.md
-  const vendor = c.get('vendor')
-  if (vendor) c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
-
-  return c.json({ saved: true, at: new Date().toISOString() })
-})
+// Wedding notes (shared / vendors / private) are served by the unified
+// collaborative-docs endpoints in routes/vendor/wedding-docs.tsx.
 
 // ─── Per-vendor bump in/out times ───
 weddings.post('/app/weddings/:id/bumps', async (c) => {
@@ -1116,24 +1083,6 @@ weddings.post('/app/weddings/:id/bumps', async (c) => {
       </div>
     </div>
   )
-})
-
-// ─── Sync notes to git storage (called after period of inactivity) ───
-weddings.post('/app/weddings/:id/notes/sync', async (c) => {
-  const user = c.get('user')
-  const vendor = c.get('vendor')!
-  const weddingId = c.req.param('id')
-
-  const membership = await getMembership(c.env.DB, weddingId, user.id)
-  if (!membership || !membership.can_manage) return c.json({ error: 'forbidden' }, 403)
-
-  try {
-    await pushAllWeddingFiles(c.env, vendor, weddingId)
-    return c.json({ synced: true, at: new Date().toISOString() })
-  } catch (err) {
-    console.error('[notes/sync]', err)
-    return c.json({ synced: false, error: 'sync failed' })
-  }
 })
 
 // ─── Edit wedding ───
@@ -1765,222 +1714,6 @@ function WeddingInvoices({
             ))}
           </div>
         </div>
-      )}
-    </div>
-  )
-}
-
-function WeddingNotes({
-  weddingId,
-  notes,
-  canManage,
-  csrfToken,
-  label,
-  hint,
-  shared,
-  endpoint,
-}: {
-  weddingId: string
-  notes: string
-  canManage: boolean
-  csrfToken: string
-  label?: string
-  hint?: string
-  shared?: boolean
-  endpoint?: string
-}) {
-  // Escape notes for safe embedding in JS
-  const escaped = JSON.stringify(notes)
-  // Unique IDs so two instances on the same page don't collide
-  const suffix = shared ? '' : '-private'
-  const notesEndpoint = endpoint ?? `/app/weddings/${weddingId}/notes`
-  const syncEndpoint = shared ? `/app/weddings/${weddingId}/notes/sync` : null
-
-  return (
-    <div class="mt-6" id={`wedding-notes-section${suffix}`}>
-      <div class={`rounded-2xl overflow-hidden ${shared ? 'bg-white border border-papaya-300/30' : 'bg-gray-50 border border-gray-200'}`}>
-        <div class={`flex items-center justify-between px-5 py-3 border-b ${shared ? 'border-papaya-300/30' : 'border-gray-200'}`}>
-          <div>
-            <h3 class="text-sm font-bold text-gray-500">{label ?? 'Notes'}</h3>
-            {hint && <p class="text-[10px] text-gray-400">{hint}</p>}
-          </div>
-          <div class="flex items-center gap-3">
-            <span id={`notes-status${suffix}`} class="text-xs text-gray-400 transition-opacity"></span>
-            {canManage && (
-              <div class="flex border border-gray-200 rounded-lg overflow-hidden text-xs">
-                <button
-                  type="button"
-                  id={`btn-edit${suffix}`}
-                  class="px-3 py-1 font-bold bg-horizon-50 text-horizon-700"
-                  onclick={`notesEditor${suffix.replace('-', '_')}.showEdit()`}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  id={`btn-preview${suffix}`}
-                  class="px-3 py-1 font-bold text-gray-400 hover:text-gray-600"
-                  onclick={`notesEditor${suffix.replace('-', '_')}.showPreview()`}
-                >
-                  Preview
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {canManage ? (
-          <>
-            <div id={`notes-edit-pane${suffix}`}>
-              <textarea
-                id={`notes-textarea${suffix}`}
-                class="w-full px-5 py-4 text-sm text-gray-800 font-mono leading-relaxed resize-y focus:outline-none min-h-[200px] bg-transparent"
-                placeholder={shared ? 'Wedding notes visible to all team members... Markdown supported.' : 'Your private notes... Only you can see these.'}
-                spellcheck={true}
-              >{notes}</textarea>
-            </div>
-            <div id={`notes-preview-pane${suffix}`} class="hidden">
-              <div
-                id={`notes-preview${suffix}`}
-                class="px-5 py-4 md-preview text-sm max-w-none text-gray-800 min-h-[200px]"
-              >
-                {notes ? (
-                  <p class="text-gray-400 italic">Loading preview...</p>
-                ) : (
-                  <p class="text-gray-400 italic">No notes yet</p>
-                )}
-              </div>
-            </div>
-          </>
-        ) : (
-          <div
-            id={`notes-preview${suffix}`}
-            class="px-5 py-4 md-preview text-sm max-w-none text-gray-800 min-h-[120px]"
-          >
-            {notes ? (
-              <p class="text-gray-400 italic">Loading...</p>
-            ) : (
-              <p class="text-gray-400 italic">No notes yet</p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Markdown styles + renderer + auto-save logic */}
-      <style dangerouslySetInnerHTML={{ __html: `
-        .md-preview h1 { font-size: 1.5em; font-weight: 700; margin: 1em 0 0.5em; }
-        .md-preview h2 { font-size: 1.25em; font-weight: 700; margin: 1em 0 0.5em; }
-        .md-preview h3 { font-size: 1.1em; font-weight: 700; margin: 0.75em 0 0.4em; }
-        .md-preview p { margin: 0.5em 0; }
-        .md-preview ul, .md-preview ol { margin: 0.5em 0; padding-left: 1.5em; }
-        .md-preview ul { list-style: disc; }
-        .md-preview ol { list-style: decimal; }
-        .md-preview li { margin: 0.25em 0; }
-        .md-preview a { color: #0066E6; text-decoration: underline; }
-        .md-preview strong { font-weight: 700; }
-        .md-preview em { font-style: italic; }
-        .md-preview code { background: #f3f4f6; padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.9em; }
-        .md-preview pre { background: #f3f4f6; padding: 0.75em 1em; border-radius: 8px; overflow-x: auto; margin: 0.75em 0; }
-        .md-preview pre code { background: none; padding: 0; }
-        .md-preview blockquote { border-left: 3px solid #d1d5db; padding-left: 1em; color: #6b7280; margin: 0.75em 0; }
-        .md-preview hr { border: none; border-top: 1px solid #e5e7eb; margin: 1em 0; }
-        .md-preview table { border-collapse: collapse; width: 100%; margin: 0.75em 0; }
-        .md-preview th, .md-preview td { border: 1px solid #e5e7eb; padding: 0.4em 0.75em; text-align: left; }
-        .md-preview th { background: #f9fafb; font-weight: 600; }
-        .md-preview input[type="checkbox"] { margin-right: 0.4em; }
-      ` }} />
-      <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
-      {canManage ? (
-        <script dangerouslySetInnerHTML={{ __html: `
-(function() {
-  var S = "${suffix}";
-  var csrf = "${csrfToken}";
-  var saveUrl = "${notesEndpoint}";
-  var syncUrl = ${syncEndpoint ? `"${syncEndpoint}"` : 'null'};
-  var textarea = document.getElementById("notes-textarea" + S);
-  var preview = document.getElementById("notes-preview" + S);
-  var status = document.getElementById("notes-status" + S);
-  var editPane = document.getElementById("notes-edit-pane" + S);
-  var previewPane = document.getElementById("notes-preview-pane" + S);
-  var btnEdit = document.getElementById("btn-edit" + S);
-  var btnPreview = document.getElementById("btn-preview" + S);
-
-  var saveTimer = null, syncTimer = null, lastSaved = ${escaped}, saving = false;
-
-  function setStatus(t,c) { status.textContent = t; status.style.color = c || "#9ca3af"; }
-
-  function safeMarkdown(src) {
-    if (!src) return '<p class="text-gray-400 italic">No notes yet</p>';
-    if (typeof marked === "undefined" || !marked.parse || !window.DOMPurify) return '<p class="text-gray-400 italic">Preview unavailable</p>';
-    return DOMPurify.sanitize(marked.parse(src));
-  }
-
-  function renderPreview() { preview.innerHTML = safeMarkdown(textarea ? textarea.value : ${escaped}); }
-
-  function save() {
-    var val = textarea.value;
-    if (val === lastSaved) return;
-    saving = true; setStatus("Saving...", "#6b7280");
-    fetch(saveUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
-      body: JSON.stringify({ notes: val })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      saving = false;
-      if (d.saved) { lastSaved = val; setStatus("Saved", "#16a34a");
-        if (syncUrl) { clearTimeout(syncTimer); syncTimer = setTimeout(syncToGit, 10000); }
-        else setTimeout(function() { if (status.textContent === "Saved") setStatus(""); }, 4000);
-      } else setStatus("Save failed", "#dc2626");
-    })
-    .catch(function() { saving = false; setStatus("Save failed", "#dc2626"); setTimeout(save, 3000); });
-  }
-
-  function syncToGit() {
-    if (!syncUrl) return;
-    setStatus("Syncing...", "#6b7280");
-    fetch(syncUrl, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf } })
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      setStatus(d.synced ? "Saved & synced" : "Saved", "#16a34a");
-      setTimeout(function() { if (status.textContent.indexOf("Saved") === 0) setStatus(""); }, 4000);
-    })
-    .catch(function() { setStatus("Saved (sync pending)", "#ca8a04"); });
-  }
-
-  textarea.addEventListener("input", function() { clearTimeout(saveTimer); clearTimeout(syncTimer); setStatus("Editing..."); saveTimer = setTimeout(save, 1500); });
-  textarea.addEventListener("blur", function() { if (textarea.value !== lastSaved) { clearTimeout(saveTimer); save(); } });
-  window.addEventListener("beforeunload", function(e) { if (textarea.value !== lastSaved) { save(); e.preventDefault(); e.returnValue = ""; } });
-
-  var editorName = "notesEditor${suffix.replace(/-/g, '_')}";
-  window[editorName] = {
-    showEdit: function() { editPane.classList.remove("hidden"); previewPane.classList.add("hidden"); btnEdit.className = "px-3 py-1 font-bold bg-horizon-50 text-horizon-700"; btnPreview.className = "px-3 py-1 font-bold text-gray-400 hover:text-gray-600"; textarea.focus(); },
-    showPreview: function() { renderPreview(); previewPane.classList.remove("hidden"); editPane.classList.add("hidden"); btnPreview.className = "px-3 py-1 font-bold bg-horizon-50 text-horizon-700"; btnEdit.className = "px-3 py-1 font-bold text-gray-400 hover:text-gray-600"; }
-  };
-
-  if (typeof marked !== "undefined") renderPreview();
-  else window.addEventListener("load", renderPreview);
-})();
-` }} />
-      ) : (
-        <script dangerouslySetInnerHTML={{ __html: `
-(function() {
-  function safeMarkdown(src) {
-    if (!src) return '<p class="text-gray-400 italic">No notes yet</p>';
-    if (typeof marked === "undefined" || !marked.parse || !window.DOMPurify) return '<p class="text-gray-400 italic">Preview unavailable</p>';
-    return DOMPurify.sanitize(marked.parse(src));
-  }
-  function render() {
-    var el = document.getElementById("notes-preview${suffix}");
-    if (!el) return;
-    el.innerHTML = safeMarkdown(${escaped});
-  }
-  if (typeof marked !== "undefined") render();
-  else window.addEventListener("load", render);
-})();
-` }} />
       )}
     </div>
   )

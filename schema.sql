@@ -157,6 +157,62 @@ CREATE TABLE IF NOT EXISTS wedding_members (
   UNIQUE(wedding_id, user_id)
 );
 
+-- Collaborative, visibility-scoped wedding documents (the "Notes" surface).
+-- scope: 'shared' (all vendors + couple), 'vendors' (vendors only),
+-- 'couple' (couple only). Live source of truth for the vendors/couple scopes;
+-- shared is mirrored from weddings.notes / wedding.md. The vendors scope is
+-- exported to a team.md companion file.
+CREATE TABLE IF NOT EXISTS wedding_docs (
+  id                 TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  wedding_id         TEXT NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
+  scope              TEXT NOT NULL CHECK (scope IN ('shared','vendors','couple')),
+  content            TEXT NOT NULL DEFAULT '',
+  version            INTEGER NOT NULL DEFAULT 1,
+  updated_by_user_id TEXT REFERENCES users(id),
+  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(wedding_id, scope)
+);
+
+CREATE INDEX IF NOT EXISTS idx_wedding_docs_wedding ON wedding_docs(wedding_id);
+
+-- Live presence + soft editing-lock for collaborative docs (Rung 2).
+-- Ephemeral: rows are pruned opportunistically on poll/heartbeat.
+CREATE TABLE IF NOT EXISTS doc_presence (
+  id           TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  wedding_id   TEXT NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
+  scope        TEXT NOT NULL,
+  user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_name    TEXT NOT NULL,
+  role         TEXT NOT NULL,
+  is_editing   INTEGER NOT NULL DEFAULT 0,
+  last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(wedding_id, scope, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_doc_presence_doc ON doc_presence(wedding_id, scope);
+
+-- Web links on a wedding (delivered galleries, Pinterest boards, playlists…).
+-- Any member adds a URL; title auto-filled from OpenGraph. Newest-first, with
+-- pinned links floated to the top.
+CREATE TABLE IF NOT EXISTS web_links (
+  id               TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  wedding_id       TEXT NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
+  url              TEXT NOT NULL,
+  title            TEXT NOT NULL,
+  site_name        TEXT,
+  image_url        TEXT,
+  added_by_user_id TEXT REFERENCES users(id),
+  added_by_name    TEXT NOT NULL,
+  added_by_role    TEXT NOT NULL,
+  pinned           INTEGER NOT NULL DEFAULT 0,
+  pinned_at        TEXT,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_web_links_wedding ON web_links(wedding_id);
+
 -- CRM Contacts (vendor's leads/clients)
 CREATE TABLE IF NOT EXISTS contacts (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
@@ -565,7 +621,7 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe ON subscriptions(stripe_subs
 CREATE TABLE IF NOT EXISTS file_index (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
   vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
-  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding', 'todo', 'log', 'timeline', 'notes', 'vendors')),
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding', 'todo', 'log', 'timeline', 'notes', 'vendors', 'doc')),
   entity_id TEXT NOT NULL,
   file_path TEXT NOT NULL,
   etag TEXT NOT NULL,
@@ -580,7 +636,7 @@ CREATE TABLE IF NOT EXISTS file_index (
 CREATE TABLE IF NOT EXISTS file_conflicts (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
   vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
-  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding', 'todo', 'log', 'timeline', 'notes', 'vendors')),
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('contact', 'wedding', 'todo', 'log', 'timeline', 'notes', 'vendors', 'doc')),
   entity_id TEXT NOT NULL,
   file_path TEXT NOT NULL,
   local_content TEXT NOT NULL,
