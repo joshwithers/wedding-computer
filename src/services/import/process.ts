@@ -1,5 +1,6 @@
 import { createContact, updateContact } from '../../db/contacts'
 import { createWedding, updateWedding, addWeddingMember } from '../../db/weddings'
+import { applyWeddingUpdate } from '../../db/timeline'
 import { createEvent } from '../../db/calendar'
 import { createActivity } from '../../db/activities'
 import { getVendorById } from '../../db/vendors'
@@ -235,6 +236,12 @@ async function createWeddingForImportedContact(
   // Historical weddings land as completed; future bookings as confirmed.
   const weddingStatus = status === 'completed' || date < todayString() ? 'completed' : 'confirmed'
   await updateWedding(db, wedding.id, { status: weddingStatus })
+
+  // Seed the ceremony slot row from the imported time so timeline_items stays the
+  // source of truth — otherwise the first projection would blank the column.
+  if (time) {
+    await applyWeddingUpdate(db, wedding.id, { time }, vendor.user_id)
+  }
 
   await addWeddingMember(db, {
     wedding_id: wedding.id,

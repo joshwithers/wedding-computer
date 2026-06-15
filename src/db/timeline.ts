@@ -134,10 +134,21 @@ export async function updateItem(
   sets.push("updated_at = datetime('now')")
   vals.push(id, weddingId)
   await db.prepare(`UPDATE timeline_items SET ${sets.join(', ')} WHERE id = ? AND wedding_id = ?`).bind(...vals).run()
+  // If this is a named headline slot row, keep its derived columns in step (and
+  // drop the row if it emptied out) so the timeline-UI / approval / form paths all
+  // behave identically — a cleared time/location reflects, not goes stale.
+  await reconcileSlotRow(db, weddingId, id)
 }
 
 export async function deleteItem(db: D1Database, weddingId: string, id: string): Promise<void> {
+  const row = await db
+    .prepare('SELECT slot FROM timeline_items WHERE id = ? AND wedding_id = ?')
+    .bind(id, weddingId)
+    .first<{ slot: TimelineSlot | null }>()
   await db.prepare('DELETE FROM timeline_items WHERE id = ? AND wedding_id = ?').bind(id, weddingId).run()
+  // The non-destructive projection won't blank a now-missing slot's columns, so
+  // clear them here when a named headline slot row is removed.
+  if (row?.slot) await clearSlotColumns(db, weddingId, row.slot)
 }
 
 /** Rewrite sort_order to match the given id order (batched). */
@@ -380,13 +391,21 @@ export async function applyHeadlineFieldsToTimeline(
       .prepare('SELECT id FROM timeline_items WHERE wedding_id = ? AND slot = ?')
       .bind(weddingId, slot)
       .first<{ id: string }>()
+    // A slot with no time, no location, and no custom label carries nothing — keep
+    // it out of the timeline so clearing a headline section doesn't leave a ghost
+    // "Ceremony — —" row. (Routed slot state is complete, so vals is the full state.)
+    const empty = !vals.start_time && !vals.location && (!vals.title || vals.title === vals.defaultTitle)
     if (existing) {
+      if (empty) {
+        await deleteItem(db, weddingId, existing.id) // also clears the slot's columns
+        continue
+      }
       const patch: Partial<Pick<TimelineItem, 'start_time' | 'location' | 'title'>> = {}
       if ('start_time' in vals) patch.start_time = vals.start_time ?? null
       if ('location' in vals) patch.location = vals.location ?? null
       if ('title' in vals) patch.title = vals.title || vals.defaultTitle
       await updateItem(db, weddingId, existing.id, patch)
-    } else {
+    } else if (!empty) {
       await createItem(db, {
         wedding_id: weddingId,
         slot,
@@ -411,6 +430,40 @@ export async function applyHeadlineFieldsToTimeline(
 // and the MCP wedding model (read by the iOS app) all consume. This runs after
 // every timeline write so those consumers stay current.
 
+/** Which weddings.* columns each slot row projects into (+ the slot's default title). */
+const SLOT_COLUMNS: Record<TimelineSlot, { time: string; location: string; label?: string; defaultTitle: string }> = {
+  getting_ready_1: { time: 'getting_ready_time', location: 'getting_ready_location', label: 'getting_ready_1_label', defaultTitle: 'Getting ready' },
+  getting_ready_2: { time: 'getting_ready_2_time', location: 'getting_ready_2_location', label: 'getting_ready_2_label', defaultTitle: 'Getting ready' },
+  ceremony: { time: 'time', location: 'ceremony_location', defaultTitle: 'Ceremony' },
+  portraits: { time: 'portrait_time', location: 'portrait_location', defaultTitle: 'Portraits' },
+  reception: { time: 'reception_time', location: 'reception_location', defaultTitle: 'Reception' },
+}
+
+/**
+ * Keep a named slot row's derived weddings.* columns in step after a DIRECT row
+ * edit (the timeline-UI and approval paths call updateItem without going through
+ * applyWeddingUpdate's column compensation). Mirrors the row's current attrs onto
+ * its columns — INCLUDING nulls, so clearing a headline time/location via the UI
+ * actually clears the column the non-destructive projection would otherwise leave
+ * stale — and drops the row entirely when it has emptied out (no ghost section).
+ */
+async function reconcileSlotRow(db: D1Database, weddingId: string, id: string): Promise<void> {
+  const r = await db
+    .prepare('SELECT slot, start_time, location, title FROM timeline_items WHERE id = ? AND wedding_id = ?')
+    .bind(id, weddingId)
+    .first<{ slot: TimelineSlot | null; start_time: string | null; location: string | null; title: string | null }>()
+  if (!r?.slot) return // freeform row — no headline columns to sync
+  const cols = SLOT_COLUMNS[r.slot]
+  const empty = !r.start_time && !r.location && (!r.title || r.title === cols.defaultTitle)
+  if (empty) {
+    await deleteItem(db, weddingId, id) // also clears the slot's columns
+    return
+  }
+  const patch: Record<string, string | null> = { [cols.time]: r.start_time ?? null, [cols.location]: r.location ?? null }
+  if (cols.label) patch[cols.label] = r.title ?? null
+  await updateWedding(db, weddingId, patch as any)
+}
+
 export async function projectTimelineToWedding(db: D1Database, weddingId: string): Promise<void> {
   const slots = await db
     .prepare("SELECT slot, start_time, location, title FROM timeline_items WHERE wedding_id = ? AND slot IS NOT NULL")
@@ -418,26 +471,105 @@ export async function projectTimelineToWedding(db: D1Database, weddingId: string
     .all<{ slot: TimelineSlot; start_time: string | null; location: string | null; title: string | null }>()
     .then((r) => r.results)
   const by = new Map(slots.map((s) => [s.slot, s]))
-  const gr1 = by.get('getting_ready_1')
-  const gr2 = by.get('getting_ready_2')
-  const cer = by.get('ceremony')
-  const por = by.get('portraits')
-  const rec = by.get('reception')
 
-  await updateWedding(db, weddingId, {
-    time: cer?.start_time ?? null,
-    ceremony_location: cer?.location ?? null,
-    getting_ready_time: gr1?.start_time ?? null,
-    getting_ready_location: gr1?.location ?? null,
-    getting_ready_1_label: gr1?.title ?? null,
-    getting_ready_2_time: gr2?.start_time ?? null,
-    getting_ready_2_location: gr2?.location ?? null,
-    getting_ready_2_label: gr2?.title ?? null,
-    portrait_time: por?.start_time ?? null,
-    portrait_location: por?.location ?? null,
-    reception_time: rec?.start_time ?? null,
-    reception_location: rec?.location ?? null,
-  })
+  // NON-DESTRUCTIVE projection, at ATTR granularity: only write a column when the
+  // slot row actually carries a value for it. A slot with no row, OR a row whose
+  // own attr is null, leaves the matching column untouched — a headline
+  // location/label can exist with no time (051 never backfilled a row; no row is
+  // made until the time is set), and a column can be populated by a writer that
+  // doesn't touch the row (legacy data, the Obsidian wedding.md sync). Blanking
+  // those here would silently destroy them. The deliberate CLEAR paths null the
+  // column explicitly instead: clearSlotColumns on row delete, and applyWeddingUpdate
+  // writing the touched slot's columns directly.
+  const patch: Record<string, string> = {}
+  for (const [slot, cols] of Object.entries(SLOT_COLUMNS) as [TimelineSlot, { time: string; location: string; label?: string }][]) {
+    const r = by.get(slot)
+    if (!r) continue
+    if (r.start_time != null) patch[cols.time] = r.start_time
+    if (r.location != null) patch[cols.location] = r.location
+    if (cols.label && r.title != null) patch[cols.label] = r.title
+  }
+  if (Object.keys(patch).length > 0) await updateWedding(db, weddingId, patch as any)
+}
+
+/**
+ * Clear the weddings.* columns for a slot — used when its slot row is DELETED, so
+ * the (now non-destructive) projection doesn't leave the columns stale.
+ */
+export async function clearSlotColumns(db: D1Database, weddingId: string, slot: TimelineSlot): Promise<void> {
+  const cols = SLOT_COLUMNS[slot]
+  if (!cols) return
+  const patch: Record<string, string | null> = { [cols.time]: null, [cols.location]: null }
+  if (cols.label) patch[cols.label] = null
+  await updateWedding(db, weddingId, patch as any)
+}
+
+/**
+ * Apply a wedding-details update where the headline TIME/location/label fields are
+ * routed onto the timeline slot rows (the single source of truth) instead of being
+ * written straight to the derived weddings.* columns — which projectTimelineToWedding
+ * would otherwise clobber. Non-slot fields (date, durations, title, location,
+ * status, …) are written directly via updateWedding.
+ *
+ * A slot is touched only when one of its fields actually CHANGES vs `current` (so
+ * re-submitting a form with untouched slots never spawns needless rows). When a
+ * slot IS touched, its COMPLETE state is routed — every one of its attrs, taking
+ * each from `fields` if present else from `current` — so a newly-materialised row
+ * always carries the slot's full time+location+label and never drops a sibling
+ * the (non-destructive) projection would then surface as null.
+ *
+ * This is the field-shaped writer the vendor + couple wedding-edit forms, their
+ * approved-change applier, wedding creation, and MCP propose_timeline_change all
+ * go through, so no writer clobbers the source-of-truth rows.
+ */
+export async function applyWeddingUpdate(
+  db: D1Database,
+  weddingId: string,
+  fields: Record<string, string | number | null>,
+  createdByUserId: string | null,
+  current?: Record<string, unknown> | null
+): Promise<void> {
+  // Columns belonging to each slot (so a touched slot routes its whole state).
+  const colsBySlot = new Map<TimelineSlot, string[]>()
+  for (const [col, m] of Object.entries(SLOT_FIELD_MAP)) {
+    const arr = colsBySlot.get(m.slot) ?? []
+    arr.push(col)
+    colsBySlot.set(m.slot, arr)
+  }
+
+  const routed: Record<string, string | number | null> = {}
+  const touched = new Set<TimelineSlot>()
+  for (const [k, v] of Object.entries(fields)) {
+    const m = SLOT_FIELD_MAP[k]
+    if (!m) {
+      routed[k] = v // non-slot → direct column write (returned by applyHeadlineFieldsToTimeline)
+      continue
+    }
+    if (!current || (((current as any)[k] ?? null) !== (v ?? null))) touched.add(m.slot)
+  }
+  // Route the COMPLETE state of every touched slot — sourcing each attr from the
+  // submitted fields when present, otherwise from `current` — so a created row is
+  // never missing a location/label the caller didn't resubmit (e.g. the couple
+  // form omits ceremony_location; MCP sends only the single changed field).
+  const touchedCols: Record<string, string | number | null> = {}
+  for (const slot of touched) {
+    for (const col of colsBySlot.get(slot)!) {
+      const v = col in fields ? fields[col] : current ? ((current as any)[col] ?? null) : null
+      routed[col] = v
+      touchedCols[col] = v
+    }
+  }
+
+  // applyHeadlineFieldsToTimeline upserts (or, when a slot empties out, removes)
+  // the slot rows and returns the non-slot fields for a direct column write. We
+  // ALSO write the touched slot columns directly — including explicit nulls — so a
+  // CLEAR lands on the column (the non-destructive projection only writes non-null
+  // row attrs, so it would otherwise leave a stale value). The projection then
+  // re-affirms the row's surviving values and leaves untouched slots alone.
+  const direct = await applyHeadlineFieldsToTimeline(db, weddingId, routed, createdByUserId)
+  const colWrite = { ...touchedCols, ...direct }
+  if (Object.keys(colWrite).length > 0) await updateWedding(db, weddingId, colWrite as any)
+  await projectTimelineToWedding(db, weddingId)
 }
 
 /** Map a freeform category to the slot used when a row is promoted (unused in P1). */

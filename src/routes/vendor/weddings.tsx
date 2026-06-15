@@ -45,6 +45,7 @@ import { isManagerVendor, categoriesLabel } from '../../lib/categories'
 import { weddingDisplayTitle } from '../../lib/wedding-display'
 import { sendVendorWelcomeInvite } from '../../services/auth'
 import { TIMELINE_FIELDS } from '../../services/timeline-edit'
+import { applyWeddingUpdate } from '../../db/timeline'
 import { t } from '../../i18n'
 import { WeddingDoc } from '../../views/wedding-doc'
 import { loadDocTabs } from '../../db/wedding-docs'
@@ -267,6 +268,13 @@ weddings.post('/app/weddings/new', async (c) => {
       vendor_role: vendor.category,
       can_manage: true,
     })
+
+    // Seed the ceremony slot row from the headline time so timeline_items stays
+    // the source of truth — otherwise the first projection would blank the column.
+    const ceremonyTime = trimOrNull(body.time)
+    if (ceremonyTime) {
+      await applyWeddingUpdate(c.env.DB, wedding.id, { time: ceremonyTime }, user.id)
+    }
 
     // Auto-create calendar event if wedding has a date
     const weddingDate = trimOrNull(body.date)
@@ -1214,7 +1222,10 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     }
 
     console.log('[weddings] edit', weddingId, 'fields:', Object.keys(updateData).join(','))
-    await updateWedding(c.env.DB, weddingId, updateData as any)
+    // Headline times are timeline sections (the source of truth): route the slot
+    // fields onto the named slot rows and write date/durations/etc. directly, then
+    // refresh the derived columns — no direct column write the projection clobbers.
+    await applyWeddingUpdate(c.env.DB, weddingId, updateData as Record<string, string | number | null>, user.id, oldWedding as any)
     console.log('[weddings] edit', weddingId, 'updateWedding succeeded')
     c.executionCtx.waitUntil(
       geocodeWeddingLocation(c.env, weddingId).catch((err) => console.error('[weddings] geocode failed:', err))
@@ -1305,9 +1316,13 @@ async function applyTimelinePayload(
   db: D1Database,
   weddingId: string,
   payload: Record<string, any>,
-  fallbackVendorId: string
+  fallbackVendorId: string,
+  approverUserId: string
 ): Promise<void> {
-  await updateWedding(db, weddingId, payload as any)
+  // Route the approved headline-time fields onto the slot rows (source of truth)
+  // rather than writing the derived columns directly.
+  const current = await getWedding(db, weddingId)
+  await applyWeddingUpdate(db, weddingId, payload as Record<string, string | number | null>, approverUserId, current as any)
   await resyncWeddingCalendars(db, weddingId, fallbackVendorId)
 }
 
@@ -1339,7 +1354,7 @@ weddings.post('/app/weddings/:id/timeline-requests/:rid/:decision{approve|declin
       // empty payload — nothing to apply
     }
     try {
-      await applyTimelinePayload(c.env.DB, weddingId, payload, vendor.id)
+      await applyTimelinePayload(c.env.DB, weddingId, payload, vendor.id, user.id)
     } catch (err) {
       console.error('[weddings] applying approved timeline change failed:', err)
       return c.redirect(`/app/weddings/${weddingId}?error=${encodeURIComponent('Applying the change failed')}`)

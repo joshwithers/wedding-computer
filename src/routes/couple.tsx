@@ -14,6 +14,7 @@ import { findOrCreateUser, sendVendorWelcomeInvite } from '../services/auth'
 import { isManagerVendor } from '../lib/categories'
 import { weddingDisplayTitle } from '../lib/wedding-display'
 import { createTimelineRequest, getTimelineControllers } from '../db/timeline-requests'
+import { applyWeddingUpdate } from '../db/timeline'
 import { t } from '../i18n'
 import { WeddingDoc } from '../views/wedding-doc'
 import { loadDocTabs } from '../db/wedding-docs'
@@ -1254,7 +1255,10 @@ couple.post('/wedding/:id/edit', async (c) => {
     }
   }
   if (!timelineDiverted) {
-    await updateWedding(c.env.DB, weddingId, weddingUpdates as any)
+    // No managing planner/venue — the couple is the timeline lead, so apply
+    // directly, but route the headline times onto the slot rows (source of truth)
+    // instead of writing the derived columns the projection would clobber.
+    await applyWeddingUpdate(c.env.DB, weddingId, weddingUpdates, user.id, currentWedding as any)
   }
 
   // Update couple contact details

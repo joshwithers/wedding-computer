@@ -574,14 +574,11 @@ async function handleTool(
       // Headline times are timeline sections (the source of truth): route the
       // slot fields onto the named slot rows, write date/durations directly, then
       // refresh the derived columns. (No direct column writes that projection
-      // would later clobber.)
-      const { applyHeadlineFieldsToTimeline, projectTimelineToWedding } = await import('../db/timeline')
-      const directFields = await applyHeadlineFieldsToTimeline(db, weddingId, applied, userId)
-      if (Object.keys(directFields).length > 0) {
-        const { updateWedding } = await import('../db/weddings')
-        await updateWedding(db, weddingId, directFields as any)
-      }
-      await projectTimelineToWedding(db, weddingId)
+      // would later clobber.) applyWeddingUpdate sources each touched slot's
+      // unchanged siblings from `current`, so setting one field never drops the
+      // slot's existing location/label.
+      const { applyWeddingUpdate } = await import('../db/timeline')
+      await applyWeddingUpdate(db, weddingId, applied, userId, current as any)
       const { appendWeddingLog } = await import('../db/wedding-log')
       await appendWeddingLog(db, weddingId, userId, 'Wedding updated', summary).catch(() => {})
       const { resyncWeddingCalendars } = await import('../services/wedding-calendar')
