@@ -107,8 +107,8 @@ const TOOLS = [
     description: 'Get a contact\'s full markdown file by their ID.',
     inputSchema: {
       type: 'object' as const,
-      properties: { id: { type: 'string', description: 'Contact ID' } },
-      required: ['id'],
+      properties: { contact_id: { type: 'string', description: 'Contact ID' } },
+      required: ['contact_id'],
     },
   },
   {
@@ -362,7 +362,8 @@ async function handleTool(
     }
 
     case 'get_contact': {
-      const id = String(args.id ?? '')
+      // contact_id is the canonical name; `id` kept as a backward-compatible fallback.
+      const id = String(args.contact_id ?? args.id ?? '')
       const contact = await db
         .prepare('SELECT * FROM contacts WHERE id = ? AND vendor_id = ?')
         .bind(id, vendor.id)
@@ -734,7 +735,10 @@ async function handleTool(
     }
 
     case 'get_upcoming_events': {
-      const days = Number(args.days ?? 30)
+      // Clamp to a sane range so a NaN/Infinity/huge/negative `days` can't feed an
+      // invalid time value into the Date constructor (RangeError) or scan absurd ranges.
+      const rawDays = Number(args.days ?? 30)
+      const days = Number.isFinite(rawDays) ? Math.min(365, Math.max(1, Math.floor(rawDays))) : 30
       const today = new Date().toISOString().slice(0, 10)
       const future = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10)
       const rows = await db
@@ -830,7 +834,15 @@ mcp.post('/mcp', async (c) => {
         const result = await handleTool(c.env.DB, c.env, vendor, params.name, params.arguments ?? {}, c.executionCtx)
         return c.json(rpcResult(req.id, result))
       } catch (err: any) {
-        return c.json(rpcError(req.id, -32000, err.message))
+        // Log the full error server-side (with context) for observability, but
+        // return only a single-line, length-capped message so stack traces or DB
+        // internals never leak to the client. Intentional validation messages
+        // (single-line `new Error('…')`) pass through unchanged.
+        console.error(`[mcp] tool '${params.name}' failed for vendor ${vendor.id}:`, err)
+        const msg = typeof err?.message === 'string' && err.message
+          ? err.message.split('\n')[0].slice(0, 300)
+          : 'Tool execution failed'
+        return c.json(rpcError(req.id, -32000, msg))
       }
     }
 
