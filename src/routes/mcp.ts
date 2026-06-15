@@ -339,6 +339,24 @@ async function vendorUserId(db: D1Database, vendorId: string): Promise<string | 
   return row?.user_id ?? null
 }
 
+/**
+ * Require a string arg. Rejects non-strings (object/array/number) that would
+ * otherwise coerce to "[object Object]" etc. and be persisted as garbage.
+ * Treats null/undefined as the empty string so optional bodies still clear.
+ */
+function reqStr(v: unknown, name: string): string {
+  if (v === null || v === undefined) return ''
+  if (typeof v !== 'string') throw new Error(`${name} must be a string`)
+  return v
+}
+
+/** Mutating tools (each pushes the vault) and AI/geocode-heavy tools — tighter budgets. */
+const MCP_WRITE_TOOLS = new Set([
+  'update_wedding_todo', 'update_run_sheet', 'propose_timeline_change',
+  'update_private_notes', 'append_wedding_note',
+])
+const MCP_AI_TOOLS = new Set(['submit_enquiry'])
+
 async function handleTool(
   db: D1Database,
   env: Bindings,
@@ -424,6 +442,9 @@ async function handleTool(
 
     case 'get_wedding_todo': {
       const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
       const { getWeddingTodo } = await import('../db/todos')
       const todo = await getWeddingTodo(db, vendor.id, weddingId)
       if (!todo) return { content: [{ type: 'text', text: 'No checklist for this wedding' }] }
@@ -435,7 +456,7 @@ async function handleTool(
       if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
         return { content: [{ type: 'text', text: 'Wedding not found' }] }
       }
-      const content = String(args.content ?? '').trim()
+      const content = reqStr(args.content, 'content').trim()
       await db
         .prepare(
           `INSERT INTO wedding_todos (vendor_id, wedding_id, content)
@@ -481,7 +502,11 @@ async function handleTool(
         throw new Error('items must be an array')
       }
       const { RUN_SHEET_CATEGORIES } = await import('../types')
-      const rows = (args.items as Record<string, unknown>[]).map((item, i) => {
+      const rows = (args.items as unknown[]).map((raw, i) => {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+          throw new Error(`items[${i}] must be an object`)
+        }
+        const item = raw as Record<string, unknown>
         const title = String(item.title ?? '').trim()
         if (!title) throw new Error(`items[${i}] is missing a title`)
         const rawCategory = String(item.category ?? 'other')
@@ -532,7 +557,13 @@ async function handleTool(
           throw new Error(`"${key}" is not a timeline field. Allowed: ${TIMELINE_FIELDS.join(', ')}`)
         }
         if (key === 'duration_hours' || key === 'reception_duration_hours') {
-          incoming[key] = value === null || value === '' ? null : Number(value)
+          if (value === null || value === '') {
+            incoming[key] = null
+          } else {
+            const n = Number(value)
+            if (!Number.isFinite(n) || n < 0) throw new Error(`${key} must be a non-negative number`)
+            incoming[key] = n
+          }
         } else {
           incoming[key] = value === null ? null : String(value)
         }
@@ -633,7 +664,7 @@ async function handleTool(
       }
       const userId = await vendorUserId(db, vendor.id)
       if (!userId) return { content: [{ type: 'text', text: 'Wedding not found' }] }
-      const content = String(args.content ?? '').trim()
+      const content = reqStr(args.content, 'content').trim()
       await db
         .prepare('UPDATE wedding_members SET vendor_notes = ? WHERE wedding_id = ? AND user_id = ?')
         .bind(content || null, weddingId, userId)
@@ -663,7 +694,7 @@ async function handleTool(
     case 'append_wedding_note': {
       const weddingId = String(args.wedding_id ?? '')
       const scope = String(args.scope ?? 'shared')
-      const text = String(args.text ?? '')
+      const text = reqStr(args.text, 'text')
       if (!isDocScope(scope) || scope === 'couple') {
         return { content: [{ type: 'text', text: 'Invalid scope. Use shared, vendors, or private.' }] }
       }
@@ -800,8 +831,13 @@ mcp.post('/mcp', async (c) => {
     return c.json(rpcError(null, -32700, 'Parse error'), 400)
   }
 
-  // Handle single request
-  const req = Array.isArray(body) ? body[0] : body
+  // One JSON-RPC request per POST. Reject batches explicitly rather than silently
+  // processing only the first element and dropping the rest (a data-loss footgun on
+  // a write surface); modern MCP revisions removed JSON-RPC batching anyway.
+  if (Array.isArray(body)) {
+    return c.json(rpcError(null, -32600, 'Batch requests are not supported — send one JSON-RPC request per POST.'), 400)
+  }
+  const req = body
   if (!req || req.jsonrpc !== '2.0' || !req.method) {
     return c.json(rpcError(req?.id, -32600, 'Invalid Request'), 400)
   }
@@ -830,6 +866,16 @@ mcp.post('/mcp', async (c) => {
       if (!params?.name) {
         return c.json(rpcError(req.id, -32602, 'Missing tool name'))
       }
+      // Cost-tiered budgets on top of the flat per-vendor cap: every write tool
+      // re-serialises + pushes the whole wedding vault (GitHub/R2), and AI tools
+      // run Workers-AI/geocode — so a valid token can't drive thousands of heavy
+      // ops/hour within the generous 120/min ceiling.
+      if (MCP_AI_TOOLS.has(params.name) && !(await consumeRateLimit(c.env.KV, `mcp-ai:${vendor.id}`, 10, 60))) {
+        return c.json(rpcError(req.id, -32002, 'Rate limit exceeded for AI-backed tools — slow down.'), 429)
+      }
+      if (MCP_WRITE_TOOLS.has(params.name) && !(await consumeRateLimit(c.env.KV, `mcp-write:${vendor.id}`, 30, 60))) {
+        return c.json(rpcError(req.id, -32002, 'Rate limit exceeded for write tools — slow down.'), 429)
+      }
       try {
         const result = await handleTool(c.env.DB, c.env, vendor, params.name, params.arguments ?? {}, c.executionCtx)
         return c.json(rpcResult(req.id, result))
@@ -839,9 +885,13 @@ mcp.post('/mcp', async (c) => {
         // internals never leak to the client. Intentional validation messages
         // (single-line `new Error('…')`) pass through unchanged.
         console.error(`[mcp] tool '${params.name}' failed for vendor ${vendor.id}:`, err)
-        const msg = typeof err?.message === 'string' && err.message
+        let msg = typeof err?.message === 'string' && err.message
           ? err.message.split('\n')[0].slice(0, 300)
           : 'Tool execution failed'
+        // Never echo storage/driver internals (schema, constraints, hostnames).
+        if (/\b(D1_ERROR|SQLITE|R2|KV|fetch failed|ECONN|getaddrinfo|TypeError|ReferenceError)\b/i.test(msg)) {
+          msg = 'Tool execution failed'
+        }
         return c.json(rpcError(req.id, -32000, msg))
       }
     }
