@@ -26,6 +26,7 @@ import { exportWeddingVendorsMarkdown, vendorsCachedData } from '../db/wedding-v
 import { listRunSheetItems } from '../db/run-sheet'
 import { listPendingTimelineRequests } from '../db/timeline-requests'
 import { getVendorsDocContent } from '../db/wedding-docs'
+import { listOwnedItemsAsRows, listVisibleOtherItemRows } from '../db/timeline'
 
 export type PushResult = {
   folder: string
@@ -80,10 +81,12 @@ export async function pushWeddingFiles(
     console.error(`[storage] FAILED push todo.md ${wedding.id}:`, err.message)
   }
 
-  // 3. timeline.md — the run sheet (own rows editable, rest generated)
+  // 3. timeline.md — the unified wedding timeline (own rows editable, rest
+  // generated). Sourced from timeline_items, mapped to the run-sheet row shape
+  // so the markdown format is byte-identical to before.
   try {
-    const ownItems = await listRunSheetItems(db, wedding.id, vendorId)
-    const others = await listOtherVendorItems(db, wedding, vendorId)
+    const ownItems = await listOwnedItemsAsRows(db, wedding.id, vendorId)
+    const others = await listVisibleOtherItemRows(db, wedding.id, vendorId)
     const pending = await listPendingTimelineRequests(db, wedding.id)
     const indexRow = await db
       .prepare(
@@ -102,9 +105,8 @@ export async function pushWeddingFiles(
           null
         ),
       })
-      const cached = await timelineCachedData(db, wedding.id)
       if (
-        await writeCompanion(db, storage, vendorId, wedding.id, 'timeline', folder + 'timeline.md', md, cached)
+        await writeCompanion(db, storage, vendorId, wedding.id, 'timeline', folder + 'timeline.md', md, null)
       ) {
         wrote.push('timeline.md')
       }

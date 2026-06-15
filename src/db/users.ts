@@ -1,4 +1,5 @@
 import type { User } from '../types'
+import { generateToken } from '../lib/crypto'
 
 export async function getUserByEmail(
   db: D1Database,
@@ -8,6 +9,26 @@ export async function getUserByEmail(
     .prepare('SELECT * FROM users WHERE email = ?')
     .bind(email.toLowerCase())
     .first<User>()
+}
+
+/**
+ * Resolve a user by their personal calendar feed token. Stored RAW (a read-only
+ * capability URL) so the feed URL can be displayed on the account page on every
+ * load — unlike the vendor ical_token, which is hashed and shown once.
+ */
+export async function getUserByFeedToken(db: D1Database, token: string): Promise<User | null> {
+  return db
+    .prepare('SELECT * FROM users WHERE feed_token = ? AND deleted_at IS NULL')
+    .bind(token)
+    .first<User>()
+}
+
+/** Lazily mint (and return) a user's personal calendar feed token. */
+export async function ensureUserFeedToken(db: D1Database, user: User): Promise<string> {
+  if (user.feed_token) return user.feed_token
+  const token = await generateToken(16) // 32 hex chars — passes the /cal length guard
+  await updateUser(db, user.id, { feed_token: token })
+  return token
 }
 
 export async function getUserById(
@@ -51,6 +72,7 @@ export type UserUpdates = {
   avatar_r2_key?: string | null
   locale?: string | null
   timezone?: string | null
+  feed_token?: string | null
 }
 
 const UPDATABLE_FIELDS = [
@@ -58,7 +80,7 @@ const UPDATABLE_FIELDS = [
   'address_line_1', 'address_line_2', 'city', 'state', 'postcode', 'country',
   'instagram', 'facebook', 'tiktok', 'linkedin', 'website',
   'avatar_url', 'avatar_r2_key',
-  'locale', 'timezone',
+  'locale', 'timezone', 'feed_token',
 ] as const
 
 export async function updateUser(

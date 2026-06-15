@@ -22,6 +22,19 @@ import { docSave, docHeartbeat, docClaim, docRelease } from './wedding-docs-hand
 import { WebLinks } from '../views/web-links'
 import { listWebLinks } from '../db/web-links'
 import { addLink, togglePin, removeLink } from './web-links-handlers'
+import {
+  renderTimelineSection,
+  renderTimeline,
+  renderEdit as renderTimelineEdit,
+  addTimelineItem,
+  updateTimelineItem,
+  deleteTimelineItem,
+  addTimelineAssignee,
+  removeTimelineAssignee,
+  toggleAssigneeCalendar,
+  approveTimelineRequest,
+  declineTimelineRequest,
+} from './timeline-handlers'
 import { ensureCoupleContact } from '../services/couple-contact'
 import { isValidEmail } from '../lib/validation'
 import { consumeRateLimit } from '../middleware/rate-limit'
@@ -161,6 +174,11 @@ couple.get('/wedding/:id', async (c) => {
 
   // Web links (galleries, Pinterest, playlists…)
   const webLinks = await listWebLinks(c.env.DB, weddingId)
+
+  // Unified wedding timeline / run sheet
+  const timelineSection = membership.role === 'couple'
+    ? await renderTimelineSection(c, weddingId, membership, user, `/wedding/${weddingId}`)
+    : null
 
   // Documents
   const documents = await listDocumentsForWedding(c.env.DB, weddingId, user.id)
@@ -461,6 +479,8 @@ couple.get('/wedding/:id', async (c) => {
             />
           </section>
         )}
+
+        {timelineSection && <section>{timelineSection}</section>}
 
         {membership.role === 'couple' && (
           <section>
@@ -894,6 +914,78 @@ couple.post('/wedding/:id/links/:linkId/delete', async (c) => {
   const ctx = await coupleDocMembership(c, weddingId)
   if (!ctx) return c.text('Forbidden', 403)
   return removeLink(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('linkId'))
+})
+
+// ─── Wedding timeline (couple side) ───
+
+couple.get('/wedding/:id/timeline', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return renderTimeline(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`)
+})
+
+couple.post('/wedding/:id/timeline', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return addTimelineItem(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`)
+})
+
+couple.get('/wedding/:id/timeline/:itemId/edit', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return renderTimelineEdit(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('itemId'))
+})
+
+couple.post('/wedding/:id/timeline/:itemId', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return updateTimelineItem(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('itemId'))
+})
+
+couple.post('/wedding/:id/timeline/:itemId/delete', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return deleteTimelineItem(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('itemId'))
+})
+
+couple.post('/wedding/:id/timeline/:itemId/assignees', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return addTimelineAssignee(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('itemId'))
+})
+
+couple.post('/wedding/:id/timeline/:itemId/assignees/:assigneeId/remove', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return removeTimelineAssignee(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('itemId'), c.req.param('assigneeId'))
+})
+
+couple.post('/wedding/:id/timeline/:itemId/assignees/:assigneeId/calendar', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return toggleAssigneeCalendar(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('itemId'), c.req.param('assigneeId'))
+})
+
+couple.post('/wedding/:id/timeline/requests/:reqId/approve', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return approveTimelineRequest(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('reqId'))
+})
+
+couple.post('/wedding/:id/timeline/requests/:reqId/decline', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return declineTimelineRequest(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('reqId'))
 })
 
 // ─── Wedding details edit ───

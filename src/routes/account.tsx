@@ -8,7 +8,7 @@ import { requireAuth } from '../middleware/auth'
 import { csrf } from '../middleware/csrf'
 import { t, getI18n, SUPPORTED_LOCALES, listTimezones, isValidTimezone, type MessageKey } from '../i18n'
 import { rateLimit } from '../middleware/rate-limit'
-import { updateUser, updateUserEmail, getUserByEmail, getUserById, updateNotificationPrefs } from '../db/users'
+import { updateUser, updateUserEmail, getUserByEmail, getUserById, updateNotificationPrefs, ensureUserFeedToken } from '../db/users'
 import { softDeleteAccount } from '../services/account'
 import { getVendorByUserId } from '../db/vendors'
 import { getFirstCoupleWedding } from '../db/weddings'
@@ -90,6 +90,7 @@ const inputClass =
 account.get('/account', async (c) => {
   const user = c.get('user')
   const backUrl = await getBackUrl(c.env.DB, user.id)
+  const feedUrl = `${c.env.APP_URL}/cal/u/${await ensureUserFeedToken(c.env.DB, user)}`
   const saved = c.req.query('saved')
   const error = c.req.query('error')
   const emailSent = c.req.query('email_sent')
@@ -308,6 +309,20 @@ account.get('/account', async (c) => {
         >
           {t('account.notifications.manage')}
         </a>
+      </section>
+
+      {/* ─── Calendar feed ─── */}
+      <section class="mt-10 pt-8 border-t border-gray-200">
+        <h2 class="text-base font-bold mb-2">{t('timeline.feed.heading' as MessageKey)}</h2>
+        <p class="text-sm text-gray-500 mb-4">{t('timeline.feed.desc' as MessageKey)}</p>
+        <label class="block text-sm font-bold text-gray-700 mb-1.5">{t('timeline.feed.label' as MessageKey)}</label>
+        <input
+          type="text"
+          readonly
+          value={feedUrl}
+          onclick="this.select()"
+          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 font-mono text-gray-600 focus:outline-none focus:ring-2 focus:ring-horizon-600"
+        />
       </section>
 
       {/* ─── Passkeys ─── */}

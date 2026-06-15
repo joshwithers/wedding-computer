@@ -457,14 +457,13 @@ async function handleTool(
         .bind(weddingId)
         .first()
       if (!wedding) return { content: [{ type: 'text', text: 'Wedding not found' }] }
-      const { listRunSheetItems } = await import('../db/run-sheet')
+      const { listOwnedItemsAsRows, listVisibleOtherItemRows } = await import('../db/timeline')
       const { listPendingTimelineRequests } = await import('../db/timeline-requests')
-      const { listOtherVendorItems } = await import('../services/storage-push')
       const { timelineToMarkdown } = await import('../storage/run-sheet-md')
       const md = timelineToMarkdown({
         wedding: wedding as any,
-        ownItems: await listRunSheetItems(db, weddingId, vendor.id),
-        otherVendors: await listOtherVendorItems(db, wedding as any, vendor.id),
+        ownItems: await listOwnedItemsAsRows(db, weddingId, vendor.id),
+        otherVendors: await listVisibleOtherItemRows(db, weddingId, vendor.id),
         pendingRequests: await listPendingTimelineRequests(db, weddingId),
       })
       return { content: [{ type: 'text', text: md }] }
@@ -496,11 +495,12 @@ async function handleTool(
             : ('other' as const),
         }
       })
-      const { listRunSheetItems, applyRunSheetDiff } = await import('../db/run-sheet')
+      const { listOwnedItemsAsRows, applyTimelineRowDiff } = await import('../db/timeline')
       const { diffRunSheetRows } = await import('../storage/run-sheet-md')
-      const existing = await listRunSheetItems(db, weddingId, vendor.id)
+      const existing = await listOwnedItemsAsRows(db, weddingId, vendor.id)
       const diff = diffRunSheetRows(existing, rows)
-      await applyRunSheetDiff(db, weddingId, vendor.id, diff)
+      const uid = await vendorUserId(db, vendor.id)
+      await applyTimelineRowDiff(db, weddingId, vendor.id, uid, diff)
       await pushVault(env, vendor, weddingId, ctx)
       return {
         content: [{
@@ -569,10 +569,19 @@ async function handleTool(
         }
       }
 
-      const { updateWedding } = await import('../db/weddings')
       const applied: Record<string, string | number | null> = {}
       for (const f of changed) applied[f] = incoming[f] ?? null
-      await updateWedding(db, weddingId, applied as any)
+      // Headline times are timeline sections (the source of truth): route the
+      // slot fields onto the named slot rows, write date/durations directly, then
+      // refresh the derived columns. (No direct column writes that projection
+      // would later clobber.)
+      const { applyHeadlineFieldsToTimeline, projectTimelineToWedding } = await import('../db/timeline')
+      const directFields = await applyHeadlineFieldsToTimeline(db, weddingId, applied, userId)
+      if (Object.keys(directFields).length > 0) {
+        const { updateWedding } = await import('../db/weddings')
+        await updateWedding(db, weddingId, directFields as any)
+      }
+      await projectTimelineToWedding(db, weddingId)
       const { appendWeddingLog } = await import('../db/wedding-log')
       await appendWeddingLog(db, weddingId, userId, 'Wedding updated', summary).catch(() => {})
       const { resyncWeddingCalendars } = await import('../services/wedding-calendar')

@@ -13,6 +13,7 @@ import contacts from './routes/vendor/contacts'
 import weddings from './routes/vendor/weddings'
 import weddingDocs from './routes/vendor/wedding-docs'
 import weddingWebLinks from './routes/vendor/web-links'
+import weddingTimeline from './routes/vendor/timeline'
 import formEditor from './routes/vendor/form'
 import calendarRoute from './routes/vendor/calendar'
 import invoices from './routes/vendor/invoices'
@@ -27,7 +28,6 @@ import analyticsRoute from './routes/vendor/analytics'
 import subscriptionRoute from './routes/vendor/subscription'
 import teamRoute from './routes/vendor/team'
 import importRoute from './routes/vendor/import'
-import runSheetRoute from './routes/vendor/run-sheet'
 import quotesRoute from './routes/vendor/quotes'
 import accountRoute from './routes/account'
 import adminRoute from './routes/admin'
@@ -38,6 +38,7 @@ import caldav from './routes/caldav'
 import stripe from './routes/stripe'
 import webhooks from './routes/webhooks'
 import vaultApi from './routes/vault-api'
+import nativeRoute from './routes/native'
 import mcpRoute from './routes/mcp'
 import apiRoute from './routes/api'
 import publicRoutes from './routes/public'
@@ -339,6 +340,7 @@ app.route('/', feed)
 app.route('/', stripe)
 app.route('/', webhooks)
 app.route('/', vaultApi)
+app.route('/', nativeRoute)
 
 // Authenticated vendor routes
 app.route('/', dashboard)
@@ -347,6 +349,7 @@ app.route('/', contacts)
 app.route('/', weddings)
 app.route('/', weddingDocs)
 app.route('/', weddingWebLinks)
+app.route('/', weddingTimeline)
 app.route('/', formEditor)
 app.route('/', calendarRoute)
 app.route('/', invoices)
@@ -359,7 +362,6 @@ app.route('/', analyticsRoute)
 app.route('/', subscriptionRoute)
 app.route('/', teamRoute)
 app.route('/', importRoute)
-app.route('/', runSheetRoute)
 app.route('/', quotesRoute)
 app.route('/', formsRoute)
 app.route('/', referRoute)

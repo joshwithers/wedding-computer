@@ -31,10 +31,14 @@ CREATE TABLE IF NOT EXISTS users (
   notification_prefs TEXT NOT NULL DEFAULT '{}',
   -- Set when the account is soft-deleted; nightly cron hard-purges after 30 days.
   deleted_at TEXT,
+  -- Personal calendar feed token (hashed 'sha256:...'), lazily minted. Lets any
+  -- member (incl. the couple) subscribe to their assigned timeline sections.
+  feed_token TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users(deleted_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_feed_token ON users(feed_token) WHERE feed_token IS NOT NULL;
 
 -- Vendor profiles (a user who is a vendor has one of these)
 CREATE TABLE IF NOT EXISTS vendor_profiles (
@@ -212,6 +216,49 @@ CREATE TABLE IF NOT EXISTS web_links (
 );
 
 CREATE INDEX IF NOT EXISTS idx_web_links_wedding ON web_links(wedding_id);
+
+-- Unified wedding timeline / run sheet — one wedding-wide ordered list of timed
+-- sections (replaces the per-vendor run_sheet_items + the structured time fields
+-- on weddings). Named slots (ceremony/getting-ready/portraits/reception) are
+-- first-class 'system rows' (slot column); freeform rows have slot=NULL.
+CREATE TABLE IF NOT EXISTS timeline_items (
+  id                 TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  wedding_id         TEXT NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
+  start_time         TEXT,
+  end_time           TEXT,
+  title              TEXT NOT NULL,
+  description        TEXT,
+  location           TEXT,
+  category           TEXT NOT NULL DEFAULT 'other'
+    CHECK (category IN ('getting_ready','ceremony','portraits','reception','other')),
+  owner_vendor_id    TEXT REFERENCES vendor_profiles(id) ON DELETE SET NULL,
+  created_by_user_id TEXT REFERENCES users(id),
+  visibility         TEXT NOT NULL DEFAULT 'couple'
+    CHECK (visibility IN ('couple','vendors','private')),
+  slot               TEXT,
+  sort_order         INTEGER NOT NULL DEFAULT 0,
+  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_timeline_items_wedding ON timeline_items(wedding_id, sort_order);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_items_slot ON timeline_items(wedding_id, slot) WHERE slot IS NOT NULL;
+
+-- People involved in a timeline section. Exactly one of (wedding_member_id,
+-- team_member_id, label) identifies the assignee; added_to_calendar is that
+-- person's opt-in to receive this section in their personal calendar feed.
+CREATE TABLE IF NOT EXISTS timeline_item_assignees (
+  id                TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  timeline_item_id  TEXT NOT NULL REFERENCES timeline_items(id) ON DELETE CASCADE,
+  wedding_member_id TEXT REFERENCES wedding_members(id) ON DELETE CASCADE,
+  team_member_id    TEXT REFERENCES team_members(id) ON DELETE CASCADE,
+  label             TEXT,
+  added_to_calendar INTEGER NOT NULL DEFAULT 0,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_tia_item ON timeline_item_assignees(timeline_item_id);
+CREATE INDEX IF NOT EXISTS idx_tia_member ON timeline_item_assignees(wedding_member_id);
 
 -- CRM Contacts (vendor's leads/clients)
 CREATE TABLE IF NOT EXISTS contacts (

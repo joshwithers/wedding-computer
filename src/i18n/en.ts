@@ -17,6 +17,7 @@ import { contacts } from './en/contacts'
 import { weddings } from './en/weddings'
 import { docs } from './en/docs'
 import { links } from './en/links'
+import { timeline } from './en/timeline'
 import { couple } from './en/couple'
 import { settings } from './en/settings'
 import { billing } from './en/billing'
@@ -35,6 +36,7 @@ export const en = {
   ...weddings,
   ...docs,
   ...links,
+  ...timeline,
   ...couple,
   ...settings,
   ...billing,

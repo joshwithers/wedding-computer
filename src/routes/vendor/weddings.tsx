@@ -50,6 +50,7 @@ import { WeddingDoc } from '../../views/wedding-doc'
 import { loadDocTabs } from '../../db/wedding-docs'
 import { WebLinks } from '../../views/web-links'
 import { listWebLinks } from '../../db/web-links'
+import { renderTimelineSection } from '../timeline-handlers'
 
 /**
  * Sync per-vendor bump in/out calendar events.
@@ -576,6 +577,9 @@ weddings.get('/app/weddings/:id', async (c) => {
   // Web links (galleries, Pinterest, playlists…)
   const webLinks = await listWebLinks(c.env.DB, weddingId)
 
+  // Unified wedding timeline / run sheet
+  const timelineSection = await renderTimelineSection(c, weddingId, membership, user, `/app/weddings/${weddingId}`)
+
   // Credits — couple_vendors may not exist yet, so handle gracefully
   let credits: ReturnType<typeof buildCredits> = []
   try {
@@ -832,19 +836,8 @@ weddings.get('/app/weddings/:id', async (c) => {
           canManage={canManage}
         />
 
-        {/* Run Sheet */}
-        <div class="mt-6">
-          <a
-            href={`/app/weddings/${wedding.id}/run-sheet`}
-            class="flex items-center justify-between bg-white border border-papaya-300/30 rounded-2xl p-4 hover:border-horizon-300 transition-colors group"
-          >
-            <div>
-              <h3 class="text-sm font-bold text-gray-900 group-hover:text-horizon-600">Run Sheet</h3>
-              <p class="text-xs text-gray-500">Day-of timeline and logistics</p>
-            </div>
-            <svg class="w-5 h-5 text-gray-400 group-hover:text-horizon-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
-          </a>
-        </div>
+        {/* Run sheet / unified wedding timeline */}
+        {timelineSection}
 
         {/* Files */}
         <WeddingFiles

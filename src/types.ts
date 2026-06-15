@@ -78,6 +78,8 @@ export type User = {
   notification_prefs: string
   /** Set when soft-deleted; cleared on restore; hard-purged 30 days later. */
   deleted_at: string | null
+  /** Personal calendar feed token (hashed 'sha256:...'), lazily minted. */
+  feed_token: string | null
   created_at: string
   updated_at: string
 }
@@ -689,6 +691,47 @@ export type RunSheetItem = {
 export const RUN_SHEET_CATEGORIES = [
   'getting_ready', 'ceremony', 'portraits', 'reception', 'other',
 ] as const
+
+// ── Unified wedding timeline (replaces run_sheet_items + structured times) ──
+
+export const TIMELINE_CATEGORIES = [
+  'getting_ready', 'ceremony', 'portraits', 'reception', 'other',
+] as const
+export type TimelineCategory = (typeof TIMELINE_CATEGORIES)[number]
+
+export type TimelineVisibility = 'couple' | 'vendors' | 'private'
+
+/** A named headline slot backfilled from the old structured wedding fields. */
+export type TimelineSlot =
+  | 'getting_ready_1' | 'getting_ready_2' | 'ceremony' | 'portraits' | 'reception'
+
+export type TimelineItem = {
+  id: string
+  wedding_id: string
+  start_time: string | null
+  end_time: string | null
+  title: string
+  description: string | null
+  location: string | null
+  category: TimelineCategory
+  owner_vendor_id: string | null
+  created_by_user_id: string | null
+  visibility: TimelineVisibility
+  slot: TimelineSlot | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export type TimelineItemAssignee = {
+  id: string
+  timeline_item_id: string
+  wedding_member_id: string | null
+  team_member_id: string | null
+  label: string | null
+  added_to_calendar: number
+  created_at: string
+}
 
 export type BusynessScore = {
   id: string

@@ -34,6 +34,7 @@ import { isIgnoredPath } from './github'
 import { getWeddingTodo } from '../db/todos'
 import { listRunSheetItems, applyRunSheetDiff } from '../db/run-sheet'
 import { setVendorsDocContent } from '../db/wedding-docs'
+import { listOwnedItemsAsRows, applyTimelineRowDiff } from '../db/timeline'
 import {
   partitionVendorWeddingUpdate,
   getTimelineControl,
@@ -269,17 +270,21 @@ export async function applyPulledFile(
       return { applied: 'ignored', reason: 'not a member of that wedding' }
     }
 
+    // The vault timeline.md is the UNIFIED timeline (timeline_items). A vendor's
+    // own rows are two-way; rows they don't own are read-only (regenerated).
     const rows = parseTimelineMarkdown(content)
-    const existing = await listRunSheetItems(db, weddingId, vendorId)
+    const existing = await listOwnedItemsAsRows(db, weddingId, vendorId)
     const diff = diffRunSheetRows(existing, rows)
-    await applyRunSheetDiff(db, weddingId, vendorId, diff)
+    const vendorUser = await db
+      .prepare('SELECT user_id FROM vendor_profiles WHERE id = ?')
+      .bind(vendorId)
+      .first<{ user_id: string }>()
+    await applyTimelineRowDiff(db, weddingId, vendorId, vendorUser?.user_id ?? null, diff)
 
-    // New rows were assigned ids the file doesn't have — leave cached_data
-    // NULL so the sweep re-pushes the canonical table (otherwise the next
-    // ingest would create them all again).
+    // New rows were assigned ids the file lacks — re-push the canonical file so
+    // the next ingest doesn't recreate them.
     const needsRepush = diff.creates.length > 0
-    const cached = needsRepush ? null : await timelineCachedData(db, weddingId)
-    await upsertIndexRow(db, vendorId, 'timeline', weddingId, path, etag, cached)
+    await upsertIndexRow(db, vendorId, 'timeline', weddingId, path, etag, null)
     return { applied: 'timeline', entityId: weddingId, ...(needsRepush ? { needsRepush } : {}) }
   }
 

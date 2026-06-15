@@ -1,4 +1,49 @@
 import type { EnrichedCalendarEvent } from '../types'
+import type { UserCalendarRow } from '../db/timeline'
+import { addHoursToTime } from '../lib/date'
+
+/**
+ * A personal calendar feed built from a user's assigned + opted-in timeline
+ * sections (one VEVENT per row). Stable UID `ts-<item_id>` so subscribers see
+ * in-place updates, never delete+re-add. Reuses the same time/escape helpers
+ * as the vendor feed.
+ */
+export function buildTimelineFeed(rows: UserCalendarRow[], calName: string, timezone: string): string {
+  const lines: string[] = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Wedding Computer//Timeline//EN',
+    `X-WR-CALNAME:${escapeIcalText(calName)}`,
+    `X-WR-TIMEZONE:${timezone}`,
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+  ]
+  for (const r of rows) lines.push(...timelineVevent(r, timezone))
+  lines.push('END:VCALENDAR')
+  return lines.join('\r\n') + '\r\n'
+}
+
+function timelineVevent(r: UserCalendarRow, timezone: string): string[] {
+  const lines: string[] = ['BEGIN:VEVENT']
+  lines.push(`UID:ts-${r.id}@weddingcomputer.com`)
+  lines.push(`SUMMARY:${escapeIcalText(r.wedding_title ? `${r.title} · ${r.wedding_title}` : r.title)}`)
+  lines.push(`DTSTAMP:${formatUtcTimestamp(r.created_at)}`)
+  if (!r.start_time) {
+    lines.push(`DTSTART;VALUE=DATE:${r.wedding_date.replace(/-/g, '')}`)
+    lines.push(`DTEND;VALUE=DATE:${nextDay(r.wedding_date)}`)
+  } else {
+    lines.push(`DTSTART;TZID=${timezone}:${formatLocalTimestamp(r.wedding_date, r.start_time)}`)
+    const end = r.end_time ?? addHoursToTime(r.start_time, 1)
+    lines.push(`DTEND;TZID=${timezone}:${formatLocalTimestamp(r.wedding_date, end)}`)
+  }
+  if (r.location) lines.push(`LOCATION:${escapeIcalText(r.location)}`)
+  const desc = [r.description, r.wedding_title].filter(Boolean).join('\n')
+  if (desc) lines.push(`DESCRIPTION:${escapeIcalText(desc)}`)
+  lines.push('TRANSP:OPAQUE', 'CATEGORIES:Wedding')
+  if (r.updated_at) lines.push(`LAST-MODIFIED:${formatUtcTimestamp(r.updated_at)}`)
+  lines.push('END:VEVENT')
+  return lines
+}
 
 export function buildIcalFeed(
   events: EnrichedCalendarEvent[],

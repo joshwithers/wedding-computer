@@ -227,17 +227,18 @@ describe('timeline.md ingestion', () => {
   beforeEach(() => {
     db = new MockD1Database()
     seedBase(db)
-    db.seed('run_sheet_items', [
+    // timeline.md now drives the unified timeline_items (the vendor's OWN rows).
+    db.seed('timeline_items', [
       {
-        id: 'rs-1', wedding_id: WEDDING_ID, vendor_id: VENDOR_ID,
-        time: '14:30', end_time: null, title: 'Ceremony', description: null,
-        location: 'Chapel', assigned_to: null, category: 'ceremony', sort_order: 0,
+        id: 'rs-1', wedding_id: WEDDING_ID, owner_vendor_id: VENDOR_ID, created_by_user_id: null,
+        start_time: '14:30', end_time: null, title: 'Ceremony', description: null,
+        location: 'Chapel', category: 'ceremony', visibility: 'vendors', slot: null, sort_order: 0,
         created_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z',
       },
       {
-        id: 'rs-2', wedding_id: WEDDING_ID, vendor_id: VENDOR_ID,
-        time: '17:00', end_time: null, title: 'Speeches', description: null,
-        location: null, assigned_to: null, category: 'reception', sort_order: 1,
+        id: 'rs-2', wedding_id: WEDDING_ID, owner_vendor_id: VENDOR_ID, created_by_user_id: null,
+        start_time: '17:00', end_time: null, title: 'Speeches', description: null,
+        location: null, category: 'reception', visibility: 'vendors', slot: null, sort_order: 1,
         created_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z',
       },
     ])
@@ -271,9 +272,9 @@ describe('timeline.md ingestion', () => {
 
     expect(outcome).toMatchObject({ applied: 'timeline', entityId: WEDDING_ID, needsRepush: true })
 
-    const items = db.getTable('run_sheet_items')
+    const items = db.getTable('timeline_items')
     const ceremony = items.find((i) => i.id === 'rs-1')
-    expect(ceremony?.time).toBe('15:00')
+    expect(ceremony?.start_time).toBe('15:00')
     expect(items.find((i) => i.title === 'First dance')).toBeTruthy()
     expect(items.find((i) => i.id === 'rs-2')).toBeUndefined()
   })
@@ -301,7 +302,7 @@ describe('timeline.md ingestion', () => {
     )
 
     expect(outcome).toMatchObject({ applied: 'ignored' })
-    expect(db.getTable('run_sheet_items')).toHaveLength(2)
+    expect(db.getTable('timeline_items')).toHaveLength(2)
   })
 })
 
