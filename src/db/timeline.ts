@@ -359,6 +359,16 @@ const SLOT_FIELD_MAP: Record<string, { slot: TimelineSlot; attr: 'start_time' | 
   reception_location: { slot: 'reception', attr: 'location', category: 'reception', defaultTitle: 'Reception' },
 }
 
+/** The weddings.* columns that map onto timeline slot rows (the headline fields). */
+export const HEADLINE_FIELDS = Object.keys(SLOT_FIELD_MAP)
+
+/** Pull just the headline (slot-mapped) fields off a wedding-shaped object. */
+export function pickHeadlineFields(w: Record<string, unknown>): Record<string, string | number | null> {
+  const out: Record<string, string | number | null> = {}
+  for (const k of HEADLINE_FIELDS) out[k] = (w[k] as string | number | null | undefined) ?? null
+  return out
+}
+
 /**
  * Apply field-shaped headline changes to the slot timeline_items rows (upserting
  * each slot). Returns the NON-slot fields (date, durations) for the caller to

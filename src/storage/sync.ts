@@ -34,7 +34,7 @@ import { isIgnoredPath } from './github'
 import { getWeddingTodo } from '../db/todos'
 import { listRunSheetItems, applyRunSheetDiff } from '../db/run-sheet'
 import { setVendorsDocContent } from '../db/wedding-docs'
-import { listOwnedItemsAsRows, applyTimelineRowDiff } from '../db/timeline'
+import { listOwnedItemsAsRows, applyTimelineRowDiff, applyWeddingUpdate, pickHeadlineFields } from '../db/timeline'
 import {
   partitionVendorWeddingUpdate,
   getTimelineControl,
@@ -183,6 +183,10 @@ export async function applyPulledFile(
 
     if (access === 'new') {
       await syncToWeddingsTable(db, incoming)
+      // Materialise the headline slot rows from the wedding.md frontmatter so
+      // timeline_items is the source of truth from birth (no row=null + column=set
+      // drift). Pass current=null so any populated headline seeds its slot row.
+      await applyWeddingUpdate(db, incoming.id, pickHeadlineFields(incoming), incoming.created_by_user_id ?? '', null)
       await ensureSyncedWeddingMembership(db, vendorId, incoming)
       await upsertIndexRow(db, vendorId, 'wedding', incoming.id, path, etag, weddingCachedData(incoming))
       return { applied: 'wedding', entityId: incoming.id }
@@ -240,7 +244,16 @@ export async function applyPulledFile(
       String(current.title ?? '') !== String(direct.title ?? '') ||
       String(current.emoji ?? '') !== String(direct.emoji ?? '')
 
+    // Snapshot the pre-sync headline values BEFORE the upsert (so only the
+    // actually-changed headline fields route onto the rows; pending approval-gated
+    // fields equal current and are left for the approver).
+    const headlineBefore = pickHeadlineFields(current)
     await syncToWeddingsTable(db, direct)
+    // Route the directly-applied headline changes onto the slot rows (the source of
+    // truth) so timeline_items stays consistent with the columns Obsidian just
+    // wrote. createItem materialises a row for a location/label even with no time,
+    // closing the row=null + column=set drift.
+    await applyWeddingUpdate(db, direct.id, pickHeadlineFields(direct), vendor?.user_id ?? direct.created_by_user_id ?? '', headlineBefore)
     await upsertIndexRow(db, vendorId, 'wedding', direct.id, path, etag, weddingCachedData(direct))
 
     if (appliedTimelineFields.length > 0 || eventTitleChanged) {

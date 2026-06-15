@@ -151,6 +151,25 @@ describe('wedding.md ingestion permission routing', () => {
     expect(db.getTable('timeline_change_requests')).toHaveLength(0)
   })
 
+  it('materialises the headline slot rows from a wedding.md edit (timeline_items stays source of truth)', async () => {
+    seedBase(db)
+    db.seed('timeline_items', [])
+    // Obsidian edit moves the ceremony venue (no controllers → applies directly).
+    const content = weddingFileContent(makeWedding({ ceremony_location: "St Mary's Church" }))
+
+    await applyPulledFile(
+      db as unknown as D1Database, VENDOR_ID, FOLDER + 'wedding.md', content, 'etag-1'
+    )
+
+    // A ceremony slot row now exists carrying the wedding.md state — so a later web
+    // edit of the time can't blank this venue (the row, not just the column, holds it).
+    const ceremony = db.getTable('timeline_items').find((i) => i.slot === 'ceremony')
+    expect(ceremony).toBeDefined()
+    expect(ceremony!.start_time).toBe('15:00')
+    expect(ceremony!.location).toBe("St Mary's Church")
+    expect(db.getTable('weddings')[0].ceremony_location).toBe("St Mary's Church")
+  })
+
   it('persists emoji and reception duration from a file edit', async () => {
     seedBase(db)
     const content = weddingFileContent(
