@@ -121,8 +121,8 @@ const TOOLS = [
     description: 'Get a wedding\'s full details as a markdown file by ID.',
     inputSchema: {
       type: 'object' as const,
-      properties: { id: { type: 'string', description: 'Wedding ID' } },
-      required: ['id'],
+      properties: { wedding_id: { type: 'string', description: 'Wedding ID' } },
+      required: ['wedding_id'],
     },
   },
   {
@@ -404,7 +404,9 @@ async function handleTool(
     }
 
     case 'get_wedding': {
-      const id = String(args.id ?? '')
+      // Accept wedding_id (consistent with every other wedding-scoped tool) and
+      // keep `id` as a backward-compatible fallback for older clients.
+      const id = String(args.wedding_id ?? args.id ?? '')
       if (!(await vendorCanAccessWedding(db, vendor.id, id))) {
         return { content: [{ type: 'text', text: 'Wedding not found' }] }
       }
