@@ -8,6 +8,8 @@ import { rateLimit } from '../middleware/rate-limit'
 import { isValidEmail } from '../lib/validation'
 import { COUNTRIES } from '../forms/countries'
 import type { FormConfig, FormField, FormStep, FormAction, ContactMapping } from '../lib/form-schema'
+import { FormEnhancements } from '../lib/form-enhance'
+import { t } from '../i18n'
 
 const form = new Hono<Env>()
 
@@ -26,13 +28,14 @@ form.get('/form/:token', async (c) => {
   const embed = c.req.query('embed') === '1'
 
   return c.html(
-    <FormShell embed={embed} mapsKey={c.env.GOOGLE_MAPS_API_KEY}>
+    <FormShell embed={embed}>
       <FormRenderer
         config={config}
         formType={formRecord.type}
         vendorName={vendor.business_name}
         siteKey={c.env.TURNSTILE_SITE_KEY}
         token={formRecord.public_token}
+        mapsKey={c.env.GOOGLE_MAPS_API_KEY}
       />
     </FormShell>
   )
@@ -63,7 +66,7 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
 
   if (!turnstileOk) {
     return c.html(
-      <FormShell embed={embed} mapsKey={c.env.GOOGLE_MAPS_API_KEY}>
+      <FormShell embed={embed}>
         <FormRenderer
           config={config}
           formType={formRecord.type}
@@ -72,6 +75,7 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
           token={formRecord.public_token}
           error="Verification failed. Please try again."
           values={body as Record<string, string>}
+          mapsKey={c.env.GOOGLE_MAPS_API_KEY}
         />
       </FormShell>
     )
@@ -334,13 +338,12 @@ async function handleCreateContact(
 
 // ─── Components ───
 
-function FormShell({ children, embed, mapsKey }: { children: any; embed?: boolean; mapsKey?: string }) {
+function FormShell({ children, embed }: { children: any; embed?: boolean }) {
   if (embed) {
     return (
       <html>
         <head>
           <SharedHead title="Form" />
-          {mapsKey && <script src={`https://maps.googleapis.com/maps/api/js?key=${mapsKey}&libraries=places`} async defer />}
         </head>
         <body class="bg-white p-4">
           {children}
@@ -353,7 +356,6 @@ function FormShell({ children, embed, mapsKey }: { children: any; embed?: boolea
     <html>
       <head>
         <SharedHead title="Form" />
-        {mapsKey && <script src={`https://maps.googleapis.com/maps/api/js?key=${mapsKey}&libraries=places`} async defer />}
       </head>
       <body class="bg-gray-50 min-h-screen">
         <div class="max-w-2xl mx-auto py-8 px-4">
@@ -365,7 +367,7 @@ function FormShell({ children, embed, mapsKey }: { children: any; embed?: boolea
 }
 
 function FormRenderer({
-  config, formType, vendorName, siteKey, token, error, values,
+  config, formType, vendorName, siteKey, token, error, values, mapsKey,
 }: {
   config: FormConfig
   formType: string
@@ -374,6 +376,7 @@ function FormRenderer({
   token: string
   error?: string
   values?: Record<string, string>
+  mapsKey?: string
 }) {
   const isMultiStep = !!(config.steps && config.steps.length > 0)
   const allFields = isMultiStep ? config.steps!.flatMap(s => s.fields) : config.fields
@@ -451,6 +454,9 @@ function FormRenderer({
 
       {/* Multi-step + conditional logic */}
       <script dangerouslySetInnerHTML={{ __html: formLogicScript() }} />
+
+      {/* Location autocomplete + future-date/countdown helpers */}
+      <FormEnhancements mapsKey={mapsKey} />
     </div>
   )
 }
@@ -528,7 +534,7 @@ function FieldRenderer({ field, value }: { field: FormField; value?: string }) {
           type="text"
           name={field.id}
           value={value ?? ''}
-          placeholder={field.placeholder || 'Start typing an address...'}
+          placeholder={field.placeholder || t('forms.address.placeholder')}
           required={field.required}
           class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm address-autocomplete"
           data-title-case={field.titleCase ? 'true' : undefined}
@@ -542,6 +548,7 @@ function FieldRenderer({ field, value }: { field: FormField; value?: string }) {
           required={field.required}
           class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
           data-title-case={field.titleCase ? 'true' : undefined}
+          data-future-date={field.type === 'date' && field.mapTo === 'wedding_date' ? 'true' : undefined}
         />
       )}
     </div>
@@ -689,16 +696,8 @@ function formLogicScript(): string {
     }
   }, true);
 
-  // Address autocomplete (Google Maps)
-  if (window.google && window.google.maps) {
-    document.querySelectorAll('.address-autocomplete').forEach(function(input) {
-      var ac = new google.maps.places.Autocomplete(input, { componentRestrictions: { country: 'au' }, fields: ['formatted_address'] });
-      ac.addListener('place_changed', function() {
-        var place = ac.getPlace();
-        if (place && place.formatted_address) input.value = place.formatted_address;
-      });
-    });
-  }
+  // Address autocomplete + future-date helpers are injected separately via
+  // <FormEnhancements/> so they're shared across every public form.
 })();
 `
 }

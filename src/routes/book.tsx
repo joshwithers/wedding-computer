@@ -12,6 +12,8 @@ import { getContractByInvoice, signContract } from '../db/contracts'
 import { formatDate } from '../lib/date'
 import { parseBookingFormConfig } from '../lib/form-schema'
 import type { FormConfig, FormField } from '../lib/form-schema'
+import { FormEnhancements } from '../lib/form-enhance'
+import { t } from '../i18n'
 import { verifyTurnstile } from '../services/turnstile'
 import { rateLimit } from '../middleware/rate-limit'
 
@@ -187,6 +189,7 @@ book.get('/book/:token', async (c) => {
             siteKey={c.env.TURNSTILE_SITE_KEY}
             contactName={invoice.contact_name}
             contract={showContract ? contract : null}
+            mapsKey={c.env.GOOGLE_MAPS_API_KEY}
           />
         ) : (
           <div class="text-center mt-6">
@@ -430,12 +433,14 @@ function BookingForm({
   siteKey,
   contactName,
   contract,
+  mapsKey,
 }: {
   config: FormConfig | null
   token: string
   siteKey: string
   contactName: string | null
   contract: { id: string; title: string; body: string } | null
+  mapsKey?: string
 }) {
   const hasFields = config && config.fields.length > 0
   const inputClass = 'w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent'
@@ -533,6 +538,8 @@ function BookingForm({
           {contract && ' Your signature will be recorded as a legal agreement.'}
         </p>
       </form>
+
+      <FormEnhancements mapsKey={mapsKey} />
     </div>
   )
 }
@@ -664,6 +671,23 @@ function RenderField({ field }: { field: FormField }) {
     )
   }
 
+  if (field.type === 'address') {
+    return (
+      <div>
+        {labelEl}
+        <input
+          type="text"
+          id={field.id}
+          name={field.id}
+          required={field.required}
+          placeholder={field.placeholder || t('forms.address.placeholder')}
+          autocomplete="off"
+          class={`${inputClass} address-autocomplete`}
+        />
+      </div>
+    )
+  }
+
   return (
     <div>
       {labelEl}
@@ -674,6 +698,7 @@ function RenderField({ field }: { field: FormField }) {
         required={field.required}
         placeholder={field.placeholder}
         class={inputClass}
+        data-future-date={field.type === 'date' && field.mapTo === 'wedding_date' ? 'true' : undefined}
       />
     </div>
   )

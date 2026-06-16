@@ -2,6 +2,10 @@ import type { Dictionary } from './index'
 
 // Deutsch — see docs/TRANSLATING.md for conventions.
 export const de: Dictionary = {
+  'forms.date.today': 'Das ist heute',
+  'forms.date.away': 'in {duration}',
+  'forms.date.ago': 'vor {duration}',
+  'forms.address.placeholder': 'Ort oder Adresse eingeben …',
   'common.save': 'Speichern',
   'common.saveChanges': 'Änderungen speichern',
   'common.cancel': 'Abbrechen',

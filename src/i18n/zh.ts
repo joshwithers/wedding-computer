@@ -2,6 +2,10 @@ import type { Dictionary } from './index'
 
 // 简体中文 — see docs/TRANSLATING.md for conventions.
 export const zh: Dictionary = {
+  'forms.date.today': '就是今天',
+  'forms.date.away': '{duration}后',
+  'forms.date.ago': '{duration}前',
+  'forms.address.placeholder': '输入地点或地址…',
   'common.save': '保存',
   'common.saveChanges': '保存更改',
   'common.cancel': '取消',

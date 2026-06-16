@@ -119,7 +119,7 @@ export function defaultFormConfig(): FormConfig {
     fields: [
       { id: 'heading_wedding', type: 'heading', label: 'About your wedding' },
       { id: 'wedding_date', type: 'date', label: 'Wedding date', width: 'half', mapTo: 'wedding_date' },
-      { id: 'wedding_location', type: 'text', label: 'Wedding location', placeholder: 'City or venue name', width: 'half', mapTo: 'wedding_location' },
+      { id: 'wedding_location', type: 'address', label: 'Wedding location', placeholder: 'City or venue name', width: 'half', mapTo: 'wedding_location' },
       { id: 'ceremony_type', type: 'select', label: 'Ceremony type', options: ['Traditional', 'Elopement', 'Micro wedding', 'Destination', 'Other'], width: 'half' },
       { id: 'guest_count', type: 'select', label: 'Expected guests', options: ['Just us', 'Under 20', '20–50', '50–100', '100–200', '200+'], width: 'half' },
       { id: 'message', type: 'textarea', label: 'Tell us about your plans', placeholder: "What's your vision for the day?", mapTo: 'notes' },

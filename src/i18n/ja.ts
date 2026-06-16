@@ -2,6 +2,10 @@ import type { Dictionary } from './index'
 
 // 日本語 — see docs/TRANSLATING.md for conventions.
 export const ja: Dictionary = {
+  'forms.date.today': '今日です',
+  'forms.date.away': '{duration}後',
+  'forms.date.ago': '{duration}前',
+  'forms.address.placeholder': '場所や住所を入力…',
   'common.save': '保存',
   'common.saveChanges': '変更を保存',
   'common.cancel': 'キャンセル',

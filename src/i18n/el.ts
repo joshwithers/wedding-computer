@@ -2,6 +2,10 @@ import type { Dictionary } from './index'
 
 // Ελληνικά — see docs/TRANSLATING.md for conventions.
 export const el: Dictionary = {
+  'forms.date.today': 'Είναι σήμερα',
+  'forms.date.away': 'σε {duration}',
+  'forms.date.ago': 'πριν από {duration}',
+  'forms.address.placeholder': 'Πληκτρολογήστε τοποθεσία ή διεύθυνση…',
   'common.save': 'Αποθήκευση',
   'common.saveChanges': 'Αποθήκευση αλλαγών',
   'common.cancel': 'Ακύρωση',

@@ -9,6 +9,7 @@ import { getFirstCoupleWedding, createWedding, addWeddingMember } from '../db/we
 import { linkPendingInvites } from '../db/couple-vendors'
 import { ensureCoupleContact } from '../services/couple-contact'
 import { requireString, trimOrNull } from '../lib/validation'
+import { FormEnhancements } from '../lib/form-enhance'
 import { VENDOR_CATEGORIES } from '../types'
 import { t } from '../i18n'
 import { categorySetup } from '../lib/onboarding'
@@ -346,8 +347,8 @@ onboarding.get('/onboarding/profile', async (c) => {
             </div>
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5" for="location">Location</label>
-              <input type="text" id="location" name="location" value={vendor.location ?? ''} placeholder="City or region you serve"
-                class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent" />
+              <input type="text" id="location" name="location" value={vendor.location ?? ''} placeholder="City or region you serve" autocomplete="off" data-region="true"
+                class="address-autocomplete w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent" />
             </div>
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5" for="website">Website</label>
@@ -372,6 +373,7 @@ onboarding.get('/onboarding/profile', async (c) => {
           <a href="/onboarding/next" class="block text-center text-sm text-gray-400 hover:text-gray-600 mt-3">Skip for now</a>
         </form>
       </div>
+      <FormEnhancements mapsKey={c.env.GOOGLE_MAPS_API_KEY} />
     </AuthLayout>
   )
 })
@@ -485,6 +487,7 @@ onboarding.get('/onboarding/wedding', async (c) => {
                 type="date"
                 id="date"
                 name="date"
+                data-future-date="true"
                 class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
               />
               <p class="text-xs text-gray-400 mt-1">Don't have a date yet? No worries — leave it blank.</p>
@@ -498,7 +501,8 @@ onboarding.get('/onboarding/wedding', async (c) => {
                 id="location"
                 name="location"
                 placeholder="City or venue name"
-                class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                autocomplete="off"
+                class="address-autocomplete w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
               />
             </div>
           </div>
@@ -510,6 +514,7 @@ onboarding.get('/onboarding/wedding', async (c) => {
           </button>
         </form>
       </div>
+      <FormEnhancements mapsKey={c.env.GOOGLE_MAPS_API_KEY} />
     </AuthLayout>
   )
 })

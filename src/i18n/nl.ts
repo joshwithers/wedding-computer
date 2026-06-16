@@ -2,6 +2,10 @@ import type { Dictionary } from './index'
 
 // Nederlands — see docs/TRANSLATING.md for conventions.
 export const nl: Dictionary = {
+  'forms.date.today': 'Dat is vandaag',
+  'forms.date.away': 'over {duration}',
+  'forms.date.ago': '{duration} geleden',
+  'forms.address.placeholder': 'Typ een plaats of adres…',
   'common.save': 'Opslaan',
   'common.saveChanges': 'Wijzigingen opslaan',
   'common.cancel': 'Annuleren',

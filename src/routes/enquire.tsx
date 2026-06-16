@@ -6,6 +6,8 @@ import { verifyTurnstile } from '../services/turnstile'
 import { rateLimit } from '../middleware/rate-limit'
 import { parseFormConfig } from '../lib/form-schema'
 import type { FormConfig, FormField } from '../lib/form-schema'
+import { FormEnhancements } from '../lib/form-enhance'
+import { t } from '../i18n'
 import { processSubmission, createEnquiry } from '../services/enquiry'
 
 const enquire = new Hono<Env>()
@@ -30,6 +32,7 @@ enquire.get('/enquire/:vendorId', async (c) => {
         vendor={vendor}
         config={config}
         siteKey={c.env.TURNSTILE_SITE_KEY}
+        mapsKey={c.env.GOOGLE_MAPS_API_KEY}
       />
     </EnquiryShell>
   )
@@ -72,6 +75,7 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
           siteKey={c.env.TURNSTILE_SITE_KEY}
           error="Verification failed. Please try again."
           values={body as Record<string, string>}
+          mapsKey={c.env.GOOGLE_MAPS_API_KEY}
         />
       </EnquiryShell>
     )
@@ -105,6 +109,7 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
           siteKey={c.env.TURNSTILE_SITE_KEY}
           error={e.message}
           values={body as Record<string, string>}
+          mapsKey={c.env.GOOGLE_MAPS_API_KEY}
         />
       </EnquiryShell>
     )
@@ -149,12 +154,14 @@ function EnquiryForm({
   siteKey,
   error,
   values,
+  mapsKey,
 }: {
   vendor: { business_name: string; category: string }
   config: FormConfig
   siteKey: string
   error?: string
   values?: Record<string, string>
+  mapsKey?: string
 }) {
   const v = (name: string) => (values?.[name] as string) ?? ''
   const category = vendor.category.charAt(0).toUpperCase() + vendor.category.slice(1)
@@ -199,6 +206,8 @@ function EnquiryForm({
       <p class="text-xs text-gray-400 text-center mt-4">
         Powered by <a href="/" target="_blank" class="underline hover:text-gray-600">Wedding Computer</a>
       </p>
+
+      <FormEnhancements mapsKey={mapsKey} />
     </div>
   )
 }
@@ -337,6 +346,24 @@ function RenderField({ field, value }: { field: FormField; value: string }) {
     )
   }
 
+  if (field.type === 'address') {
+    return (
+      <div>
+        {labelEl}
+        <input
+          type="text"
+          id={field.id}
+          name={field.id}
+          value={value}
+          required={field.required}
+          placeholder={field.placeholder || t('forms.address.placeholder')}
+          autocomplete="off"
+          class={`${inputClass} address-autocomplete`}
+        />
+      </div>
+    )
+  }
+
   return (
     <div>
       {labelEl}
@@ -348,6 +375,7 @@ function RenderField({ field, value }: { field: FormField; value: string }) {
         required={field.required}
         placeholder={field.placeholder}
         class={inputClass}
+        data-future-date={field.type === 'date' && field.mapTo === 'wedding_date' ? 'true' : undefined}
       />
     </div>
   )
