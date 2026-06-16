@@ -32,10 +32,22 @@ export async function createSubscription(
     current_period_end?: string | null
   }
 ): Promise<Subscription> {
+  // Upsert on the UNIQUE vendor_id: a vendor has one subscription row. When they
+  // re-subscribe (a new Stripe subscription id under the same vendor), refresh the
+  // row to track the live subscription instead of throwing on the UNIQUE constraint.
   const result = await db
     .prepare(
       `INSERT INTO subscriptions (vendor_id, stripe_customer_id, stripe_subscription_id, plan, status, current_period_start, current_period_end)
        VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(vendor_id) DO UPDATE SET
+         stripe_customer_id = excluded.stripe_customer_id,
+         stripe_subscription_id = excluded.stripe_subscription_id,
+         plan = excluded.plan,
+         status = excluded.status,
+         current_period_start = excluded.current_period_start,
+         current_period_end = excluded.current_period_end,
+         cancel_at_period_end = 0,
+         updated_at = datetime('now')
        RETURNING *`
     )
     .bind(

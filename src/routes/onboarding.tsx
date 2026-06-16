@@ -123,6 +123,11 @@ onboarding.get('/onboarding/business', async (c) => {
   if (existing) return c.redirect('/app')
 
   const error = c.req.query('error')
+  // Re-fill the form after a validation error so the user doesn't re-type everything.
+  const bizName = c.req.query('business_name') ?? ''
+  const emailHandle = c.req.query('email_handle') ?? ''
+  const nameVal = c.req.query('name') ?? ''
+  const selectedCats = (c.req.query('cats') ?? '').split(',').filter(Boolean)
   const needsName = !user.name || user.name === user.email.split('@')[0]
 
   return c.html(
@@ -150,6 +155,7 @@ onboarding.get('/onboarding/business', async (c) => {
                   type="text"
                   id="name"
                   name="name"
+                  value={nameVal}
                   required
                   class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
                 />
@@ -163,13 +169,15 @@ onboarding.get('/onboarding/business', async (c) => {
                 type="text"
                 id="business_name"
                 name="business_name"
+                value={bizName}
                 required
                 class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
               />
             </div>
             <div>
               <span class="block text-sm font-bold text-gray-700 mb-1.5">
-                What do you do?
+                What do you do? <span class="text-grapefruit-700">*</span>
+                <span class="font-normal text-gray-400">(choose at least one)</span>
               </span>
               <p class="text-xs text-gray-500 mb-2">{t('settings.categories.help')}</p>
               <div class="grid grid-cols-2 gap-2">
@@ -179,6 +187,7 @@ onboarding.get('/onboarding/business', async (c) => {
                       type="checkbox"
                       name="category"
                       value={cat}
+                      checked={selectedCats.includes(cat)}
                       class="rounded border-gray-300 text-horizon-600 focus:ring-horizon-600"
                     />
                     <span>{cat.charAt(0).toUpperCase() + cat.slice(1)}</span>
@@ -198,6 +207,7 @@ onboarding.get('/onboarding/business', async (c) => {
                   type="text"
                   id="email_handle"
                   name="email_handle"
+                  value={emailHandle}
                   placeholder="yourname"
                   pattern="[a-z0-9\-]+"
                   required
@@ -232,10 +242,24 @@ onboarding.post('/onboarding/business', async (c) => {
     const rawCats = body.category
     const selected = (Array.isArray(rawCats) ? rawCats : rawCats ? [rawCats] : [])
       .map((v) => String(v).trim().toLowerCase())
+
+    // Round-trip what the user typed so a validation error doesn't blank the form.
+    const preserve = (msg: string) => {
+      const p = new URLSearchParams({ error: msg })
+      const bn = typeof body.business_name === 'string' ? body.business_name : ''
+      const eh = typeof body.email_handle === 'string' ? body.email_handle : ''
+      const nm = typeof body.name === 'string' ? body.name : ''
+      if (bn) p.set('business_name', bn)
+      if (eh) p.set('email_handle', eh)
+      if (nm) p.set('name', nm)
+      if (selected.length) p.set('cats', selected.join(','))
+      return `/onboarding/business?${p.toString()}`
+    }
+
     // Whitelist and keep canonical order; the first becomes the primary type.
     const categories = VENDOR_CATEGORIES.filter((cat) => selected.includes(cat))
     if (categories.length === 0) {
-      return c.redirect('/onboarding/business?error=Pick+at+least+one+category')
+      return c.redirect(preserve('Pick at least one category'))
     }
     const category = categories[0]
 
@@ -251,7 +275,7 @@ onboarding.post('/onboarding/business', async (c) => {
     const emailHandle = rawHandle.replace(/[^a-z0-9-]/g, '') || null
 
     if (emailHandle && emailHandle.length < 3) {
-      return c.redirect('/onboarding/business?error=Email+handle+must+be+at+least+3+characters')
+      return c.redirect(preserve('Email handle must be at least 3 characters'))
     }
 
     if (emailHandle) {
@@ -260,7 +284,7 @@ onboarding.post('/onboarding/business', async (c) => {
         .bind(emailHandle)
         .first()
       if (existing) {
-        return c.redirect('/onboarding/business?error=That+email+handle+is+already+taken')
+        return c.redirect(preserve('That email handle is already taken'))
       }
     }
 
@@ -523,7 +547,9 @@ onboarding.post('/onboarding/wedding', async (c) => {
       created_by_user_id: user.id,
     })
 
-    // Add user as couple member
+    // Add user as couple member (couples are not can_manage — the shared doc /
+    // others' web links are intentionally read-only to them; they edit their
+    // wedding + manage vendors via role-based checks).
     await addWeddingMember(c.env.DB, {
       wedding_id: wedding.id,
       user_id: user.id,

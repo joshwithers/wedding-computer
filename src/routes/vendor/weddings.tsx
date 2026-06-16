@@ -4,6 +4,7 @@ import { AppLayout } from '../../views/layouts/app'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
+import { rateLimit } from '../../middleware/rate-limit'
 import {
   listWeddingsForVendor,
   getWedding,
@@ -375,7 +376,7 @@ weddings.post('/app/weddings/new', async (c) => {
 })
 
 // ─── Invite couple (the people getting married) ───
-weddings.post('/app/weddings/:id/invite', async (c) => {
+weddings.post('/app/weddings/:id/invite', rateLimit(20, 60), async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
   const weddingId = c.req.param('id')
@@ -396,8 +397,10 @@ weddings.post('/app/weddings/:id/invite', async (c) => {
   await addWeddingMember(c.env.DB, {
     wedding_id: weddingId,
     user_id: coupleUser.id,
+    // Couples are NOT can_manage: the shared wedding doc + others' web links are
+    // intentionally read-only to them (canWriteDoc gates on can_manage); couples
+    // still edit their wedding + manage vendors via role-based checks.
     role: 'couple',
-    can_manage: true,
   })
 
   const wedding = await getWedding(c.env.DB, weddingId)
@@ -428,7 +431,7 @@ weddings.post('/app/weddings/:id/invite', async (c) => {
 })
 
 // ─── Add guest / other person to wedding ───
-weddings.post('/app/weddings/:id/add-guest', async (c) => {
+weddings.post('/app/weddings/:id/add-guest', rateLimit(60, 60), async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
   const weddingId = c.req.param('id')
@@ -467,7 +470,7 @@ weddings.post('/app/weddings/:id/add-guest', async (c) => {
 })
 
 // ─── Add vendor to wedding ───
-weddings.post('/app/weddings/:id/add-vendor', async (c) => {
+weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
   const weddingId = c.req.param('id')

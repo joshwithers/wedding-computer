@@ -170,6 +170,9 @@ subscription.post('/app/subscription/checkout', async (c) => {
     'client_reference_id': vendor.id,
     'metadata[vendor_id]': vendor.id,
     'metadata[user_id]': user.id,
+    // Also stamp the SUBSCRIPTION (not just the checkout session) so subscription.*
+    // webhooks can self-heal a missing local row from the event alone.
+    'subscription_data[metadata][vendor_id]': vendor.id,
   }
   if (freeMonths > 0) {
     params['subscription_data[trial_period_days]'] = String(freeMonths * 30)

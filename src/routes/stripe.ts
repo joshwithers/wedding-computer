@@ -125,26 +125,45 @@ stripe.post('/webhooks/stripe', async (c) => {
         cancel_at_period_end: boolean
         current_period_start: number
         current_period_end: number
+        customer?: string | null
+        metadata?: { vendor_id?: string }
       }
+      const statusMap: Record<string, string> = {
+        active: 'active',
+        past_due: 'past_due',
+        canceled: 'cancelled',
+        trialing: 'trialing',
+        incomplete: 'active',
+        incomplete_expired: 'cancelled',
+        unpaid: 'past_due',
+      }
+      const mapped = (statusMap[sub.status] ?? 'active') as any
       const existing = await getSubscriptionByStripeId(c.env.DB, sub.id)
-      if (existing) {
-        const statusMap: Record<string, string> = {
-          active: 'active',
-          past_due: 'past_due',
-          canceled: 'cancelled',
-          trialing: 'trialing',
-          incomplete: 'active',
-          incomplete_expired: 'cancelled',
-          unpaid: 'past_due',
-        }
-        await updateSubscription(c.env.DB, existing.vendor_id, {
-          status: (statusMap[sub.status] ?? 'active') as any,
-          cancel_at_period_end: sub.cancel_at_period_end ? 1 : 0,
-          current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
-          current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
-        })
-        console.log('[STRIPE] subscription updated', sub.id, sub.status)
+      // Self-heal: if the create event (checkout.session.completed) was missed or
+      // arrived out of order, materialise the row from this event's vendor metadata
+      // rather than dropping the update — otherwise the vendor's Pro state desyncs.
+      const vendorId = existing?.vendor_id ?? sub.metadata?.vendor_id
+      if (!vendorId) {
+        console.warn('[STRIPE] subscription.updated for unknown subscription, no vendor metadata', sub.id)
+        break
       }
+      if (!existing) {
+        await createSubscription(c.env.DB, {
+          vendor_id: vendorId,
+          stripe_customer_id: sub.customer ?? null,
+          stripe_subscription_id: sub.id,
+          plan: 'pro',
+          status: mapped,
+        })
+        console.warn('[STRIPE] self-healed missing subscription row for vendor', vendorId, sub.id)
+      }
+      await updateSubscription(c.env.DB, vendorId, {
+        status: mapped,
+        cancel_at_period_end: sub.cancel_at_period_end ? 1 : 0,
+        current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
+        current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+      })
+      console.log('[STRIPE] subscription updated', sub.id, sub.status)
       break
     }
 
@@ -157,6 +176,10 @@ stripe.post('/webhooks/stripe', async (c) => {
           cancel_at_period_end: 0,
         })
         console.log('[STRIPE] subscription cancelled', sub.id)
+      } else {
+        // No local row — the vendor is already not-Pro, so the desired end state
+        // is already true. Nothing to do beyond noting it.
+        console.warn('[STRIPE] subscription.deleted for unknown subscription', sub.id)
       }
       break
     }
@@ -191,8 +214,10 @@ export async function verifyWebhook(
 
   if (!parts.timestamp || parts.signatures.length === 0) return null
 
+  // Reject events outside Stripe's ±5-minute tolerance in BOTH directions, so a
+  // replayed past event AND an arbitrarily future-dated timestamp are refused.
   const age = Math.floor(Date.now() / 1000) - parseInt(parts.timestamp)
-  if (age > 300) return null
+  if (Math.abs(age) > 300) return null
 
   const signed = `${parts.timestamp}.${payload}`
   const key = await crypto.subtle.importKey(
