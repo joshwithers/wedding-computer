@@ -289,7 +289,7 @@ export const marketing = {
   'marketing.about.technical.dav.title': 'CardDAV and CalDAV servers',
   'marketing.about.technical.dav.desc': 'Full DAV servers serve contacts as vCard and calendar events as iCalendar, with discovery, multiget, ETags, CTags, and read-only access by design.',
   'marketing.about.technical.auth.title': 'Passwordless auth with passkeys',
-  'marketing.about.technical.auth.desc': 'Magic links via email, Google and Apple OAuth, and WebAuthn passkeys. No passwords means no credential stuffing, password reuse, or bcrypt CPU cost.',
+  'marketing.about.technical.auth.desc': 'Magic links via email and WebAuthn passkeys. No passwords means no credential stuffing, password reuse, or bcrypt CPU cost.',
   'marketing.about.technical.stripe.title': 'Stripe Connect Standard',
   'marketing.about.technical.stripe.desc': 'Vendors connect their own Stripe accounts. They keep full control of their Stripe dashboard, and Wedding Computer never handles card data or holds funds.',
   'marketing.about.technical.email.title': 'Cloudflare Email Routing',

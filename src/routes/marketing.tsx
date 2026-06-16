@@ -275,22 +275,6 @@ function HomePage() {
           <p class="text-xs text-gray-400 mt-5">{t('marketing.home.hero.finePrint')}</p>
         </section>
 
-        <section class="pb-4 sm:pb-6">
-          <div class="bg-horizon-50 border border-horizon-600/15 rounded-2xl p-5 sm:p-6 max-w-2xl mx-auto">
-            <div class="sm:flex sm:items-center sm:justify-between gap-5">
-              <div class="mb-3 sm:mb-0">
-                <p class="font-bold text-gray-900">{t('marketing.home.waitlist.title')}</p>
-                <p class="text-sm text-gray-600">{t('marketing.home.waitlist.body')}</p>
-              </div>
-              <form method="post" action="/notify" class="flex gap-2 shrink-0">
-                <input type="text" name="company" tabindex={-1} autocomplete="off" class="hidden" aria-hidden="true" />
-                <input type="email" name="email" required placeholder={t('marketing.home.waitlist.emailPlaceholder')} class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent w-full sm:w-52" />
-                <button type="submit" class="bg-horizon-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">{t('marketing.home.waitlist.submit')}</button>
-              </form>
-            </div>
-          </div>
-        </section>
-
         <section class="py-10 sm:py-16 border-t border-papaya-300/30">
           <div class="max-w-3xl mx-auto text-center mb-10 sm:mb-12">
             <h2 class="text-2xl sm:text-3xl font-bold mb-4">{t('marketing.home.why.title')}</h2>

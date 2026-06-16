@@ -78,6 +78,11 @@ function NotifyForm({ error, siteKey }: { error?: string; siteKey: string }) {
 }
 
 notify.get('/notify', (c) => {
+  // Signups are open — the waitlist is retired. Send anyone who lands here (old
+  // links, bookmarks) straight to sign-up, except the post-unsubscribe confirmation.
+  if (!c.req.query('joined')) {
+    return c.redirect('/login')
+  }
   if (c.req.query('joined')) {
     return c.html(
       <MarketingLayout title="You're on the list">

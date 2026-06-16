@@ -18,7 +18,7 @@ Your data is stored as **plain text markdown files** — not trapped in a propri
 | Storage | Cloudflare R2 — markdown files (source of truth) |
 | KV | Cloudflare KV (sessions, cache) |
 | Jobs | Cloudflare Queues |
-| Auth | Magic links + OAuth + Passkeys |
+| Auth | Magic links + Passkeys (WebAuthn) |
 | Payments | Stripe Connect |
 | Email | Resend + Cloudflare Email Routing |
 | AI | Anthropic Claude + Cloudflare Workers AI |
@@ -128,7 +128,7 @@ src/
   types.ts               All TypeScript interfaces
   routes/
     marketing.tsx        Public website, /standard, /docs/plain-text
-    auth.ts              Login, magic links, OAuth, passkeys
+    auth.ts              Login, magic links, passkeys
     book.tsx             Public booking page (contracts, payments)
     enquire.tsx          Public enquiry form + AI auto-reply
     vendor/

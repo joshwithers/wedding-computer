@@ -525,7 +525,7 @@ export const es: Dictionary = {
   "marketing.about.technical.dav.title": "Servidores CardDAV y CalDAV",
   "marketing.about.technical.dav.desc": "Los servidores completos DAV sirven contactos como vCard y eventos de calendario como iCalendar, con descubrimiento, obtención múltiple, ETags, CTags y acceso de solo lectura por diseño.",
   "marketing.about.technical.auth.title": "Autenticación sin contraseña con claves de acceso",
-  "marketing.about.technical.auth.desc": "Enlaces mágicos por correo electrónico, claves de acceso OAuth y WebAuthn de Google y Apple. Sin contraseñas significa que no hay relleno de credenciales, reutilización de contraseñas ni costo de CPU bcrypt.",
+  "marketing.about.technical.auth.desc": "Enlaces mágicos por correo electrónico y claves de acceso WebAuthn. Sin contraseñas significa que no hay relleno de credenciales, reutilización de contraseñas ni costo de CPU bcrypt.",
   "marketing.about.technical.stripe.title": "Stripe Connect Estándar",
   "marketing.about.technical.stripe.desc": "Los proveedores conectan sus propias cuentas Stripe. Mantienen el control total de su panel Stripe y Wedding Computer nunca maneja datos de tarjetas ni retiene fondos.",
   "marketing.about.technical.email.title": "Cloudflare Email Routing",

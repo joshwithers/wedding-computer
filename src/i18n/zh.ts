@@ -523,7 +523,7 @@ export const zh: Dictionary = {
   "marketing.about.technical.dav.title": "CardDAV 和 CalDAV 服务器",
   "marketing.about.technical.dav.desc": "完整的 DAV 服务器将联系人作为 vCard 提供服务，将日历事件作为 iCalendar 提供服务，并通过设计提供发现、multiget、ETags、CTags 和只读访问。",
   "marketing.about.technical.auth.title": "使用密钥进行无密码身份验证",
-  "marketing.about.technical.auth.desc": "通过电子邮件、Google 和 Apple OAuth 和 WebAuthn 密钥的魔术链接。没有密码意味着没有凭证填充、密码重用或 bcrypt CPU 成本。",
+  "marketing.about.technical.auth.desc": "通过电子邮件和 WebAuthn 密钥的魔术链接。没有密码意味着没有凭证填充、密码重用或 bcrypt CPU 成本。",
   "marketing.about.technical.stripe.title": "Stripe Connect 标准",
   "marketing.about.technical.stripe.desc": "供应商连接他们自己的 Stripe 帐户。他们完全控制 Stripe 仪表板，而 Wedding Computer 从不处理卡数据或持有资金。",
   "marketing.about.technical.email.title": "Cloudflare Email Routing",

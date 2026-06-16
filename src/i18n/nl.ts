@@ -525,7 +525,7 @@ export const nl: Dictionary = {
   "marketing.about.technical.dav.title": "CardDAV- en CalDAV-servers",
   "marketing.about.technical.dav.desc": "Volledige DAV-servers dienen contacten als vCard en agenda-evenementen als iCalendar, met detectie, multiget, ETags, CTags en alleen-lezen toegang door het ontwerp.",
   "marketing.about.technical.auth.title": "Wachtwoordloze authenticatie met wachtwoordsleutels",
-  "marketing.about.technical.auth.desc": "Magische links via e-mail, Google en Apple OAuth en WebAuthn wachtwoordsleutels. Geen wachtwoorden betekent geen opvulling van inloggegevens, hergebruik van wachtwoorden of CPU-kosten voor bcrypt.",
+  "marketing.about.technical.auth.desc": "Magische links via e-mail en WebAuthn-wachtwoordsleutels. Geen wachtwoorden betekent geen opvulling van inloggegevens, hergebruik van wachtwoorden of CPU-kosten voor bcrypt.",
   "marketing.about.technical.stripe.title": "Stripe Connect Standaard",
   "marketing.about.technical.stripe.desc": "Leveranciers koppelen hun eigen Stripe-accounts. Ze behouden de volledige controle over hun Stripe-dashboard, en Wedding Computer verwerkt nooit kaartgegevens en bewaart nooit geld.",
   "marketing.about.technical.email.title": "Cloudflare Email Routing",

@@ -34,7 +34,7 @@ The core product is **free forever** (not "early access", not a trial). A paid P
 | Object storage | Cloudflare R2 — markdown files (**source of truth**) |
 | Key-value | Cloudflare KV (sessions, magic-link tokens, cache, rate limits) |
 | Background jobs | Cloudflare Queues (+ dead-letter queue) |
-| Auth | Magic links + Google/Apple OAuth + passkeys (WebAuthn) |
+| Auth | Magic links + passkeys (WebAuthn) |
 | Payments | Stripe Connect (plus manual methods: bank transfer, PayID) |
 | Email out | Resend + Cloudflare Email Routing (`SEND_EMAIL` binding) |
 | Email in | Cloudflare Email Routing → Worker `email()` handler |
@@ -104,7 +104,7 @@ src/
 │
 ├── routes/
 │   ├── marketing.tsx       # Public website (home, pricing, blog, /standard, …)
-│   ├── auth.tsx            # Login, magic links, OAuth, passkeys, /dev/login
+│   ├── auth.tsx            # Login, magic links, passkeys, /dev/login
 │   ├── onboarding.tsx      # First-login vendor setup
 │   ├── account.tsx         # User account (profile, locale/timezone, deletion)
 │   ├── couple.tsx          # Couple-facing wedding view (/wedding/:id)
@@ -234,11 +234,12 @@ Stable surfaces with outside consumers — change shapes carefully:
 
 ## Authentication
 
-No passwords. Three ways in:
+No passwords. Two ways in:
 
 1. **Magic links** (primary): token in KV with 15-minute TTL, single-use, emailed via Resend.
-2. **Google / Apple OAuth**: standard OAuth2 → email + name from ID token.
-3. **Passkeys** (WebAuthn): `services/webauthn.ts`, `passkey_credentials` table.
+2. **Passkeys** (WebAuthn): `services/webauthn.ts`, `passkey_credentials` table.
+
+> Google/Apple OAuth bindings exist in `types.ts` but are not yet implemented — do not describe social sign-in as available.
 
 Sessions: random token in KV (30-day rolling TTL) + D1 `sessions` row for revocation, `wc_session` cookie (HttpOnly, Secure, SameSite=Lax). New session ID on every login.
 

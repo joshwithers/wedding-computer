@@ -524,7 +524,7 @@ export const el: Dictionary = {
   'marketing.about.technical.dav.title': 'Διακομιστές CardDAV και CalDAV',
   'marketing.about.technical.dav.desc': 'Οι διακομιστές πλήρους DAV εξυπηρετούν επαφές ως vCard και συμβάντα ημερολογίου ως iCalendar, με ανακάλυψη, multiget, ETag, CTag και πρόσβαση μόνο για ανάγνωση βάσει σχεδίασης.',
   'marketing.about.technical.auth.title': 'Εξουσιοδότηση χωρίς κωδικό πρόσβασης με κωδικούς πρόσβασης',
-  'marketing.about.technical.auth.desc': 'Μαγικοί σύνδεσμοι μέσω email, Google και Apple OAuth και κωδικών πρόσβασης WebAuthn. Χωρίς κωδικούς πρόσβασης δεν σημαίνει γέμιση διαπιστευτηρίων, επαναχρησιμοποίηση κωδικού πρόσβασης ή κόστος CPU bcrypt.',
+  'marketing.about.technical.auth.desc': 'Μαγικοί σύνδεσμοι μέσω email και κωδικών πρόσβασης WebAuthn. Χωρίς κωδικούς πρόσβασης δεν σημαίνει γέμιση διαπιστευτηρίων, επαναχρησιμοποίηση κωδικού πρόσβασης ή κόστος CPU bcrypt.',
   'marketing.about.technical.stripe.title': 'Stripe Connect Standard',
   'marketing.about.technical.stripe.desc': 'Οι προμηθευτές συνδέουν τους δικούς τους λογαριασμούς Stripe. Διατηρούν τον πλήρη έλεγχο του ταμπλό τους Stripe και το Wedding Computer δεν χειρίζεται ποτέ τα δεδομένα της κάρτας και δεν κρατά χρήματα.',
   'marketing.about.technical.email.title': 'Cloudflare Email Routing',

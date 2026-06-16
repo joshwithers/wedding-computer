@@ -339,8 +339,7 @@ function renderLoginPage(opts: { error?: string; sent?: boolean; gateOn?: boolea
           <p id="passkey-error" class="text-sm text-grapefruit-700 font-medium mt-2 hidden"></p>
         </div>
         <p class="text-center text-xs text-gray-500 mt-5">
-          Not signed up yet?{' '}
-          <a href="/notify" class="text-horizon-700 font-bold hover:underline">Get notified when we launch →</a>
+          New here? Just enter your email above — we’ll create your account automatically.
         </p>
         {PasskeyLoginScript()}
       </div>

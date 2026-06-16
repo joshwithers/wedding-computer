@@ -524,7 +524,7 @@ export const ja: Dictionary = {
   "marketing.about.technical.dav.title": "CardDAV サーバーと CalDAV サーバー",
   "marketing.about.technical.dav.desc": "完全な DAV サーバーは、連絡先を vCard として、カレンダー イベントを iCalendar として提供し、設計により検出、マルチゲット、ETags、CTags、および読み取り専用アクセスを備えています。",
   "marketing.about.technical.auth.title": "パスキーを使用したパスワードレス認証",
-  "marketing.about.technical.auth.desc": "電子メール、Google および Apple OAuth、および WebAuthn パスキーを介したマジック リンク。パスワードがないということは、資格情報のスタッフィング、パスワードの再利用、または bcrypt の CPU コストがないことを意味します。",
+  "marketing.about.technical.auth.desc": "電子メールおよび WebAuthn パスキーを介したマジック リンク。パスワードがないということは、資格情報のスタッフィング、パスワードの再利用、または bcrypt の CPU コストがないことを意味します。",
   "marketing.about.technical.stripe.title": "Stripe Connect 標準",
   "marketing.about.technical.stripe.desc": "ベンダーは独自の Stripe アカウントを接続します。彼らは Stripe ダッシュボードを完全に制御しており、Wedding Computer はカード データを処理したり、資金を保持したりすることはありません。",
   "marketing.about.technical.email.title": "Cloudflare Email Routing",
