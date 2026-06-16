@@ -77,7 +77,14 @@ auth.post('/login', rateLimit(5, 60), async (c) => {
   try {
     await sendMagicLink(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, email)
   } catch (e) {
+    // Don't tell the user to "check your email" when the send actually failed
+    // (e.g. a misconfigured RESEND_API_KEY) — surface it so they retry and so a
+    // launch-day delivery outage is visible rather than silent.
     console.error('[AUTH] magic link send failed', e)
+    return c.html(
+      renderLoginPage({ error: 'We couldn’t send your sign-in link right now. Please try again in a moment.', gateOn, email }),
+      500
+    )
   }
 
   return c.redirect('/login?sent=1')

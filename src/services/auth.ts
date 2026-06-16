@@ -5,6 +5,7 @@ import { createSession } from '../db/sessions'
 import { sendEmailMessage, magicLinkEmail, coupleInviteEmail, vendorInviteEmail, vendorWelcomeInviteEmail } from './email'
 
 const MAGIC_LINK_TTL = 60 * 15 // 15 minutes
+const INVITE_LINK_TTL = 60 * 60 * 24 * 7 // 7 days — invites go to cold recipients who open them later
 const SESSION_TTL = 60 * 60 * 24 * 30 // 30 days
 
 export async function sendMagicLink(
@@ -137,7 +138,7 @@ export async function sendVendorInvite(
   await kv.put(
     `magic:${token}`,
     JSON.stringify({ email: data.email.toLowerCase() }),
-    { expirationTtl: MAGIC_LINK_TTL }
+    { expirationTtl: INVITE_LINK_TTL }
   )
   const loginUrl = `${appUrl}/login/verify?token=${token}`
   await sendEmailMessage({
@@ -153,6 +154,7 @@ export async function sendVendorInvite(
       loginUrl,
     }),
     isSystem: true,
+    bypassSuppression: true, // carries the vendor's sign-in link
   })
 }
 
@@ -216,7 +218,7 @@ export async function sendCoupleInvite(
   await kv.put(
     `magic:${token}`,
     JSON.stringify({ email: data.email.toLowerCase() }),
-    { expirationTtl: MAGIC_LINK_TTL }
+    { expirationTtl: INVITE_LINK_TTL }
   )
   const loginUrl = `${appUrl}/login/verify?token=${token}`
   await sendEmailMessage({
@@ -234,6 +236,9 @@ export async function sendCoupleInvite(
       loginUrl,
     }),
     isSystem: true,
+    // This carries the couple's only sign-in link — never suppress it on a
+    // prior bounce/complaint, or they can't access their wedding.
+    bypassSuppression: true,
   })
 }
 

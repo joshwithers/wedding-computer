@@ -25,6 +25,7 @@ import { forms } from './en/forms'
 import { planning } from './en/planning'
 import { comms } from './en/comms'
 import { marketing } from './en/marketing'
+import { legal } from './en/legal'
 
 export const en = {
   ...common,
@@ -44,4 +45,5 @@ export const en = {
   ...planning,
   ...comms,
   ...marketing,
+  ...legal,
 } as const

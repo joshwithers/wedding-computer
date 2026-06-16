@@ -287,16 +287,16 @@ export function coupleInviteEmail(data: {
   loginUrl: string
 }): string {
   return emailWrapper(`
-    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">You're booked with ${data.vendorName}</h1>
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">You're booked with ${esc(data.vendorName)}</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 24px;">
-      Hi ${data.coupleName}, ${data.vendorName} has set up your wedding${data.weddingDate ? ` on ${data.weddingDate}` : ''} on Wedding Computer.
+      Hi ${esc(data.coupleName)}, ${esc(data.vendorName)} has set up your wedding${data.weddingDate ? ` on ${esc(data.weddingDate)}` : ''} on Wedding Computer.
       You can view your wedding details, invoices, and stay in touch — all in one place.
     </p>
     <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View your wedding</a>
     <p style="margin:24px 0 0;font-size:13px;color:#999;line-height:1.5;">
       This link will sign you in automatically. If you didn't expect this email, you can safely ignore it.
     </p>
-  `, { preheader: `${data.vendorName} has added you to Wedding Computer` })
+  `, { preheader: `${esc(data.vendorName)} has added you to Wedding Computer` })
 }
 
 export function vendorInviteEmail(data: {
@@ -313,7 +313,7 @@ export function vendorInviteEmail(data: {
     </p>
     <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">Set up your profile</a>
     <p style="margin:24px 0 0;font-size:13px;color:#999;line-height:1.5;">
-      This link signs you in and expires in 15 minutes. If you didn't expect this email, you can safely ignore it.
+      This link signs you in automatically. If you didn't expect this email, you can safely ignore it.
     </p>
   `, { preheader: `${esc(data.coupleName)} invited you to join their wedding on Wedding Computer` })
 }

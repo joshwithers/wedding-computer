@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { setCookie } from 'hono/cookie'
-import { SUPPORTED_LOCALES, t, type MessageKey } from '../i18n'
+import { SUPPORTED_LOCALES, t, getI18n, type MessageKey } from '../i18n'
 import type { Env } from '../types'
 import { MarketingLayout } from '../views/layouts/marketing'
 
@@ -247,6 +247,16 @@ marketing.get('/standard', (c) => {
   return c.html(<OpenStandardPage />)
 })
 
+// ─── Legal ───
+
+marketing.get('/privacy', (c) => {
+  return c.html(<PrivacyPage />)
+})
+
+marketing.get('/terms', (c) => {
+  return c.html(<TermsPage />)
+})
+
 function HomePage() {
   return (
     <MarketingLayout>
@@ -433,6 +443,63 @@ function AboutPage() {
       </div>
     </MarketingLayout>
   )
+}
+
+type LegalSection = { title: MessageKey; body: MessageKey[] }
+
+function LegalPage({ metaTitle, title, intro, sections }: { metaTitle: MessageKey; title: MessageKey; intro: MessageKey[]; sections: LegalSection[] }) {
+  const isEnglish = getI18n().locale.startsWith('en')
+  return (
+    <MarketingLayout title={t(metaTitle)}>
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
+        <h1 class="text-2xl sm:text-4xl font-bold mb-2">{t(title)}</h1>
+        <p class="text-sm text-gray-400 mb-2">{t('legal.lastUpdated')}</p>
+        {!isEnglish && <p class="text-xs text-gray-400 mb-6 italic">{t('legal.englishNotice')}</p>}
+        <div class="space-y-4 text-gray-600 leading-relaxed mb-10">
+          {intro.map((k) => <p>{t(k)}</p>)}
+        </div>
+        {sections.map((s) => (
+          <section class="mb-8">
+            <h2 class="text-lg sm:text-xl font-bold mb-3 text-gray-900">{t(s.title)}</h2>
+            <div class="space-y-3 text-gray-600 leading-relaxed">{s.body.map((k) => <p>{t(k)}</p>)}</div>
+          </section>
+        ))}
+        <p class="text-sm text-gray-500 border-t border-papaya-300/40 pt-6 mt-4">{t('legal.contactLine')}</p>
+      </div>
+    </MarketingLayout>
+  )
+}
+
+const PRIVACY_SECTIONS: LegalSection[] = [
+  { title: 'legal.privacy.collect.title', body: ['legal.privacy.collect.p1', 'legal.privacy.collect.p2', 'legal.privacy.collect.p3', 'legal.privacy.collect.p4', 'legal.privacy.collect.p5'] },
+  { title: 'legal.privacy.use.title', body: ['legal.privacy.use.p1', 'legal.privacy.use.p2', 'legal.privacy.use.p3'] },
+  { title: 'legal.privacy.share.title', body: ['legal.privacy.share.p1', 'legal.privacy.share.p2'] },
+  { title: 'legal.privacy.cookies.title', body: ['legal.privacy.cookies.p1'] },
+  { title: 'legal.privacy.retention.title', body: ['legal.privacy.retention.p1'] },
+  { title: 'legal.privacy.rights.title', body: ['legal.privacy.rights.p1'] },
+  { title: 'legal.privacy.security.title', body: ['legal.privacy.security.p1'] },
+  { title: 'legal.privacy.children.title', body: ['legal.privacy.children.p1'] },
+  { title: 'legal.privacy.changes.title', body: ['legal.privacy.changes.p1'] },
+]
+
+function PrivacyPage() {
+  return <LegalPage metaTitle="legal.privacy.metaTitle" title="legal.privacy.title" intro={['legal.privacy.intro.p1', 'legal.privacy.intro.p2']} sections={PRIVACY_SECTIONS} />
+}
+
+const TERMS_SECTIONS: LegalSection[] = [
+  { title: 'legal.terms.service.title', body: ['legal.terms.service.p1'] },
+  { title: 'legal.terms.accounts.title', body: ['legal.terms.accounts.p1'] },
+  { title: 'legal.terms.plans.title', body: ['legal.terms.plans.p1'] },
+  { title: 'legal.terms.acceptable.title', body: ['legal.terms.acceptable.p1'] },
+  { title: 'legal.terms.data.title', body: ['legal.terms.data.p1'] },
+  { title: 'legal.terms.thirdparty.title', body: ['legal.terms.thirdparty.p1'] },
+  { title: 'legal.terms.warranty.title', body: ['legal.terms.warranty.p1'] },
+  { title: 'legal.terms.termination.title', body: ['legal.terms.termination.p1'] },
+  { title: 'legal.terms.law.title', body: ['legal.terms.law.p1'] },
+]
+
+function TermsPage() {
+  return <LegalPage metaTitle="legal.terms.metaTitle" title="legal.terms.title" intro={['legal.terms.intro.p1']} sections={TERMS_SECTIONS} />
 }
 
 function PricingPage() {

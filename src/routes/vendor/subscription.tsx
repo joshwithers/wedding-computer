@@ -21,6 +21,7 @@ subscription.get('/app/subscription', async (c) => {
   const isPro = sub?.plan === 'pro' && (sub.status === 'active' || sub.status === 'trialing')
   const isCancelled = isPro && sub.cancel_at_period_end === 1
   const success = c.req.query('success')
+  const checkoutError = c.req.query('error') === 'checkout'
 
   const periodEnd = sub?.current_period_end
     ? new Date(sub.current_period_end).toLocaleDateString('en-AU', {
@@ -36,6 +37,12 @@ subscription.get('/app/subscription', async (c) => {
         {success && (
           <div class="bg-horizon-50 border border-horizon-600/20 text-horizon-700 text-sm font-bold rounded-xl p-3 mb-6">
             Welcome to Pro! Your subscription is now active.
+          </div>
+        )}
+
+        {checkoutError && (
+          <div class="bg-papaya-100 border border-papaya-300/50 text-gray-700 text-sm rounded-xl p-3 mb-6">
+            We couldn’t start checkout just now. Please try again in a moment.
           </div>
         )}
 
@@ -178,7 +185,11 @@ subscription.post('/app/subscription/checkout', async (c) => {
     body: new URLSearchParams(params).toString(),
   })
 
-  const session = (await response.json()) as { id: string; url: string }
+  const session = (await response.json().catch(() => ({}))) as { id?: string; url?: string }
+  if (!response.ok || !session.url) {
+    console.error('[stripe] checkout session creation failed', response.status, JSON.stringify(session))
+    return c.redirect('/app/subscription?error=checkout')
+  }
   return c.redirect(session.url)
 })
 

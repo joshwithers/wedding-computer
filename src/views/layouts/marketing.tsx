@@ -144,6 +144,8 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => (
               <a href="/pricing" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.pricing')}</a>
               <a href="/standard" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.openStandard')}</a>
               <a href="/docs/plain-text" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.docs')}</a>
+              <a href="/privacy" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('legal.privacy.title')}</a>
+              <a href="/terms" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('legal.terms.title')}</a>
               <a href="/login" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.signIn')}</a>
             </div>
             <LanguageSwitcher placement="footer" />
