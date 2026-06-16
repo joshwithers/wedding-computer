@@ -281,6 +281,7 @@ function buildConfigFromBody(body: Record<string, string>): FormConfig {
         enabled: body.action_confirm === 'on',
         mode: (body.action_confirm_mode ?? 'ai') as 'ai' | 'template',
         template: body.action_confirm_template?.trim() || undefined,
+        aiInstructions: body.action_confirm_ai_instructions?.trim() || undefined,
       },
     },
   }
@@ -560,6 +561,69 @@ function FormEditor({
               <p class="text-xs text-gray-400">Reassures them you got it. AI-personalised on Pro; a friendly default otherwise.</p>
             </div>
           </label>
+
+          {/* What the confirmation says — mode, custom message, and (Pro) AI guidance */}
+          <div class="ml-7 pl-4 border-l-2 border-gray-100 space-y-4">
+            <div>
+              <p class="text-xs font-bold text-gray-500 mb-2">What the confirmation says</p>
+              <div class="space-y-2">
+                <label class="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="action_confirm_mode"
+                    value="ai"
+                    checked={config.actions.confirmationEmail.mode !== 'template'}
+                    class="accent-grapefruit-700 mt-0.5"
+                  />
+                  <span class="text-sm text-gray-700">
+                    <span class="font-bold">AI-personalised</span> <span class="text-xs text-gray-400">(Pro)</span>
+                    <span class="block text-xs text-gray-400">A warm reply tailored to each enquiry. Free plans send the friendly default below.</span>
+                  </span>
+                </label>
+                <label class="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="action_confirm_mode"
+                    value="template"
+                    checked={config.actions.confirmationEmail.mode === 'template'}
+                    class="accent-grapefruit-700 mt-0.5"
+                  />
+                  <span class="text-sm text-gray-700">
+                    <span class="font-bold">Write my own message</span>
+                    <span class="block text-xs text-gray-400">The same message is sent to every enquirer.</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-gray-500 mb-1" for="action_confirm_template">Your message</label>
+              <textarea
+                id="action_confirm_template"
+                name="action_confirm_template"
+                rows={4}
+                placeholder="Thanks so much for reaching out! We've received your enquiry and will be in touch within 24 hours. Feel free to reply to this email if you have any questions."
+                class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              >{config.actions.confirmationEmail.template ?? ''}</textarea>
+              <p class="text-xs text-gray-400 mt-1">Used when “Write my own message” is selected, and as the fallback whenever AI isn’t available.</p>
+            </div>
+
+            {isPro && (
+              <div>
+                <label class="block text-xs font-bold text-gray-500 mb-1" for="action_confirm_ai_instructions">
+                  Guide the AI <span class="text-gray-400 font-normal">(Pro)</span>
+                </label>
+                <textarea
+                  id="action_confirm_ai_instructions"
+                  name="action_confirm_ai_instructions"
+                  rows={3}
+                  placeholder="e.g. Keep it casual, mention we reply within a day, and include our booking link https://…"
+                  class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                >{config.actions.confirmationEmail.aiInstructions ?? ''}</textarea>
+                <p class="text-xs text-gray-400 mt-1">Optional. Tone, what to mention, links — applied when “AI-personalised” is on.</p>
+              </div>
+            )}
+          </div>
         </div>
 
         <button

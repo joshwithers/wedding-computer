@@ -180,6 +180,10 @@ type EnquiryReplyContext = {
   isAvailable: boolean | null
   busynessScore: number | null
   notes: string | null
+  // Pro: vendor's own guidance for the reply (tone, what to mention).
+  instructions?: string | null
+  // Ask the enquirer to reply so they confirm the email arrived (not in spam).
+  inviteReply?: boolean
 }
 
 export async function draftEnquiryReply(
@@ -193,6 +197,13 @@ export async function draftEnquiryReply(
       ? `You ARE available on ${context.weddingDate}.${context.busynessScore !== null ? ` This date has a busyness score of ${context.busynessScore.toFixed(1)} (${context.busynessScore > 2 ? 'very popular' : context.busynessScore > 1 ? 'moderately busy' : 'relatively quiet'}).` : ''}`
       : `You are NOT available on ${context.weddingDate}.`
 
+  const instructionsBlock = context.instructions?.trim()
+    ? `\nSpecific guidance from ${context.vendorName} for this reply (follow it): ${context.instructions.trim()}\n`
+    : ''
+  const replyNudge = context.inviteReply
+    ? ' End by warmly inviting them to reply to this email so they know it arrived safely (in case it lands in their spam).'
+    : ''
+
   const prompt = `You are a wedding ${context.vendorCategory} named ${context.vendorName}. A new enquiry just came in from ${context.contactName}.
 
 ${context.weddingDate ? `Requested date: ${context.weddingDate}` : 'No date specified'}
@@ -200,8 +211,8 @@ ${context.weddingLocation ? `Location: ${context.weddingLocation}` : ''}
 ${context.notes ? `Their message: ${context.notes}` : ''}
 
 ${availabilityInfo}
-
-Draft a warm, professional reply acknowledging their enquiry. If available, express enthusiasm. If not available, be gracious and suggest they check back or offer alternative dates. Keep it concise (2-3 paragraphs), friendly, Australian English. Write just the body — no subject line, no sign-off.`
+${instructionsBlock}
+Draft a warm, professional reply acknowledging their enquiry. If available, express enthusiasm. If not available, be gracious and suggest they check back or offer alternative dates. Keep it concise (2-3 paragraphs), friendly, Australian English.${replyNudge} Write just the body — no subject line, no sign-off.`
 
   return generateWithAI(ai, anthropicKey, prompt)
 }

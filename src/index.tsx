@@ -51,7 +51,7 @@ import { getVendorWithEmail, getVendorById } from './db/vendors'
 import { getContact } from './storage/contacts'
 import { getStorageWithSecrets } from './storage'
 import { StorageConflictError } from './storage/conflicts'
-import { sendEmailMessage, EmailSendError, broadcastEmail, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail, enquiryConfirmationEmail, referralRewardEmail } from './services/email'
+import { sendEmailMessage, EmailSendError, broadcastEmail, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail, enquiryConfirmationEmail, bookingContractCopyEmail, referralRewardEmail } from './services/email'
 import { getBroadcast } from './db/broadcast'
 import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, notifyTimelineChangeRequested, notifyTimelineChangeDecided, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
@@ -789,9 +789,37 @@ export default {
             to: body.to,
             subject: `Thanks for your enquiry — ${body.vendorName}`,
             html,
+            replyTo: body.replyTo ?? undefined,
             isSystem: true,
           })
           console.log('[QUEUE] enquiry_confirmation email sent to', body.to)
+
+        } else if (body.type === 'booking_confirmation_to_couple') {
+          // Confirmation + a copy of the signed contract, sent to the couple
+          // after they complete a public booking form.
+          const html = bookingContractCopyEmail({
+            coupleName: body.coupleName ?? null,
+            vendorName: body.vendorName,
+            bookingTitle: body.bookingTitle ?? null,
+            viewUrl: body.viewUrl,
+            contract: (body.contract as unknown as {
+              title: string
+              body: string
+              signedByName: string | null
+              signedAt: string | null
+            } | null) ?? null,
+          })
+          await sendEmailMessage({
+            db: env.DB,
+            resendApiKey: env.RESEND_API_KEY,
+            vendorId: null,
+            to: body.to,
+            subject: `Booking confirmed — ${body.vendorName}`,
+            html,
+            replyTo: body.replyTo ?? undefined,
+            isSystem: true,
+          })
+          console.log('[QUEUE] booking_confirmation_to_couple email sent to', body.to)
 
         } else if (body.type === 'referral_reward') {
           // Notify a vendor that a referral converted and they earned a free month

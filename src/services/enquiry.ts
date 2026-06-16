@@ -165,7 +165,7 @@ export async function createEnquiry(
     formData: Record<string, string>
     source: EnquirySource
     // From the enquiry form's "Send confirmation email to enquirer" option.
-    confirmation?: { enabled: boolean; mode: 'ai' | 'template'; template?: string }
+    confirmation?: { enabled: boolean; mode: 'ai' | 'template'; template?: string; aiInstructions?: string }
   }
 ): Promise<Contact> {
   const { contactData, formData, source } = input
@@ -238,7 +238,7 @@ async function sendEnquiryConfirmation(
   env: Bindings,
   vendor: VendorProfile,
   contactData: ContactData,
-  conf: { enabled: boolean; mode: 'ai' | 'template'; template?: string }
+  conf: { enabled: boolean; mode: 'ai' | 'template'; template?: string; aiInstructions?: string }
 ): Promise<void> {
   let bodyText = ''
 
@@ -254,15 +254,20 @@ async function sendEnquiryConfirmation(
         isAvailable: null,
         busynessScore: null,
         notes: contactData.notes,
+        instructions: conf.aiInstructions ?? null,
+        // Nudge a reply so the enquirer confirms the email arrived (not in spam).
+        inviteReply: true,
       }, anthropicKey)
     } catch (e: any) {
       console.error('[enquiry] AI confirmation generation failed, using fallback', e.message)
     }
   }
 
+  // Template mode, non-Pro, or AI failure → the vendor's custom message if set,
+  // otherwise a friendly default that recaps what they sent and asks them to
+  // reply (so they notice it landed, and we know it cleared their spam filter).
   if (!bodyText.trim()) {
-    bodyText = conf.template?.trim() ||
-      `Thanks so much for reaching out — we've received your enquiry and ${vendor.business_name} will be in touch with you very soon.`
+    bodyText = conf.template?.trim() || defaultConfirmationBody(vendor.business_name, contactData)
   }
 
   await env.EMAIL_QUEUE.send({
@@ -271,7 +276,27 @@ async function sendEnquiryConfirmation(
     vendorName: vendor.business_name,
     contactName: contactData.first_name,
     bodyText,
+    // Replies go to the vendor's inbox so "just hit reply" actually reaches them.
+    replyTo: vendor.email_handle ? `${vendor.email_handle}@wedding.computer` : null,
   })
+}
+
+function defaultConfirmationBody(vendorName: string, contactData: ContactData): string {
+  const recap = [
+    contactData.wedding_date ? `Date: ${contactData.wedding_date}` : null,
+    contactData.wedding_location ? `Location: ${contactData.wedding_location}` : null,
+    contactData.notes ? `Your message: ${contactData.notes}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  return [
+    `Thanks so much for reaching out — we've received your enquiry and ${vendorName} will be in touch with you very soon.`,
+    recap ? `Here's what you sent us:\n${recap}` : '',
+    `If you have a moment, just hit reply to this email so we know it reached you — and that it didn't land in your spam folder.`,
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 async function draftAvailabilityReply(

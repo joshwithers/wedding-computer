@@ -499,6 +499,39 @@ export function bookingConfirmedEmail(data: {
   `, { preheader: `${data.weddingTitle} is confirmed!` })
 }
 
+// Sent to the couple when they complete a public booking form. Confirms the
+// booking and, when they signed a contract, includes the full signed text plus
+// signature proof so they keep a copy of exactly what they agreed to.
+export function bookingContractCopyEmail(data: {
+  coupleName: string | null
+  vendorName: string
+  bookingTitle: string | null
+  viewUrl: string
+  contract: { title: string; body: string; signedByName: string | null; signedAt: string | null } | null
+}): string {
+  const greeting = data.coupleName ? `Hi ${esc(data.coupleName)},` : 'Hi there,'
+  const contractBlock = data.contract
+    ? `
+    <h2 style="margin:28px 0 8px;font-size:16px;font-weight:700;color:#1a1a1a;">${esc(data.contract.title)}</h2>
+    <div style="background:#faf5ef;border-radius:12px;padding:16px;margin-bottom:12px;font-size:13px;color:#333;line-height:1.6;white-space:pre-wrap;">${esc(data.contract.body)}</div>
+    ${
+      data.contract.signedByName || data.contract.signedAt
+        ? `<p style="margin:0 0 4px;font-size:12px;color:#999;">Signed${data.contract.signedByName ? ` by ${esc(data.contract.signedByName)}` : ''}${data.contract.signedAt ? ` on ${esc(data.contract.signedAt)}` : ''}.</p>`
+        : ''
+    }`
+    : ''
+
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">You're booked with ${esc(data.vendorName)} 🎉</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      ${greeting} thanks for confirming your booking${data.bookingTitle ? ` for ${esc(data.bookingTitle)}` : ''}.
+      ${data.contract ? 'A copy of the agreement you signed is below for your records.' : `${esc(data.vendorName)} will be in touch about next steps.`}
+    </p>
+    <a href="${data.viewUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View your booking</a>
+    ${contractBlock}
+  `, { preheader: `Your booking with ${esc(data.vendorName)} is confirmed` })
+}
+
 export function vendorRemovedAdminEmail(data: {
   coupleName: string
   coupleEmail: string

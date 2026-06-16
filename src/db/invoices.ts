@@ -194,18 +194,42 @@ export async function createInvoice(
 export async function getInvoiceByToken(
   db: D1Database,
   token: string
-): Promise<(Invoice & { vendor_name: string; vendor_category: string; contact_name: string | null }) | null> {
+): Promise<(Invoice & { vendor_name: string; vendor_category: string; contact_name: string | null; contact_email: string | null }) | null> {
   return db
     .prepare(
       `SELECT i.*, vp.business_name AS vendor_name, vp.category AS vendor_category,
-              (c.first_name || ' ' || c.last_name) AS contact_name
+              (c.first_name || ' ' || c.last_name) AS contact_name, c.email AS contact_email
        FROM invoices i
        JOIN vendor_profiles vp ON vp.id = i.vendor_id
        LEFT JOIN contacts c ON c.id = i.contact_id
        WHERE i.public_token = ?`
     )
     .bind(token)
-    .first<Invoice & { vendor_name: string; vendor_category: string; contact_name: string | null }>()
+    .first<Invoice & { vendor_name: string; vendor_category: string; contact_name: string | null; contact_email: string | null }>()
+}
+
+/**
+ * Atomically mark a booking as submitted. Returns true ONLY for the request
+ * that actually flips booking_form_data from empty → set. Concurrent
+ * double-submits of the same booking link (e.g. a double-click) lose the race
+ * and get false, so the notifications and the couple's confirmation email are
+ * sent exactly once. The cheap top-of-handler guard still short-circuits
+ * ordinary sequential resubmits before this runs.
+ */
+export async function claimBookingSubmission(
+  db: D1Database,
+  vendorId: string,
+  invoiceId: string,
+  bookingFormData: string
+): Promise<boolean> {
+  const res = await db
+    .prepare(
+      `UPDATE invoices SET booking_form_data = ?, updated_at = datetime('now')
+       WHERE id = ? AND vendor_id = ? AND (booking_form_data IS NULL OR booking_form_data = '')`
+    )
+    .bind(bookingFormData, invoiceId, vendorId)
+    .run()
+  return (res.meta?.changes ?? 0) > 0
 }
 
 export async function updateInvoice(

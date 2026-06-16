@@ -65,6 +65,9 @@ export type FormActions = {
     enabled: boolean
     mode: 'ai' | 'template'
     template?: string
+    // Pro: extra guidance fed to the AI when drafting the confirmation
+    // (tone, things to mention, booking link). Ignored for mode 'template'.
+    aiInstructions?: string
   }
   actions?: FormAction[]
 }

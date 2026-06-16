@@ -3,13 +3,14 @@ import type { Env } from '../types'
 import type { LineItem } from '../types'
 import { SharedHead } from '../views/head'
 import { getInvoiceByToken } from '../db/invoices'
-import { listPayments, updateInvoice } from '../db/invoices'
+import { listPayments, claimBookingSubmission } from '../db/invoices'
 import { updateContact } from '../storage/contacts'
 import { getStorageWithSecrets } from '../storage'
 import { createActivity } from '../db/activities'
 import { getVendorById } from '../db/vendors'
-import { getContractByInvoice, signContract } from '../db/contracts'
-import { formatDate } from '../lib/date'
+import { getContractByInvoice, signContract, getContractById } from '../db/contracts'
+import { formatDate, formatDateTime } from '../lib/date'
+import { isValidEmail } from '../lib/validation'
 import { parseBookingFormConfig } from '../lib/form-schema'
 import type { FormConfig, FormField } from '../lib/form-schema'
 import { FormEnhancements } from '../lib/form-enhance'
@@ -281,9 +282,10 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
 
   // Sign contract if present
   const contract = await getContractByInvoice(c.env.DB, invoice.id)
+  let sigEmail = ''
   if (contract && !contract.signed_at) {
     const sigName = typeof body.contract_signature === 'string' ? body.contract_signature.trim() : ''
-    const sigEmail = typeof body.contract_email === 'string' ? body.contract_email.trim() : ''
+    sigEmail = typeof body.contract_email === 'string' ? body.contract_email.trim() : ''
     const agreed = body.contract_agree === 'yes'
 
     if (!sigName || !agreed) {
@@ -297,10 +299,20 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
     })
   }
 
-  // Save form data (even if empty — marks as submitted)
-  await updateInvoice(c.env.DB, invoice.vendor_id, invoice.id, {
-    booking_form_data: JSON.stringify(Object.keys(formData).length > 0 ? formData : { _submitted: 'true' }),
-  })
+  // Atomically claim the submission (also saves the form data). Only the
+  // request that flips booking_form_data from empty proceeds; a concurrent
+  // double-submit loses the race here and just lands on the confirmed page,
+  // so the notifications and confirmation email fire exactly once.
+  const claimed = await claimBookingSubmission(
+    c.env.DB,
+    invoice.vendor_id,
+    invoice.id,
+    JSON.stringify(Object.keys(formData).length > 0 ? formData : { _submitted: 'true' })
+  )
+  if (!claimed) {
+    const embed = c.req.query('embed') === '1'
+    return c.redirect(`/book/${token}?confirmed=1${embed ? '&embed=1' : ''}`)
+  }
 
   if (invoice.contact_id) {
     if (Object.keys(contactUpdates).length > 0) {
@@ -328,6 +340,40 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
         bookedVendorId: invoice.vendor_id,
         coupleName: contactName,
       }),
+    })
+  }
+
+  // Email the couple a booking confirmation + a copy of the contract they
+  // signed. Use whichever address we have: the one typed when signing, a
+  // booking-form email field, then the contact on file. The top-of-handler
+  // booking_form_data guard makes this a once-only send per booking.
+  const coupleEmail = [sigEmail, contactUpdates.email, invoice.contact_email].find(
+    (e) => e && isValidEmail(e)
+  )
+  if (coupleEmail) {
+    let signedContract:
+      | { title: string; body: string; signedByName: string | null; signedAt: string | null }
+      | null = null
+    if (contract) {
+      const fresh = await getContractById(c.env.DB, contract.id)
+      if (fresh?.signed_at) {
+        signedContract = {
+          title: fresh.title,
+          body: fresh.body,
+          signedByName: fresh.signed_by_name,
+          signedAt: formatDateTime(fresh.signed_at),
+        }
+      }
+    }
+    await c.env.EMAIL_QUEUE.send({
+      type: 'booking_confirmation_to_couple',
+      to: coupleEmail,
+      coupleName: invoice.contact_name,
+      vendorName: invoice.vendor_name,
+      bookingTitle: invoice.title,
+      viewUrl: `${c.env.APP_URL}/book/${token}?confirmed=1`,
+      replyTo: vendor.email_handle ? `${vendor.email_handle}@wedding.computer` : null,
+      contract: signedContract,
     })
   }
 
