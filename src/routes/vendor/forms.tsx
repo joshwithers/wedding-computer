@@ -6,8 +6,15 @@ import { noimFormConfig } from '../../forms/noim/schema'
 import { hasCategory } from '../../lib/categories'
 import type { FormConfig, FormStep } from '../../lib/form-schema'
 import { defaultFormConfig, generateFieldId } from '../../lib/form-schema'
+import { requireEmailHandle } from '../../middleware/email-handle'
 
 const forms = new Hono<Env>()
+
+// Custom forms send email on our domain too — require the handle first. Auth +
+// vendor are already applied by the shared /app/* guard chain; this runs after
+// them (vendor is in context), and is defensive if it isn't.
+forms.use('/app/forms', requireEmailHandle)
+forms.use('/app/forms/*', requireEmailHandle)
 
 // ─── List all forms ───
 

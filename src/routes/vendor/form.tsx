@@ -3,6 +3,7 @@ import type { Env, VendorProfile } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
+import { requireEmailHandle } from '../../middleware/email-handle'
 import { csrf } from '../../middleware/csrf'
 import { updateVendor } from '../../db/vendors'
 import { isProVendor } from '../../db/subscriptions'
@@ -20,6 +21,9 @@ import type { FormConfig, FormField } from '../../lib/form-schema'
 const form = new Hono<Env>()
 
 form.use('/app/*', requireAuth, csrf, requireVendor)
+// Forms send/receive email on our domain — require the handle first.
+form.use('/app/form', requireEmailHandle)
+form.use('/app/form/*', requireEmailHandle)
 
 // ─── Main editor page ───
 

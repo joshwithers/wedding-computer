@@ -3,6 +3,7 @@ import type { Env } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
+import { requireEmailHandle } from '../../middleware/email-handle'
 import { csrf } from '../../middleware/csrf'
 import { updateVendor } from '../../db/vendors'
 import {
@@ -18,6 +19,9 @@ import type { FormConfig, FormField } from '../../lib/form-schema'
 const bookingForm = new Hono<Env>()
 
 bookingForm.use('/app/*', requireAuth, csrf, requireVendor)
+// Booking forms send email on our domain — require the handle first.
+bookingForm.use('/app/booking-form', requireEmailHandle)
+bookingForm.use('/app/booking-form/*', requireEmailHandle)
 
 bookingForm.get('/app/booking-form', (c) => {
   const user = c.get('user')

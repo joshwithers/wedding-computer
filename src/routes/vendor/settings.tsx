@@ -1033,14 +1033,31 @@ settings.post('/app/settings/ceremony-types', async (c) => {
 
 // ─── Email handle ───
 
+// Addresses we send platform/system mail from, or that would let someone
+// impersonate the platform — never claimable as a vendor handle.
+const RESERVED_HANDLES = new Set([
+  'hello', 'noreply', 'no-reply', 'admin', 'administrator', 'support', 'postmaster',
+  'abuse', 'info', 'billing', 'security', 'hostmaster', 'webmaster', 'mailer-daemon',
+  'help', 'team', 'contact', 'sales', 'notifications', 'accounts', 'root', 'system',
+])
+
 settings.post('/app/settings/email-handle', async (c) => {
   const vendor = c.get('vendor')!
   const body = await c.req.parseBody()
   const raw = typeof body.email_handle === 'string' ? body.email_handle.trim().toLowerCase() : ''
   const handle = raw.replace(/[^a-z0-9\-]/g, '') || null
 
+  // Where to send them after — back to the form they came from (internal only),
+  // else the settings page.
+  const ret = typeof body.return === 'string' && /^\/app\/[A-Za-z0-9/_-]*$/.test(body.return) ? body.return : null
+  const fail = (msg: string) => c.redirect(`${ret ?? '/app/settings'}?error=${encodeURIComponent(msg)}`)
+
   if (handle && handle.length < 3) {
-    return c.redirect('/app/settings?error=Handle+must+be+at+least+3+characters')
+    return fail('Handle must be at least 3 characters')
+  }
+
+  if (handle && RESERVED_HANDLES.has(handle)) {
+    return fail('That handle is reserved — please choose another')
   }
 
   if (handle) {
@@ -1049,13 +1066,13 @@ settings.post('/app/settings/email-handle', async (c) => {
       .bind(handle, vendor.id)
       .first()
     if (existing) {
-      return c.redirect('/app/settings?error=That+email+handle+is+already+taken')
+      return fail('That email handle is already taken')
     }
   }
 
   await updateVendor(c.env.DB, vendor.id, { email_handle: handle })
 
-  return c.redirect('/app/settings?saved=1')
+  return c.redirect(ret ?? '/app/settings?saved=1')
 })
 
 // ─── Availability sharing ───
