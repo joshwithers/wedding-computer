@@ -186,6 +186,9 @@ export type Wedding = {
   location: string | null
   location_lat: number | null
   location_lng: number | null
+  location_city: string | null
+  location_state: string | null
+  location_country: string | null
   status: 'planning' | 'confirmed' | 'completed' | 'cancelled'
   ceremony_type: string | null
   vendor_visibility: 'private' | 'visible'

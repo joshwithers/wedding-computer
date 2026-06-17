@@ -2,6 +2,9 @@ import type { Dictionary } from './index'
 
 // Español — see docs/TRANSLATING.md for conventions.
 export const es: Dictionary = {
+  'timeline.sun.sunrise': 'Amanecer',
+  'timeline.sun.sunset': 'Atardecer',
+  'timeline.sun.goldenHour': 'Hora dorada',
   'forms.date.today': 'Es hoy',
   'forms.date.away': 'dentro de {duration}',
   'forms.date.ago': 'hace {duration}',

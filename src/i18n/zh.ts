@@ -2,6 +2,9 @@ import type { Dictionary } from './index'
 
 // 简体中文 — see docs/TRANSLATING.md for conventions.
 export const zh: Dictionary = {
+  'timeline.sun.sunrise': '日出',
+  'timeline.sun.sunset': '日落',
+  'timeline.sun.goldenHour': '黄金时刻',
   'forms.date.today': '就是今天',
   'forms.date.away': '{duration}后',
   'forms.date.ago': '{duration}前',

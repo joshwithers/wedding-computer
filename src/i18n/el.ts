@@ -2,6 +2,9 @@ import type { Dictionary } from './index'
 
 // Ελληνικά — see docs/TRANSLATING.md for conventions.
 export const el: Dictionary = {
+  'timeline.sun.sunrise': 'Ανατολή',
+  'timeline.sun.sunset': 'Δύση',
+  'timeline.sun.goldenHour': 'Χρυσή ώρα',
   'forms.date.today': 'Είναι σήμερα',
   'forms.date.away': 'σε {duration}',
   'forms.date.ago': 'πριν από {duration}',

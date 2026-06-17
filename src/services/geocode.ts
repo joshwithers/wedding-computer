@@ -189,20 +189,25 @@ export async function geocodeContactLocation(env: Bindings, contactId: string): 
     .run()
 }
 
-/** Geocode a wedding's location into its structured region columns. */
+/** Geocode a wedding's location into its structured region columns + coords. */
 export async function geocodeWeddingLocation(env: Bindings, weddingId: string): Promise<void> {
-  const row = await env.DB.prepare('SELECT location, location_geocoded_from FROM weddings WHERE id = ?')
+  const row = await env.DB.prepare('SELECT location, location_geocoded_from, location_lat FROM weddings WHERE id = ?')
     .bind(weddingId)
-    .first<{ location: string | null; location_geocoded_from: string | null }>()
-  if (!row?.location || row.location === row.location_geocoded_from) return
+    .first<{ location: string | null; location_geocoded_from: string | null; location_lat: number | null }>()
+  if (!row?.location) return
+  // Skip only when already geocoded AND coordinates are present — rows geocoded
+  // before we stored lat/lng (used by the timeline's sunrise/sunset) re-run to
+  // backfill the coordinates.
+  if (row.location === row.location_geocoded_from && row.location_lat != null) return
 
   const location = await geocodeAddress(env, row.location)
   if (!location) return
   await env.DB.prepare(
-    `UPDATE weddings SET location_city = ?, location_state = ?, location_country = ?, location_geocoded_from = ?
+    `UPDATE weddings SET location_city = ?, location_state = ?, location_country = ?,
+       location_lat = ?, location_lng = ?, location_geocoded_from = ?
      WHERE id = ?`
   )
-    .bind(location.city, location.state, location.country, row.location, weddingId)
+    .bind(location.city, location.state, location.country, location.lat, location.lng, row.location, weddingId)
     .run()
 }
 
@@ -237,7 +242,7 @@ export async function geocodePendingLocations(env: Bindings, limit = 25): Promis
   const weddings = await env.DB.prepare(
     `SELECT id FROM weddings
      WHERE location IS NOT NULL AND location != ''
-       AND (location_geocoded_from IS NULL OR location_geocoded_from != location)
+       AND (location_geocoded_from IS NULL OR location_geocoded_from != location OR location_lat IS NULL)
      LIMIT ?`
   )
     .bind(Math.max(0, limit - processed))

@@ -2,6 +2,9 @@ import type { Dictionary } from './index'
 
 // 日本語 — see docs/TRANSLATING.md for conventions.
 export const ja: Dictionary = {
+  'timeline.sun.sunrise': '日の出',
+  'timeline.sun.sunset': '日の入り',
+  'timeline.sun.goldenHour': 'ゴールデンアワー',
   'forms.date.today': '今日です',
   'forms.date.away': '{duration}後',
   'forms.date.ago': '{duration}前',

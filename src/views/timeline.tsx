@@ -63,6 +63,9 @@ export type TimelineProps = {
   canDecide: boolean
   editId?: string
   flash?: string
+  // Sunrise / golden-hour / sunset for the wedding's date + location, already
+  // localized to the wedding's timezone. Null when we lack coordinates or a date.
+  sun?: { sunrise: string | null; sunset: string | null; goldenHourStart: string | null; timezone: string } | null
 }
 
 function Avatar({ name, url }: { name: string; url: string | null }) {
@@ -282,6 +285,19 @@ const LEAD_HINT: Record<TimelineLeadSource, MessageKey | null> = {
   vendor_fallback: 'timeline.managedByVendorHint',
 }
 
+function DaylightStrip({ sun }: { sun: NonNullable<TimelineProps['sun']> }) {
+  const parts: any[] = []
+  if (sun.sunrise) parts.push(<span>🌅 {t('timeline.sun.sunrise')} <strong class="text-gray-600 tabular-nums">{sun.sunrise}</strong></span>)
+  if (sun.goldenHourStart) parts.push(<span>✨ {t('timeline.sun.goldenHour')} <strong class="text-gray-600 tabular-nums">{sun.goldenHourStart}</strong></span>)
+  if (sun.sunset) parts.push(<span>🌇 {t('timeline.sun.sunset')} <strong class="text-gray-600 tabular-nums">{sun.sunset}</strong></span>)
+  if (parts.length === 0) return null
+  return (
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2 bg-papaya-50 border-b border-papaya-300/30 text-[11px] text-gray-500">
+      {parts}
+    </div>
+  )
+}
+
 export function WeddingTimeline(props: TimelineProps) {
   const hintKey = LEAD_HINT[props.lead.source]
   return (
@@ -295,6 +311,7 @@ export function WeddingTimeline(props: TimelineProps) {
             {hintKey && <span class="text-gray-400"> · {t(hintKey, { name: props.leadLabel })}</span>}
           </p>
         </div>
+        {props.sun && <DaylightStrip sun={props.sun} />}
         <TimelineBody {...props} />
       </div>
     </div>

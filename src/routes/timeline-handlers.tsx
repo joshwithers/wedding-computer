@@ -40,7 +40,9 @@ import {
 import { resyncWeddingCalendars } from '../services/wedding-calendar'
 import { listPendingTimelineRequests, getTimelineRequest, decideTimelineRequest } from '../db/timeline-requests'
 import { proposeChange, applyRequest, diffRows, parsePayload, type RowFields } from '../services/timeline-approval'
-import { t } from '../i18n'
+import { getWedding } from '../db/weddings'
+import { daylightStrip } from '../lib/sun'
+import { t, getI18n } from '../i18n'
 
 type Ctx = Context<Env>
 
@@ -98,12 +100,25 @@ async function buildProps(
   opts?: { editId?: string; flash?: string }
 ): Promise<TimelineProps> {
   const viewer = viewerOf(user, member)
-  const [allItems, roster, lead, pendingRaw] = await Promise.all([
+  const [allItems, roster, lead, pendingRaw, wedding] = await Promise.all([
     listTimeline(c.env.DB, weddingId),
     resolveWeddingRoster(c.env.DB, weddingId),
     getTimelineLead(c.env.DB, weddingId),
     listPendingTimelineRequests(c.env.DB, weddingId),
+    getWedding(c.env.DB, weddingId),
   ])
+  const i18n = getI18n()
+  const sun = wedding
+    ? daylightStrip({
+        lat: wedding.location_lat,
+        lng: wedding.location_lng,
+        dateStr: wedding.date,
+        country: wedding.location_country,
+        state: wedding.location_state,
+        fallbackTimezone: i18n.timezone,
+        locale: i18n.locale,
+      })
+    : null
   const items = allItems.filter((i) => canSeeItem(i, viewer))
   const canDecide = isTimelineLead(lead, viewer.userId)
   const pending: PendingView[] = pendingRaw
@@ -132,6 +147,7 @@ async function buildProps(
     canDecide,
     editId: opts?.editId,
     flash: opts?.flash,
+    sun,
   }
 }
 

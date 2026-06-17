@@ -141,6 +141,10 @@ export function markdownToWedding(
     location: fm.location ?? null,
     location_lat: fm.location_lat ?? null,
     location_lng: fm.location_lng ?? null,
+    // Derived region columns live in the D1 index (geocoded), not the markdown.
+    location_city: null,
+    location_state: null,
+    location_country: null,
     status: (fm.status as Wedding['status']) ?? 'planning',
     ceremony_type: fm.ceremony_type ?? null,
     vendor_visibility: (fm.vendor_visibility as Wedding['vendor_visibility']) ?? 'private',

@@ -3,6 +3,11 @@ export const timeline = {
   'timeline.heading': 'Run sheet',
   'timeline.subhead': 'The wedding-day timeline — sections, times, and who’s on each.',
 
+  // Daylight strip — sun times for the wedding's date + location.
+  'timeline.sun.sunrise': 'Sunrise',
+  'timeline.sun.sunset': 'Sunset',
+  'timeline.sun.goldenHour': 'Golden hour',
+
   'timeline.managedBy': 'Timeline managed by {name}',
   'timeline.managedByCoupleHint': 'Until a planner or venue is added, the couple manages the timeline.',
   'timeline.managedByVendorHint': 'Until a planner or venue is added, {name} manages the timeline.',
