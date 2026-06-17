@@ -24,6 +24,7 @@ import {
   assigneeOwnerUserId,
   resolveWeddingRoster,
   projectTimelineToWedding,
+  resolveAndMaterialize,
   type RosterEntry,
 } from '../db/timeline'
 import {
@@ -42,6 +43,7 @@ import { listPendingTimelineRequests, getTimelineRequest, decideTimelineRequest 
 import { proposeChange, applyRequest, diffRows, parsePayload, type RowFields } from '../services/timeline-approval'
 import { getWedding } from '../db/weddings'
 import { daylightStrip } from '../lib/sun'
+import { solveTimeline } from '../lib/timeline-solver'
 import { t, getI18n } from '../i18n'
 
 type Ctx = Context<Env>
@@ -63,7 +65,25 @@ function str(v: unknown): string | null {
   return s || null
 }
 
+function intOrNull(v: unknown): number | null {
+  const s = typeof v === 'string' ? v.trim() : ''
+  if (!s) return null
+  const n = parseInt(s, 10)
+  return isNaN(n) ? null : n
+}
+
+const ANCHOR_REFS_SUN = new Set(['sunrise', 'sunset', 'golden_hour'])
+
 function fieldsFrom(f: Record<string, unknown>, creatable: TimelineVisibility[]): RowFields {
+  const at = str(f.anchor_type)
+  let anchor_type: 'after' | 'before' | 'sun' | null = at === 'after' || at === 'before' || at === 'sun' ? at : null
+  const rawRef = anchor_type ? str(f.anchor_ref) : null
+  // A sun anchor must name a real sun event; an item anchor must name something.
+  const anchor_ref = anchor_type === 'sun' ? (rawRef && ANCHOR_REFS_SUN.has(rawRef) ? rawRef : null) : rawRef
+  // An anchor with no valid reference is meaningless — drop it so the row stays
+  // a plain item (using its own time) instead of resolving to a null clock and
+  // floating, invisible, to the top.
+  if (anchor_type && !anchor_ref) anchor_type = null
   return {
     title: str(f.title) ?? 'Untitled',
     start_time: str(f.start_time),
@@ -72,6 +92,11 @@ function fieldsFrom(f: Record<string, unknown>, creatable: TimelineVisibility[])
     description: str(f.description),
     category: coerceCategory(f.category),
     visibility: coerceVisibility(f.visibility, creatable.length ? creatable : ['couple']),
+    duration_minutes: intOrNull(f.duration_minutes),
+    anchor_type,
+    anchor_ref,
+    anchor_offset_minutes: anchor_type ? intOrNull(f.anchor_offset) ?? 0 : 0,
+    pinned: f.pinned === 'on' || f.pinned === 'yes' || f.pinned === '1' ? 1 : 0,
   }
 }
 
@@ -120,6 +145,25 @@ async function buildProps(
       })
     : null
   const items = allItems.filter((i) => canSeeItem(i, viewer))
+  // Flag rows whose anchor can't be resolved (cycle, dangling ref) so the UI
+  // can warn instead of letting them silently lose their time. Solve over ALL
+  // items so cross-visibility references still resolve.
+  const solved = solveTimeline(
+    allItems.map((i) => ({
+      id: i.id,
+      start_time: i.start_time,
+      end_time: i.end_time,
+      duration_minutes: i.duration_minutes,
+      anchor_type: i.anchor_type,
+      anchor_ref: i.anchor_ref,
+      anchor_offset_minutes: i.anchor_offset_minutes ?? 0,
+      pinned: !!i.pinned,
+      actual_start: i.actual_start,
+      sort_order: i.sort_order,
+    })),
+    {}
+  )
+  const conflictIds = new Set([...solved.values()].filter((v) => v.conflicts.length > 0).map((v) => v.id))
   const canDecide = isTimelineLead(lead, viewer.userId)
   const pending: PendingView[] = pendingRaw
     .filter((r) => r.target === 'run_sheet' && (canDecide || r.requested_by_user_id === viewer.userId))
@@ -148,6 +192,7 @@ async function buildProps(
     editId: opts?.editId,
     flash: opts?.flash,
     sun,
+    conflictIds,
   }
 }
 
@@ -160,9 +205,18 @@ function body(c: Ctx, props: TimelineProps) {
 }
 
 /** Side effects after any APPLIED timeline write. */
-function afterWrite(c: Ctx, weddingId: string) {
+async function afterWrite(c: Ctx, weddingId: string) {
   const env = c.env
   const vendor = c.get('vendor')
+  // Re-solve the liquid timeline and persist concrete start/end times BEFORE we
+  // render + project, so display, the legacy slot columns, calendars and
+  // markdown all reflect the recomputed clock. (Sun anchors get their minutes
+  // wired in Phase B.)
+  try {
+    await resolveAndMaterialize(env.DB, weddingId)
+  } catch (err) {
+    console.error('[timeline] materialize failed', err)
+  }
   c.executionCtx.waitUntil(
     (async () => {
       try {
@@ -200,7 +254,7 @@ export async function addTimelineItem(c: Ctx, weddingId: string, member: Wedding
   const lead = await getTimelineLead(c.env.DB, weddingId)
   if (canCreateDirect(viewer, lead, fields.visibility)) {
     await createItem(c.env.DB, { wedding_id: weddingId, ...fields, owner_vendor_id: member.vendor_profile_id, created_by_user_id: user.id })
-    afterWrite(c, weddingId)
+    await afterWrite(c, weddingId)
     return renderTimeline(c, weddingId, member, user, basePath)
   }
   await proposeChange(c.env.DB, {
@@ -223,13 +277,15 @@ export async function updateTimelineItem(c: Ctx, weddingId: string, member: Wedd
 
   if (canEditDirect(item, viewer, lead)) {
     await updateItem(c.env.DB, weddingId, itemId, after)
-    afterWrite(c, weddingId)
+    await afterWrite(c, weddingId)
     return renderTimeline(c, weddingId, member, user, basePath)
   }
   if (canPropose(item, viewer, lead)) {
     const before: Partial<RowFields> = {
       title: item.title, start_time: item.start_time, end_time: item.end_time,
       location: item.location, description: item.description, category: item.category, visibility: item.visibility,
+      duration_minutes: item.duration_minutes, anchor_type: item.anchor_type,
+      anchor_ref: item.anchor_ref, anchor_offset_minutes: item.anchor_offset_minutes,
     }
     await proposeChange(c.env.DB, {
       weddingId, op: 'update', itemId, payload: { after, before },
@@ -248,7 +304,7 @@ export async function deleteTimelineItem(c: Ctx, weddingId: string, member: Wedd
   const lead = await getTimelineLead(c.env.DB, weddingId)
   if (canEditDirect(item, viewer, lead)) {
     await deleteItem(c.env.DB, weddingId, itemId)
-    afterWrite(c, weddingId)
+    await afterWrite(c, weddingId)
     return renderTimeline(c, weddingId, member, user, basePath)
   }
   if (canPropose(item, viewer, lead)) {
@@ -274,7 +330,7 @@ export async function addTimelineAssignee(c: Ctx, weddingId: string, member: Wed
       if (match?.kind === 'member') await addAssignee(c.env.DB, itemId, { wedding_member_id: match.id })
       else if (match?.kind === 'team') await addAssignee(c.env.DB, itemId, { team_member_id: match.id })
       else await addAssignee(c.env.DB, itemId, { label: who })
-      afterWrite(c, weddingId)
+      await afterWrite(c, weddingId)
     }
   }
   return renderTimeline(c, weddingId, member, user, basePath)
@@ -285,7 +341,7 @@ export async function removeTimelineAssignee(c: Ctx, weddingId: string, member: 
   const lead = await getTimelineLead(c.env.DB, weddingId)
   if (item && canManageAssignees(item, viewerOf(user, member), lead)) {
     await removeAssignee(c.env.DB, itemId, assigneeId)
-    afterWrite(c, weddingId)
+    await afterWrite(c, weddingId)
   }
   return renderTimeline(c, weddingId, member, user, basePath)
 }
@@ -308,7 +364,7 @@ async function decide(c: Ctx, weddingId: string, member: WeddingMember, user: Us
       }
     }
     await applyRequest(c.env.DB, req, edited)
-    afterWrite(c, weddingId)
+    await afterWrite(c, weddingId)
   }
   await decideTimelineRequest(c.env.DB, requestId, user.id, approve ? 'approved' : 'declined')
   await c.env.EMAIL_QUEUE

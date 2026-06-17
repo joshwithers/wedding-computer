@@ -237,6 +237,18 @@ CREATE TABLE IF NOT EXISTS timeline_items (
     CHECK (visibility IN ('couple','vendors','private')),
   slot               TEXT,
   sort_order         INTEGER NOT NULL DEFAULT 0,
+  -- Liquid timeline. NULL anchor_type = a plain absolute item keyed off
+  -- start_time (the original model). Otherwise the start is computed relative
+  -- to another item (after/before) or a sun event, plus an offset; duration
+  -- gives the end. pinned marks a fixed point a reflow must not move;
+  -- actual_start overlays the real time on the day (live mode).
+  duration_minutes      INTEGER,
+  anchor_type           TEXT
+    CHECK (anchor_type IS NULL OR anchor_type IN ('after','before','sun')),
+  anchor_ref            TEXT,
+  anchor_offset_minutes INTEGER NOT NULL DEFAULT 0,
+  pinned                INTEGER NOT NULL DEFAULT 0,
+  actual_start          TEXT,
   created_at         TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );

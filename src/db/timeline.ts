@@ -5,6 +5,7 @@
 
 import type { TimelineItem, TimelineItemAssignee, TimelineCategory, TimelineVisibility, TimelineSlot, RunSheetItem } from '../types'
 import { updateWedding } from './weddings'
+import { solveTimeline, minToHhmm, type SolverItem, type SunMinutes } from '../lib/timeline-solver'
 
 export type AssigneeView = {
   id: string
@@ -84,6 +85,11 @@ export async function createItem(
     created_by_user_id: string
     visibility: TimelineVisibility
     slot?: TimelineSlot | null
+    duration_minutes?: number | null
+    anchor_type?: 'after' | 'before' | 'sun' | null
+    anchor_ref?: string | null
+    anchor_offset_minutes?: number | null
+    pinned?: number | null
   }
 ): Promise<TimelineItem> {
   const next = await db
@@ -94,8 +100,9 @@ export async function createItem(
     .prepare(
       `INSERT INTO timeline_items
          (wedding_id, start_time, end_time, title, description, location, category,
-          owner_vendor_id, created_by_user_id, visibility, slot, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          owner_vendor_id, created_by_user_id, visibility, slot, sort_order,
+          duration_minutes, anchor_type, anchor_ref, anchor_offset_minutes, pinned)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
@@ -110,7 +117,12 @@ export async function createItem(
       data.created_by_user_id,
       data.visibility,
       data.slot ?? null,
-      next?.n ?? 0
+      next?.n ?? 0,
+      data.duration_minutes ?? null,
+      data.anchor_type ?? null,
+      data.anchor_ref ?? null,
+      data.anchor_offset_minutes ?? 0,
+      data.pinned ?? 0
     )
     .first<TimelineItem>()
   return row!
@@ -120,7 +132,24 @@ export async function updateItem(
   db: D1Database,
   weddingId: string,
   id: string,
-  patch: Partial<Pick<TimelineItem, 'start_time' | 'end_time' | 'title' | 'description' | 'location' | 'category' | 'visibility' | 'sort_order'>>
+  patch: Partial<
+    Pick<
+      TimelineItem,
+      | 'start_time'
+      | 'end_time'
+      | 'title'
+      | 'description'
+      | 'location'
+      | 'category'
+      | 'visibility'
+      | 'sort_order'
+      | 'duration_minutes'
+      | 'anchor_type'
+      | 'anchor_ref'
+      | 'anchor_offset_minutes'
+      | 'pinned'
+    >
+  >
 ): Promise<void> {
   const sets: string[] = []
   const vals: unknown[] = []
@@ -160,6 +189,61 @@ export async function reorderItems(db: D1Database, weddingId: string, orderedIds
       .bind(i, id, weddingId)
   )
   await db.batch(stmts)
+}
+
+// ── Liquid timeline: solve + materialise ──
+
+function toSolverItem(it: TimelineItem): SolverItem {
+  return {
+    id: it.id,
+    start_time: it.start_time,
+    end_time: it.end_time,
+    duration_minutes: it.duration_minutes,
+    anchor_type: it.anchor_type,
+    anchor_ref: it.anchor_ref,
+    anchor_offset_minutes: it.anchor_offset_minutes ?? 0,
+    pinned: !!it.pinned,
+    actual_start: it.actual_start,
+    sort_order: it.sort_order,
+  }
+}
+
+/**
+ * Re-solve the wedding's timeline and persist each computed start/end back into
+ * start_time / end_time, so every downstream reader (display, the legacy slot
+ * projection, calendar, markdown, MCP) sees concrete times without needing to
+ * know about anchors. Only writes computed rows (anchored or duration-bearing)
+ * whose value actually changed. Call synchronously after any timeline write,
+ * before rendering + projection.
+ */
+export async function resolveAndMaterialize(db: D1Database, weddingId: string, sun: SunMinutes = {}): Promise<void> {
+  const items = await db
+    .prepare('SELECT * FROM timeline_items WHERE wedding_id = ?')
+    .bind(weddingId)
+    .all<TimelineItem>()
+    .then((r) => r.results)
+  if (items.length === 0) return
+
+  const solved = solveTimeline(items.map(toSolverItem), sun)
+  const stmts: D1PreparedStatement[] = []
+  for (const it of items) {
+    const s = solved.get(it.id)
+    if (!s) continue
+    // Plain absolute rows are their own source of truth — leave them alone.
+    if (it.anchor_type == null && it.duration_minutes == null) continue
+    const newStart = minToHhmm(s.startMin)
+    // End comes from an explicit duration; without one the row is a point in
+    // time (end cleared) rather than a zero-length "HH:MM–HH:MM" span.
+    const newEnd = it.duration_minutes != null && s.startMin != null ? minToHhmm(s.startMin + it.duration_minutes) : null
+    if (newStart !== it.start_time || newEnd !== it.end_time) {
+      stmts.push(
+        db
+          .prepare("UPDATE timeline_items SET start_time = ?, end_time = ?, updated_at = datetime('now') WHERE id = ? AND wedding_id = ?")
+          .bind(newStart, newEnd, it.id, weddingId)
+      )
+    }
+  }
+  if (stmts.length > 0) await db.batch(stmts)
 }
 
 // ── Assignees ──
@@ -700,4 +784,9 @@ export async function applyTimelineRowDiff(
       visibility: 'vendors',
     })
   }
+  // Re-solve so anchored/duration rows get concrete times after an external
+  // (markdown/Obsidian or MCP) edit, just like the web write path does. Anchored
+  // rows are app-governed: a manual time edit in the vault is recomputed from
+  // the anchor here rather than sticking.
+  await resolveAndMaterialize(db, weddingId)
 }

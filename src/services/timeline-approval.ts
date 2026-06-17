@@ -21,6 +21,12 @@ export type RowFields = {
   location: string | null
   category: TimelineCategory
   visibility: TimelineVisibility
+  // Liquid anchoring (optional; preserved through propose/approve).
+  duration_minutes?: number | null
+  anchor_type?: 'after' | 'before' | 'sun' | null
+  anchor_ref?: string | null
+  anchor_offset_minutes?: number
+  pinned?: number
 }
 
 export type ProposalPayload = {
@@ -38,6 +44,8 @@ const FIELDS: { key: keyof RowFields; label: string }[] = [
   { key: 'location', label: 'Location' },
   { key: 'category', label: 'Part of day' },
   { key: 'visibility', label: 'Visibility' },
+  { key: 'duration_minutes', label: 'Duration' },
+  { key: 'anchor_type', label: 'Relative start' },
   { key: 'description', label: 'Details' },
 ]
 
@@ -157,6 +165,11 @@ export async function applyRequest(
       visibility: (after.visibility as TimelineVisibility) ?? 'couple',
       owner_vendor_id: payload.owner_vendor_id ?? null,
       created_by_user_id: payload.created_by_user_id ?? req.requested_by_user_id,
+      duration_minutes: after.duration_minutes ?? null,
+      anchor_type: after.anchor_type ?? null,
+      anchor_ref: after.anchor_ref ?? null,
+      anchor_offset_minutes: after.anchor_offset_minutes ?? 0,
+      pinned: after.pinned ?? 0,
     })
     return
   }
@@ -174,5 +187,10 @@ export async function applyRequest(
     location: after.location ?? null,
     category: after.category as TimelineCategory,
     visibility: after.visibility as TimelineVisibility,
+    duration_minutes: after.duration_minutes,
+    anchor_type: after.anchor_type,
+    anchor_ref: after.anchor_ref,
+    anchor_offset_minutes: after.anchor_offset_minutes,
+    pinned: after.pinned,
   })
 }

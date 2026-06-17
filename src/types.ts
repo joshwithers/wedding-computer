@@ -722,6 +722,17 @@ export type TimelineItem = {
   visibility: TimelineVisibility
   slot: TimelineSlot | null
   sort_order: number
+  // Liquid timeline (migration 052). anchor_type null = plain absolute item
+  // keyed off start_time; otherwise start is computed relative to another item
+  // or a sun event. start_time/end_time are materialised from the solver on
+  // every write so all the downstream readers (calendar, markdown, MCP) see
+  // concrete times.
+  duration_minutes: number | null
+  anchor_type: 'after' | 'before' | 'sun' | null
+  anchor_ref: string | null
+  anchor_offset_minutes: number
+  pinned: number
+  actual_start: string | null
   created_at: string
   updated_at: string
 }

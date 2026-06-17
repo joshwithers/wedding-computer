@@ -26,6 +26,20 @@ export const timeline = {
   'timeline.field.visibility': 'Who can see it',
   'timeline.field.details': 'Details',
 
+  // Liquid timing (durations + relative anchoring).
+  'timeline.field.liquid': 'Relative timing & duration',
+  'timeline.field.duration': 'Duration (min)',
+  'timeline.field.pinned': 'Fixed time (won’t shift)',
+  'timeline.field.startRel': 'Start',
+  'timeline.field.anchorItem': 'Relative to',
+  'timeline.field.offset': 'Gap (minutes)',
+  'timeline.anchor.none': 'At a set time',
+  'timeline.anchor.after': 'After…',
+  'timeline.anchor.before': 'Before…',
+  'timeline.rel.after': 'after {name}',
+  'timeline.rel.before': 'before {name}',
+  'timeline.conflict': 'Check timing',
+
   'timeline.cat.getting_ready': 'Getting ready',
   'timeline.cat.ceremony': 'Ceremony',
   'timeline.cat.portraits': 'Portraits',
