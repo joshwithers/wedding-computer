@@ -48,6 +48,19 @@ export const timeline = {
   'timeline.rel.before': 'before {name}',
   'timeline.conflict': 'Check timing',
 
+  // Live mode (running the day).
+  'timeline.start': 'Start',
+  'timeline.startNow': 'Mark as started now',
+  'timeline.unstart': 'Not started yet',
+  'timeline.started': 'started {time}',
+  'timeline.live': 'Live',
+  'timeline.behind': 'running {n} min behind',
+  'timeline.ahead': 'running {n} min ahead',
+  'timeline.onSchedule': 'on schedule',
+  'timeline.pastSunset': 'After sunset',
+  'timeline.endLive': 'End live',
+  'timeline.endLiveConfirm': 'Clear all recorded start times and leave live mode?',
+
   'timeline.cat.getting_ready': 'Getting ready',
   'timeline.cat.ceremony': 'Ceremony',
   'timeline.cat.portraits': 'Portraits',

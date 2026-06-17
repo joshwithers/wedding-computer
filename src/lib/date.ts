@@ -108,6 +108,18 @@ export function todayString(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: getI18n().timezone }).format(new Date())
 }
 
+/** Current wall-clock time as 'HH:MM' in a given timezone (defaults to the
+ * viewer's). Pass the wedding's zone when stamping on-the-day events so a remote
+ * planner records the venue's clock, not their own. */
+export function nowTimeString(timezone?: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone ?? getI18n().timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date())
+}
+
 export function formatTime(time: string): string {
   const [h, m] = time.split(':').map(Number)
   const period = h >= 12 ? 'pm' : 'am'

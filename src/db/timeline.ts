@@ -171,6 +171,22 @@ export async function updateItem(
   await reconcileSlotRow(db, weddingId, id)
 }
 
+/** Live mode: record (or clear) the real start time of a section on the day. */
+export async function setActualStart(db: D1Database, weddingId: string, id: string, value: string | null): Promise<void> {
+  await db
+    .prepare("UPDATE timeline_items SET actual_start = ?, updated_at = datetime('now') WHERE id = ? AND wedding_id = ?")
+    .bind(value, id, weddingId)
+    .run()
+}
+
+/** Live mode: clear every actual start, ending live mode in one action. */
+export async function clearAllActuals(db: D1Database, weddingId: string): Promise<void> {
+  await db
+    .prepare("UPDATE timeline_items SET actual_start = NULL, updated_at = datetime('now') WHERE wedding_id = ? AND actual_start IS NOT NULL")
+    .bind(weddingId)
+    .run()
+}
+
 export async function deleteItem(db: D1Database, weddingId: string, id: string): Promise<void> {
   const row = await db
     .prepare('SELECT slot FROM timeline_items WHERE id = ? AND wedding_id = ?')

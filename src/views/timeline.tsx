@@ -68,6 +68,14 @@ export type TimelineProps = {
   sun?: { sunrise: string | null; sunset: string | null; goldenHourStart: string | null; timezone: string } | null
   // Ids of rows whose anchor couldn't be resolved (cycle / dangling reference).
   conflictIds?: Set<string>
+  // Live mode (the day itself): projected times from actual starts, sections
+  // whose projected end slips past sunset, and the running schedule drift (min;
+  // + = behind). Present only once a section has been marked started.
+  live?: {
+    projected: Map<string, { start: string | null; end: string | null }>
+    slipIds: Set<string>
+    drift: number
+  }
 }
 
 function Avatar({ name, url }: { name: string; url: string | null }) {
@@ -224,17 +232,27 @@ function RowForm({ item, basePath, creatable, anchorOptions, sunAvailable }: { i
   )
 }
 
-function Row({ item, basePath, roster, canEdit, canAssign, viewerUserId, refTitle, conflicted }: { item: TimelineItemView; basePath: string; roster: RosterEntry[]; canEdit: boolean; canAssign: boolean; viewerUserId: string; refTitle?: string; conflicted?: boolean }) {
-  const timeStr = item.start_time ? (item.end_time ? `${item.start_time}–${item.end_time}` : item.start_time) : ''
+function Row({ item, basePath, roster, canEdit, canAssign, viewerUserId, refTitle, conflicted, liveMode, projected, slipped, canStart }: { item: TimelineItemView; basePath: string; roster: RosterEntry[]; canEdit: boolean; canAssign: boolean; viewerUserId: string; refTitle?: string; conflicted?: boolean; liveMode?: boolean; projected?: { start: string | null; end: string | null }; slipped?: boolean; canStart?: boolean }) {
+  const plannedStr = item.start_time ? (item.end_time ? `${item.start_time}–${item.end_time}` : item.start_time) : ''
+  const started = item.actual_start
+  // In live mode, show the actual start once started, else the projected time.
+  const projStr = projected ? (projected.start ? (projected.end ? `${projected.start}–${projected.end}` : projected.start) : '') : ''
+  const timeStr = liveMode ? (started || projStr || plannedStr) : plannedStr
+  const shifted = liveMode && !started && projStr && projected?.start && projected.start !== item.start_time
   const relative = (item.anchor_type === 'after' || item.anchor_type === 'before') && refTitle
   const off = item.anchor_offset_minutes
   return (
-    <li id={`trow-${item.id}`} class="flex items-start gap-3 px-4 py-3">
-      <div class="w-16 flex-shrink-0 pt-0.5 text-xs font-bold text-gray-500 tabular-nums">{timeStr || '—'}</div>
+    <li id={`trow-${item.id}`} class={`flex items-start gap-3 px-4 py-3 ${started ? 'bg-horizon-50/30' : ''}`}>
+      <div class="w-16 flex-shrink-0 pt-0.5 text-xs font-bold tabular-nums">
+        <span class={started ? 'text-horizon-700' : 'text-gray-500'}>{timeStr || '—'}</span>
+        {shifted && <span class="block text-[9px] font-normal text-gray-300 line-through">{item.start_time}</span>}
+      </div>
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="text-sm font-bold text-gray-800">{item.title}</span>
           {item.slot && <span class="text-[9px] font-bold uppercase tracking-wide text-grapefruit-700 bg-papaya-100 rounded px-1 py-0.5">{t('timeline.keyMoment')}</span>}
+          {started && <span class="text-[9px] text-horizon-700 bg-horizon-50 rounded px-1 py-0.5">✓ {t('timeline.started', { time: started })}</span>}
+          {slipped && <span class="text-[9px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5" title={t('timeline.pastSunset')}>🌇 {t('timeline.pastSunset')}</span>}
           {conflicted && <span class="text-[9px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5" title={t('timeline.conflict')}>⚠️ {t('timeline.conflict')}</span>}
           {item.visibility !== 'couple' && <span class="text-[9px] text-gray-400 border border-gray-200 rounded px-1 py-0.5">{t(VIS_LABEL[item.visibility])}</span>}
         </div>
@@ -254,6 +272,12 @@ function Row({ item, basePath, roster, canEdit, canAssign, viewerUserId, refTitl
       </div>
       {canEdit && (
         <div class="flex items-center gap-1 flex-shrink-0">
+          {canStart &&
+            (started ? (
+              <button type="button" hx-post={`${basePath}/timeline/${item.id}/unstart`} hx-target="#timeline-body" hx-swap="outerHTML" class="p-1.5 rounded-lg text-gray-300 hover:text-grapefruit-700 hover:bg-gray-100" aria-label={t('timeline.unstart')} title={t('timeline.unstart')}>↺</button>
+            ) : (
+              <button type="button" hx-post={`${basePath}/timeline/${item.id}/start`} hx-target="#timeline-body" hx-swap="outerHTML" class="text-[10px] font-bold text-horizon-700 border border-horizon-200 rounded px-1.5 py-1 hover:bg-horizon-50 whitespace-nowrap" title={t('timeline.startNow')}>{t('timeline.start')}</button>
+            ))}
           <button type="button" hx-get={`${basePath}/timeline/${item.id}/edit`} hx-target="#timeline-body" hx-swap="outerHTML" class="p-1.5 rounded-lg text-gray-400 hover:text-horizon-700 hover:bg-gray-100" aria-label={t('timeline.edit')}>
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 20h4L18 10l-4-4L4 16v4z" /><path d="M14 6l4 4" /></svg>
           </button>
@@ -313,6 +337,24 @@ export function TimelineBody(props: TimelineProps) {
     <div id="timeline-body">
       {flash && <p class="px-4 py-2 text-xs text-horizon-700 bg-horizon-50 border-b border-horizon-100">{flash}</p>}
 
+      {props.live && (
+        <div class={`px-4 py-2 text-xs font-bold border-b flex items-center gap-2 ${props.live.drift > 0 ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-horizon-50 text-horizon-700 border-horizon-100'}`}>
+          <span class="inline-block w-2 h-2 rounded-full bg-grapefruit-600 animate-pulse"></span>
+          {t('timeline.live')}
+          <span class="font-normal">
+            ·{' '}
+            {props.live.drift > 0
+              ? t('timeline.behind', { n: props.live.drift })
+              : props.live.drift < 0
+                ? t('timeline.ahead', { n: -props.live.drift })
+                : t('timeline.onSchedule')}
+          </span>
+          {canDecide && (
+            <button type="button" hx-post={`${basePath}/timeline/end-live`} hx-target="#timeline-body" hx-swap="outerHTML" hx-confirm={t('timeline.endLiveConfirm')} class="ml-auto text-[10px] font-bold text-gray-400 hover:text-grapefruit-700 underline">{t('timeline.endLive')}</button>
+          )}
+        </div>
+      )}
+
       {pending.length > 0 && (
         <div class="border-b border-amber-200">
           <div class="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">{t('timeline.pendingHeading')}</div>
@@ -343,7 +385,7 @@ export function TimelineBody(props: TimelineProps) {
                     item.id === editId ? (
                       <RowForm item={item} basePath={basePath} creatable={creatable} anchorOptions={anchorOptions} sunAvailable={sunAvailable} />
                     ) : (
-                      <Row item={item} basePath={basePath} roster={roster} canEdit={canEditOrPropose(item, viewer, lead)} canAssign={canManageAssignees(item, viewer, lead)} viewerUserId={viewer.userId} refTitle={item.anchor_ref ? titleById.get(item.anchor_ref) : undefined} conflicted={props.conflictIds?.has(item.id)} />
+                      <Row item={item} basePath={basePath} roster={roster} canEdit={canEditOrPropose(item, viewer, lead)} canAssign={canManageAssignees(item, viewer, lead)} viewerUserId={viewer.userId} refTitle={item.anchor_ref ? titleById.get(item.anchor_ref) : undefined} conflicted={props.conflictIds?.has(item.id)} liveMode={!!props.live} projected={props.live?.projected.get(item.id)} slipped={props.live?.slipIds.has(item.id)} canStart={canEditDirect(item, viewer, lead)} />
                     )
                   )}
                 </ul>

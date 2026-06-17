@@ -26,6 +26,8 @@ import {
   projectTimelineToWedding,
   resolveAndMaterialize,
   weddingSunMinutes,
+  setActualStart,
+  clearAllActuals,
   type RosterEntry,
 } from '../db/timeline'
 import {
@@ -43,8 +45,9 @@ import { resyncWeddingCalendars } from '../services/wedding-calendar'
 import { listPendingTimelineRequests, getTimelineRequest, decideTimelineRequest } from '../db/timeline-requests'
 import { proposeChange, applyRequest, diffRows, parsePayload, type RowFields } from '../services/timeline-approval'
 import { getWedding } from '../db/weddings'
-import { daylightStrip, sunMinutesFor } from '../lib/sun'
-import { solveTimeline } from '../lib/timeline-solver'
+import { daylightStrip, sunMinutesFor, resolveLocationTimezone } from '../lib/sun'
+import { solveTimeline, minToHhmm, hhmmToMin } from '../lib/timeline-solver'
+import { nowTimeString } from '../lib/date'
 import { t, getI18n } from '../i18n'
 
 type Ctx = Context<Env>
@@ -74,6 +77,9 @@ function intOrNull(v: unknown): number | null {
 }
 
 const ANCHOR_REFS_SUN = new Set(['sunrise', 'sunset', 'golden_hour'])
+// Sections whose value depends on daylight — only these get a "past sunset"
+// warning when they slip; receptions etc. are meant to run after dark.
+const SUN_SENSITIVE = new Set<TimelineCategory>(['getting_ready', 'ceremony', 'portraits'])
 
 function fieldsFrom(f: Record<string, unknown>, creatable: TimelineVisibility[]): RowFields {
   // The combined "anchor" select encodes both the kind and the reference
@@ -164,36 +170,67 @@ async function buildProps(
         locale: i18n.locale,
       })
     : null
-  const sunMin = wedding
-    ? sunMinutesFor({
+  const sunMin: { sunrise: number | null; sunset: number | null; golden_hour: number | null } =
+    (wedding &&
+      sunMinutesFor({
         lat: wedding.location_lat,
         lng: wedding.location_lng,
         dateStr: wedding.date,
         country: wedding.location_country,
         state: wedding.location_state,
         fallbackTimezone: i18n.timezone,
-      }) ?? {}
-    : {}
+      })) || { sunrise: null, sunset: null, golden_hour: null }
   const items = allItems.filter((i) => canSeeItem(i, viewer))
   // Flag rows whose anchor can't be resolved (cycle, dangling ref) so the UI
   // can warn instead of letting them silently lose their time. Solve over ALL
   // items so cross-visibility references still resolve.
-  const solved = solveTimeline(
-    allItems.map((i) => ({
-      id: i.id,
-      start_time: i.start_time,
-      end_time: i.end_time,
-      duration_minutes: i.duration_minutes,
-      anchor_type: i.anchor_type,
-      anchor_ref: i.anchor_ref,
-      anchor_offset_minutes: i.anchor_offset_minutes ?? 0,
-      pinned: !!i.pinned,
-      actual_start: i.actual_start,
-      sort_order: i.sort_order,
-    })),
-    sunMin
-  )
+  const solverItems = allItems.map((i) => ({
+    id: i.id,
+    start_time: i.start_time,
+    end_time: i.end_time,
+    duration_minutes: i.duration_minutes,
+    anchor_type: i.anchor_type,
+    anchor_ref: i.anchor_ref,
+    anchor_offset_minutes: i.anchor_offset_minutes ?? 0,
+    pinned: !!i.pinned,
+    actual_start: i.actual_start,
+    sort_order: i.sort_order,
+  }))
+  const solved = solveTimeline(solverItems, sunMin)
   const conflictIds = new Set([...solved.values()].filter((v) => v.conflicts.length > 0).map((v) => v.id))
+
+  // Live mode (the day itself): once any section has an actual start, project the
+  // tail by re-solving with actuals so a section running long cascades downstream.
+  let live: TimelineProps['live']
+  if (allItems.some((i) => i.actual_start)) {
+    const projectedSolved = solveTimeline(solverItems, sunMin, { useActual: true })
+    const projected = new Map<string, { start: string | null; end: string | null }>()
+    const slipIds = new Set<string>()
+    const sunsetMin = sunMin.sunset ?? null
+    let drift = 0
+    let latestActual = -1
+    for (const it of allItems) {
+      const ps = projectedSolved.get(it.id)
+      if (!ps) continue
+      projected.set(it.id, { start: minToHhmm(ps.startMin), end: minToHhmm(ps.endMin) })
+      // Only daylight-dependent sections raise a "past sunset" flag — the
+      // reception and evening sections legitimately run after dark.
+      if (sunsetMin != null && ps.endMin != null && ps.endMin > sunsetMin && SUN_SENSITIVE.has(it.category)) {
+        slipIds.add(it.id)
+      }
+      // Running drift = the section started most recently (the live checkpoint),
+      // by actual time, vs its planned start.
+      if (it.actual_start) {
+        const actualMin = hhmmToMin(it.actual_start)
+        const planMin = solved.get(it.id)?.startMin ?? null
+        if (actualMin != null && planMin != null && actualMin > latestActual) {
+          latestActual = actualMin
+          drift = actualMin - planMin
+        }
+      }
+    }
+    live = { projected, slipIds, drift }
+  }
   const canDecide = isTimelineLead(lead, viewer.userId)
   const pending: PendingView[] = pendingRaw
     .filter((r) => r.target === 'run_sheet' && (canDecide || r.requested_by_user_id === viewer.userId))
@@ -223,6 +260,7 @@ async function buildProps(
     flash: opts?.flash,
     sun,
     conflictIds,
+    live,
   }
 }
 
@@ -345,6 +383,31 @@ export async function deleteTimelineItem(c: Ctx, weddingId: string, member: Wedd
     })
     return renderTimeline(c, weddingId, member, user, basePath, { flash: PROPOSED_FLASH(await leadLabel(c, weddingId, lead.leadUserIds)) })
   }
+  return renderTimeline(c, weddingId, member, user, basePath)
+}
+
+/** Live mode: the lead marks a section as started now (or clears it). */
+export async function startTimelineItem(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string, itemId: string, start: boolean) {
+  const item = await getItem(c.env.DB, weddingId, itemId)
+  if (!item) return renderTimeline(c, weddingId, member, user, basePath)
+  const lead = await getTimelineLead(c.env.DB, weddingId)
+  if (!canEditDirect(item, viewerOf(user, member), lead)) return renderTimeline(c, weddingId, member, user, basePath)
+  // Stamp the venue's local clock, not the (possibly remote) clicker's.
+  let stamp: string | null = null
+  if (start) {
+    const w = await getWedding(c.env.DB, weddingId)
+    const tz = resolveLocationTimezone(w?.location_country, w?.location_state, getI18n().timezone)
+    stamp = nowTimeString(tz)
+  }
+  await setActualStart(c.env.DB, weddingId, itemId, stamp)
+  return renderTimeline(c, weddingId, member, user, basePath)
+}
+
+/** Live mode: the lead clears every actual start, ending the live view. */
+export async function endLiveTimeline(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string) {
+  const lead = await getTimelineLead(c.env.DB, weddingId)
+  if (!isTimelineLead(lead, user.id)) return renderTimeline(c, weddingId, member, user, basePath)
+  await clearAllActuals(c.env.DB, weddingId)
   return renderTimeline(c, weddingId, member, user, basePath)
 }
 

@@ -30,6 +30,8 @@ import {
   addTimelineItem,
   updateTimelineItem,
   deleteTimelineItem,
+  startTimelineItem,
+  endLiveTimeline,
   addTimelineAssignee,
   removeTimelineAssignee,
   toggleAssigneeCalendar,
@@ -952,6 +954,27 @@ couple.post('/wedding/:id/timeline/:itemId/delete', async (c) => {
   const ctx = await coupleDocMembership(c, weddingId)
   if (!ctx) return c.text('Forbidden', 403)
   return deleteTimelineItem(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('itemId'))
+})
+
+couple.post('/wedding/:id/timeline/end-live', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return endLiveTimeline(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`)
+})
+
+couple.post('/wedding/:id/timeline/:itemId/start', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return startTimelineItem(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('itemId'), true)
+})
+
+couple.post('/wedding/:id/timeline/:itemId/unstart', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return startTimelineItem(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('itemId'), false)
 })
 
 couple.post('/wedding/:id/timeline/:itemId/assignees', async (c) => {

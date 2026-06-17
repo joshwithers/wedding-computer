@@ -13,6 +13,8 @@ import {
   addTimelineItem,
   updateTimelineItem,
   deleteTimelineItem,
+  startTimelineItem,
+  endLiveTimeline,
   addTimelineAssignee,
   removeTimelineAssignee,
   toggleAssigneeCalendar,
@@ -62,6 +64,24 @@ timeline.post('/app/weddings/:id/timeline/:itemId/delete', async (c) => {
   const x = await ctx(c)
   if (!x) return c.text('Not found', 404)
   return deleteTimelineItem(c, x.weddingId, x.membership, x.user, base(x.weddingId), c.req.param('itemId'))
+})
+
+timeline.post('/app/weddings/:id/timeline/end-live', async (c) => {
+  const x = await ctx(c)
+  if (!x) return c.text('Not found', 404)
+  return endLiveTimeline(c, x.weddingId, x.membership, x.user, base(x.weddingId))
+})
+
+timeline.post('/app/weddings/:id/timeline/:itemId/start', async (c) => {
+  const x = await ctx(c)
+  if (!x) return c.text('Not found', 404)
+  return startTimelineItem(c, x.weddingId, x.membership, x.user, base(x.weddingId), c.req.param('itemId'), true)
+})
+
+timeline.post('/app/weddings/:id/timeline/:itemId/unstart', async (c) => {
+  const x = await ctx(c)
+  if (!x) return c.text('Not found', 404)
+  return startTimelineItem(c, x.weddingId, x.membership, x.user, base(x.weddingId), c.req.param('itemId'), false)
 })
 
 timeline.post('/app/weddings/:id/timeline/:itemId/assignees', async (c) => {
