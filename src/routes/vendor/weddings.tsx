@@ -46,7 +46,7 @@ import { isManagerVendor, categoriesLabel } from '../../lib/categories'
 import { weddingDisplayTitle } from '../../lib/wedding-display'
 import { sendVendorWelcomeInvite } from '../../services/auth'
 import { TIMELINE_FIELDS } from '../../services/timeline-edit'
-import { applyWeddingUpdate } from '../../db/timeline'
+import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes } from '../../db/timeline'
 import { t } from '../../i18n'
 import { WeddingDoc } from '../../views/wedding-doc'
 import { loadDocTabs } from '../../db/wedding-docs'
@@ -1231,7 +1231,13 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     await applyWeddingUpdate(c.env.DB, weddingId, updateData as Record<string, string | number | null>, user.id, oldWedding as any)
     console.log('[weddings] edit', weddingId, 'updateWedding succeeded')
     c.executionCtx.waitUntil(
-      geocodeWeddingLocation(c.env, weddingId).catch((err) => console.error('[weddings] geocode failed:', err))
+      geocodeWeddingLocation(c.env, weddingId)
+        .catch((err) => console.error('[weddings] geocode failed:', err))
+        // A new date or location moves the sun, so re-solve sun-anchored
+        // sections once fresh coordinates are in.
+        .then(() => weddingSunMinutes(c.env.DB, weddingId))
+        .then((sun) => resolveAndMaterialize(c.env.DB, weddingId, sun))
+        .catch((err) => console.error('[weddings] timeline re-solve failed:', err))
     )
 
     // Log changes

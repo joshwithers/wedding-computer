@@ -14,7 +14,7 @@ import { findOrCreateUser, sendVendorWelcomeInvite } from '../services/auth'
 import { isManagerVendor } from '../lib/categories'
 import { weddingDisplayTitle } from '../lib/wedding-display'
 import { createTimelineRequest, getTimelineControllers } from '../db/timeline-requests'
-import { applyWeddingUpdate } from '../db/timeline'
+import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes } from '../db/timeline'
 import { t } from '../i18n'
 import { WeddingDoc } from '../views/wedding-doc'
 import { loadDocTabs } from '../db/wedding-docs'
@@ -1260,6 +1260,13 @@ couple.post('/wedding/:id/edit', async (c) => {
     // instead of writing the derived columns the projection would clobber.
     await applyWeddingUpdate(c.env.DB, weddingId, weddingUpdates, user.id, currentWedding as any)
   }
+  // A date change moves the sun — re-solve sun-anchored sections (cheap + a
+  // no-op when nothing changed).
+  c.executionCtx.waitUntil(
+    weddingSunMinutes(c.env.DB, weddingId)
+      .then((sun) => resolveAndMaterialize(c.env.DB, weddingId, sun))
+      .catch((err) => console.error('[couple] timeline re-solve failed:', err))
+  )
 
   // Update couple contact details
   for (let i = 0; i < 10; i++) {

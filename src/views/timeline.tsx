@@ -124,13 +124,23 @@ function FormFields({
   values,
   creatable,
   anchorOptions = [],
+  sunAvailable = false,
 }: {
   values?: Partial<RowFields>
   creatable: TimelineVisibility[]
   anchorOptions?: AnchorOption[]
+  sunAvailable?: boolean
 }) {
   const fieldCls = 'border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 bg-white'
-  const anchored = values?.anchor_type === 'after' || values?.anchor_type === 'before'
+  const at = values?.anchor_type
+  const off = values?.anchor_offset_minutes ?? 0
+  const hasAnchor = at === 'after' || at === 'before' || at === 'sun'
+  // Reconstruct the encoded <select> value for an existing item.
+  const cur =
+    at === 'after' ? `after:${values?.anchor_ref ?? ''}`
+    : at === 'before' ? `before:${values?.anchor_ref ?? ''}`
+    : at === 'sun' ? `${off < 0 ? 'sunbefore' : 'sunafter'}:${values?.anchor_ref ?? ''}`
+    : ''
   return (
     <div class="grid grid-cols-2 gap-2">
       <input type="text" name="title" required value={values?.title ?? ''} placeholder={t('timeline.field.titlePlaceholder')} class="col-span-2 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 bg-white" />
@@ -157,32 +167,42 @@ function FormFields({
       </label>
       <textarea name="description" placeholder={t('timeline.field.details')} rows={2} class="col-span-2 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 bg-white resize-y">{values?.description ?? ''}</textarea>
 
-      {/* Liquid timing: duration, relative anchoring, pinned. */}
-      <details class="col-span-2" open={anchored || values?.duration_minutes != null || !!values?.pinned}>
+      {/* Liquid timing: duration + relative anchoring (item or sun event). */}
+      <details class="col-span-2" open={hasAnchor || values?.duration_minutes != null}>
         <summary class="text-[10px] text-gray-400 cursor-pointer select-none">{t('timeline.field.liquid')}</summary>
         <div class="grid grid-cols-2 gap-2 mt-2">
-          <label class="text-[10px] text-gray-400 flex flex-col gap-0.5 col-span-2">
+          <label class="text-[10px] text-gray-400 flex flex-col gap-0.5">
             {t('timeline.field.duration')}
             <input type="number" name="duration_minutes" min="0" step="5" value={values?.duration_minutes ?? ''} placeholder="—" class={fieldCls} />
           </label>
           <label class="text-[10px] text-gray-400 flex flex-col gap-0.5">
-            {t('timeline.field.startRel')}
-            <select name="anchor_type" class={fieldCls}>
-              <option value="" selected={!anchored}>{t('timeline.anchor.none')}</option>
-              <option value="after" selected={values?.anchor_type === 'after'}>{t('timeline.anchor.after')}</option>
-              <option value="before" selected={values?.anchor_type === 'before'}>{t('timeline.anchor.before')}</option>
-            </select>
-          </label>
-          <label class="text-[10px] text-gray-400 flex flex-col gap-0.5">
-            {t('timeline.field.anchorItem')}
-            <select name="anchor_ref" class={fieldCls}>
-              <option value="">—</option>
-              {anchorOptions.map((o) => <option value={o.id} selected={values?.anchor_ref === o.id}>{o.title}</option>)}
-            </select>
+            {t('timeline.field.offset')}
+            <input type="number" name="anchor_offset" min="0" step="5" value={hasAnchor && off ? Math.abs(off) : ''} placeholder="0" class={fieldCls} />
           </label>
           <label class="text-[10px] text-gray-400 flex flex-col gap-0.5 col-span-2">
-            {t('timeline.field.offset')}
-            <input type="number" name="anchor_offset" step="5" value={values?.anchor_offset_minutes ?? ''} placeholder="0" class={fieldCls} />
+            {t('timeline.field.startRel')}
+            <select name="anchor" class={fieldCls}>
+              <option value="" selected={!hasAnchor}>{t('timeline.anchor.none')}</option>
+              {anchorOptions.length > 0 && (
+                <optgroup label={t('timeline.anchor.afterGroup')}>
+                  {anchorOptions.map((o) => <option value={`after:${o.id}`} selected={cur === `after:${o.id}`}>{o.title}</option>)}
+                </optgroup>
+              )}
+              {anchorOptions.length > 0 && (
+                <optgroup label={t('timeline.anchor.beforeGroup')}>
+                  {anchorOptions.map((o) => <option value={`before:${o.id}`} selected={cur === `before:${o.id}`}>{o.title}</option>)}
+                </optgroup>
+              )}
+              {sunAvailable && (
+                <optgroup label={t('timeline.anchor.sunGroup')}>
+                  <option value="sunbefore:sunset" selected={cur === 'sunbefore:sunset'}>{t('timeline.anchor.beforeSunset')}</option>
+                  <option value="sunafter:sunset" selected={cur === 'sunafter:sunset'}>{t('timeline.anchor.afterSunset')}</option>
+                  <option value="sunbefore:golden_hour" selected={cur === 'sunbefore:golden_hour'}>{t('timeline.anchor.beforeGolden')}</option>
+                  <option value="sunbefore:sunrise" selected={cur === 'sunbefore:sunrise'}>{t('timeline.anchor.beforeSunrise')}</option>
+                  <option value="sunafter:sunrise" selected={cur === 'sunafter:sunrise'}>{t('timeline.anchor.afterSunrise')}</option>
+                </optgroup>
+              )}
+            </select>
           </label>
         </div>
       </details>
@@ -190,11 +210,11 @@ function FormFields({
   )
 }
 
-function RowForm({ item, basePath, creatable, anchorOptions }: { item: TimelineItemView; basePath: string; creatable: TimelineVisibility[]; anchorOptions: AnchorOption[] }) {
+function RowForm({ item, basePath, creatable, anchorOptions, sunAvailable }: { item: TimelineItemView; basePath: string; creatable: TimelineVisibility[]; anchorOptions: AnchorOption[]; sunAvailable: boolean }) {
   return (
     <li id={`trow-${item.id}`} class="px-4 py-3 bg-horizon-50/40">
       <form hx-post={`${basePath}/timeline/${item.id}`} hx-target="#timeline-body" hx-swap="outerHTML" class="space-y-2">
-        <FormFields values={item} creatable={creatable.length ? creatable : [item.visibility]} anchorOptions={anchorOptions.filter((o) => o.id !== item.id)} />
+        <FormFields values={item} creatable={creatable.length ? creatable : [item.visibility]} anchorOptions={anchorOptions.filter((o) => o.id !== item.id)} sunAvailable={sunAvailable} />
         <div class="flex items-center gap-2">
           <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700">{t('timeline.save')}</button>
           <button type="button" hx-get={`${basePath}/timeline`} hx-target="#timeline-body" hx-swap="outerHTML" class="text-xs text-gray-400 hover:text-gray-600">{t('timeline.cancel')}</button>
@@ -246,7 +266,7 @@ function Row({ item, basePath, roster, canEdit, canAssign, viewerUserId, refTitl
   )
 }
 
-function PendingCard({ p, basePath, canDecide, creatable, anchorOptions }: { p: PendingView; basePath: string; canDecide: boolean; creatable: TimelineVisibility[]; anchorOptions: AnchorOption[] }) {
+function PendingCard({ p, basePath, canDecide, creatable, anchorOptions, sunAvailable }: { p: PendingView; basePath: string; canDecide: boolean; creatable: TimelineVisibility[]; anchorOptions: AnchorOption[]; sunAvailable: boolean }) {
   const opLabel = t(`timeline.op.${p.op}` as MessageKey)
   return (
     <div class="px-4 py-3 border-b border-amber-100 bg-amber-50/60">
@@ -270,7 +290,7 @@ function PendingCard({ p, basePath, canDecide, creatable, anchorOptions }: { p: 
           </div>
         ) : (
           <form hx-post={`${basePath}/timeline/requests/${p.id}/approve`} hx-target="#timeline-body" hx-swap="outerHTML" class="mt-2 space-y-2">
-            <FormFields values={p.after} creatable={creatable.length ? creatable : ['couple', 'vendors', 'private']} anchorOptions={anchorOptions} />
+            <FormFields values={p.after} creatable={creatable.length ? creatable : ['couple', 'vendors', 'private']} anchorOptions={anchorOptions} sunAvailable={sunAvailable} />
             <div class="flex items-center gap-2">
               <button type="submit" class="bg-horizon-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-horizon-700">{t('timeline.approve')}</button>
               <button type="button" hx-post={`${basePath}/timeline/requests/${p.id}/decline`} hx-target="#timeline-body" hx-swap="outerHTML" class="text-xs text-gray-500 hover:text-red-600">{t('timeline.decline')}</button>
@@ -288,6 +308,7 @@ export function TimelineBody(props: TimelineProps) {
   const { items, basePath, roster, viewer, lead, creatable, editId, pending, canDecide, flash } = props
   const anchorOptions: AnchorOption[] = items.map((i) => ({ id: i.id, title: i.title }))
   const titleById = new Map(items.map((i) => [i.id, i.title]))
+  const sunAvailable = !!(props.sun && (props.sun.sunset || props.sun.sunrise || props.sun.goldenHourStart))
   return (
     <div id="timeline-body">
       {flash && <p class="px-4 py-2 text-xs text-horizon-700 bg-horizon-50 border-b border-horizon-100">{flash}</p>}
@@ -295,12 +316,12 @@ export function TimelineBody(props: TimelineProps) {
       {pending.length > 0 && (
         <div class="border-b border-amber-200">
           <div class="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">{t('timeline.pendingHeading')}</div>
-          {pending.map((p) => <PendingCard p={p} basePath={basePath} canDecide={canDecide} creatable={creatable} anchorOptions={anchorOptions} />)}
+          {pending.map((p) => <PendingCard p={p} basePath={basePath} canDecide={canDecide} creatable={creatable} anchorOptions={anchorOptions} sunAvailable={sunAvailable} />)}
         </div>
       )}
 
       <form hx-post={`${basePath}/timeline`} hx-target="#timeline-body" hx-swap="outerHTML" hx-on--after-request="this.reset()" class="px-4 py-3 border-b border-gray-100 space-y-2 bg-gray-50/50">
-        <FormFields creatable={creatable} anchorOptions={anchorOptions} />
+        <FormFields creatable={creatable} anchorOptions={anchorOptions} sunAvailable={sunAvailable} />
         <button type="submit" class="bg-horizon-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700">{t('timeline.add')}</button>
       </form>
 
@@ -320,7 +341,7 @@ export function TimelineBody(props: TimelineProps) {
                 <ul class="divide-y divide-gray-50">
                   {rows.map((item) =>
                     item.id === editId ? (
-                      <RowForm item={item} basePath={basePath} creatable={creatable} anchorOptions={anchorOptions} />
+                      <RowForm item={item} basePath={basePath} creatable={creatable} anchorOptions={anchorOptions} sunAvailable={sunAvailable} />
                     ) : (
                       <Row item={item} basePath={basePath} roster={roster} canEdit={canEditOrPropose(item, viewer, lead)} canAssign={canManageAssignees(item, viewer, lead)} viewerUserId={viewer.userId} refTitle={item.anchor_ref ? titleById.get(item.anchor_ref) : undefined} conflicted={props.conflictIds?.has(item.id)} />
                     )

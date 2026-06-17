@@ -149,6 +149,44 @@ export function formatLocalTime(instant: Date, timezone: string, locale: string)
   }
 }
 
+/** Minutes since local midnight for a UTC instant in the given zone. */
+function localMinutesInTz(instant: Date, timezone: string): number {
+  try {
+    const p = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(instant)
+    const h = Number(p.find((x) => x.type === 'hour')?.value ?? '0') % 24
+    const m = Number(p.find((x) => x.type === 'minute')?.value ?? '0')
+    return h * 60 + m
+  } catch {
+    return instant.getUTCHours() * 60 + instant.getUTCMinutes()
+  }
+}
+
+/**
+ * Sun events as minutes-since-midnight in the wedding's local timezone — the
+ * frame the timeline solver works in. Returns null when we lack coordinates or
+ * a date. Keys match the solver's sun anchor refs.
+ */
+export function sunMinutesFor(opts: {
+  lat: number | null | undefined
+  lng: number | null | undefined
+  dateStr: string | null | undefined
+  country?: string | null
+  state?: string | null
+  fallbackTimezone: string
+}): { sunrise: number | null; sunset: number | null; golden_hour: number | null } | null {
+  const { lat, lng, dateStr, fallbackTimezone } = opts
+  if (lat == null || lng == null || !dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const anchor = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
+  const tz = resolveLocationTimezone(opts.country, opts.state, fallbackTimezone)
+  const s = sunTimes(anchor, lat, lng)
+  return {
+    sunrise: s.sunrise ? localMinutesInTz(s.sunrise, tz) : null,
+    sunset: s.sunset ? localMinutesInTz(s.sunset, tz) : null,
+    golden_hour: s.goldenHourStart ? localMinutesInTz(s.goldenHourStart, tz) : null,
+  }
+}
+
 export type DaylightStrip = {
   sunrise: string | null
   sunset: string | null

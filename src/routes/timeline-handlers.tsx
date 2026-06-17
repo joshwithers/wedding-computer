@@ -25,6 +25,7 @@ import {
   resolveWeddingRoster,
   projectTimelineToWedding,
   resolveAndMaterialize,
+  weddingSunMinutes,
   type RosterEntry,
 } from '../db/timeline'
 import {
@@ -42,7 +43,7 @@ import { resyncWeddingCalendars } from '../services/wedding-calendar'
 import { listPendingTimelineRequests, getTimelineRequest, decideTimelineRequest } from '../db/timeline-requests'
 import { proposeChange, applyRequest, diffRows, parsePayload, type RowFields } from '../services/timeline-approval'
 import { getWedding } from '../db/weddings'
-import { daylightStrip } from '../lib/sun'
+import { daylightStrip, sunMinutesFor } from '../lib/sun'
 import { solveTimeline } from '../lib/timeline-solver'
 import { t, getI18n } from '../i18n'
 
@@ -75,15 +76,34 @@ function intOrNull(v: unknown): number | null {
 const ANCHOR_REFS_SUN = new Set(['sunrise', 'sunset', 'golden_hour'])
 
 function fieldsFrom(f: Record<string, unknown>, creatable: TimelineVisibility[]): RowFields {
-  const at = str(f.anchor_type)
-  let anchor_type: 'after' | 'before' | 'sun' | null = at === 'after' || at === 'before' || at === 'sun' ? at : null
-  const rawRef = anchor_type ? str(f.anchor_ref) : null
-  // A sun anchor must name a real sun event; an item anchor must name something.
-  const anchor_ref = anchor_type === 'sun' ? (rawRef && ANCHOR_REFS_SUN.has(rawRef) ? rawRef : null) : rawRef
-  // An anchor with no valid reference is meaningless — drop it so the row stays
-  // a plain item (using its own time) instead of resolving to a null clock and
-  // floating, invisible, to the top.
-  if (anchor_type && !anchor_ref) anchor_type = null
+  // The combined "anchor" select encodes both the kind and the reference
+  // (e.g. "after:<id>", "sunbefore:sunset"), so the type and ref can't mismatch.
+  // The offset is entered as a positive magnitude; the kind sets the sign
+  // (sun-before is earlier than the event). An anchor with no valid reference is
+  // dropped so the row stays a plain item rather than resolving to a null clock.
+  const anchorRaw = str(f.anchor)
+  let anchor_type: 'after' | 'before' | 'sun' | null = null
+  let anchor_ref: string | null = null
+  let anchor_offset_minutes = 0
+  if (anchorRaw) {
+    const idx = anchorRaw.indexOf(':')
+    const kind = idx >= 0 ? anchorRaw.slice(0, idx) : anchorRaw
+    const ref = idx >= 0 ? anchorRaw.slice(idx + 1) : ''
+    const mag = Math.abs(intOrNull(f.anchor_offset) ?? 0)
+    if ((kind === 'after' || kind === 'before') && ref) {
+      anchor_type = kind
+      anchor_ref = ref
+      anchor_offset_minutes = mag
+    } else if (kind === 'sunbefore' && ANCHOR_REFS_SUN.has(ref)) {
+      anchor_type = 'sun'
+      anchor_ref = ref
+      anchor_offset_minutes = -mag
+    } else if (kind === 'sunafter' && ANCHOR_REFS_SUN.has(ref)) {
+      anchor_type = 'sun'
+      anchor_ref = ref
+      anchor_offset_minutes = mag
+    }
+  }
   return {
     title: str(f.title) ?? 'Untitled',
     start_time: str(f.start_time),
@@ -95,8 +115,8 @@ function fieldsFrom(f: Record<string, unknown>, creatable: TimelineVisibility[])
     duration_minutes: intOrNull(f.duration_minutes),
     anchor_type,
     anchor_ref,
-    anchor_offset_minutes: anchor_type ? intOrNull(f.anchor_offset) ?? 0 : 0,
-    pinned: f.pinned === 'on' || f.pinned === 'yes' || f.pinned === '1' ? 1 : 0,
+    anchor_offset_minutes,
+    pinned: 0,
   }
 }
 
@@ -144,6 +164,16 @@ async function buildProps(
         locale: i18n.locale,
       })
     : null
+  const sunMin = wedding
+    ? sunMinutesFor({
+        lat: wedding.location_lat,
+        lng: wedding.location_lng,
+        dateStr: wedding.date,
+        country: wedding.location_country,
+        state: wedding.location_state,
+        fallbackTimezone: i18n.timezone,
+      }) ?? {}
+    : {}
   const items = allItems.filter((i) => canSeeItem(i, viewer))
   // Flag rows whose anchor can't be resolved (cycle, dangling ref) so the UI
   // can warn instead of letting them silently lose their time. Solve over ALL
@@ -161,7 +191,7 @@ async function buildProps(
       actual_start: i.actual_start,
       sort_order: i.sort_order,
     })),
-    {}
+    sunMin
   )
   const conflictIds = new Set([...solved.values()].filter((v) => v.conflicts.length > 0).map((v) => v.id))
   const canDecide = isTimelineLead(lead, viewer.userId)
@@ -213,7 +243,7 @@ async function afterWrite(c: Ctx, weddingId: string) {
   // markdown all reflect the recomputed clock. (Sun anchors get their minutes
   // wired in Phase B.)
   try {
-    await resolveAndMaterialize(env.DB, weddingId)
+    await resolveAndMaterialize(env.DB, weddingId, await weddingSunMinutes(env.DB, weddingId))
   } catch (err) {
     console.error('[timeline] materialize failed', err)
   }

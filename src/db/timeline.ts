@@ -4,8 +4,10 @@
 // that keeps the legacy weddings.* slot columns in step during phases 1-3.
 
 import type { TimelineItem, TimelineItemAssignee, TimelineCategory, TimelineVisibility, TimelineSlot, RunSheetItem } from '../types'
-import { updateWedding } from './weddings'
+import { updateWedding, getWedding } from './weddings'
 import { solveTimeline, minToHhmm, type SolverItem, type SunMinutes } from '../lib/timeline-solver'
+import { sunMinutesFor } from '../lib/sun'
+import { DEFAULT_TIMEZONE } from '../i18n'
 
 export type AssigneeView = {
   id: string
@@ -216,6 +218,23 @@ function toSolverItem(it: TimelineItem): SolverItem {
  * whose value actually changed. Call synchronously after any timeline write,
  * before rendering + projection.
  */
+/** Sun events (sunrise/sunset/golden_hour) in the wedding's local clock, as
+ * solver anchor inputs. Empty when the wedding has no coordinates/date. */
+export async function weddingSunMinutes(db: D1Database, weddingId: string): Promise<SunMinutes> {
+  const w = await getWedding(db, weddingId)
+  if (!w) return {}
+  return (
+    sunMinutesFor({
+      lat: w.location_lat,
+      lng: w.location_lng,
+      dateStr: w.date,
+      country: w.location_country,
+      state: w.location_state,
+      fallbackTimezone: DEFAULT_TIMEZONE,
+    }) ?? {}
+  )
+}
+
 export async function resolveAndMaterialize(db: D1Database, weddingId: string, sun: SunMinutes = {}): Promise<void> {
   const items = await db
     .prepare('SELECT * FROM timeline_items WHERE wedding_id = ?')
@@ -788,5 +807,5 @@ export async function applyTimelineRowDiff(
   // (markdown/Obsidian or MCP) edit, just like the web write path does. Anchored
   // rows are app-governed: a manual time edit in the vault is recomputed from
   // the anchor here rather than sticking.
-  await resolveAndMaterialize(db, weddingId)
+  await resolveAndMaterialize(db, weddingId, await weddingSunMinutes(db, weddingId))
 }
