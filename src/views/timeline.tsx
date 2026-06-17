@@ -233,19 +233,20 @@ function RowForm({ item, basePath, creatable, anchorOptions, sunAvailable }: { i
 }
 
 function Row({ item, basePath, roster, canEdit, canAssign, viewerUserId, refTitle, conflicted, liveMode, projected, slipped, canStart }: { item: TimelineItemView; basePath: string; roster: RosterEntry[]; canEdit: boolean; canAssign: boolean; viewerUserId: string; refTitle?: string; conflicted?: boolean; liveMode?: boolean; projected?: { start: string | null; end: string | null }; slipped?: boolean; canStart?: boolean }) {
-  const plannedStr = item.start_time ? (item.end_time ? `${item.start_time}–${item.end_time}` : item.start_time) : ''
   const started = item.actual_start
   // In live mode, show the actual start once started, else the projected time.
-  const projStr = projected ? (projected.start ? (projected.end ? `${projected.start}–${projected.end}` : projected.start) : '') : ''
-  const timeStr = liveMode ? (started || projStr || plannedStr) : plannedStr
-  const shifted = liveMode && !started && projStr && projected?.start && projected.start !== item.start_time
+  const useProj = !!(liveMode && projected && !started)
+  const topTime = started || (useProj ? projected?.start ?? '' : item.start_time ?? '')
+  const botTime = started ? '' : useProj ? projected?.end ?? '' : item.end_time ?? ''
+  const shifted = useProj && !!projected?.start && projected.start !== item.start_time
   const relative = (item.anchor_type === 'after' || item.anchor_type === 'before') && refTitle
   const off = item.anchor_offset_minutes
   return (
     <li id={`trow-${item.id}`} class={`flex items-start gap-3 px-4 py-3 ${started ? 'bg-horizon-50/30' : ''}`}>
-      <div class="w-16 flex-shrink-0 pt-0.5 text-xs font-bold tabular-nums">
-        <span class={started ? 'text-horizon-700' : 'text-gray-500'}>{timeStr || '—'}</span>
-        {shifted && <span class="block text-[9px] font-normal text-gray-300 line-through">{item.start_time}</span>}
+      <div class="w-14 flex-shrink-0 pt-0.5 text-xs tabular-nums leading-tight">
+        <div class={`font-bold ${started ? 'text-horizon-700' : 'text-gray-500'}`}>{topTime || '—'}</div>
+        {botTime && <div class="font-normal text-gray-400">{botTime}</div>}
+        {shifted && <div class="text-[9px] font-normal text-gray-300 line-through">{item.start_time}</div>}
       </div>
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 flex-wrap">

@@ -90,12 +90,6 @@ export async function exportWeddingVendorsMarkdown(
     if (m.vendor_website) details.push(m.vendor_website)
     if (m.vendor_instagram) details.push(`@${m.vendor_instagram.replace(/^@/, '')}`)
     if (details.length > 0) lines.push(`  - ${details.join(' · ')}`)
-    if (m.bump_in_time || m.bump_out_time) {
-      const bumps: string[] = []
-      if (m.bump_in_time) bumps.push(`Bump in: ${m.bump_in_time}`)
-      if (m.bump_out_time) bumps.push(`Bump out: ${m.bump_out_time}`)
-      lines.push(`  - ${bumps.join(' · ')}`)
-    }
   }
   lines.push('')
 

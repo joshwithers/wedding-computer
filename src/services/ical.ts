@@ -18,12 +18,13 @@ export function buildTimelineFeed(rows: UserCalendarRow[], calName: string, time
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
   ]
-  for (const r of rows) lines.push(...timelineVevent(r, timezone))
+  for (const r of rows) lines.push(...buildTimelineVevent(r, timezone))
   lines.push('END:VCALENDAR')
   return lines.join('\r\n') + '\r\n'
 }
 
-function timelineVevent(r: UserCalendarRow, timezone: string): string[] {
+/** Build a single timeline-section VEVENT block (no VCALENDAR wrapper). Exported for CalDAV. */
+export function buildTimelineVevent(r: UserCalendarRow, timezone: string): string[] {
   const lines: string[] = ['BEGIN:VEVENT']
   lines.push(`UID:ts-${r.id}@weddingcomputer.com`)
   lines.push(`SUMMARY:${escapeIcalText(r.wedding_title ? `${r.title} · ${r.wedding_title}` : r.title)}`)
@@ -48,7 +49,8 @@ function timelineVevent(r: UserCalendarRow, timezone: string): string[] {
 export function buildIcalFeed(
   events: EnrichedCalendarEvent[],
   vendorName: string,
-  timezone: string
+  timezone: string,
+  timelineRows: UserCalendarRow[] = []
 ): string {
   const lines: string[] = [
     'BEGIN:VCALENDAR',
@@ -62,6 +64,12 @@ export function buildIcalFeed(
 
   for (const event of events) {
     lines.push(...buildVevent(event, timezone))
+  }
+
+  // The vendor's assigned + opted-in timeline sections (e.g. bump in/out) ride
+  // alongside their bookings. Distinct `ts-` UIDs — never collide with bookings.
+  for (const r of timelineRows) {
+    lines.push(...buildTimelineVevent(r, timezone))
   }
 
   lines.push('END:VCALENDAR')

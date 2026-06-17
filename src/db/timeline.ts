@@ -390,22 +390,83 @@ export type UserCalendarRow = {
   updated_at: string
 }
 
-/** Timeline sections this user is assigned to and has opted into, across weddings. */
-export async function listUserCalendarRows(db: D1Database, userId: string): Promise<UserCalendarRow[]> {
-  return db
-    .prepare(
-      `SELECT ti.id, ti.title, ti.start_time, ti.end_time, ti.location, ti.description,
+// Shared SELECT for calendar-bound timeline rows. The WHERE supplies the
+// scoping predicate (per-user, or per-vendor-profile) plus the opted-in/active
+// filters; callers append id filters + ORDER BY. `{SCOPE}` is substituted with
+// the scoping column so the rest of the query stays identical.
+const CALENDAR_ROW_SELECT = (scopeCol: string) =>
+  `SELECT ti.id, ti.title, ti.start_time, ti.end_time, ti.location, ti.description,
               ti.created_at, ti.updated_at, w.date AS wedding_date, w.title AS wedding_title
        FROM timeline_item_assignees a
        JOIN wedding_members wm ON wm.id = a.wedding_member_id
        JOIN timeline_items ti ON ti.id = a.timeline_item_id
        JOIN weddings w ON w.id = ti.wedding_id
-       WHERE wm.user_id = ? AND a.added_to_calendar = 1 AND wm.status = 'active' AND w.date IS NOT NULL
-       ORDER BY w.date ASC, (ti.start_time IS NULL), ti.start_time ASC`
-    )
+       WHERE wm.${scopeCol} = ? AND a.added_to_calendar = 1 AND wm.status = 'active' AND w.date IS NOT NULL`
+
+const USER_CALENDAR_SELECT = CALENDAR_ROW_SELECT('user_id')
+const VENDOR_CALENDAR_SELECT = CALENDAR_ROW_SELECT('vendor_profile_id')
+
+/** Timeline sections this user is assigned to and has opted into, across weddings. */
+export async function listUserCalendarRows(db: D1Database, userId: string): Promise<UserCalendarRow[]> {
+  return db
+    .prepare(`${USER_CALENDAR_SELECT}
+       ORDER BY w.date ASC, (ti.start_time IS NULL), ti.start_time ASC`)
     .bind(userId)
     .all<UserCalendarRow>()
     .then((r) => r.results)
+}
+
+// ── Vendor-scoped variants for the vendor's business feed (iCal + CalDAV) ──
+// Keyed on the vendor PROFILE, not its owner user — a vendor's membership user
+// is not always the profile owner, and a vendor wants every section assigned to
+// any of its own memberships.
+
+/** Timeline sections assigned to this vendor (any membership) + opted in. */
+export async function listVendorCalendarRows(db: D1Database, vendorId: string): Promise<UserCalendarRow[]> {
+  return db
+    .prepare(`${VENDOR_CALENDAR_SELECT}
+       ORDER BY w.date ASC, (ti.start_time IS NULL), ti.start_time ASC`)
+    .bind(vendorId)
+    .all<UserCalendarRow>()
+    .then((r) => r.results)
+}
+
+/** A single calendar-bound timeline row, scoped to the vendor (CalDAV GET). */
+export async function getVendorCalendarRow(
+  db: D1Database,
+  vendorId: string,
+  itemId: string
+): Promise<UserCalendarRow | null> {
+  return db
+    .prepare(`${VENDOR_CALENDAR_SELECT} AND ti.id = ? LIMIT 1`)
+    .bind(vendorId, itemId)
+    .first<UserCalendarRow>()
+}
+
+/**
+ * Calendar-bound timeline rows by id, scoped to the vendor (CalDAV multiget).
+ * The id list comes from a client-supplied REPORT body, so chunk the IN clause
+ * (≤99 + the vendor bind) to stay under D1's bound-parameter ceiling — mirrors
+ * listEnrichedEventsByIds in db/calendar.ts.
+ */
+export async function getVendorCalendarRowsByIds(
+  db: D1Database,
+  vendorId: string,
+  itemIds: string[]
+): Promise<UserCalendarRow[]> {
+  if (itemIds.length === 0) return []
+  const out: UserCalendarRow[] = []
+  for (let i = 0; i < itemIds.length; i += 99) {
+    const batch = itemIds.slice(i, i + 99)
+    const placeholders = batch.map(() => '?').join(', ')
+    const rows = await db
+      .prepare(`${VENDOR_CALENDAR_SELECT} AND ti.id IN (${placeholders})`)
+      .bind(vendorId, ...batch)
+      .all<UserCalendarRow>()
+      .then((r) => r.results)
+    out.push(...rows)
+  }
+  return out
 }
 
 // ── Roster (for the assignee picker): members + each vendor's assigned staff ──

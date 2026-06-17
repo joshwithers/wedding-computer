@@ -25,7 +25,7 @@ import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { getUserByEmail } from '../../db/users'
 import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, formatDateTime, formatTime, daysUntil, addHoursToTime } from '../../lib/date'
-import { createEvent, updateEvent, deleteEvent } from '../../db/calendar'
+import { createEvent } from '../../db/calendar'
 import { resyncWeddingCalendars } from '../../services/wedding-calendar'
 import { track } from '../../services/analytics'
 import { geocodeWeddingLocation } from '../../services/geocode'
@@ -53,76 +53,6 @@ import { loadDocTabs } from '../../db/wedding-docs'
 import { WebLinks } from '../../views/web-links'
 import { listWebLinks } from '../../db/web-links'
 import { renderTimelineSection } from '../timeline-handlers'
-
-/**
- * Sync per-vendor bump in/out calendar events.
- * These are personal to each vendor — not shared on the wedding timeline.
- */
-async function syncVendorBumpEvents(
-  db: D1Database,
-  vendorId: string,
-  weddingId: string,
-  weddingTitle: string,
-  weddingDate: string,
-  emoji: string | null,
-  bumpInTime: string | null,
-  bumpOutTime: string | null,
-  ceremonyLocation: string | null,
-  receptionLocation: string | null,
-) {
-  const pfx = emoji ? `${emoji} ` : ''
-
-  const events = [
-    {
-      tag: 'wc:bump_in',
-      title: `${pfx}${weddingTitle} — Bump in`,
-      startTime: bumpInTime,
-      endTime: bumpInTime ? addHoursToTime(bumpInTime, 1) : null,
-      location: ceremonyLocation,
-      shouldExist: !!bumpInTime,
-    },
-    {
-      tag: 'wc:bump_out',
-      title: `${pfx}${weddingTitle} — Bump out`,
-      startTime: bumpOutTime,
-      endTime: bumpOutTime ? addHoursToTime(bumpOutTime, 1) : null,
-      location: receptionLocation ?? ceremonyLocation,
-      shouldExist: !!bumpOutTime,
-    },
-  ]
-
-  const existing = await db
-    .prepare(
-      `SELECT id, notes FROM calendar_events
-       WHERE vendor_id = ? AND wedding_id = ? AND notes IN ('wc:bump_in', 'wc:bump_out')`
-    )
-    .bind(vendorId, weddingId)
-    .all<{ id: string; notes: string }>()
-    .then((r) => r.results)
-  const existingByTag = new Map(existing.map((e) => [e.notes, e.id]))
-
-  for (const planned of events) {
-    const existingId = existingByTag.get(planned.tag)
-    if (planned.shouldExist) {
-      if (existingId) {
-        await updateEvent(db, vendorId, existingId, {
-          title: planned.title, date: weddingDate,
-          start_time: planned.startTime, end_time: planned.endTime,
-          all_day: planned.startTime ? 0 : 1, notes: planned.tag,
-        })
-      } else {
-        await createEvent(db, vendorId, {
-          title: planned.title, date: weddingDate,
-          start_time: planned.startTime, end_time: planned.endTime,
-          all_day: !planned.startTime, type: 'booking',
-          wedding_id: weddingId, notes: planned.tag,
-        })
-      }
-    } else if (existingId) {
-      await deleteEvent(db, vendorId, existingId)
-    }
-  }
-}
 
 /** Compare old and new wedding data and return human-readable change descriptions. */
 function diffWeddingChanges(
@@ -777,46 +707,6 @@ weddings.get('/app/weddings/:id', async (c) => {
         {/* Places */}
         <WeddingPlaces wedding={wedding} />
 
-        {/* Per-vendor bump times */}
-        <div id="vendor-bumps" class="mt-6">
-          <h3 class="text-sm font-bold text-gray-500 mb-3">Your bump in/out</h3>
-          <form
-            hx-post={`/app/weddings/${wedding.id}/bumps`}
-            hx-target="#vendor-bumps"
-            hx-swap="innerHTML"
-            class="bg-white border border-papaya-300/30 rounded-2xl p-4"
-          >
-            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-            <p class="text-xs text-gray-400 mb-3">Personal to you — other vendors set their own.</p>
-            <div class="flex items-end gap-4">
-              <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Bump in</label>
-                <input
-                  type="time"
-                  name="bump_in_time"
-                  value={membership.bump_in_time ?? ''}
-                  class="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600"
-                />
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Bump out</label>
-                <input
-                  type="time"
-                  name="bump_out_time"
-                  value={membership.bump_out_time ?? ''}
-                  class="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600"
-                />
-              </div>
-              <button
-                type="submit"
-                class="bg-horizon-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
-              >
-                Save
-              </button>
-            </div>
-          </form>
-        </div>
-
         {/* Todo Checklist */}
         <TodoSection
           weddingId={wedding.id}
@@ -1030,64 +920,11 @@ weddings.get('/app/weddings/:id', async (c) => {
 
 // Wedding notes (shared / vendors / private) are served by the unified
 // collaborative-docs endpoints in routes/vendor/wedding-docs.tsx.
-
-// ─── Per-vendor bump in/out times ───
-weddings.post('/app/weddings/:id/bumps', async (c) => {
-  const user = c.get('user')
-  const vendor = c.get('vendor')!
-  const weddingId = c.req.param('id')
-
-  const membership = await getMembership(c.env.DB, weddingId, user.id)
-  if (!membership) return c.text('Not found', 404)
-
-  const body = await c.req.parseBody()
-  const bumpIn = trimOrNull(body.bump_in_time)
-  const bumpOut = trimOrNull(body.bump_out_time)
-
-  // Save to this vendor's membership row
-  await c.env.DB
-    .prepare(
-      `UPDATE wedding_members SET bump_in_time = ?, bump_out_time = ?
-       WHERE wedding_id = ? AND user_id = ?`
-    )
-    .bind(bumpIn, bumpOut, weddingId, user.id)
-    .run()
-
-  // Sync bump calendar events
-  const wedding = await getWedding(c.env.DB, weddingId)
-  if (wedding?.date) {
-    try {
-      await syncVendorBumpEvents(
-        c.env.DB, vendor.id, weddingId, wedding.title, wedding.date,
-        wedding.emoji, bumpIn, bumpOut,
-        wedding.ceremony_location, wedding.reception_location,
-      )
-    } catch { /* best-effort */ }
-  }
-
-  // Bump times appear in vendors.md — refresh the vault
-  c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
-
-  return c.html(
-    <div>
-      <h3 class="text-sm font-bold text-gray-500 mb-3">Your bump in/out</h3>
-      <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
-        <p class="text-xs text-gray-400 mb-3">Personal to you — other vendors set their own.</p>
-        <div class="flex items-end gap-4">
-          <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">Bump in</label>
-            <input type="time" name="bump_in_time" value={bumpIn ?? ''} class="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">Bump out</label>
-            <input type="time" name="bump_out_time" value={bumpOut ?? ''} class="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
-          </div>
-          <span class="text-xs text-horizon-600 font-medium">Saved</span>
-        </div>
-      </div>
-    </div>
-  )
-})
+//
+// Per-vendor bump in/out is now a private, anchorable timeline section (visible
+// in the run sheet, opt-in to the vendor's own calendar) — see the unified
+// timeline in routes/vendor/timeline.tsx. The old /bumps form + wc:bump_*
+// calendar fan-out have been retired.
 
 // ─── Edit wedding ───
 weddings.get('/app/weddings/:id/edit', async (c) => {
@@ -1145,8 +982,6 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     const gettingReady2Time = trimOrNull(body.getting_ready_2_time)
     const receptionTime = trimOrNull(body.reception_time)
     const portraitTime = trimOrNull(body.portrait_time)
-    const bumpInTime = trimOrNull(body.bump_in_time)
-    const bumpOutTime = trimOrNull(body.bump_out_time)
     const emoji = trimOrNull(body.emoji)
 
     // Build update payload — only include fields the form actually submitted
@@ -1273,30 +1108,6 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       await resyncWeddingCalendars(c.env.DB, weddingId, vendor.id)
     } catch (calErr) {
       console.error('[weddings] Failed to sync calendar events:', calErr)
-    }
-
-    // Per-vendor bump in/out — save to wedding_members and sync calendar
-    try {
-      const weddingDate = trimOrNull(body.date)
-      if (weddingDate) {
-        // Save bump times to this vendor's membership row
-        await c.env.DB
-          .prepare(
-            `UPDATE wedding_members SET bump_in_time = ?, bump_out_time = ?
-             WHERE wedding_id = ? AND vendor_profile_id = ?`
-          )
-          .bind(bumpInTime, bumpOutTime, weddingId, vendor.id)
-          .run()
-
-        // Sync bump calendar events for this vendor only
-        await syncVendorBumpEvents(
-          c.env.DB, vendor.id, weddingId, title, weddingDate, emoji,
-          bumpInTime, bumpOutTime,
-          trimOrNull(body.ceremony_location), trimOrNull(body.reception_location),
-        )
-      }
-    } catch (bumpErr) {
-      console.error('[weddings] Failed to sync bump events:', bumpErr)
     }
 
     // Push all wedding files to storage (GitHub/R2) — waitUntil keeps the

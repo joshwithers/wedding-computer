@@ -5,7 +5,7 @@ import { getUserByFeedToken } from '../db/users'
 import { clientIp, isAuthThrottled, recordAuthFailure } from '../middleware/rate-limit'
 import { isProVendor } from '../db/subscriptions'
 import { listEnrichedEventsByRange } from '../db/calendar'
-import { listUserCalendarRows } from '../db/timeline'
+import { listUserCalendarRows, listVendorCalendarRows } from '../db/timeline'
 import { buildIcalFeed, buildTimelineFeed } from '../services/ical'
 import { DEFAULT_TIMEZONE } from '../i18n'
 
@@ -65,7 +65,14 @@ feed.get('/cal/:token', async (c) => {
 
   const events = await listEnrichedEventsByRange(c.env.DB, vendor.id, startDate, endDate)
 
-  const ical = buildIcalFeed(events, vendor.business_name, vendor.timezone)
+  // The vendor's assigned + opted-in timeline sections (bump in/out, call times)
+  // ride alongside their bookings in the same feed, within the same window
+  // (both bounds — same as the bookings query above).
+  const timelineRows = (await listVendorCalendarRows(c.env.DB, vendor.id)).filter(
+    (r) => r.wedding_date >= startDate && r.wedding_date <= endDate
+  )
+
+  const ical = buildIcalFeed(events, vendor.business_name, vendor.timezone, timelineRows)
 
   return c.body(ical, 200, {
     'Content-Type': 'text/calendar; charset=utf-8',
