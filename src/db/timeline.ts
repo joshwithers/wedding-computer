@@ -244,6 +244,8 @@ export async function weddingSunMinutes(db: D1Database, weddingId: string): Prom
       lat: w.location_lat,
       lng: w.location_lng,
       dateStr: w.date,
+      location: w.location,
+      city: w.location_city,
       country: w.location_country,
       state: w.location_state,
       fallbackTimezone: DEFAULT_TIMEZONE,

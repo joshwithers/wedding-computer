@@ -7,6 +7,8 @@ export const timeline = {
   'timeline.sun.sunrise': 'Sunrise',
   'timeline.sun.sunset': 'Sunset',
   'timeline.sun.goldenHour': 'Golden hour',
+  'timeline.sun.approx': '≈ approx',
+  'timeline.sun.approxHint': 'Estimated from the region — set a precise venue address for exact times.',
 
   'timeline.managedBy': 'Timeline managed by {name}',
   'timeline.managedByCoupleHint': 'Until a planner or venue is added, the couple manages the timeline.',

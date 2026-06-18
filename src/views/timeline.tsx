@@ -64,8 +64,9 @@ export type TimelineProps = {
   editId?: string
   flash?: string
   // Sunrise / golden-hour / sunset for the wedding's date + location, already
-  // localized to the wedding's timezone. Null when we lack coordinates or a date.
-  sun?: { sunrise: string | null; sunset: string | null; goldenHourStart: string | null; timezone: string } | null
+  // localized to the wedding's timezone. Null when we lack a date or can't place
+  // the location. `approx` = derived from the region (not a precise venue geocode).
+  sun?: { sunrise: string | null; sunset: string | null; goldenHourStart: string | null; timezone: string; approx: boolean } | null
   // Ids of rows whose anchor couldn't be resolved (cycle / dangling reference).
   conflictIds?: Set<string>
   // Live mode (the day itself): projected times from actual starts, sections
@@ -411,6 +412,8 @@ function DaylightStrip({ sun }: { sun: NonNullable<TimelineProps['sun']> }) {
   if (sun.goldenHourStart) parts.push(<span>✨ {t('timeline.sun.goldenHour')} <strong class="text-gray-600 tabular-nums">{sun.goldenHourStart}</strong></span>)
   if (sun.sunset) parts.push(<span>🌇 {t('timeline.sun.sunset')} <strong class="text-gray-600 tabular-nums">{sun.sunset}</strong></span>)
   if (parts.length === 0) return null
+  // Region-derived times carry a quiet "approx" tag with the precise venue note.
+  if (sun.approx) parts.push(<span class="text-gray-400 italic" title={t('timeline.sun.approxHint')}>{t('timeline.sun.approx')}</span>)
   return (
     <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2 bg-papaya-50 border-b border-papaya-300/30 text-[11px] text-gray-500">
       {parts}
