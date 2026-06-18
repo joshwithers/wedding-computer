@@ -2,7 +2,9 @@ import { generateToken } from '../lib/crypto'
 import type { User, Session } from '../types'
 import { getUserByEmail, createUser } from '../db/users'
 import { createSession } from '../db/sessions'
-import { sendEmailMessage, magicLinkEmail, coupleInviteEmail, vendorInviteEmail, vendorWelcomeInviteEmail } from './email'
+import { sendEmailMessage, magicLinkEmail, coupleInviteEmail, vendorWelcomeInviteEmail } from './email'
+import { recordPendingInvite } from './invite-followups'
+import { trackEvent } from '../db/analytics'
 
 const MAGIC_LINK_TTL = 60 * 15 // 15 minutes
 const INVITE_LINK_TTL = 60 * 60 * 24 * 7 // 7 days — invites go to cold recipients who open them later
@@ -122,47 +124,13 @@ export async function destroySession(
  * membership is created separately (waiting on vendor_profile_id); this is
  * just the email.
  */
-export async function sendVendorInvite(
-  db: D1Database,
-  kv: KVNamespace,
-  resendApiKey: string,
-  appUrl: string,
-  data: {
-    email: string
-    coupleName: string
-    weddingTitle: string
-    weddingDate: string | null
-  }
-): Promise<void> {
-  const token = await generateToken(32)
-  await kv.put(
-    `magic:${token}`,
-    JSON.stringify({ email: data.email.toLowerCase() }),
-    { expirationTtl: INVITE_LINK_TTL }
-  )
-  const loginUrl = `${appUrl}/login/verify?token=${token}`
-  await sendEmailMessage({
-    db,
-    resendApiKey,
-    vendorId: null,
-    to: data.email,
-    subject: `You've been invited to ${data.weddingTitle} on Wedding Computer`,
-    html: vendorInviteEmail({
-      coupleName: data.coupleName,
-      weddingTitle: data.weddingTitle,
-      weddingDate: data.weddingDate,
-      loginUrl,
-    }),
-    isSystem: true,
-    bypassSuppression: true, // carries the vendor's sign-in link
-  })
-}
-
 /**
  * First-touch invite for a vendor with no Wedding Computer profile yet —
  * introduces the platform before the wedding context, since they've almost
  * certainly never heard of us. Token lives 7 days (cold recipients don't
  * open email within 15 minutes), with a plain-login fallback after that.
+ * Records a pending-invite for the follow-up drip, and (when the inviter is a
+ * vendor) tracks the send so the invite→signup loop is measurable.
  */
 export async function sendVendorWelcomeInvite(
   db: D1Database,
@@ -172,6 +140,9 @@ export async function sendVendorWelcomeInvite(
   data: {
     email: string
     inviterName: string
+    inviterRole?: string | null
+    inviterVendorId?: string | null
+    weddingId: string
     weddingTitle: string
     weddingDate: string | null
     vendorRole: string | null
@@ -184,21 +155,44 @@ export async function sendVendorWelcomeInvite(
     { expirationTtl: 60 * 60 * 24 * 7 }
   )
   const loginUrl = `${appUrl}/login/verify?token=${token}`
-  await sendEmailMessage({
-    db,
-    resendApiKey,
-    vendorId: null,
-    to: data.email,
-    subject: `${data.inviterName} added you to ${data.weddingTitle} — here's what that means`,
-    html: vendorWelcomeInviteEmail({
-      inviterName: data.inviterName,
+  try {
+    await sendEmailMessage({
+      db,
+      resendApiKey,
+      vendorId: null,
+      to: data.email,
+      subject: `${data.inviterName} added you to ${data.weddingTitle} — here's what that means`,
+      html: vendorWelcomeInviteEmail({
+        inviterName: data.inviterName,
+        inviterRole: data.inviterRole ?? null,
+        weddingTitle: data.weddingTitle,
+        weddingDate: data.weddingDate,
+        vendorRole: data.vendorRole,
+        loginUrl,
+      }),
+      isSystem: true,
+    })
+  } finally {
+    // Always record the invite + track the send, even if this first email
+    // throws on a transient error — the follow-up drip then re-sends, and the
+    // invite→signup loop stays measurable.
+    await recordPendingInvite(kv, data.email, {
+      weddingId: data.weddingId,
       weddingTitle: data.weddingTitle,
       weddingDate: data.weddingDate,
+      inviterName: data.inviterName,
+      inviterVendorId: data.inviterVendorId ?? null,
       vendorRole: data.vendorRole,
-      loginUrl,
-    }),
-    isSystem: true,
-  })
+    }).catch(() => {})
+    if (data.inviterVendorId) {
+      await trackEvent(db, {
+        vendor_id: data.inviterVendorId,
+        event_type: 'vendor_invite_sent',
+        wedding_id: data.weddingId,
+        metadata: { email: data.email.toLowerCase() },
+      }).catch(() => {})
+    }
+  }
 }
 
 export async function sendCoupleInvite(

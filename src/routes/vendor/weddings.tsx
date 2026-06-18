@@ -501,6 +501,9 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
       await sendVendorWelcomeInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
         email,
         inviterName: vendor.business_name,
+        inviterRole: vendor.category,
+        inviterVendorId: vendor.id,
+        weddingId,
         weddingTitle: wedding.title,
         weddingDate: wedding.date ? formatDate(wedding.date) : null,
         vendorRole: assignedRole,

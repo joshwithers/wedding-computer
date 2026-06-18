@@ -299,25 +299,6 @@ export function coupleInviteEmail(data: {
   `, { preheader: `${esc(data.vendorName)} has added you to Wedding Computer` })
 }
 
-export function vendorInviteEmail(data: {
-  coupleName: string
-  weddingTitle: string
-  weddingDate: string | null
-  loginUrl: string
-}): string {
-  return emailWrapper(`
-    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">You've been invited to a wedding</h1>
-    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 24px;">
-      ${esc(data.coupleName)} has added you as a vendor on ${esc(data.weddingTitle)}${data.weddingDate ? ` on ${esc(data.weddingDate)}` : ''} on Wedding Computer.
-      Set up your free vendor profile and you'll be connected to this wedding automatically — share details, send invoices, and stay in touch all in one place.
-    </p>
-    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">Set up your profile</a>
-    <p style="margin:24px 0 0;font-size:13px;color:#999;line-height:1.5;">
-      This link signs you in automatically. If you didn't expect this email, you can safely ignore it.
-    </p>
-  `, { preheader: `${esc(data.coupleName)} invited you to join their wedding on Wedding Computer` })
-}
-
 /**
  * First-touch invite for a vendor who has never used Wedding Computer.
  * They almost certainly haven't heard of us — lead with the wedding they're
@@ -325,24 +306,30 @@ export function vendorInviteEmail(data: {
  */
 export function vendorWelcomeInviteEmail(data: {
   inviterName: string
+  inviterRole?: string | null
   weddingTitle: string
   weddingDate: string | null
   vendorRole: string | null
   loginUrl: string
 }): string {
   const role = data.vendorRole ? ` as the ${esc(data.vendorRole)}` : ''
+  // Lead with the trusted peer who invited them — a vendor they already work
+  // with vouching for the platform converts far better than cold product copy.
+  const inviterDesc = data.inviterRole
+    ? `${esc(data.inviterName)}, a ${esc(data.inviterRole)} you're working with,`
+    : `${esc(data.inviterName)}`
   return emailWrapper(`
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">You're on the team for ${esc(data.weddingTitle)}</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      ${esc(data.inviterName)} is organising <strong>${esc(data.weddingTitle)}</strong>${data.weddingDate ? ` on ${esc(data.weddingDate)}` : ''} on Wedding Computer,
-      and has added you${role}. Everything you need for the day is waiting for you — here's what that means.
+      ${inviterDesc} runs their weddings on Wedding Computer and has added you${role} to <strong>${esc(data.weddingTitle)}</strong>${data.weddingDate ? ` on ${esc(data.weddingDate)}` : ''}.
+      Everything you need for the day is waiting — and you get the whole platform for your own business too. Here's what that means.
     </p>
     <div style="background:#faf5ef;border-radius:12px;padding:16px 18px;margin-bottom:20px;font-size:14px;line-height:1.7;color:#333;">
       <p style="margin:0 0 12px;"><strong>One source of truth for the day.</strong> The date, times, locations, run sheet and who else is working this wedding — always current. No more "what time is bump-in?" texts the week before.</p>
-      <p style="margin:0 0 12px;"><strong>Free tools for your whole business.</strong> Enquiry forms, contacts, calendar, invoicing, contracts and a booking pipeline — a full vendor CRM, free. Not a trial, not "early access". Free.</p>
-      <p style="margin:0;"><strong>Your data stays yours.</strong> Export everything any time, or sync it straight to your own files. Leaving is as easy as joining — which is why people stay.</p>
+      <p style="margin:0 0 12px;"><strong>Your own free CRM — for every wedding, not just this one.</strong> Enquiry forms, contacts, calendar, invoicing, contracts and a booking pipeline. Free to start, with up to 12 active weddings at a time. Couples never pay, ever.</p>
+      <p style="margin:0;"><strong>Your data stays yours.</strong> Plain-text files you can export any time. Leaving is as easy as joining — which is why people stay.</p>
     </div>
-    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">See ${esc(data.weddingTitle)}</a>
+    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">See ${esc(data.weddingTitle)} &amp; claim your free profile</a>
     <p style="margin:24px 0 0;font-size:13px;color:#999;line-height:1.5;">
       This link signs you in — no password needed — and is valid for 7 days. After that, sign in at wedding.computer with this email address.
       Setting up your profile takes about a minute.
@@ -352,6 +339,33 @@ export function vendorWelcomeInviteEmail(data: {
       If you weren't expecting this, you can safely ignore it — ${esc(data.inviterName)} added your email to their wedding team.
     </p>
   `, { preheader: `${esc(data.inviterName)} added you to ${esc(data.weddingTitle)} — here's what Wedding Computer is` })
+}
+
+/**
+ * Nudge for an invited vendor who hasn't signed in yet. Shorter than the first
+ * touch, reuses the peer social proof, and carries a fresh sign-in link.
+ */
+export function vendorInviteReminderEmail(data: {
+  inviterName: string
+  weddingTitle: string
+  weddingDate: string | null
+  loginUrl: string
+  finalReminder: boolean
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">${esc(data.weddingTitle)} is waiting for you</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      ${esc(data.inviterName)} added you to <strong>${esc(data.weddingTitle)}</strong>${data.weddingDate ? ` on ${esc(data.weddingDate)}` : ''} on Wedding Computer${data.finalReminder ? ", and you haven't had a chance to take a look yet" : ''}.
+      One tap signs you in — see the date, run sheet and the rest of the team, and set up your own free vendor profile while you're there.
+    </p>
+    <div style="background:#faf5ef;border-radius:12px;padding:14px 16px;margin-bottom:20px;font-size:14px;line-height:1.7;color:#333;">
+      A full vendor CRM — enquiries, calendar, invoicing and a booking pipeline — free to start, up to 12 active weddings at a time. Couples never pay, ever.
+    </div>
+    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">See ${esc(data.weddingTitle)}</a>
+    <p style="margin:24px 0 0;font-size:13px;color:#999;line-height:1.5;">
+      This link signs you in automatically${data.finalReminder ? " — it's the last reminder we'll send" : ''}. If you weren't expecting this, you can safely ignore it.
+    </p>
+  `, { preheader: `${esc(data.inviterName)} added you to ${esc(data.weddingTitle)} — take a quick look` })
 }
 
 export function timelineChangeRequestedEmail(data: {

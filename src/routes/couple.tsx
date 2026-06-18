@@ -699,6 +699,9 @@ couple.post('/wedding/:id/vendors/add', async (c) => {
     await sendVendorWelcomeInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
       email,
       inviterName: user.name,
+      inviterRole: null, // a couple is inviting, not a peer vendor
+      inviterVendorId: null,
+      weddingId,
       weddingTitle: wedding.title,
       weddingDate: wedding.date ? formatDate(wedding.date) : null,
       vendorRole: category,

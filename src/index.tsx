@@ -59,6 +59,7 @@ import { aggregateBusynessScores, aggregateDemandHistory } from './db/busyness'
 import { geocodePendingLocations } from './services/geocode'
 import { runWithI18n, resolveLocale } from './i18n'
 import { runRetention } from './db/retention'
+import { sendPendingVendorInviteReminders } from './services/invite-followups'
 import { purgeExpiredAccounts } from './services/account'
 import { logEvent } from './lib/log'
 import { syncVendorStorage } from './services/storage-sync'
@@ -964,6 +965,14 @@ export default {
         await purgeExpiredAccounts(env)
       } catch (e: any) {
         console.error('[CRON] purge expired accounts failed', e.message)
+      }
+
+      // Nudge invited vendors who haven't signed in yet (day 3, final at day 7).
+      try {
+        const n = await sendPendingVendorInviteReminders(env)
+        if (n > 0) logEvent('cron.invite_reminders', { sent: n })
+      } catch (e: any) {
+        console.error('[CRON] invite reminders failed', e.message)
       }
     }
 

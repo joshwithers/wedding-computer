@@ -8,6 +8,7 @@ import { getVendorByUserId } from '../db/vendors'
 import { getFirstCoupleWedding, hasPendingVendorInvite } from '../db/weddings'
 import { linkPendingInvites } from '../db/couple-vendors'
 import { ensureCoupleContact } from '../services/couple-contact'
+import { activateInvite } from '../services/invite-followups'
 import { getUserById, getUserByEmail, restoreUser } from '../db/users'
 import { hasPasskeys } from '../db/passkeys'
 import { rateLimit } from '../middleware/rate-limit'
@@ -120,6 +121,10 @@ auth.get('/login/verify', async (c) => {
   })
 
   await auditLog(c, 'login', 'user', user.id, { method: 'magic_link' }).catch(() => {})
+
+  // If they arrived via a vendor invite, mark it activated (records the
+  // conversion against the inviter) and stop the follow-up reminders.
+  await activateInvite(c.env, email).catch(() => {})
 
   const vendor = await getVendorByUserId(c.env.DB, user.id)
   if (vendor) {

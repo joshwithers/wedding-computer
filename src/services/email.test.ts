@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { enquiryConfirmationEmail } from './email'
+import { enquiryConfirmationEmail, vendorWelcomeInviteEmail, vendorInviteReminderEmail } from './email'
 
 describe('enquiryConfirmationEmail', () => {
   it('renders the enquirer name, vendor name, and body', () => {
@@ -33,5 +33,55 @@ describe('enquiryConfirmationEmail', () => {
     expect(html).not.toContain('<script>x</script>')
     expect(html).toContain('&lt;script&gt;')
     expect(html).toContain('a &amp; b &lt; c')
+  })
+})
+
+describe('vendorWelcomeInviteEmail', () => {
+  const base = {
+    inviterName: 'Married by Josh',
+    weddingTitle: 'Sam & Alex',
+    weddingDate: 'Sat, 18 Oct 2026',
+    vendorRole: 'photographer',
+    loginUrl: 'https://wedding.computer/login/verify?token=abc',
+  }
+
+  it('reflects the current pricing, not the old "free, full stop" pitch', () => {
+    const html = vendorWelcomeInviteEmail(base)
+    expect(html).toContain('up to 12 active weddings')
+    expect(html).toContain('Couples never pay')
+    // Guard against the stale copy that predated the wedding cap.
+    expect(html).not.toContain('Not a trial')
+  })
+
+  it('uses peer social proof when the inviter is a vendor', () => {
+    const html = vendorWelcomeInviteEmail({ ...base, inviterRole: 'florist' })
+    expect(html).toContain("a florist you're working with")
+    expect(html).toContain('runs their weddings on Wedding Computer')
+  })
+
+  it('omits the role clause when no inviter role is given', () => {
+    const html = vendorWelcomeInviteEmail({ ...base, inviterRole: null })
+    expect(html).not.toContain("you're working with")
+    expect(html).toContain('Married by Josh')
+  })
+})
+
+describe('vendorInviteReminderEmail', () => {
+  const base = {
+    inviterName: 'Married by Josh',
+    weddingTitle: 'Sam & Alex',
+    weddingDate: 'Sat, 18 Oct 2026',
+    loginUrl: 'https://wedding.computer/login/verify?token=abc',
+  }
+
+  it('nudges with the wedding and the free pitch', () => {
+    const html = vendorInviteReminderEmail({ ...base, finalReminder: false })
+    expect(html).toContain('Sam &amp; Alex')
+    expect(html).toContain('up to 12 active weddings')
+  })
+
+  it('signals the last reminder when final', () => {
+    const html = vendorInviteReminderEmail({ ...base, finalReminder: true })
+    expect(html).toContain("last reminder")
   })
 })
