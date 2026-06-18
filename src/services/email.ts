@@ -407,6 +407,23 @@ export function timelineChangeDecidedEmail(data: {
   `, { preheader: `Your timeline change for ${esc(data.weddingTitle)} was ${data.approved ? 'approved' : 'declined'}` })
 }
 
+export function timelineUpdatedEmail(data: {
+  weddingTitle: string
+  appUrl: string
+  weddingId: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">The run sheet for ${esc(data.weddingTitle)} was updated</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      Someone on the wedding changed the run sheet — times, items, or who's doing what. Open it to see the latest, so you're working from the current version on the day.
+    </p>
+    <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View the run sheet</a>
+    <p style="margin:24px 0 0;font-size:13px;color:#999;line-height:1.5;">
+      You're getting this because you have items on this wedding's run sheet.
+    </p>
+  `, { preheader: `The run sheet for ${esc(data.weddingTitle)} has changed` })
+}
+
 export function magicLinkEmail(url: string): string {
   return emailWrapper(`
     <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#1a1a1a;">Sign in to Wedding Computer</h1>

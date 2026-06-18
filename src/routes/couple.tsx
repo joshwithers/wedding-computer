@@ -38,6 +38,7 @@ import {
   approveTimelineRequest,
   declineTimelineRequest,
 } from './timeline-handlers'
+import { markTimelineDirty } from '../services/timeline-notify'
 import { ensureCoupleContact } from '../services/couple-contact'
 import { isValidEmail } from '../lib/validation'
 import { consumeRateLimit } from '../middleware/rate-limit'
@@ -1285,6 +1286,8 @@ couple.post('/wedding/:id/edit', async (c) => {
     // directly, but route the headline times onto the slot rows (source of truth)
     // instead of writing the derived columns the projection would clobber.
     await applyWeddingUpdate(c.env.DB, weddingId, weddingUpdates, user.id, currentWedding as any)
+    // Timeline times changed directly — notify the run-sheet team (debounced).
+    if (changedTimelineFields.length > 0) await markTimelineDirty(c.env.KV, weddingId, user.id).catch(() => {})
   }
   // A date change moves the sun — re-solve sun-anchored sections (cheap + a
   // no-op when nothing changed).

@@ -49,6 +49,7 @@ import { TIMELINE_FIELDS } from '../../services/timeline-edit'
 import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes } from '../../db/timeline'
 import { t } from '../../i18n'
 import { weddingCapStatus } from '../../services/plan-limits'
+import { markTimelineDirty } from '../../services/timeline-notify'
 import { WeddingDoc } from '../../views/wedding-doc'
 import { loadDocTabs } from '../../db/wedding-docs'
 import { WebLinks } from '../../views/web-links'
@@ -1162,6 +1163,8 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     // refresh the derived columns — no direct column write the projection clobbers.
     await applyWeddingUpdate(c.env.DB, weddingId, updateData as Record<string, string | number | null>, user.id, oldWedding as any)
     console.log('[weddings] edit', weddingId, 'updateWedding succeeded')
+    // Headline-time change applied directly — notify the run-sheet team (debounced).
+    if (touchesTimeline) await markTimelineDirty(c.env.KV, weddingId, user.id).catch(() => {})
     c.executionCtx.waitUntil(
       geocodeWeddingLocation(c.env, weddingId)
         .catch((err) => console.error('[weddings] geocode failed:', err))

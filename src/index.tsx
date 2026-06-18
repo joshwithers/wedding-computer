@@ -60,6 +60,7 @@ import { geocodePendingLocations } from './services/geocode'
 import { runWithI18n, resolveLocale } from './i18n'
 import { runRetention } from './db/retention'
 import { sendPendingVendorInviteReminders } from './services/invite-followups'
+import { flushTimelineNotifications } from './services/timeline-notify'
 import { purgeExpiredAccounts } from './services/account'
 import { logEvent } from './lib/log'
 import { syncVendorStorage } from './services/storage-sync'
@@ -996,6 +997,15 @@ export default {
         if (n > 0) logEvent('cron.geocode_fast', { rows: n })
       } catch (e: any) {
         console.error('[CRON] fast geocode failed', e.message)
+      }
+
+      // Notify the run-sheet team about timeline changes, once a wedding's edits
+      // have settled (debounced ~15 min) so an editing session sends one email.
+      try {
+        const n = await flushTimelineNotifications(env)
+        if (n > 0) logEvent('cron.timeline_notify', { sent: n })
+      } catch (e: any) {
+        console.error('[CRON] timeline notify failed', e.message)
       }
     }
   },

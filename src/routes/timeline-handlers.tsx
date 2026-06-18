@@ -42,6 +42,7 @@ import {
   type TimelineViewer,
 } from '../services/timeline-permissions'
 import { resyncWeddingCalendars } from '../services/wedding-calendar'
+import { markTimelineDirty } from '../services/timeline-notify'
 import { listPendingTimelineRequests, getTimelineRequest, decideTimelineRequest } from '../db/timeline-requests'
 import { proposeChange, applyRequest, diffRows, parsePayload, type RowFields } from '../services/timeline-approval'
 import { getWedding } from '../db/weddings'
@@ -280,6 +281,9 @@ function body(c: Ctx, props: TimelineProps) {
 async function afterWrite(c: Ctx, weddingId: string) {
   const env = c.env
   const vendor = c.get('vendor')
+  // A run-sheet change was applied directly (not proposed) — mark the wedding
+  // so the debounced cron notifies the rest of the run-sheet team.
+  await markTimelineDirty(env.KV, weddingId, c.get('user')?.id ?? '').catch(() => {})
   // Re-solve the liquid timeline and persist concrete start/end times BEFORE we
   // render + project, so display, the legacy slot columns, calendars and
   // markdown all reflect the recomputed clock. (Sun anchors get their minutes
