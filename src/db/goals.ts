@@ -69,6 +69,9 @@ export async function getCurrentYearGoals(
   vendorId: string
 ): Promise<BusinessGoal[]> {
   const year = new Date().getFullYear().toString()
+  // Season values are free text ("summer-2026" or "2026-summer"), so match the
+  // year anywhere in the value rather than assuming it leads. Month values are
+  // canonical "YYYY-MM".
   return db
     .prepare(
       `SELECT * FROM business_goals
@@ -79,7 +82,7 @@ export async function getCurrentYearGoals(
        )
        ORDER BY period_type, period_value`
     )
-    .bind(vendorId, year, `${year}-%`, `${year}-%`)
+    .bind(vendorId, year, `${year}-%`, `%${year}%`)
     .all<BusinessGoal>()
     .then((r) => r.results)
 }

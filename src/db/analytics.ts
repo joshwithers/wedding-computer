@@ -223,30 +223,39 @@ export async function getLocationBreakdown(
   return rows.results
 }
 
+// Average paid revenue per wedding. With vendorId, scoped to that vendor. With
+// vendorId null, the platform-wide industry figure — optionally narrowed to a
+// category so a celebrant is compared to celebrants, not to venues.
 export async function getAverageSpendPerWedding(
   db: D1Database,
   vendorId: string | null,
   startDate: string,
-  endDate: string
+  endDate: string,
+  opts?: { category?: string }
 ): Promise<number> {
-  let query: string
+  const avgExpr = `CASE WHEN COUNT(DISTINCT ip.invoice_id) = 0 THEN 0
+             ELSE COALESCE(SUM(ip.amount_cents), 0) / COUNT(DISTINCT i.wedding_id)
+        END as avg_spend`
   const params: unknown[] = []
+  let query: string
 
   if (vendorId) {
-    query = `SELECT
-        CASE WHEN COUNT(DISTINCT ip.invoice_id) = 0 THEN 0
-             ELSE COALESCE(SUM(ip.amount_cents), 0) / COUNT(DISTINCT i.wedding_id)
-        END as avg_spend
+    query = `SELECT ${avgExpr}
        FROM invoice_payments ip
        JOIN invoices i ON i.id = ip.invoice_id
        WHERE ip.vendor_id = ? AND ip.status = 'paid' AND ip.paid_at >= ? AND ip.paid_at < ?
          AND i.wedding_id IS NOT NULL`
     params.push(vendorId, startDate, endDate)
+  } else if (opts?.category) {
+    query = `SELECT ${avgExpr}
+       FROM invoice_payments ip
+       JOIN invoices i ON i.id = ip.invoice_id
+       JOIN vendor_profiles vp ON vp.id = ip.vendor_id
+       WHERE ip.status = 'paid' AND ip.paid_at >= ? AND ip.paid_at < ?
+         AND i.wedding_id IS NOT NULL AND vp.category = ?`
+    params.push(startDate, endDate, opts.category)
   } else {
-    query = `SELECT
-        CASE WHEN COUNT(DISTINCT ip.invoice_id) = 0 THEN 0
-             ELSE COALESCE(SUM(ip.amount_cents), 0) / COUNT(DISTINCT i.wedding_id)
-        END as avg_spend
+    query = `SELECT ${avgExpr}
        FROM invoice_payments ip
        JOIN invoices i ON i.id = ip.invoice_id
        WHERE ip.status = 'paid' AND ip.paid_at >= ? AND ip.paid_at < ?
@@ -259,6 +268,86 @@ export async function getAverageSpendPerWedding(
     .bind(...params)
     .first<{ avg_spend: number }>()
   return row?.avg_spend ?? 0
+}
+
+// Active vendor count, optionally within a category — the denominator that
+// turns a platform-wide total into a per-vendor average for benchmarks.
+export async function countVendors(
+  db: D1Database,
+  opts?: { category?: string }
+): Promise<number> {
+  if (opts?.category) {
+    const row = await db
+      .prepare('SELECT COUNT(*) as count FROM vendor_profiles WHERE category = ?')
+      .bind(opts.category)
+      .first<{ count: number }>()
+    return row?.count ?? 0
+  }
+  const row = await db
+    .prepare('SELECT COUNT(*) as count FROM vendor_profiles')
+    .first<{ count: number }>()
+  return row?.count ?? 0
+}
+
+// Per-contact hours from enquiry to first vendor action, for response-time
+// stats. Pairs the earliest enquiry_received with the earliest status_change /
+// booking_confirmed for the same contact; durations computed by the caller.
+export async function getFirstResponseDurations(
+  db: D1Database,
+  vendorId: string,
+  startDate: string,
+  endDate: string
+): Promise<number[]> {
+  const rows = await db
+    .prepare(
+      `SELECT contact_id, event_type, MIN(created_at) AS t
+       FROM analytics_events
+       WHERE vendor_id = ? AND contact_id IS NOT NULL
+         AND event_type IN ('enquiry_received', 'status_change', 'booking_confirmed')
+         AND created_at >= ? AND created_at < ?
+       GROUP BY contact_id, event_type`
+    )
+    .bind(vendorId, startDate, endDate)
+    .all<{ contact_id: string; event_type: string; t: string }>()
+    .then((r) => r.results)
+
+  const enquiry = new Map<string, number>()
+  const responded = new Map<string, number>()
+  for (const row of rows) {
+    const ms = Date.parse(row.t.replace(' ', 'T') + 'Z')
+    if (Number.isNaN(ms)) continue
+    if (row.event_type === 'enquiry_received') {
+      enquiry.set(row.contact_id, ms)
+    } else {
+      const cur = responded.get(row.contact_id)
+      if (cur === undefined || ms < cur) responded.set(row.contact_id, ms)
+    }
+  }
+
+  const hours: number[] = []
+  for (const [contactId, enq] of enquiry) {
+    const resp = responded.get(contactId)
+    if (resp !== undefined && resp > enq) hours.push((resp - enq) / 3600000)
+  }
+  return hours
+}
+
+export async function getMonthlyRevenue(
+  db: D1Database,
+  vendorId: string,
+  months: number
+): Promise<{ month: string; total: number }[]> {
+  const rows = await db
+    .prepare(
+      `SELECT strftime('%Y-%m', paid_at) as month, COALESCE(SUM(amount_cents), 0) as total
+       FROM invoice_payments
+       WHERE vendor_id = ? AND status = 'paid' AND paid_at >= date('now', ? || ' months')
+       GROUP BY month
+       ORDER BY month`
+    )
+    .bind(vendorId, -months)
+    .all<{ month: string; total: number }>()
+  return rows.results
 }
 
 export async function getTotalVendors(db: D1Database): Promise<number> {

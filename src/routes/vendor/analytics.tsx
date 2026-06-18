@@ -12,12 +12,19 @@ import {
   getConversionFunnel,
   getRevenue,
   getSourceBreakdown,
-  getLocationBreakdown,
   getAverageSpendPerWedding,
+  countVendors,
+  getFirstResponseDurations,
+  getMonthlyRevenue,
 } from '../../db/analytics'
 import { listGoals, upsertGoal, deleteGoal, getCurrentYearGoals } from '../../db/goals'
 import { getDateHeatmap } from '../../db/busyness'
 import { formatVsAverage } from '../../lib/busyness'
+import { aggregateSources } from '../../lib/sources'
+import { buildFunnel, buildInsights, median, formatDuration, type Insight } from '../../lib/analytics-derive'
+import { formatMoneyCents } from '../../lib/money'
+import { t, getI18n } from '../../i18n'
+import { todayString, formatDayLabel } from '../../lib/date'
 
 const analytics = new Hono<Env>()
 
@@ -25,20 +32,6 @@ analytics.use('/app/analytics', requireAuth, csrf, requireVendor)
 analytics.use('/app/analytics/*', requireAuth, csrf, requireVendor)
 
 // ─── Helpers ───
-
-const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-const FUNNEL_STAGES = [
-  { status: 'new', label: 'New', color: 'bg-horizon-400' },
-  { status: 'contacted', label: 'Contacted', color: 'bg-horizon-500' },
-  { status: 'meeting', label: 'Meeting', color: 'bg-horizon-600' },
-  { status: 'quoted', label: 'Quoted', color: 'bg-horizon-700' },
-  { status: 'booked', label: 'Booked', color: 'bg-green-600' },
-]
-
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-}
 
 function formatPct(value: number): string {
   return `${Math.round(value)}%`
@@ -55,16 +48,36 @@ function pctChange(current: number, previous: number): { value: number; label: s
   }
 }
 
-function last12Months(): { year: number; month: number; label: string }[] {
-  const now = new Date()
+/** Day offsets and the calendar year computed from the viewer's "today". */
+function dateWindows(today: string) {
+  const dayOffset = (n: number) =>
+    new Date(Date.parse(today + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10)
+  const year = Number(today.slice(0, 4))
+  return {
+    today,
+    tomorrow: dayOffset(1),
+    thirtyDaysAgo: dayOffset(-30),
+    sixtyDaysAgo: dayOffset(-60),
+    thirtyAhead: dayOffset(30),
+    ninetyAhead: dayOffset(90),
+    yearStart: `${year}-01-01`,
+    yearEnd: `${year + 1}-01-01`,
+    year,
+  }
+}
+
+function shortMonth(year: number, month: number, locale: string): string {
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString(locale, { month: 'short', timeZone: 'UTC' })
+}
+
+function last12Months(today: string, locale: string): { year: number; month: number; label: string }[] {
+  const [y, m] = today.split('-').map(Number)
   const months: { year: number; month: number; label: string }[] = []
   for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    months.push({
-      year: d.getFullYear(),
-      month: d.getMonth() + 1,
-      label: MONTH_LABELS[d.getMonth()],
-    })
+    const d = new Date(Date.UTC(y, m - 1 - i, 1))
+    const yy = d.getUTCFullYear()
+    const mm = d.getUTCMonth() + 1
+    months.push({ year: yy, month: mm, label: shortMonth(yy, mm, locale) })
   }
   return months
 }
@@ -76,17 +89,30 @@ function monthKey(year: number, month: number): string {
 /**
  * [start, end) window for a goal's period.
  * period_value is free text: "2026" (year), "2026-06" (month), "summer-2026"
- * (season). Seasons have no parseable bounds, so they fall back to the year
- * found in the value.
+ * or "2026-spring" (season). Seasons use Southern-Hemisphere bounds matching
+ * lib/busyness seasonOf (summer = Dec–Feb, wrapping into the next year).
  */
-function goalPeriodRange(periodType: string, periodValue: string): [string, string] {
+function goalPeriodRange(periodType: string, periodValue: string, fallbackYear: number): [string, string] {
   if (periodType === 'month' && /^\d{4}-\d{2}$/.test(periodValue)) {
     const [y, m] = periodValue.split('-').map(Number)
     const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
     return [`${periodValue}-01`, `${next}-01`]
   }
-  const year = Number(periodValue.match(/\d{4}/)?.[0] ?? new Date().getFullYear())
+  const year = Number(periodValue.match(/\d{4}/)?.[0] ?? fallbackYear)
+  if (periodType === 'season') {
+    const name = periodValue.toLowerCase()
+    if (name.includes('summer')) return [`${year}-12-01`, `${year + 1}-03-01`]
+    if (name.includes('autumn') || name.includes('fall')) return [`${year}-03-01`, `${year}-06-01`]
+    if (name.includes('winter')) return [`${year}-06-01`, `${year}-09-01`]
+    if (name.includes('spring')) return [`${year}-09-01`, `${year}-12-01`]
+  }
   return [`${year}-01-01`, `${year + 1}-01-01`]
+}
+
+/** Localised, compact duration label from an hours value. */
+function durationLabel(hours: number): string {
+  const d = formatDuration(hours)
+  return t(`analytics.unit.${d.code}` as any, { value: d.value })
 }
 
 // ─── Main dashboard ───
@@ -98,26 +124,12 @@ analytics.get('/app/analytics', async (c) => {
   if (!vendor) return c.redirect('/onboarding')
   const db = c.env.DB
   const csrfToken = c.get('csrfToken')
+  const { locale } = getI18n()
 
-  // Pro gate
   const isPro = await isProVendor(db, vendor.id)
-  if (!isPro) {
-    return c.html(
-      <AppLayout title="Analytics" user={user} vendor={vendor} csrfToken={csrfToken}>
-        <UpgradePrompt />
-      </AppLayout>
-    )
-  }
+  const w = dateWindows(todayString())
 
-  // Date ranges. End bounds are exclusive and compared against full datetimes,
-  // so "now" windows must end at tomorrow's date or today's events drop out.
-  const today = new Date().toISOString().slice(0, 10)
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
-  const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10)
-  const yearStart = `${new Date().getFullYear()}-01-01`
-  const yearEnd = `${new Date().getFullYear() + 1}-01-01`
-
+  // ── Free-safe data (always computed) ──
   const [
     enquiriesCurrent,
     enquiriesPrevious,
@@ -127,55 +139,27 @@ analytics.get('/app/analytics', async (c) => {
     revenuePrevious,
     monthlyEnquiries,
     monthlyBookings,
-    funnel,
-    sources,
-    locations,
-    avgSpendVendor,
-    avgSpendIndustry,
-    yearGoals,
-    industryEnquiries,
-    industryBookings,
-    cityHeatmap,
-    stateHeatmap,
-    globalHeatmap,
+    freeDemand,
   ] = await Promise.all([
-    countEvents(db, vendor.id, 'enquiry_received', thirtyDaysAgo, tomorrow),
-    countEvents(db, vendor.id, 'enquiry_received', sixtyDaysAgo, thirtyDaysAgo),
-    countEvents(db, vendor.id, 'booking_confirmed', thirtyDaysAgo, tomorrow),
-    countEvents(db, vendor.id, 'booking_confirmed', sixtyDaysAgo, thirtyDaysAgo),
-    getRevenue(db, vendor.id, thirtyDaysAgo, tomorrow),
-    getRevenue(db, vendor.id, sixtyDaysAgo, thirtyDaysAgo),
+    countEvents(db, vendor.id, 'enquiry_received', w.thirtyDaysAgo, w.tomorrow),
+    countEvents(db, vendor.id, 'enquiry_received', w.sixtyDaysAgo, w.thirtyDaysAgo),
+    countEvents(db, vendor.id, 'booking_confirmed', w.thirtyDaysAgo, w.tomorrow),
+    countEvents(db, vendor.id, 'booking_confirmed', w.sixtyDaysAgo, w.thirtyDaysAgo),
+    getRevenue(db, vendor.id, w.thirtyDaysAgo, w.tomorrow),
+    getRevenue(db, vendor.id, w.sixtyDaysAgo, w.thirtyDaysAgo),
     getMonthlyEventCounts(db, vendor.id, 'enquiry_received', 12),
     getMonthlyEventCounts(db, vendor.id, 'booking_confirmed', 12),
-    getConversionFunnel(db, vendor.id, yearStart, yearEnd),
-    getSourceBreakdown(db, vendor.id, yearStart, yearEnd),
-    getLocationBreakdown(db, vendor.id, yearStart, yearEnd),
-    getAverageSpendPerWedding(db, vendor.id, yearStart, yearEnd),
-    getAverageSpendPerWedding(db, null, yearStart, yearEnd),
-    getCurrentYearGoals(db, vendor.id),
-    // Benchmarks at geographic levels
-    countEventsGlobal(db, 'enquiry_received', thirtyDaysAgo, tomorrow, { category: vendor.category }),
-    countEventsGlobal(db, 'booking_confirmed', thirtyDaysAgo, tomorrow, { category: vendor.category }),
-    // Date demand heatmap (next 90 days)
-    vendor.location_city
-      ? getDateHeatmap(db, today, new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10), 'city', vendor.location_city)
-      : Promise.resolve([]),
-    vendor.location_state
-      ? getDateHeatmap(db, today, new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10), 'state', vendor.location_state)
-      : Promise.resolve([]),
-    getDateHeatmap(db, today, new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10), 'global', 'global'),
+    getDateHeatmap(db, w.today, w.thirtyAhead, 'global', 'global'),
   ])
 
   const bookingRate = enquiriesCurrent > 0 ? Math.round((bookingsCurrent / enquiriesCurrent) * 100) : 0
   const prevBookingRate = enquiriesPrevious > 0 ? Math.round((bookingsPrevious / enquiriesPrevious) * 100) : 0
-
   const enquiryChange = pctChange(enquiriesCurrent, enquiriesPrevious)
   const bookingChange = pctChange(bookingsCurrent, bookingsPrevious)
   const revenueChange = pctChange(revenueCurrent, revenuePrevious)
   const rateChange = pctChange(bookingRate, prevBookingRate)
 
-  // Build monthly chart data
-  const months = last12Months()
+  const months = last12Months(w.today, locale)
   const enquiryMap = new Map(monthlyEnquiries.map((r) => [r.month, r.count]))
   const bookingMap = new Map(monthlyBookings.map((r) => [r.month, r.count]))
   const chartData = months.map((m) => ({
@@ -185,17 +169,136 @@ analytics.get('/app/analytics', async (c) => {
   }))
   const maxMonthly = Math.max(1, ...chartData.map((d) => Math.max(d.enquiries, d.bookings)))
 
-  // Funnel data
-  const funnelMap = new Map(funnel.map((r) => [r.status, r.count]))
-  const funnelMax = Math.max(1, ...FUNNEL_STAGES.map((s) => funnelMap.get(s.status) ?? 0))
+  const overview = (
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <OverviewCard label={t('analytics.overview.enquiries')} value={String(enquiriesCurrent)} change={enquiryChange} subtitle={t('analytics.overview.last30')} />
+      <OverviewCard label={t('analytics.overview.bookings')} value={String(bookingsCurrent)} change={bookingChange} subtitle={t('analytics.overview.last30')} />
+      <OverviewCard label={t('analytics.overview.revenue')} value={formatMoneyCents(revenueCurrent)} change={revenueChange} subtitle={t('analytics.overview.last30')} />
+      <OverviewCard label={t('analytics.overview.bookingRate')} value={formatPct(bookingRate)} change={rateChange} subtitle={t('analytics.overview.rateSubtitle')} />
+    </div>
+  )
 
-  // Source data
+  const trends = <MonthlyTrends chartData={chartData} maxMonthly={maxMonthly} />
+
+  // ── Free view: live overview + trends + demand teaser, rest locked ──
+  if (!isPro) {
+    return c.html(
+      <AppLayout title={t('nav.analytics')} user={user} vendor={vendor} csrfToken={csrfToken}>
+        <div class="max-w-5xl space-y-6">
+          <div class="bg-horizon-50 border border-horizon-200 rounded-2xl px-5 py-3 flex items-center justify-between gap-4">
+            <p class="text-sm text-horizon-700">{t('analytics.free.banner')}</p>
+            <a href="/app/subscription/checkout" class="shrink-0 bg-horizon-600 text-white rounded-xl px-4 py-2 text-sm font-bold hover:bg-horizon-700 transition-colors">
+              {t('analytics.lock.cta')}
+            </a>
+          </div>
+          {overview}
+          {trends}
+          <DemandTeaser data={freeDemand} />
+          <div class="grid sm:grid-cols-2 gap-6">
+            <LockedSection title={t('analytics.insights.title')} subtitle={t('analytics.insights.subtitle')} variant="lines" />
+            <LockedSection title={t('analytics.overview.responseTime')} subtitle={t('analytics.overview.responseSubtitle')} variant="stat" />
+            <LockedSection title={t('analytics.funnel.title')} subtitle={t('analytics.funnel.subtitle')} variant="bars" />
+            <LockedSection title={t('analytics.sources.title')} subtitle={t('analytics.sources.subtitle')} variant="bars" />
+            <LockedSection title={t('analytics.benchmarks.title')} subtitle={t('analytics.benchmarks.subtitle', { category: vendor.category })} variant="bars" />
+            <LockedSection title={t('analytics.goals.title')} subtitle={t('analytics.goals.subtitle')} variant="bars" />
+          </div>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  // ── Pro-only data ──
+  const [
+    funnelRows,
+    sourceRows,
+    avgSpendVendor,
+    avgSpendIndustry,
+    vendorCount,
+    yearGoals,
+    industryEnquiriesTotal,
+    industryBookingsTotal,
+    responseDurations,
+    monthlyRevenue,
+    cityHeatmap,
+    stateHeatmap,
+    globalHeatmap,
+  ] = await Promise.all([
+    getConversionFunnel(db, vendor.id, w.yearStart, w.yearEnd),
+    getSourceBreakdown(db, vendor.id, w.yearStart, w.yearEnd),
+    getAverageSpendPerWedding(db, vendor.id, w.yearStart, w.yearEnd),
+    getAverageSpendPerWedding(db, null, w.yearStart, w.yearEnd, { category: vendor.category }),
+    countVendors(db, { category: vendor.category }),
+    getCurrentYearGoals(db, vendor.id),
+    countEventsGlobal(db, 'enquiry_received', w.thirtyDaysAgo, w.tomorrow, { category: vendor.category }),
+    countEventsGlobal(db, 'booking_confirmed', w.thirtyDaysAgo, w.tomorrow, { category: vendor.category }),
+    getFirstResponseDurations(db, vendor.id, w.sixtyDaysAgo, w.tomorrow),
+    getMonthlyRevenue(db, vendor.id, 12),
+    vendor.location_city
+      ? getDateHeatmap(db, w.today, w.ninetyAhead, 'city', vendor.location_city)
+      : Promise.resolve([]),
+    vendor.location_state
+      ? getDateHeatmap(db, w.today, w.ninetyAhead, 'state', vendor.location_state)
+      : Promise.resolve([]),
+    getDateHeatmap(db, w.today, w.ninetyAhead, 'global', 'global'),
+  ])
+
+  // Funnel — cumulative "reached at least this stage"
+  const statusCounts: Record<string, number> = {}
+  for (const r of funnelRows) statusCounts[r.status] = r.count
+  const funnel = buildFunnel(statusCounts)
+  const funnelMax = Math.max(1, ...funnel.map((s) => s.count))
+
+  // Sources — normalised + relabelled
+  const sources = aggregateSources(sourceRows)
   const sourceMax = Math.max(1, ...sources.map((s) => s.count))
 
-  // Goals progress — measured over each goal's own period, not the 30-day window
+  // Benchmarks — per-vendor category averages, not platform totals
+  const denom = Math.max(1, vendorCount)
+  const industryEnquiriesAvg = Math.round(industryEnquiriesTotal / denom)
+  const industryBookingsAvg = Math.round(industryBookingsTotal / denom)
+  const industryBookingRate =
+    industryEnquiriesTotal > 0 ? Math.round((industryBookingsTotal / industryEnquiriesTotal) * 100) : null
+
+  // Response time (median over the last 60 days)
+  const medianResponseHours = median(responseDurations)
+
+  // Revenue trend
+  const revenueByMonth = new Map(monthlyRevenue.map((r) => [r.month, r.total]))
+  const revenueChart = months.map((m) => ({ label: m.label, total: revenueByMonth.get(monthKey(m.year, m.month)) ?? 0 }))
+  const revenueMax = Math.max(1, ...revenueChart.map((d) => d.total))
+
+  // Busiest upcoming month from the 90-day global demand
+  let busiestUpcomingMonth: string | null = null
+  if (globalHeatmap.length > 0) {
+    const byMonth = new Map<string, number>()
+    for (const d of globalHeatmap) {
+      const key = d.date.slice(0, 7)
+      byMonth.set(key, (byMonth.get(key) ?? 0) + d.score)
+    }
+    let best = -1
+    for (const [key, total] of byMonth) {
+      if (total > best) {
+        best = total
+        const [yy, mm] = key.split('-').map(Number)
+        busiestUpcomingMonth = new Date(Date.UTC(yy, mm - 1, 1)).toLocaleDateString(locale, { month: 'long', timeZone: 'UTC' })
+      }
+    }
+  }
+
+  const insights = buildInsights({
+    enquiries30d: enquiriesCurrent,
+    enquiriesPrev30d: enquiriesPrevious,
+    bookings30d: bookingsCurrent,
+    bookingRate,
+    industryBookingRate,
+    medianResponseHours,
+    busiestUpcomingMonth,
+  })
+
+  // Goals progress — measured over each goal's own period
   const goalsWithProgress = await Promise.all(
     yearGoals.map(async (g) => {
-      const [start, end] = goalPeriodRange(g.period_type, g.period_value)
+      const [start, end] = goalPeriodRange(g.period_type, g.period_value, w.year)
       let current = 0
       if (g.goal_type === 'enquiries') current = await countEvents(db, vendor.id, 'enquiry_received', start, end)
       else if (g.goal_type === 'bookings') current = await countEvents(db, vendor.id, 'booking_confirmed', start, end)
@@ -206,135 +309,58 @@ analytics.get('/app/analytics', async (c) => {
   )
 
   return c.html(
-    <AppLayout title="Analytics" user={user} vendor={vendor} csrfToken={csrfToken}>
+    <AppLayout title={t('nav.analytics')} user={user} vendor={vendor} csrfToken={csrfToken}>
       <div class="max-w-5xl space-y-6">
-        {/* Overview cards */}
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <OverviewCard
-            label="Enquiries"
-            value={String(enquiriesCurrent)}
-            change={enquiryChange}
-            subtitle="last 30 days"
-          />
-          <OverviewCard
-            label="Bookings"
-            value={String(bookingsCurrent)}
-            change={bookingChange}
-            subtitle="last 30 days"
-          />
-          <OverviewCard
-            label="Revenue"
-            value={formatCents(revenueCurrent)}
-            change={revenueChange}
-            subtitle="last 30 days"
-          />
-          <OverviewCard
-            label="Booking rate"
-            value={formatPct(bookingRate)}
-            change={rateChange}
-            subtitle="enquiries to bookings"
-          />
+        {overview}
+
+        {insights.length > 0 && <InsightsCard insights={insights} />}
+
+        {trends}
+
+        <div class="grid sm:grid-cols-2 gap-6">
+          <ResponseTimeCard medianHours={medianResponseHours} sampleSize={responseDurations.length} />
+          <RevenueTrend chart={revenueChart} max={revenueMax} />
         </div>
-
-        {/* Monthly trends */}
-        <section class="bg-white rounded-2xl p-5 sm:p-6">
-          <h3 class="font-bold text-gray-900 mb-1">Monthly trends</h3>
-          <p class="text-sm text-gray-500 mb-5">Enquiries and bookings over the last 12 months</p>
-
-          <div class="space-y-2.5">
-            {chartData.map((d) => (
-              <div class="flex items-center gap-3 text-sm">
-                <span class="w-8 text-gray-500 text-xs shrink-0">{d.label}</span>
-                <div class="flex-1 space-y-1">
-                  <div class="flex items-center gap-2">
-                    <div class="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
-                      <div
-                        class="bg-horizon-500 h-full rounded-full transition-all"
-                        style={`width: ${(d.enquiries / maxMonthly) * 100}%`}
-                      />
-                    </div>
-                    <span class="w-8 text-right text-xs text-gray-600">{d.enquiries}</span>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <div class="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
-                      <div
-                        class="bg-green-500 h-full rounded-full transition-all"
-                        style={`width: ${(d.bookings / maxMonthly) * 100}%`}
-                      />
-                    </div>
-                    <span class="w-8 text-right text-xs text-gray-600">{d.bookings}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div class="flex items-center gap-4 mt-4 text-xs text-gray-500">
-            <div class="flex items-center gap-1.5">
-              <div class="w-3 h-3 rounded-full bg-horizon-500" />
-              Enquiries
-            </div>
-            <div class="flex items-center gap-1.5">
-              <div class="w-3 h-3 rounded-full bg-green-500" />
-              Bookings
-            </div>
-          </div>
-        </section>
 
         <div class="grid sm:grid-cols-2 gap-6">
           {/* Conversion funnel */}
           <section class="bg-white rounded-2xl p-5 sm:p-6">
-            <h3 class="font-bold text-gray-900 mb-1">Conversion funnel</h3>
-            <p class="text-sm text-gray-500 mb-5">Pipeline stages this year</p>
-
+            <h3 class="font-bold text-gray-900 mb-1">{t('analytics.funnel.title')}</h3>
+            <p class="text-sm text-gray-500 mb-5">{t('analytics.funnel.subtitle')}</p>
             <div class="space-y-3">
-              {FUNNEL_STAGES.map((stage, i) => {
-                const count = funnelMap.get(stage.status) ?? 0
-                const prevCount = i > 0 ? (funnelMap.get(FUNNEL_STAGES[i - 1].status) ?? 0) : count
-                const dropOff = prevCount > 0 && i > 0 ? Math.round(((prevCount - count) / prevCount) * 100) : 0
-                return (
-                  <div>
-                    <div class="flex items-center justify-between mb-1">
-                      <span class="text-sm font-medium text-gray-700">{stage.label}</span>
-                      <div class="flex items-center gap-2">
-                        <span class="text-sm font-bold text-gray-900">{count}</span>
-                        {i > 0 && dropOff > 0 && (
-                          <span class="text-xs text-grapefruit-600">-{dropOff}%</span>
-                        )}
-                      </div>
-                    </div>
-                    <div class="bg-gray-100 rounded-full h-5 overflow-hidden">
-                      <div
-                        class={`${stage.color} h-full rounded-full transition-all`}
-                        style={`width: ${(count / funnelMax) * 100}%`}
-                      />
+              {funnel.map((stage) => (
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-sm font-medium text-gray-700">{t(`analytics.funnel.stage.${stage.status}` as any)}</span>
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-bold text-gray-900">{stage.count}</span>
+                      {stage.dropOffPct > 0 && <span class="text-xs text-grapefruit-600">-{stage.dropOffPct}%</span>}
                     </div>
                   </div>
-                )
-              })}
+                  <div class="bg-gray-100 rounded-full h-5 overflow-hidden">
+                    <div class="bg-horizon-500 h-full rounded-full transition-all" style={`width: ${(stage.count / funnelMax) * 100}%`} />
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
 
           {/* Source breakdown */}
           <section class="bg-white rounded-2xl p-5 sm:p-6">
-            <h3 class="font-bold text-gray-900 mb-1">Enquiry sources</h3>
-            <p class="text-sm text-gray-500 mb-5">Where your leads come from this year</p>
-
+            <h3 class="font-bold text-gray-900 mb-1">{t('analytics.sources.title')}</h3>
+            <p class="text-sm text-gray-500 mb-5">{t('analytics.sources.subtitle')}</p>
             {sources.length === 0 ? (
-              <p class="text-sm text-gray-400">No enquiry data yet</p>
+              <p class="text-sm text-gray-400">{t('analytics.sources.empty')}</p>
             ) : (
               <div class="space-y-3">
                 {sources.map((s) => (
                   <div>
                     <div class="flex items-center justify-between mb-1">
-                      <span class="text-sm text-gray-700 capitalize">{s.source}</span>
+                      <span class="text-sm text-gray-700">{s.label}</span>
                       <span class="text-sm font-bold text-gray-900">{s.count}</span>
                     </div>
                     <div class="bg-gray-100 rounded-full h-4 overflow-hidden">
-                      <div
-                        class="bg-papaya-400 h-full rounded-full transition-all"
-                        style={`width: ${(s.count / sourceMax) * 100}%`}
-                      />
+                      <div class="bg-papaya-400 h-full rounded-full transition-all" style={`width: ${(s.count / sourceMax) * 100}%`} />
                     </div>
                   </div>
                 ))}
@@ -347,23 +373,18 @@ analytics.get('/app/analytics', async (c) => {
         <section class="bg-white rounded-2xl p-5 sm:p-6">
           <div class="flex items-center justify-between mb-4">
             <div>
-              <h3 class="font-bold text-gray-900">Goals</h3>
-              <p class="text-sm text-gray-500">Track progress toward your targets</p>
+              <h3 class="font-bold text-gray-900">{t('analytics.goals.title')}</h3>
+              <p class="text-sm text-gray-500">{t('analytics.goals.subtitle')}</p>
             </div>
-            <a
-              href="/app/analytics/goals"
-              class="bg-horizon-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold hover:bg-horizon-700 transition-colors"
-            >
-              Manage goals
+            <a href="/app/analytics/goals" class="bg-horizon-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold hover:bg-horizon-700 transition-colors">
+              {t('analytics.goals.manage')}
             </a>
           </div>
 
           {goalsWithProgress.length === 0 ? (
             <div class="text-center py-6">
-              <p class="text-sm text-gray-400 mb-2">No goals set for this year</p>
-              <a href="/app/analytics/goals" class="text-sm text-horizon-600 font-bold hover:text-horizon-700">
-                Set your first goal
-              </a>
+              <p class="text-sm text-gray-400 mb-2">{t('analytics.goals.none')}</p>
+              <a href="/app/analytics/goals" class="text-sm text-horizon-600 font-bold hover:text-horizon-700">{t('analytics.goals.setFirst')}</a>
             </div>
           ) : (
             <div class="space-y-4">
@@ -371,19 +392,16 @@ analytics.get('/app/analytics', async (c) => {
                 <div>
                   <div class="flex items-center justify-between mb-1">
                     <span class="text-sm font-medium text-gray-700 capitalize">
-                      {g.goal_type} — {g.period_value}
+                      {t(`analytics.goals.type.${g.goal_type}` as any)} — {g.period_value}
                     </span>
                     <span class="text-sm text-gray-500">
-                      {g.goal_type === 'revenue' ? formatCents(g.current) : g.current} / {g.goal_type === 'revenue' ? formatCents(g.target) : g.target}
+                      {g.goal_type === 'revenue' ? formatMoneyCents(g.current) : g.current} / {g.goal_type === 'revenue' ? formatMoneyCents(g.target) : g.target}
                     </span>
                   </div>
                   <div class="bg-gray-100 rounded-full h-5 overflow-hidden">
-                    <div
-                      class={`h-full rounded-full transition-all ${g.pct >= 100 ? 'bg-green-500' : 'bg-horizon-600'}`}
-                      style={`width: ${g.pct}%`}
-                    />
+                    <div class={`h-full rounded-full transition-all ${g.pct >= 100 ? 'bg-green-500' : 'bg-horizon-600'}`} style={`width: ${g.pct}%`} />
                   </div>
-                  <p class="text-xs text-gray-400 mt-0.5">{g.pct}% complete</p>
+                  <p class="text-xs text-gray-400 mt-0.5">{t('analytics.goals.complete', { pct: g.pct })}</p>
                 </div>
               ))}
             </div>
@@ -392,44 +410,20 @@ analytics.get('/app/analytics', async (c) => {
 
         {/* Industry benchmarks */}
         <section class="bg-white rounded-2xl p-5 sm:p-6">
-          <h3 class="font-bold text-gray-900 mb-1">Industry benchmarks</h3>
-          <p class="text-sm text-gray-500 mb-5">How you compare to other {vendor.category}s this year</p>
-
+          <h3 class="font-bold text-gray-900 mb-1">{t('analytics.benchmarks.title')}</h3>
+          <p class="text-sm text-gray-500 mb-5">{t('analytics.benchmarks.subtitle', { category: vendor.category })}</p>
           <div class="grid sm:grid-cols-2 gap-6">
-            <BenchmarkCard
-              label="Avg spend per wedding"
-              yours={avgSpendVendor}
-              industry={avgSpendIndustry}
-              format="currency"
-            />
-            <BenchmarkCard
-              label="Booking rate"
-              yours={bookingRate}
-              industry={industryBookings > 0 && industryEnquiries > 0 ? Math.round((industryBookings / industryEnquiries) * 100) : 0}
-              format="percent"
-            />
-            <BenchmarkCard
-              label="Enquiries (30d)"
-              yours={enquiriesCurrent}
-              industry={industryEnquiries}
-              format="number"
-              note={`All ${vendor.category}s on platform`}
-            />
-            <BenchmarkCard
-              label="Bookings (30d)"
-              yours={bookingsCurrent}
-              industry={industryBookings}
-              format="number"
-              note={`All ${vendor.category}s on platform`}
-            />
+            <BenchmarkCard label={t('analytics.benchmarks.avgSpend')} yours={avgSpendVendor} industry={avgSpendIndustry} format="currency" />
+            <BenchmarkCard label={t('analytics.benchmarks.bookingRate')} yours={bookingRate} industry={industryBookingRate ?? 0} format="percent" />
+            <BenchmarkCard label={t('analytics.benchmarks.enquiries30')} yours={enquiriesCurrent} industry={industryEnquiriesAvg} format="number" />
+            <BenchmarkCard label={t('analytics.benchmarks.bookings30')} yours={bookingsCurrent} industry={industryBookingsAvg} format="number" />
           </div>
         </section>
 
         {/* Date demand heatmap */}
         <section class="bg-white rounded-2xl p-5 sm:p-6">
-          <h3 class="font-bold text-gray-900 mb-1">Date demand</h3>
-          <p class="text-sm text-gray-500 mb-5">How in-demand upcoming dates are for enquiries and bookings</p>
-
+          <h3 class="font-bold text-gray-900 mb-1">{t('analytics.demand.title')}</h3>
+          <p class="text-sm text-gray-500 mb-5">{t('analytics.demand.subtitle')}</p>
           {globalHeatmap.length > 0 ? (
             <div class="space-y-6">
               {vendor.location_city && cityHeatmap.length > 0 && (
@@ -445,23 +439,13 @@ analytics.get('/app/analytics', async (c) => {
                 </div>
               )}
               <div>
-                <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Global</h4>
+                <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">{t('analytics.demand.global')}</h4>
                 <HeatmapGrid data={globalHeatmap} />
               </div>
-              <div class="flex items-center gap-2 text-xs text-gray-400">
-                <span>Low</span>
-                <div class="flex gap-0.5">
-                  <div class="w-4 h-4 rounded bg-gray-100" />
-                  <div class="w-4 h-4 rounded bg-horizon-100" />
-                  <div class="w-4 h-4 rounded bg-horizon-300" />
-                  <div class="w-4 h-4 rounded bg-horizon-500" />
-                  <div class="w-4 h-4 rounded bg-horizon-700" />
-                </div>
-                <span>High</span>
-              </div>
+              <HeatmapLegend />
             </div>
           ) : (
-            <p class="text-sm text-gray-400">Demand data will appear after the first daily aggregation runs.</p>
+            <p class="text-sm text-gray-400">{t('analytics.demand.empty')}</p>
           )}
         </section>
       </div>
@@ -486,10 +470,10 @@ analytics.get('/app/analytics/goals', async (c) => {
   const error = c.req.query('error')
 
   return c.html(
-    <AppLayout title="Goals" user={user} vendor={vendor} csrfToken={csrfToken}>
+    <AppLayout title={t('analytics.goals.title')} user={user} vendor={vendor} csrfToken={csrfToken}>
       <div class="max-w-2xl">
         <p class="text-sm text-gray-500 mb-4">
-          <a href="/app/analytics" class="hover:text-horizon-700">Analytics</a> / Goals
+          <a href="/app/analytics" class="hover:text-horizon-700">{t('analytics.goals.breadcrumb')}</a> / {t('analytics.goals.title')}
         </p>
 
         {error && (
@@ -498,109 +482,68 @@ analytics.get('/app/analytics/goals', async (c) => {
           </div>
         )}
 
-        {/* Add/edit goal form */}
         <section class="bg-white rounded-2xl p-5 sm:p-6 mb-6">
-          <h3 class="font-bold text-gray-900 mb-4">Add a goal</h3>
+          <h3 class="font-bold text-gray-900 mb-4">{t('analytics.goals.add')}</h3>
           <form method="post" action="/app/analytics/goals" class="space-y-4">
             <input type="hidden" name="_csrf" value={csrfToken} />
 
             <div class="grid sm:grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="period_type">
-                  Period type
-                </label>
-                <select
-                  id="period_type"
-                  name="period_type"
-                  class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600"
-                >
-                  <option value="year">Year</option>
-                  <option value="season">Season</option>
-                  <option value="month">Month</option>
+                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="period_type">{t('analytics.goals.periodType')}</label>
+                <select id="period_type" name="period_type" class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600">
+                  <option value="year">{t('analytics.goals.period.year')}</option>
+                  <option value="season">{t('analytics.goals.period.season')}</option>
+                  <option value="month">{t('analytics.goals.period.month')}</option>
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="period_value">
-                  Period value
-                </label>
-                <input
-                  type="text"
-                  id="period_value"
-                  name="period_value"
-                  required
-                  placeholder="e.g. 2026, summer-2026, 2026-06"
-                  class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600"
-                />
+                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="period_value">{t('analytics.goals.periodValue')}</label>
+                <input type="text" id="period_value" name="period_value" required placeholder={t('analytics.goals.placeholderValue')} class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
               </div>
             </div>
 
             <div class="grid sm:grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="goal_type">
-                  Goal type
-                </label>
-                <select
-                  id="goal_type"
-                  name="goal_type"
-                  class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600"
-                >
-                  <option value="enquiries">Enquiries</option>
-                  <option value="bookings">Bookings</option>
-                  <option value="revenue">Revenue (cents)</option>
+                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="goal_type">{t('analytics.goals.goalType')}</label>
+                <select id="goal_type" name="goal_type" class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600">
+                  <option value="enquiries">{t('analytics.goals.type.enquiries')}</option>
+                  <option value="bookings">{t('analytics.goals.type.bookings')}</option>
+                  <option value="revenue">{t('analytics.goals.type.revenue')}</option>
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="target">
-                  Target
-                </label>
-                <input
-                  type="number"
-                  id="target"
-                  name="target"
-                  required
-                  min="1"
-                  placeholder="e.g. 50"
-                  class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600"
-                />
+                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="target">{t('analytics.goals.target')}</label>
+                <input type="number" id="target" name="target" required min="1" placeholder={t('analytics.goals.placeholderTarget')} class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600" />
+                <p class="text-xs text-gray-400 mt-1">{t('analytics.goals.targetRevenueHint')}</p>
               </div>
             </div>
 
-            <button
-              type="submit"
-              class="bg-horizon-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold hover:bg-horizon-700 transition-colors"
-            >
-              Save goal
-            </button>
+            <button type="submit" class="bg-horizon-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold hover:bg-horizon-700 transition-colors">{t('analytics.goals.save')}</button>
           </form>
         </section>
 
-        {/* Existing goals */}
         <section class="bg-white rounded-2xl p-5 sm:p-6">
-          <h3 class="font-bold text-gray-900 mb-4">Your goals</h3>
-
+          <h3 class="font-bold text-gray-900 mb-4">{t('analytics.goals.yours')}</h3>
           {goals.length === 0 ? (
-            <p class="text-sm text-gray-400">No goals yet. Add one above to get started.</p>
+            <p class="text-sm text-gray-400">{t('analytics.goals.emptyList')}</p>
           ) : (
             <div class="space-y-3">
               {goals.map((g) => (
                 <div class="flex items-center justify-between border border-gray-100 rounded-xl px-4 py-3">
                   <div>
                     <p class="text-sm font-medium text-gray-900 capitalize">
-                      {g.goal_type} — {g.period_value}
+                      {t(`analytics.goals.type.${g.goal_type}` as any)} — {g.period_value}
                     </p>
                     <p class="text-xs text-gray-500">
-                      {g.period_type} target: {g.goal_type === 'revenue' ? formatCents(g.target) : g.target}
+                      {t('analytics.goals.targetLabel', {
+                        period: g.period_type,
+                        target: g.goal_type === 'revenue' ? formatMoneyCents(g.target) : String(g.target),
+                      })}
                     </p>
                   </div>
                   <form method="post" action={`/app/analytics/goals/${g.id}/delete`}>
                     <input type="hidden" name="_csrf" value={csrfToken} />
-                    <button
-                      type="submit"
-                      onclick="return confirm('Delete this goal?')"
-                      class="text-sm text-grapefruit-600 hover:text-grapefruit-700 font-medium"
-                    >
-                      Delete
-                    </button>
+                    <button type="submit" onclick={`return confirm('${t('analytics.goals.deleteConfirm')}')`} class="text-sm text-grapefruit-600 hover:text-grapefruit-700 font-medium">{t('analytics.goals.delete')}</button>
                   </form>
                 </div>
               ))}
@@ -626,19 +569,20 @@ analytics.post('/app/analytics/goals', async (c) => {
   const periodType = String(body.period_type || '').trim()
   const periodValue = String(body.period_value || '').trim()
   const goalType = String(body.goal_type || '').trim()
-  const target = parseInt(String(body.target || '0'), 10)
+  let target = parseInt(String(body.target || '0'), 10)
 
   if (!periodType || !periodValue || !goalType || target <= 0) {
-    return c.redirect('/app/analytics/goals?error=' + encodeURIComponent('All fields are required and target must be positive'))
+    return c.redirect('/app/analytics/goals?error=' + encodeURIComponent(t('analytics.goals.error.required')))
   }
-
   if (!['year', 'season', 'month'].includes(periodType)) {
-    return c.redirect('/app/analytics/goals?error=' + encodeURIComponent('Invalid period type'))
+    return c.redirect('/app/analytics/goals?error=' + encodeURIComponent(t('analytics.goals.error.period')))
+  }
+  if (!['enquiries', 'bookings', 'revenue'].includes(goalType)) {
+    return c.redirect('/app/analytics/goals?error=' + encodeURIComponent(t('analytics.goals.error.type')))
   }
 
-  if (!['enquiries', 'bookings', 'revenue'].includes(goalType)) {
-    return c.redirect('/app/analytics/goals?error=' + encodeURIComponent('Invalid goal type'))
-  }
+  // Revenue targets are entered in dollars; stored in cents to match getRevenue.
+  if (goalType === 'revenue') target = target * 100
 
   await upsertGoal(db, {
     vendor_id: vendor.id,
@@ -669,123 +613,139 @@ export default analytics
 
 // ─── Components ───
 
-function UpgradePrompt() {
-  return (
-    <div class="max-w-xl mx-auto text-center">
-      <div class="bg-white rounded-2xl p-8 sm:p-10">
-        <div class="w-14 h-14 bg-horizon-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
-          <svg class="w-7 h-7 text-horizon-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-          </svg>
-        </div>
-
-        <h2 class="text-xl font-bold text-gray-900 mb-2">Unlock business analytics</h2>
-        <p class="text-sm text-gray-600 mb-8 max-w-sm mx-auto">
-          See how your business is performing with detailed insights, trends, and benchmarks.
-        </p>
-
-        <div class="space-y-4 text-left max-w-xs mx-auto mb-8">
-          <FeatureRow label="Enquiry and booking trends" />
-          <FeatureRow label="Conversion funnel analysis" />
-          <FeatureRow label="Revenue tracking and reporting" />
-          <FeatureRow label="Industry benchmarks" />
-          <FeatureRow label="Goal setting and tracking" />
-          <FeatureRow label="Source and location breakdowns" />
-        </div>
-
-        <div class="mb-6">
-          <p class="text-3xl font-bold text-gray-900">$28<span class="text-base font-medium text-gray-500">/month</span></p>
-        </div>
-
-        <a
-          href="/app/subscription/checkout"
-          class="inline-block bg-horizon-600 text-white rounded-xl px-8 py-3 text-sm font-bold hover:bg-horizon-700 transition-colors"
-        >
-          Upgrade to Pro
-        </a>
-      </div>
-    </div>
-  )
-}
-
-function FeatureRow({ label }: { label: string }) {
-  return (
-    <div class="flex items-center gap-3">
-      <div class="w-5 h-5 rounded-full bg-horizon-100 flex items-center justify-center shrink-0">
-        <svg class="w-3 h-3 text-horizon-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-        </svg>
-      </div>
-      <span class="text-sm text-gray-700">{label}</span>
-    </div>
-  )
-}
-
-function OverviewCard({
-  label,
-  value,
-  change,
-  subtitle,
-}: {
-  label: string
-  value: string
-  change: { value: number; label: string; positive: boolean }
-  subtitle: string
-}) {
+function OverviewCard({ label, value, change, subtitle }: { label: string; value: string; change: { label: string; positive: boolean }; subtitle: string }) {
   return (
     <div class="bg-white rounded-2xl p-5">
       <p class="text-xs text-gray-500 mb-1">{label}</p>
-      <p class="text-2xl font-bold text-gray-900">{value}</p>
+      <p class="text-2xl font-bold text-gray-900 tabular-nums">{value}</p>
       <div class="flex items-center gap-1.5 mt-1.5">
-        <span
-          class={`text-xs font-bold ${change.positive ? 'text-horizon-600' : 'text-grapefruit-600'}`}
-        >
-          {change.label}
-        </span>
+        <span class={`text-xs font-bold ${change.positive ? 'text-horizon-600' : 'text-grapefruit-600'}`}>{change.label}</span>
         <span class="text-xs text-gray-400">{subtitle}</span>
       </div>
     </div>
   )
 }
 
-function BenchmarkCard({
-  label,
-  yours,
-  industry,
-  format,
-  note,
-}: {
-  label: string
-  yours: number
-  industry: number
-  format: 'currency' | 'percent' | 'number'
-  note?: string
-}) {
-  const fmt = (v: number) =>
-    format === 'currency' ? formatCents(v) : format === 'percent' ? formatPct(v) : String(v)
-  const yourDisplay = fmt(yours)
-  const industryDisplay = note ? note : fmt(industry)
-  const diff = industry > 0 ? yours - industry : 0
-  const ahead = diff >= 0
+function MonthlyTrends({ chartData, maxMonthly }: { chartData: { label: string; enquiries: number; bookings: number }[]; maxMonthly: number }) {
+  return (
+    <section class="bg-white rounded-2xl p-5 sm:p-6">
+      <h3 class="font-bold text-gray-900 mb-1">{t('analytics.trends.title')}</h3>
+      <p class="text-sm text-gray-500 mb-5">{t('analytics.trends.subtitle')}</p>
+      <div class="space-y-2.5">
+        {chartData.map((d) => (
+          <div class="flex items-center gap-3 text-sm">
+            <span class="w-8 text-gray-500 text-xs shrink-0">{d.label}</span>
+            <div class="flex-1 space-y-1">
+              <div class="flex items-center gap-2">
+                <div class="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
+                  <div class="bg-horizon-500 h-full rounded-full transition-all" style={`width: ${(d.enquiries / maxMonthly) * 100}%`} />
+                </div>
+                <span class="w-8 text-right text-xs text-gray-600 tabular-nums">{d.enquiries}</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
+                  <div class="bg-green-500 h-full rounded-full transition-all" style={`width: ${(d.bookings / maxMonthly) * 100}%`} />
+                </div>
+                <span class="w-8 text-right text-xs text-gray-600 tabular-nums">{d.bookings}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div class="flex items-center gap-4 mt-4 text-xs text-gray-500">
+        <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-horizon-500" />{t('analytics.trends.enquiries')}</div>
+        <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-green-500" />{t('analytics.trends.bookings')}</div>
+      </div>
+    </section>
+  )
+}
 
+function RevenueTrend({ chart, max }: { chart: { label: string; total: number }[]; max: number }) {
+  return (
+    <section class="bg-white rounded-2xl p-5 sm:p-6">
+      <h3 class="font-bold text-gray-900 mb-1">{t('analytics.revenueTrend.title')}</h3>
+      <p class="text-sm text-gray-500 mb-5">{t('analytics.revenueTrend.subtitle')}</p>
+      <div class="flex items-end gap-1.5 h-32">
+        {chart.map((d) => (
+          <div class="flex-1 flex flex-col items-center gap-1 group">
+            <div class="w-full bg-gray-100 rounded-t relative flex items-end" style="height: 100%">
+              <div class="w-full bg-horizon-500 rounded-t transition-all" style={`height: ${(d.total / max) * 100}%`} title={formatMoneyCents(d.total)} />
+            </div>
+            <span class="text-[10px] text-gray-400">{d.label}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function ResponseTimeCard({ medianHours, sampleSize }: { medianHours: number | null; sampleSize: number }) {
+  const hasData = medianHours != null && sampleSize > 0
+  const fast = hasData && medianHours! <= 4
+  return (
+    <section class="bg-white rounded-2xl p-5 sm:p-6">
+      <h3 class="font-bold text-gray-900 mb-1">{t('analytics.overview.responseTime')}</h3>
+      <p class="text-sm text-gray-500 mb-5">{t('analytics.overview.responseSubtitle')}</p>
+      {hasData ? (
+        <div>
+          <p class={`text-3xl font-bold ${fast ? 'text-horizon-600' : 'text-gray-900'}`}>{durationLabel(medianHours!)}</p>
+          <p class="text-xs text-gray-400 mt-1">{t('analytics.overview.last30')}</p>
+        </div>
+      ) : (
+        <p class="text-sm text-gray-400">{t('analytics.overview.noData')}</p>
+      )}
+    </section>
+  )
+}
+
+function InsightsCard({ insights }: { insights: Insight[] }) {
+  const toneClass: Record<string, string> = {
+    good: 'bg-green-50 border-green-200 text-green-800',
+    warn: 'bg-papaya-100 border-papaya-300 text-gray-800',
+    info: 'bg-horizon-50 border-horizon-200 text-horizon-700',
+  }
+  return (
+    <section class="bg-white rounded-2xl p-5 sm:p-6">
+      <h3 class="font-bold text-gray-900 mb-1">{t('analytics.insights.title')}</h3>
+      <p class="text-sm text-gray-500 mb-4">{t('analytics.insights.subtitle')}</p>
+      <div class="space-y-2.5">
+        {insights.slice(0, 4).map((ins) => {
+          const params: Record<string, string | number> = { ...ins.params }
+          if (ins.code === 'response_slow') params.duration = durationLabel(Number(ins.params.hours) || 0)
+          return (
+            <div class={`border rounded-xl px-4 py-3 text-sm ${toneClass[ins.tone]}`}>
+              {t(`analytics.insights.${ins.code}` as any, params)}
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function BenchmarkCard({ label, yours, industry, format }: { label: string; yours: number; industry: number; format: 'currency' | 'percent' | 'number' }) {
+  const fmt = (v: number) => (format === 'currency' ? formatMoneyCents(v) : format === 'percent' ? formatPct(v) : String(v))
+  const diff = yours - industry
+  const hasIndustry = industry > 0
+  const verdict =
+    !hasIndustry ? null : diff === 0 ? t('analytics.benchmarks.onPar')
+      : format === 'currency'
+        ? t(diff > 0 ? 'analytics.benchmarks.aboveBy' : 'analytics.benchmarks.belowBy', { amount: formatMoneyCents(Math.abs(diff)) })
+        : t(diff > 0 ? 'analytics.benchmarks.above' : 'analytics.benchmarks.below')
+  const verdictColor = !hasIndustry ? '' : diff === 0 ? 'text-gray-500' : diff > 0 ? 'text-horizon-600' : 'text-grapefruit-600'
   return (
     <div class="border border-gray-100 rounded-xl p-4">
       <p class="text-sm font-medium text-gray-700 mb-3">{label}</p>
       <div class="space-y-2">
         <div class="flex items-center justify-between">
-          <span class="text-xs text-gray-500">You</span>
-          <span class="text-sm font-bold text-gray-900">{yourDisplay}</span>
+          <span class="text-xs text-gray-500">{t('analytics.benchmarks.you')}</span>
+          <span class="text-sm font-bold text-gray-900">{fmt(yours)}</span>
         </div>
         <div class="flex items-center justify-between">
-          <span class="text-xs text-gray-500">Industry avg</span>
-          <span class="text-sm text-gray-600">{industryDisplay}</span>
+          <span class="text-xs text-gray-500">{t('analytics.benchmarks.industryAvg')}</span>
+          <span class="text-sm text-gray-600">{fmt(industry)}</span>
         </div>
-        {!note && industry > 0 && (
-          <p class={`text-xs font-bold ${ahead ? 'text-horizon-600' : 'text-grapefruit-600'}`}>
-            {ahead ? 'Above' : 'Below'} industry average
-            {format === 'currency' && ` by ${formatCents(Math.abs(diff))}`}
-          </p>
-        )}
+        {verdict && <p class={`text-xs font-bold ${verdictColor}`}>{verdict}</p>}
       </div>
     </div>
   )
@@ -795,24 +755,88 @@ function HeatmapGrid({ data }: { data: Array<{ date: string; score: number; enqu
   return (
     <div class="flex flex-wrap gap-1">
       {data.map((d) => {
-        const bg = d.score === 0
-          ? 'bg-gray-100'
-          : d.score < 0.5
-            ? 'bg-horizon-100'
-            : d.score < 1.0
-              ? 'bg-horizon-300'
-              : d.score < 2.0
-                ? 'bg-horizon-500'
-                : 'bg-horizon-700'
-        const dayLabel = new Date(d.date + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })
+        const bg = d.score === 0 ? 'bg-gray-100' : d.score < 0.5 ? 'bg-horizon-100' : d.score < 1.0 ? 'bg-horizon-300' : d.score < 2.0 ? 'bg-horizon-500' : 'bg-horizon-700'
         // Cross-vendor data: the tooltip stays relative, never absolute counts.
-        return (
-          <div
-            class={`w-6 h-6 rounded ${bg} cursor-default`}
-            title={`${dayLabel}: ${formatVsAverage(d.score, 'date')}`}
-          />
-        )
+        return <div class={`w-6 h-6 rounded ${bg} cursor-default`} title={`${formatDayLabel(d.date)}: ${formatVsAverage(d.score, 'date')}`} />
       })}
     </div>
+  )
+}
+
+function HeatmapLegend() {
+  return (
+    <div class="flex items-center gap-2 text-xs text-gray-400">
+      <span>{t('analytics.demand.low')}</span>
+      <div class="flex gap-0.5">
+        <div class="w-4 h-4 rounded bg-gray-100" />
+        <div class="w-4 h-4 rounded bg-horizon-100" />
+        <div class="w-4 h-4 rounded bg-horizon-300" />
+        <div class="w-4 h-4 rounded bg-horizon-500" />
+        <div class="w-4 h-4 rounded bg-horizon-700" />
+      </div>
+      <span>{t('analytics.demand.high')}</span>
+    </div>
+  )
+}
+
+// Free-tier demand teaser: next 30 days, global only.
+function DemandTeaser({ data }: { data: Array<{ date: string; score: number; enquiry_count: number; booking_count: number }> }) {
+  return (
+    <section class="bg-white rounded-2xl p-5 sm:p-6">
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="font-bold text-gray-900">{t('analytics.demand.title')}</h3>
+        <span class="text-[11px] font-bold uppercase tracking-wider bg-horizon-100 text-horizon-700 rounded-full px-2 py-0.5">{t('analytics.lock.badge')}</span>
+      </div>
+      <p class="text-sm text-gray-500 mb-5">{t('analytics.demand.subtitle')}</p>
+      {data.length > 0 ? (
+        <div class="space-y-4">
+          <div>
+            <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">{t('analytics.demand.global')}</h4>
+            <HeatmapGrid data={data} />
+          </div>
+          <HeatmapLegend />
+        </div>
+      ) : (
+        <p class="text-sm text-gray-400">{t('analytics.demand.empty')}</p>
+      )}
+      <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-4">
+        <p class="text-sm text-gray-500">{t('analytics.upgrade.feature.demand')}</p>
+        <a href="/app/subscription/checkout" class="shrink-0 text-sm text-horizon-600 font-bold hover:text-horizon-700">{t('analytics.lock.cta')} →</a>
+      </div>
+    </section>
+  )
+}
+
+// A blurred placeholder section with a lock overlay, for free-tier teasing.
+function LockedSection({ title, subtitle, variant }: { title: string; subtitle: string; variant: 'bars' | 'lines' | 'stat' }) {
+  return (
+    <section class="bg-white rounded-2xl p-5 sm:p-6 relative overflow-hidden">
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="font-bold text-gray-900">{title}</h3>
+        <span class="text-[11px] font-bold uppercase tracking-wider bg-horizon-100 text-horizon-700 rounded-full px-2 py-0.5">{t('analytics.lock.badge')}</span>
+      </div>
+      <p class="text-sm text-gray-500 mb-5">{subtitle}</p>
+      <div class="blur-[3px] select-none pointer-events-none opacity-70" aria-hidden="true">
+        {variant === 'stat' ? (
+          <div class="h-10 w-24 bg-gray-200 rounded" />
+        ) : variant === 'lines' ? (
+          <div class="space-y-2">
+            <div class="h-9 bg-gray-100 rounded-xl" />
+            <div class="h-9 bg-gray-100 rounded-xl w-5/6" />
+          </div>
+        ) : (
+          <div class="space-y-3">
+            {[80, 55, 35, 20].map((wpc) => (
+              <div class="bg-gray-100 rounded-full h-4 overflow-hidden">
+                <div class="bg-gray-200 h-full rounded-full" style={`width: ${wpc}%`} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <a href="/app/subscription/checkout" class="absolute inset-0 top-16 flex items-center justify-center">
+        <span class="bg-horizon-600 text-white rounded-xl px-4 py-2 text-sm font-bold shadow hover:bg-horizon-700 transition-colors">{t('analytics.lock.overlay')}</span>
+      </a>
+    </section>
   )
 }

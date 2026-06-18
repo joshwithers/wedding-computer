@@ -7,6 +7,8 @@ import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
 import { formatDate, daysUntil } from '../../lib/date'
+import { countEvents } from '../../db/analytics'
+import { isProVendor } from '../../db/subscriptions'
 import { listWeddingTodosWithProgress } from '../../db/todos'
 import { todoStats } from '../../lib/todo-parser'
 import { buildSetupChecklist, categorySetup, type SetupChecklist, type CategorySetup } from '../../lib/onboarding'
@@ -34,6 +36,9 @@ dashboard.get('/app', async (c) => {
   let upcomingEvents: { id: string; title: string; date: string; start_time: string | null; type: string }[] = []
   let todoProgress: { wedding_id: string; wedding_title: string; wedding_date: string | null; content: string }[] = []
   let eventsCount = 0
+  let enquiries30 = 0
+  let bookings30 = 0
+  let isPro = false
 
   try {
     const [weddings, contacts, overdue, revenueRow, contactCounts, events, todos, eventsCountRow] =
@@ -119,9 +124,20 @@ dashboard.get('/app', async (c) => {
     upcomingEvents = events
     todoProgress = todos
     eventsCount = eventsCountRow?.total ?? 0
+
+    // 30-day enquiry/booking pulse for the analytics teaser strip.
+    const tomorrow = new Date(Date.parse(today + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
+    const thirtyAgo = new Date(Date.parse(today + 'T00:00:00Z') - 30 * 86400000).toISOString().slice(0, 10)
+    ;[enquiries30, bookings30, isPro] = await Promise.all([
+      countEvents(db, vendor.id, 'enquiry_received', thirtyAgo, tomorrow),
+      countEvents(db, vendor.id, 'booking_confirmed', thirtyAgo, tomorrow),
+      isProVendor(db, vendor.id),
+    ])
   } catch (err) {
     console.error('[dashboard] Failed to load dashboard data:', err)
   }
+
+  const bookingRate30 = enquiries30 > 0 ? Math.round((bookings30 / enquiries30) * 100) : 0
 
   const hasData = counts.total > 0 || upcomingWeddings.length > 0
   const checklist = buildSetupChecklist(vendor, { contacts: counts.total, events: eventsCount })
@@ -144,6 +160,8 @@ dashboard.get('/app', async (c) => {
               <StatCard label={t('dashboard.booked')} value={String(counts.booked)} href="/app/contacts?status=booked" />
               <StatCard label={t('dashboard.revenue')} value={formatCents(revenue)} href="/app/invoices?status=paid" />
             </div>
+
+            <AnalyticsTeaser enquiries={enquiries30} bookings={bookings30} rate={bookingRate30} isPro={isPro} />
 
             {/* Overdue payments */}
             {overduePayments.length > 0 && (
@@ -425,6 +443,37 @@ function StatCard({ label, value, href, accent }: { label: string; value: string
       <p class="text-xs text-gray-500">{label}</p>
       <p class={`text-xl font-bold mt-0.5 ${accent ? 'text-horizon-700' : 'text-gray-900'}`}>{value}</p>
     </a>
+  )
+}
+
+// Analytics teaser strip. Free vendors see the same live 30-day pulse, but the
+// link sells the locked depth (trends, benchmarks, demand); Pro vendors get a
+// plain "View analytics".
+function AnalyticsTeaser({ enquiries, bookings, rate, isPro }: { enquiries: number; bookings: number; rate: number; isPro: boolean }) {
+  return (
+    <a href="/app/analytics" class="block bg-white rounded-2xl p-5 hover:bg-horizon-50/40 transition-colors group">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-bold text-gray-900">{t('analytics.teaser.title')}</h3>
+        <span class="text-xs text-horizon-600 font-bold group-hover:text-horizon-700">
+          {isPro ? t('analytics.teaser.link') : t('analytics.teaser.linkFree')} →
+        </span>
+      </div>
+      <div class="grid grid-cols-3 gap-4">
+        <TeaserStat label={t('analytics.overview.enquiries')} value={String(enquiries)} />
+        <TeaserStat label={t('analytics.overview.bookings')} value={String(bookings)} />
+        <TeaserStat label={t('analytics.overview.bookingRate')} value={`${rate}%`} />
+      </div>
+      <p class="text-xs text-gray-400 mt-3">{t('analytics.overview.last30')}</p>
+    </a>
+  )
+}
+
+function TeaserStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p class="text-xl font-bold text-gray-900 tabular-nums">{value}</p>
+      <p class="text-xs text-gray-500">{label}</p>
+    </div>
   )
 }
 

@@ -23,6 +23,7 @@ import type { BusynessScore } from '../../types'
 import { isProVendor } from '../../db/subscriptions'
 import { describeDemand, formatVsAverage, MONTH_NAMES, SEASON_LABELS, ordinal } from '../../lib/busyness'
 import { requireString, trimOrNull, sanitize } from '../../lib/validation'
+import { ENQUIRY_SOURCES, normalizeSource, sourceLabel } from '../../lib/sources'
 import { generateId } from '../../lib/crypto'
 import { formatDate } from '../../lib/date'
 import { draftEmail } from '../../services/ai'
@@ -635,7 +636,7 @@ contacts.get('/app/contacts/:id', async (c) => {
                 <DemandCard contactId={contact.id} view={demandView} />
               )}
               <DetailCard label="Wedding location" value={contact.wedding_location} />
-              <DetailCard label="Source" value={contact.source} />
+              <DetailCard label="Source" value={contact.source ? sourceLabel(normalizeSource(contact.source)) : null} />
               <DetailCard label="Added" value={formatDate(contact.created_at)} />
               <FormDataSection label="Enquiry form" data={contact.form_data} />
               {bookingFormRows.map((row) => (
@@ -1496,7 +1497,12 @@ function ContactForm({
       <section>
         <h3 class="text-sm font-bold text-gray-900 mb-3">Other</h3>
         <div class="space-y-4">
-          <FormField label="Source" name="source" value={contact?.source} placeholder="e.g. Instagram, referral, website" />
+          <FormField label="Source" name="source" value={contact?.source} placeholder="e.g. Instagram, referral, website" list="source-options" />
+          <datalist id="source-options">
+            {ENQUIRY_SOURCES.map((s) => (
+              <option value={s.label} />
+            ))}
+          </datalist>
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1.5" for="notes">Notes</label>
             <textarea
@@ -1526,6 +1532,7 @@ function FormField({
   type = 'text',
   required = false,
   placeholder,
+  list,
 }: {
   label: string
   name: string
@@ -1533,6 +1540,7 @@ function FormField({
   type?: string
   required?: boolean
   placeholder?: string
+  list?: string
 }) {
   return (
     <div>
@@ -1544,6 +1552,7 @@ function FormField({
         value={value ?? ''}
         required={required}
         placeholder={placeholder}
+        list={list}
         class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
       />
     </div>
