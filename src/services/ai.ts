@@ -38,7 +38,7 @@ export async function draftEmail(
 }
 
 async function draftWithWorkersAI(ai: Ai, prompt: string): Promise<string> {
-  const result = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
+  const result = await ai.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
     messages: [{ role: 'user', content: prompt }],
     max_tokens: 512,
   }) as { response?: string }
@@ -73,14 +73,14 @@ async function draftWithAnthropic(apiKey: string, prompt: string): Promise<strin
   return data.content[0]?.text ?? ''
 }
 
-async function generateWithAI(
+export async function generateWithAI(
   ai: Ai,
   anthropicKey: string | null | undefined,
   prompt: string,
   maxTokens = 1024,
 ): Promise<string> {
   if (anthropicKey) return draftWithAnthropic(anthropicKey, prompt)
-  const result = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
+  const result = await ai.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
     messages: [{ role: 'user', content: prompt }],
     max_tokens: maxTokens,
   }) as { response?: string }

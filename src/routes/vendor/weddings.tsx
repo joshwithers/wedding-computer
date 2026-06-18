@@ -53,6 +53,7 @@ import { loadDocTabs } from '../../db/wedding-docs'
 import { WebLinks } from '../../views/web-links'
 import { listWebLinks } from '../../db/web-links'
 import { renderTimelineSection } from '../timeline-handlers'
+import { getOrGenerateClimateNote } from '../../services/climate'
 
 /** Compare old and new wedding data and return human-readable change descriptions. */
 function diffWeddingChanges(
@@ -761,9 +762,19 @@ weddings.get('/app/weddings/:id', async (c) => {
           deleted={!!deleted}
         />
 
-        {/* Vendor Credits */}
-        {credits.length > 0 && (
-          <WeddingCredits credits={credits} weddingTitle={wedding.title} />
+        {/* Expected weather — AI note from the region's climate, lazy-loaded */}
+        {wedding.location && wedding.date && (
+          <div class="mt-6">
+            <h3 class="text-sm font-bold text-gray-500 mb-3">{t('climate.heading')}</h3>
+            <div
+              class="bg-white border border-papaya-300/30 rounded-2xl p-4"
+              hx-get={`/app/weddings/${wedding.id}/climate`}
+              hx-trigger="load"
+              hx-swap="innerHTML"
+            >
+              <p class="text-xs text-gray-400">{t('climate.loading')}</p>
+            </div>
+          </div>
         )}
 
         {/* Wedding Log */}
@@ -792,7 +803,12 @@ weddings.get('/app/weddings/:id', async (c) => {
           </div>
         )}
 
-        {/* Invite / add people — tucked away at the bottom */}
+        {/* Vendor Credits */}
+        {credits.length > 0 && (
+          <WeddingCredits credits={credits} weddingTitle={wedding.title} />
+        )}
+
+        {/* Invite / add people — tied to credits (referrals) — tucked at the bottom */}
         {canManage && (
           <details class="group mt-2">
             <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 transition-colors select-none flex items-center gap-1.5">
@@ -926,6 +942,36 @@ weddings.get('/app/weddings/:id', async (c) => {
       </div>
     </AppLayout>
   )
+})
+
+// ─── Expected weather (AI climate note, lazy-loaded) ───
+function ClimateNote({ note, state }: { note?: string; state: 'ready' | 'empty' | 'error' }) {
+  if (state === 'empty') return <p class="text-xs text-gray-400">{t('climate.empty')}</p>
+  if (state === 'error') return <p class="text-xs text-gray-400">{t('climate.error')}</p>
+  return (
+    <div class="flex gap-3">
+      <span class="text-2xl leading-none shrink-0">🌤️</span>
+      <p class="text-sm text-gray-700 leading-relaxed">{note}</p>
+    </div>
+  )
+}
+
+weddings.get('/app/weddings/:id/climate', async (c) => {
+  const user = c.get('user')
+  const weddingId = c.req.param('id')
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership) return c.text('Not found', 404)
+  const wedding = await getWedding(c.env.DB, weddingId)
+  if (!wedding) return c.text('Not found', 404)
+  if (!wedding.location || !wedding.date) return c.html(<ClimateNote state="empty" />)
+  const result = await getOrGenerateClimateNote(c.env, {
+    location: wedding.location,
+    city: wedding.location_city,
+    country: wedding.location_country,
+    dateStr: wedding.date,
+  })
+  if (!result) return c.html(<ClimateNote state="error" />)
+  return c.html(<ClimateNote state="ready" note={result.note} />)
 })
 
 // Wedding notes (shared / vendors / private) are served by the unified

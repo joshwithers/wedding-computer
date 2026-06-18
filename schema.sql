@@ -945,3 +945,14 @@ CREATE TABLE IF NOT EXISTS broadcasts (
   recipient_count INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- AI "expected weather" notes, cached globally by (location_key, month).
+CREATE TABLE IF NOT EXISTS climate_notes (
+  id           TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  location_key TEXT NOT NULL,
+  month        INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12),
+  note         TEXT NOT NULL,
+  source       TEXT,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_climate_notes_key ON climate_notes(location_key, month);

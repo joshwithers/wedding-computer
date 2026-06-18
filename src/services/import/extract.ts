@@ -105,7 +105,7 @@ async function callAnthropic(apiKey: string, userMessage: string): Promise<strin
 }
 
 async function callWorkersAI(ai: Ai, userMessage: string): Promise<string> {
-  const result = (await ai.run('@cf/meta/llama-3.1-8b-instruct', {
+  const result = (await ai.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
     messages: [
       { role: 'system', content: EXTRACTION_PROMPT },
       { role: 'user', content: userMessage },

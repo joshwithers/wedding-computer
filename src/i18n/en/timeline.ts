@@ -10,6 +10,12 @@ export const timeline = {
   'timeline.sun.approx': '≈ approx',
   'timeline.sun.approxHint': 'Estimated from the region — set a precise venue address for exact times.',
 
+  // Expected-weather note (AI, from the region's climate).
+  'climate.heading': 'Expected weather',
+  'climate.loading': 'Checking the typical weather for the season…',
+  'climate.empty': 'Add a location and date to see the weather you can typically expect.',
+  'climate.error': 'Couldn’t generate a weather note right now — try again later.',
+
   'timeline.managedBy': 'Timeline managed by {name}',
   'timeline.managedByCoupleHint': 'Until a planner or venue is added, the couple manages the timeline.',
   'timeline.managedByVendorHint': 'Until a planner or venue is added, {name} manages the timeline.',
