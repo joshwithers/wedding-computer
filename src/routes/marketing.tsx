@@ -151,7 +151,7 @@ Built on Cloudflare Workers. Your data lives in plain text markdown following an
 
 Wedding Computer is **free to start, forever**. No trial, no credit card.
 
-The core platform — CRM, calendar, invoicing, email, run sheets, quote calculator — is free, along with up to **4 active weddings** at a time. Finished weddings free up a slot automatically, so a few weddings a year stays free for good.
+The core platform — CRM, calendar, invoicing, email, run sheets, quote calculator — is free, along with up to **12 active weddings** at a time. Finished weddings free up a slot automatically, so a steady flow of weddings stays free for good.
 
 ## Pro — $28 AUD/month
 

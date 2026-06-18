@@ -6,7 +6,7 @@ import type { VendorProfile } from '../types'
 // Free plan covers this many *active* (upcoming/undated) wedding workspaces at
 // once. Past weddings free up a slot, so it's a rolling cap, not a lifetime or
 // annual count. Pro is uncapped. Tweak here to retune the free tier.
-export const FREE_ACTIVE_WEDDING_LIMIT = 4
+export const FREE_ACTIVE_WEDDING_LIMIT = 12
 
 export type WeddingCapStatus = {
   isPro: boolean
