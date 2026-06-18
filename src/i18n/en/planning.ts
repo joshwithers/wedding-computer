@@ -87,6 +87,14 @@ export const planning = {
   'analytics.demand.empty': 'Demand data will appear after the first daily aggregation runs.',
   'analytics.demand.low': 'Low',
   'analytics.demand.high': 'High',
+  'analytics.demand.explainer': 'Colour shows how busy each date is across all vendors in {area} — darker means more couples want it. Use it to prioritise quotes on hot dates and to spot quiet dates worth promoting.',
+  'analytics.demand.hotTitle': 'Most in-demand upcoming dates',
+  'analytics.demand.hotEmpty': 'No standout dates in this window — demand is fairly even.',
+  'analytics.demand.readoutDefault': 'Tap any date to see its demand.',
+  'analytics.demand.hint.high': 'High demand — reply fast, you can hold your price',
+  'analytics.demand.hint.above': 'Above average — prioritise quotes for these dates',
+  'analytics.demand.byArea': 'Compare areas',
+  'analytics.demand.yourArea': 'your area',
 
   // ─── Insights ───
   'analytics.insights.title': 'Insights',

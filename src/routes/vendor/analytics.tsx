@@ -24,7 +24,7 @@ import { aggregateSources } from '../../lib/sources'
 import { buildFunnel, buildInsights, median, formatDuration, type Insight } from '../../lib/analytics-derive'
 import { formatMoneyCents } from '../../lib/money'
 import { t, getI18n } from '../../i18n'
-import { todayString, formatDayLabel } from '../../lib/date'
+import { todayString, formatDayLabel, firstDayOffset, daysInMonth, toDateString, monthLabel, DAYS_OF_WEEK } from '../../lib/date'
 
 const analytics = new Hono<Env>()
 
@@ -295,6 +295,16 @@ analytics.get('/app/analytics', async (c) => {
     busiestUpcomingMonth,
   })
 
+  // Date demand: lead with the most location-specific level that has data,
+  // keep the broader levels as a compact comparison strip.
+  const demandLevels: { label: string; data: typeof globalHeatmap }[] = []
+  if (vendor.location_city && cityHeatmap.length > 0) demandLevels.push({ label: vendor.location_city, data: cityHeatmap })
+  if (vendor.location_state && stateHeatmap.length > 0) demandLevels.push({ label: vendor.location_state, data: stateHeatmap })
+  demandLevels.push({ label: t('analytics.demand.global'), data: globalHeatmap })
+  const bestDemand = demandLevels[0].data
+  const bestDemandLabel = demandLevels[0].label
+  const demandCompare = demandLevels.slice(1)
+
   // Goals progress — measured over each goal's own period
   const goalsWithProgress = await Promise.all(
     yearGoals.map(async (g) => {
@@ -420,34 +430,12 @@ analytics.get('/app/analytics', async (c) => {
           </div>
         </section>
 
-        {/* Date demand heatmap */}
-        <section class="bg-white rounded-2xl p-5 sm:p-6">
-          <h3 class="font-bold text-gray-900 mb-1">{t('analytics.demand.title')}</h3>
-          <p class="text-sm text-gray-500 mb-5">{t('analytics.demand.subtitle')}</p>
-          {globalHeatmap.length > 0 ? (
-            <div class="space-y-6">
-              {vendor.location_city && cityHeatmap.length > 0 && (
-                <div>
-                  <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">{vendor.location_city}</h4>
-                  <HeatmapGrid data={cityHeatmap} />
-                </div>
-              )}
-              {vendor.location_state && stateHeatmap.length > 0 && (
-                <div>
-                  <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">{vendor.location_state}</h4>
-                  <HeatmapGrid data={stateHeatmap} />
-                </div>
-              )}
-              <div>
-                <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">{t('analytics.demand.global')}</h4>
-                <HeatmapGrid data={globalHeatmap} />
-              </div>
-              <HeatmapLegend />
-            </div>
-          ) : (
-            <p class="text-sm text-gray-400">{t('analytics.demand.empty')}</p>
-          )}
-        </section>
+        {/* Date demand */}
+        <DemandSection
+          primary={{ label: bestDemandLabel, data: bestDemand }}
+          compare={demandCompare}
+          today={w.today}
+        />
       </div>
     </AppLayout>
   )
@@ -751,13 +739,111 @@ function BenchmarkCard({ label, yours, industry, format }: { label: string; your
   )
 }
 
-function HeatmapGrid({ data }: { data: Array<{ date: string; score: number; enquiry_count: number; booking_count: number }> }) {
+type DemandCell = { date: string; score: number; enquiry_count: number; booking_count: number }
+type DemandLevel = { label: string; data: DemandCell[] }
+
+function demandColor(score: number): string {
+  if (score === 0) return 'bg-gray-100'
+  if (score < 0.5) return 'bg-horizon-100'
+  if (score < 1.0) return 'bg-horizon-300'
+  if (score < 2.0) return 'bg-horizon-500'
+  return 'bg-horizon-700'
+}
+
+// Cell text needs to read against its own fill: dark fills get white text.
+function demandTextColor(score: number): string {
+  return score >= 1.0 ? 'text-white' : 'text-gray-500'
+}
+
+// Compact badge ("2×", "+45%") for lists — the full phrasing lives in tooltips.
+function compactDemand(score: number): string {
+  if (score >= 2) {
+    const m = Math.round(score * 10) / 10
+    return `${Number.isInteger(m) ? m.toFixed(0) : m}×`
+  }
+  const pct = Math.round((score - 1) * 100)
+  return `${pct > 0 ? '+' : '−'}${Math.abs(pct)}%`
+}
+
+// Ranked list of the most in-demand upcoming dates — the actionable headline.
+function DemandHotList({ data }: { data: DemandCell[] }) {
+  const hot = data.filter((d) => d.score >= 1.1).sort((a, b) => b.score - a.score).slice(0, 6)
+  if (hot.length === 0) {
+    return <p class="text-sm text-gray-400">{t('analytics.demand.hotEmpty')}</p>
+  }
   return (
-    <div class="flex flex-wrap gap-1">
-      {data.map((d) => {
-        const bg = d.score === 0 ? 'bg-gray-100' : d.score < 0.5 ? 'bg-horizon-100' : d.score < 1.0 ? 'bg-horizon-300' : d.score < 2.0 ? 'bg-horizon-500' : 'bg-horizon-700'
-        // Cross-vendor data: the tooltip stays relative, never absolute counts.
-        return <div class={`w-6 h-6 rounded ${bg} cursor-default`} title={`${formatDayLabel(d.date)}: ${formatVsAverage(d.score, 'date')}`} />
+    <div>
+      <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">{t('analytics.demand.hotTitle')}</h4>
+      <div>
+        {hot.map((d) => (
+          <div class="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+            <span class={`w-3 h-3 rounded-full shrink-0 ${demandColor(d.score)}`} />
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-gray-900">{formatDayLabel(d.date)}</p>
+              <p class="text-xs text-gray-500">{t(d.score >= 2 ? 'analytics.demand.hint.high' : 'analytics.demand.hint.above')}</p>
+            </div>
+            <span class="text-sm font-bold text-horizon-700 tabular-nums shrink-0">{compactDemand(d.score)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Month-by-month calendar so every box has a visible date and weekday context.
+// Cells carry their demand phrasing in data-* attributes; a tiny script writes
+// it into the readout on hover or tap (so it works on touch too).
+function DemandCalendar({ data, today }: { data: DemandCell[]; today: string }) {
+  const byDate = new Map(data.map((d) => [d.date, d]))
+  const dates = data.map((d) => d.date).sort()
+  const first = dates[0]
+  const last = dates[dates.length - 1]
+  const [fy, fm] = first.split('-').map(Number)
+  const [ly, lm] = last.split('-').map(Number)
+
+  const months: { year: number; month: number }[] = []
+  for (let y = fy, m = fm; y < ly || (y === ly && m <= lm); ) {
+    months.push({ year: y, month: m })
+    if (m === 12) { y++; m = 1 } else m++
+  }
+
+  return (
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {months.map(({ year, month }) => {
+        const offset = firstDayOffset(year, month)
+        const total = daysInMonth(year, month)
+        return (
+          <div>
+            <p class="text-xs font-bold text-gray-700 mb-1.5">{monthLabel(year, month)}</p>
+            <div class="grid grid-cols-7 gap-0.5">
+              {DAYS_OF_WEEK.map((d) => (
+                <div class="text-center text-[10px] text-gray-400 font-medium">{d.charAt(0)}</div>
+              ))}
+              {Array.from({ length: offset }).map(() => <div />)}
+              {Array.from({ length: total }).map((_, i) => {
+                const day = i + 1
+                const dateStr = toDateString(year, month, day)
+                const cell = byDate.get(dateStr)
+                const isToday = dateStr === today
+                const isSat = (offset + i) % 7 === 5
+                if (!cell) {
+                  return <div class={`aspect-square flex items-center justify-center text-[10px] ${isToday ? 'text-horizon-700 font-bold' : 'text-gray-300'}`}>{day}</div>
+                }
+                return (
+                  <button
+                    type="button"
+                    data-demand-cell
+                    data-demand-text={`${formatDayLabel(dateStr)}: ${formatVsAverage(cell.score, 'date')}`}
+                    title={`${formatDayLabel(dateStr)}: ${formatVsAverage(cell.score, 'date')}`}
+                    class={`aspect-square rounded flex items-center justify-center text-[10px] font-medium transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-horizon-600 ${demandColor(cell.score)} ${demandTextColor(cell.score)} ${isSat ? 'ring-1 ring-inset ring-horizon-300' : ''} ${isToday ? 'ring-2 ring-inset ring-grapefruit-500' : ''}`}
+                  >
+                    {day}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )
       })}
     </div>
   )
@@ -779,32 +865,75 @@ function HeatmapLegend() {
   )
 }
 
-// Free-tier demand teaser: next 30 days, global only.
-function DemandTeaser({ data }: { data: Array<{ date: string; score: number; enquiry_count: number; booking_count: number }> }) {
+// Compact broader-area comparison strips (city already led; show state/global).
+function CompareStrips({ levels }: { levels: DemandLevel[] }) {
+  const withData = levels.filter((l) => l.data.length > 0)
+  if (withData.length === 0) return <></>
+  return (
+    <div class="pt-2">
+      <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">{t('analytics.demand.byArea')}</h4>
+      <div class="space-y-3">
+        {withData.map((l) => (
+          <div>
+            <p class="text-xs text-gray-500 mb-1">{l.label}</p>
+            <div class="flex flex-wrap gap-1">
+              {l.data.map((d) => (
+                <div class={`w-5 h-5 rounded ${demandColor(d.score)}`} title={`${formatDayLabel(d.date)}: ${formatVsAverage(d.score, 'date')}`} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// The whole Date demand card: explainer + hot list + interactive calendar +
+// legend + optional area comparison, with one delegated readout script.
+function DemandSection({ primary, compare, today, badge, footer }: { primary: DemandLevel; compare: DemandLevel[]; today: string; badge?: boolean; footer?: boolean }) {
+  const isGlobal = primary.label === t('analytics.demand.global')
+  const area = isGlobal ? t('analytics.demand.yourArea') : primary.label
   return (
     <section class="bg-white rounded-2xl p-5 sm:p-6">
       <div class="flex items-center justify-between mb-1">
         <h3 class="font-bold text-gray-900">{t('analytics.demand.title')}</h3>
-        <span class="text-[11px] font-bold uppercase tracking-wider bg-horizon-100 text-horizon-700 rounded-full px-2 py-0.5">{t('analytics.lock.badge')}</span>
+        {badge && <span class="text-[11px] font-bold uppercase tracking-wider bg-horizon-100 text-horizon-700 rounded-full px-2 py-0.5">{t('analytics.lock.badge')}</span>}
       </div>
-      <p class="text-sm text-gray-500 mb-5">{t('analytics.demand.subtitle')}</p>
-      {data.length > 0 ? (
-        <div class="space-y-4">
-          <div>
-            <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">{t('analytics.demand.global')}</h4>
-            <HeatmapGrid data={data} />
+      <p class="text-sm text-gray-500 mb-4">{t('analytics.demand.subtitle')}</p>
+
+      {primary.data.length === 0 ? (
+        <p class="text-sm text-gray-400">{t('analytics.demand.empty')}</p>
+      ) : (
+        <div data-demand-root class="space-y-5">
+          <p class="text-sm text-gray-600 bg-gray-50 rounded-xl px-4 py-3">{t('analytics.demand.explainer', { area })}</p>
+          <DemandHotList data={primary.data} />
+          <div class="space-y-2">
+            <DemandCalendar data={primary.data} today={today} />
+            <p data-demand-readout class="text-xs text-gray-500 min-h-[1rem]">{t('analytics.demand.readoutDefault')}</p>
           </div>
           <HeatmapLegend />
+          <CompareStrips levels={compare} />
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `(function(){document.querySelectorAll('[data-demand-root]').forEach(function(r){var o=r.querySelector('[data-demand-readout]');if(!o)return;var d=o.textContent;r.querySelectorAll('[data-demand-cell]').forEach(function(c){var t=c.getAttribute('data-demand-text');c.addEventListener('mouseenter',function(){o.textContent=t});c.addEventListener('focus',function(){o.textContent=t});c.addEventListener('mouseleave',function(){o.textContent=d});c.addEventListener('click',function(e){e.preventDefault();o.textContent=t});});});})();`,
+            }}
+          />
         </div>
-      ) : (
-        <p class="text-sm text-gray-400">{t('analytics.demand.empty')}</p>
       )}
-      <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-4">
-        <p class="text-sm text-gray-500">{t('analytics.upgrade.feature.demand')}</p>
-        <a href="/app/subscription/checkout" class="shrink-0 text-sm text-horizon-600 font-bold hover:text-horizon-700">{t('analytics.lock.cta')} →</a>
-      </div>
+
+      {footer && (
+        <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-4">
+          <p class="text-sm text-gray-500">{t('analytics.upgrade.feature.demand')}</p>
+          <a href="/app/subscription/checkout" class="shrink-0 text-sm text-horizon-600 font-bold hover:text-horizon-700">{t('analytics.lock.cta')} →</a>
+        </div>
+      )}
     </section>
   )
+}
+
+// Free-tier demand teaser: next 30 days, global only, with an upgrade footer.
+function DemandTeaser({ data }: { data: DemandCell[] }) {
+  return <DemandSection primary={{ label: t('analytics.demand.global'), data }} compare={[]} today={todayString()} badge footer />
 }
 
 // A blurred placeholder section with a lock overlay, for free-tier teasing.
