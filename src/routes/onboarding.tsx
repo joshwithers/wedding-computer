@@ -5,7 +5,8 @@ import { AuthLayout } from '../views/layouts/auth'
 import { requireAuth } from '../middleware/auth'
 import { getVendorByUserId, createVendor, getVendorByReferralCode, updateVendor } from '../db/vendors'
 import { createReferral } from '../db/referrals'
-import { getFirstCoupleWedding, createWedding, addWeddingMember } from '../db/weddings'
+import { getFirstCoupleWedding, createWedding, addWeddingMember, listWeddingsForVendor } from '../db/weddings'
+import { formatDate } from '../lib/date'
 import { linkPendingInvites } from '../db/couple-vendors'
 import { ensureCoupleContact } from '../services/couple-contact'
 import { requireString, trimOrNull } from '../lib/validation'
@@ -403,12 +404,43 @@ onboarding.get('/onboarding/next', async (c) => {
 
   const setup = categorySetup(vendor.category)
 
+  // Weddings whose couples/vendors added this email before they signed up —
+  // linkPendingInvites stamped them onto the new profile, so they're already
+  // here. Surface that as the "wow" moment on the final onboarding step.
+  const joined = (await listWeddingsForVendor(c.env.DB, user.id)).filter((w) => w.role === 'vendor')
+
   return c.html(
     <AuthLayout title="You're all set">
       <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">
         <p class="text-xs font-bold text-horizon-700 mb-2">Step 3 of 3</p>
         <h2 class="text-2xl font-bold mb-1">You're all set, {vendor.business_name}</h2>
         <p class="text-sm text-gray-500 mb-6">{setup.blurb}</p>
+
+        {joined.length > 0 && (
+          <div class="mb-6 bg-horizon-50 border border-horizon-200 rounded-2xl p-4 sm:p-5">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-lg" aria-hidden="true">🎉</span>
+              <h3 class="text-sm font-bold text-horizon-700">
+                You're already on {joined.length} wedding{joined.length !== 1 ? 's' : ''}
+              </h3>
+            </div>
+            <p class="text-xs text-gray-600 mb-3">
+              These were set up by couples and vendors who added you before you even signed up — they're waiting in your dashboard.
+            </p>
+            <div class="space-y-1.5">
+              {joined.slice(0, 5).map((w) => (
+                <div class="flex items-center justify-between gap-3 bg-white rounded-lg px-3 py-2">
+                  <span class="text-sm font-medium text-gray-900 truncate">{w.title}</span>
+                  <span class="text-xs text-gray-500 shrink-0">{w.date ? formatDate(w.date) : 'Date TBC'}</span>
+                </div>
+              ))}
+            </div>
+            {joined.length > 5 && (
+              <p class="text-xs text-gray-400 mt-2">+{joined.length - 5} more in your dashboard</p>
+            )}
+          </div>
+        )}
+
         <div class="space-y-2">
           {setup.recommended.map((f) => (
             <a href={f.href}
