@@ -762,47 +762,6 @@ weddings.get('/app/weddings/:id', async (c) => {
           deleted={!!deleted}
         />
 
-        {/* Expected weather — AI note from the region's climate, lazy-loaded */}
-        {wedding.location && wedding.date && (
-          <div class="mt-6">
-            <h3 class="text-sm font-bold text-gray-500 mb-3">{t('climate.heading')}</h3>
-            <div
-              class="bg-white border border-papaya-300/30 rounded-2xl p-4"
-              hx-get={`/app/weddings/${wedding.id}/climate`}
-              hx-trigger="load"
-              hx-swap="innerHTML"
-            >
-              <p class="text-xs text-gray-400">{t('climate.loading')}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Wedding Log */}
-        {log.length > 0 && (
-          <div class="mt-6">
-            <h3 class="text-sm font-bold text-gray-500 mb-3">Activity Log</h3>
-            <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
-              <div class="space-y-2">
-                {log.map((entry) => (
-                  <div class="flex items-start gap-2 text-xs">
-                    <span class="text-gray-400 whitespace-nowrap shrink-0">
-                      {formatDateTime(entry.created_at)}
-                    </span>
-                    <span class="text-gray-500">
-                      <strong class="text-gray-700">{entry.user_name ?? 'System'}</strong>
-                      {': '}
-                      {entry.action}
-                      {entry.detail && (
-                        <span class="text-gray-400"> — {entry.detail}</span>
-                      )}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Vendor Credits */}
         {credits.length > 0 && (
           <WeddingCredits credits={credits} weddingTitle={wedding.title} />
@@ -938,6 +897,47 @@ weddings.get('/app/weddings/:id', async (c) => {
               </form>
             </div>
           </details>
+        )}
+
+        {/* Expected weather — AI note from the region's climate, lazy-loaded */}
+        {wedding.location && wedding.date && (
+          <div class="mt-6">
+            <h3 class="text-sm font-bold text-gray-500 mb-3">{t('climate.heading')}</h3>
+            <div
+              class="bg-white border border-papaya-300/30 rounded-2xl p-4"
+              hx-get={`/app/weddings/${wedding.id}/climate`}
+              hx-trigger="load"
+              hx-swap="innerHTML"
+            >
+              <p class="text-xs text-gray-400">{t('climate.loading')}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Wedding Log */}
+        {log.length > 0 && (
+          <div class="mt-6">
+            <h3 class="text-sm font-bold text-gray-500 mb-3">Activity Log</h3>
+            <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
+              <div class="space-y-2">
+                {log.map((entry) => (
+                  <div class="flex items-start gap-2 text-xs">
+                    <span class="text-gray-400 whitespace-nowrap shrink-0">
+                      {formatDateTime(entry.created_at)}
+                    </span>
+                    <span class="text-gray-500">
+                      <strong class="text-gray-700">{entry.user_name ?? 'System'}</strong>
+                      {': '}
+                      {entry.action}
+                      {entry.detail && (
+                        <span class="text-gray-400"> — {entry.detail}</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </AppLayout>
