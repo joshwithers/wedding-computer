@@ -221,6 +221,28 @@ export async function geocodePendingLocations(env: Bindings, limit = 25): Promis
   if (!env.GOOGLE_MAPS_API_KEY) return 0
   let processed = 0
 
+  // Weddings FIRST + on their own budget. They drive the user-facing timeline
+  // sun strip, so they must never be starved by a large contact backlog — a
+  // 600-row contact queue used to consume the whole shared limit, leaving every
+  // wedding forever un-geocoded. Each entity type now gets its own `limit`.
+  const weddings = await env.DB.prepare(
+    `SELECT id FROM weddings
+     WHERE location IS NOT NULL AND location != ''
+       AND (location_geocoded_from IS NULL OR location_geocoded_from != location OR location_lat IS NULL)
+     LIMIT ?`
+  )
+    .bind(limit)
+    .all<{ id: string }>()
+    .then((r) => r.results)
+  for (const { id } of weddings) {
+    try {
+      await geocodeWeddingLocation(env, id)
+      processed++
+    } catch (err: any) {
+      console.error('[geocode] wedding', id, err.message)
+    }
+  }
+
   const contacts = await env.DB.prepare(
     `SELECT id FROM contacts
      WHERE wedding_location IS NOT NULL AND wedding_location != ''
@@ -239,31 +261,13 @@ export async function geocodePendingLocations(env: Bindings, limit = 25): Promis
     }
   }
 
-  const weddings = await env.DB.prepare(
-    `SELECT id FROM weddings
-     WHERE location IS NOT NULL AND location != ''
-       AND (location_geocoded_from IS NULL OR location_geocoded_from != location OR location_lat IS NULL)
-     LIMIT ?`
-  )
-    .bind(Math.max(0, limit - processed))
-    .all<{ id: string }>()
-    .then((r) => r.results)
-  for (const { id } of weddings) {
-    try {
-      await geocodeWeddingLocation(env, id)
-      processed++
-    } catch (err: any) {
-      console.error('[geocode] wedding', id, err.message)
-    }
-  }
-
   // Vendors who set a free-text location before settings started geocoding.
   const vendors = await env.DB.prepare(
     `SELECT id, location FROM vendor_profiles
      WHERE location IS NOT NULL AND location != '' AND location_country IS NULL
      LIMIT ?`
   )
-    .bind(Math.max(0, limit - processed))
+    .bind(limit)
     .all<{ id: string; location: string }>()
     .then((r) => r.results)
   for (const { id, location } of vendors) {
