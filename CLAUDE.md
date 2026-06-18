@@ -15,7 +15,7 @@ The project is **closed source** (private repo, proprietary). Do **not** describ
 
 ### Pricing
 
-The core product is **free forever** (not "early access", not a trial). A paid Pro subscription gates power features: device sync (CalDAV/CardDAV), the vault sync API, the JSON intake API, and the MCP server.
+The core product is **free to start, forever** (not "early access", not a time-limited trial). The free plan has a **soft cap of 4 active (upcoming/undated) wedding workspaces** at once — finished weddings free up a slot, so a few weddings a year stays free indefinitely. The cap is enforced at wedding creation/promotion only (`services/plan-limits.ts`, `FREE_ACTIVE_WEDDING_LIMIT`); existing weddings stay fully editable, and weddings a vendor is *invited* into never count. A paid Pro subscription ($28/mo) lifts the cap to unlimited and gates power features: device sync (CalDAV/CardDAV), the vault sync API, the JSON intake API, the MCP server, analytics, and AI.
 
 ### Sibling projects (don't break these)
 

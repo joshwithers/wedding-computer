@@ -22,6 +22,30 @@ export async function listWeddingsForVendor(
     .then((r) => r.results)
 }
 
+// Count the vendor's own *active* (upcoming or undated) weddings — the unit the
+// free-plan cap is measured against. Scoped to weddings this user originated
+// (created_by_user_id), so weddings a planner invited them into never count,
+// and past weddings free up a slot.
+export async function countActiveOwnWeddings(
+  db: D1Database,
+  userId: string,
+  today: string
+): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(DISTINCT w.id) AS c
+       FROM weddings w
+       JOIN wedding_members wm ON wm.wedding_id = w.id
+       WHERE wm.user_id = ? AND wm.role = 'vendor' AND wm.status = 'active'
+         AND w.created_by_user_id = ?
+         AND (w.status IS NULL OR w.status NOT IN ('completed', 'cancelled'))
+         AND (w.date IS NULL OR w.date >= ?)`
+    )
+    .bind(userId, userId, today)
+    .first<{ c: number }>()
+  return row?.c ?? 0
+}
+
 export async function getWedding(
   db: D1Database,
   weddingId: string

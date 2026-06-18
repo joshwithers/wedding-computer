@@ -9,4 +9,14 @@ export const weddings = {
   'weddings.timeline.decline': 'Decline',
   'weddings.timeline.sentForApproval':
     'Your timeline change was sent to the wedding manager for approval.',
+
+  // Free-plan active-wedding cap
+  'weddings.cap.used': '{count} of {limit} free weddings',
+  'weddings.cap.lastOne': '1 free wedding left',
+  'weddings.cap.upgradeButton': 'Upgrade to add more',
+  'weddings.cap.title': 'You’ve reached your free plan limit',
+  'weddings.cap.body':
+    'Your free plan covers up to {limit} active weddings at a time. Finished weddings free up a slot automatically — or upgrade to Pro for unlimited weddings, device sync, analytics and AI.',
+  'weddings.cap.cta': 'Upgrade to Pro',
+  'weddings.cap.manage': 'Manage your weddings',
 } as const

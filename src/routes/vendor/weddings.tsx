@@ -48,6 +48,7 @@ import { sendVendorWelcomeInvite } from '../../services/auth'
 import { TIMELINE_FIELDS } from '../../services/timeline-edit'
 import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes } from '../../db/timeline'
 import { t } from '../../i18n'
+import { weddingCapStatus } from '../../services/plan-limits'
 import { WeddingDoc } from '../../views/wedding-doc'
 import { loadDocTabs } from '../../db/wedding-docs'
 import { WebLinks } from '../../views/web-links'
@@ -104,6 +105,7 @@ weddings.get('/app/weddings', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
   const items = await listWeddingsForVendor(c.env.DB, user.id)
+  const cap = await weddingCapStatus(c.env.DB, vendor, user.id)
 
   const upcoming = items.filter((w) => w.status !== 'completed' && w.status !== 'cancelled')
   const past = items.filter((w) => w.status === 'completed' || w.status === 'cancelled')
@@ -112,15 +114,31 @@ weddings.get('/app/weddings', async (c) => {
     <AppLayout title="Weddings" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-4xl">
         <div class="flex items-center justify-between gap-4 mb-6">
-          <p class="text-sm text-gray-500">
-            {items.length} wedding{items.length !== 1 ? 's' : ''}
-          </p>
-          <a
-            href="/app/weddings/new"
-            class="bg-horizon-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
-          >
-            New wedding
-          </a>
+          <div>
+            <p class="text-sm text-gray-500">
+              {items.length} wedding{items.length !== 1 ? 's' : ''}
+            </p>
+            {!cap.isPro && (
+              <p class="text-xs text-gray-400 mt-0.5">
+                {cap.remaining === 1 ? t('weddings.cap.lastOne') : t('weddings.cap.used', { count: cap.count, limit: cap.limit })}
+              </p>
+            )}
+          </div>
+          {cap.atCap ? (
+            <a
+              href="/app/subscription/checkout"
+              class="bg-horizon-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
+            >
+              {t('weddings.cap.upgradeButton')}
+            </a>
+          ) : (
+            <a
+              href="/app/weddings/new"
+              class="bg-horizon-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
+            >
+              New wedding
+            </a>
+          )}
         </div>
 
         {items.length === 0 ? (
@@ -152,9 +170,17 @@ weddings.get('/app/weddings', async (c) => {
 })
 
 // ─── New wedding ───
-weddings.get('/app/weddings/new', (c) => {
+weddings.get('/app/weddings/new', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
+  const cap = await weddingCapStatus(c.env.DB, vendor, user.id)
+  if (cap.atCap) {
+    return c.html(
+      <AppLayout title="New wedding" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
+        <WeddingCapPrompt limit={cap.limit} />
+      </AppLayout>
+    )
+  }
   const contactId = c.req.query('contact')
   const types: string[] = vendor.ceremony_types ? JSON.parse(vendor.ceremony_types) : []
 
@@ -175,6 +201,18 @@ weddings.get('/app/weddings/new', (c) => {
 weddings.post('/app/weddings/new', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
+
+  // Soft cap guard — also enforced server-side so a direct POST can't bypass
+  // the hidden form. Existing weddings stay editable; only new ones are blocked.
+  const cap = await weddingCapStatus(c.env.DB, vendor, user.id)
+  if (cap.atCap) {
+    return c.html(
+      <AppLayout title="New wedding" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
+        <WeddingCapPrompt limit={cap.limit} />
+      </AppLayout>
+    )
+  }
+
   const body = await c.req.parseBody()
 
   try {
@@ -1268,6 +1306,14 @@ weddings.post('/app/weddings/:id/timeline-requests/:rid/:decision{approve|declin
 weddings.get('/app/contacts/:id/promote', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
+  const cap = await weddingCapStatus(c.env.DB, vendor, user.id)
+  if (cap.atCap) {
+    return c.html(
+      <AppLayout title="Create wedding" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
+        <WeddingCapPrompt limit={cap.limit} />
+      </AppLayout>
+    )
+  }
   const storage = await getStorageWithSecrets(c.env, vendor)
   const contactResult = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
   if (!contactResult) return c.text('Contact not found', 404)
@@ -1310,6 +1356,33 @@ export default weddings
 
 import type { WeddingWithRole } from '../../db/weddings'
 import type { DocumentWithUploader } from '../../db/documents'
+
+// Soft-cap interstitial shown when a free vendor tries to add a wedding beyond
+// the active limit. Existing weddings remain editable — this only blocks new.
+function WeddingCapPrompt({ limit }: { limit: number }) {
+  return (
+    <div class="max-w-xl mx-auto text-center">
+      <div class="bg-white rounded-2xl p-8 sm:p-10">
+        <div class="w-14 h-14 bg-horizon-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
+          <svg class="w-7 h-7 text-horizon-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+        </div>
+        <h2 class="text-xl font-bold text-gray-900 mb-2">{t('weddings.cap.title')}</h2>
+        <p class="text-sm text-gray-600 mb-8 max-w-sm mx-auto">{t('weddings.cap.body', { limit })}</p>
+        <a
+          href="/app/subscription/checkout"
+          class="inline-block bg-horizon-600 text-white rounded-xl px-8 py-3 text-sm font-bold hover:bg-horizon-700 transition-colors"
+        >
+          {t('weddings.cap.cta')}
+        </a>
+        <div class="mt-4">
+          <a href="/app/weddings" class="text-sm text-gray-500 hover:text-gray-700">{t('weddings.cap.manage')}</a>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 type WeddingMemberRow = {
   user_id: string
