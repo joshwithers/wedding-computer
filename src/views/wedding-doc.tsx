@@ -64,8 +64,7 @@ export function WeddingDoc({
 
   return (
     <div class="mt-6" id="wdoc">
-      <div class="rounded-2xl overflow-hidden bg-white border border-papaya-300/30">
-        <div class="flex items-center justify-between gap-3 flex-wrap px-5 py-3 border-b border-papaya-300/30">
+      <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
           <div class="flex items-center gap-3">
             <h3 class="text-sm font-bold text-gray-500">{t('docs.heading')}</h3>
             <div class="flex rounded-lg border border-gray-200 overflow-hidden text-xs" role="tablist">
@@ -85,8 +84,9 @@ export function WeddingDoc({
             <span id="wdoc-presence" class="text-[10px] text-gray-400"></span>
             <span id="wdoc-status" class="text-xs text-gray-400 transition-opacity"></span>
           </div>
-        </div>
+      </div>
 
+      <div class="rounded-2xl overflow-hidden bg-white border border-papaya-300/30">
         <p id="wdoc-hint" class="px-5 pt-3 text-[10px] text-gray-400"></p>
 
         <div

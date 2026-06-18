@@ -444,15 +444,15 @@ export function WeddingTimeline(props: TimelineProps) {
   const hintKey = LEAD_HINT[props.lead.source]
   return (
     <div class="mt-6" id="timeline">
+      <div class="mb-3">
+        <h3 class="text-sm font-bold text-gray-500">{t('timeline.heading')}</h3>
+        <p class="text-[10px] text-gray-400">{t('timeline.subhead')}</p>
+        <p class="text-[10px] text-grapefruit-700 mt-0.5">
+          {t('timeline.managedBy', { name: props.leadLabel })}
+          {hintKey && <span class="text-gray-400"> · {t(hintKey, { name: props.leadLabel })}</span>}
+        </p>
+      </div>
       <div class="rounded-2xl overflow-hidden bg-white border border-papaya-300/30">
-        <div class="px-5 py-3 border-b border-papaya-300/30">
-          <h3 class="text-sm font-bold text-gray-500">{t('timeline.heading')}</h3>
-          <p class="text-[10px] text-gray-400">{t('timeline.subhead')}</p>
-          <p class="text-[10px] text-grapefruit-700 mt-1">
-            {t('timeline.managedBy', { name: props.leadLabel })}
-            {hintKey && <span class="text-gray-400"> · {t(hintKey, { name: props.leadLabel })}</span>}
-          </p>
-        </div>
         {props.sun && <DaylightStrip sun={props.sun} />}
         <TimelineBody {...props} />
       </div>

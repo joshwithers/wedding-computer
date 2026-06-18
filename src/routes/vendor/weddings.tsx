@@ -596,9 +596,9 @@ weddings.get('/app/weddings/:id', async (c) => {
         )}
 
         {pendingTimelineRequests.length > 0 && (
-          <div class="bg-white border border-horizon-600/30 rounded-2xl p-4 mb-6">
-            <h3 class="text-sm font-bold text-gray-900 mb-3">{t('weddings.timeline.pendingTitle')}</h3>
-            <div class="space-y-3">
+          <div class="mb-6">
+            <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.timeline.pendingTitle')}</h3>
+            <div class="bg-white border border-horizon-600/30 rounded-2xl p-4 space-y-3">
               {pendingTimelineRequests.map((req) => (
                 <div class="flex items-start justify-between gap-3 text-sm border-b border-gray-100 last:border-0 pb-3 last:pb-0">
                   <div>
@@ -629,80 +629,90 @@ weddings.get('/app/weddings/:id', async (c) => {
           </div>
         )}
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-          <div class="lg:col-span-2 space-y-6">
-            {/* Status */}
-            <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
-              <div class="flex items-center justify-between">
+        {/* Details — one dense card instead of a scatter of single-value boxes */}
+        <div class="mb-6">
+          <h3 class="text-sm font-bold text-gray-500 mb-3">Details</h3>
+          <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
+            <dl class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-4">
+              <div>
+                <dt class="text-xs text-gray-500 mb-1">Status</dt>
+                <dd><WeddingStatusBadge status={wedding.status} /></dd>
+              </div>
+              {wedding.date && (
                 <div>
-                  <p class="text-xs text-gray-500">Status</p>
-                  <p class="font-medium">{wedding.status.charAt(0).toUpperCase() + wedding.status.slice(1)}</p>
+                  <dt class="text-xs text-gray-500 mb-1">Date</dt>
+                  <dd class="text-sm font-medium text-gray-900">{formatDate(wedding.date)}</dd>
                 </div>
-                <WeddingStatusBadge status={wedding.status} />
-              </div>
-            </div>
-
-            {/* Members */}
-            <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
-              <h3 class="text-sm font-bold text-gray-500 mb-3">People</h3>
-              <div class="space-y-3">
-                {members.map((m) => (
-                  <div class="flex items-center justify-between text-sm">
-                    <div>
-                      <p class="font-medium text-gray-900">
-                        {m.business_name ?? m.user_name}
-                      </p>
-                      <p class="text-xs text-gray-500">{m.user_email}</p>
-                    </div>
-                    <div class="text-right flex items-center gap-1.5">
-                      <span class="text-xs text-gray-500">
-                        {m.vendor_role ? m.vendor_role.charAt(0).toUpperCase() + m.vendor_role.slice(1) : m.role.charAt(0).toUpperCase() + m.role.slice(1)}
-                      </span>
-                      {!!m.can_manage && (
-                        <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">Manager</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {vendor.is_agency === 1 && (
-              <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
-                <h3 class="text-sm font-bold text-gray-500 mb-3">Your team</h3>
-                <div
-                  hx-get={`/app/weddings/${wedding.id}/team-assignments`}
-                  hx-trigger="load"
-                  hx-swap="innerHTML"
-                >
-                  <p class="text-xs text-gray-400">Loading team assignments...</p>
+              )}
+              {wedding.time && (
+                <div>
+                  <dt class="text-xs text-gray-500 mb-1">Time</dt>
+                  <dd class="text-sm font-medium text-gray-900">
+                    {formatTime(wedding.time) +
+                      (wedding.duration_hours
+                        ? ` (${wedding.duration_hours % 1 === 0 ? wedding.duration_hours + 'h' : Math.floor(wedding.duration_hours) + 'h 30m'})`
+                        : '')}
+                  </dd>
                 </div>
+              )}
+              {wedding.location && (
+                <div>
+                  <dt class="text-xs text-gray-500 mb-1">City / Region</dt>
+                  <dd class="text-sm font-medium text-gray-900">{wedding.location}</dd>
+                </div>
+              )}
+              <div>
+                <dt class="text-xs text-gray-500 mb-1">Your role</dt>
+                <dd class="text-sm font-medium text-gray-900">
+                  {membership.vendor_role ? membership.vendor_role.charAt(0).toUpperCase() + membership.vendor_role.slice(1) : categoriesLabel(vendor)}
+                  {membership.can_manage ? ' (manager)' : ''}
+                </dd>
               </div>
-            )}
-
-          </div>
-
-          {/* Sidebar */}
-          <div class="space-y-4">
-            {wedding.date && (
-              <InfoCard label="Date" value={formatDate(wedding.date)} />
-            )}
-            {wedding.time && (
-              <InfoCard
-                label="Time"
-                value={
-                  formatTime(wedding.time) +
-                  (wedding.duration_hours
-                    ? ` (${wedding.duration_hours % 1 === 0 ? wedding.duration_hours + 'h' : Math.floor(wedding.duration_hours) + 'h 30m'})`
-                    : '')
-                }
-              />
-            )}
-            {wedding.location && <InfoCard label="City / Region" value={wedding.location} />}
-            <InfoCard label="Your role" value={`${membership.vendor_role ? membership.vendor_role.charAt(0).toUpperCase() + membership.vendor_role.slice(1) : categoriesLabel(vendor)}${membership.can_manage ? ' (manager)' : ''}`} />
-            <InfoCard label="Created" value={formatDate(wedding.created_at)} />
+              <div>
+                <dt class="text-xs text-gray-500 mb-1">Created</dt>
+                <dd class="text-sm font-medium text-gray-900">{formatDate(wedding.created_at)}</dd>
+              </div>
+            </dl>
           </div>
         </div>
+
+        {/* People */}
+        <div class="mb-6">
+          <h3 class="text-sm font-bold text-gray-500 mb-3">People</h3>
+          <div class="bg-white border border-papaya-300/30 rounded-2xl p-4 space-y-3">
+            {members.map((m) => (
+              <div class="flex items-center justify-between text-sm">
+                <div>
+                  <p class="font-medium text-gray-900">{m.business_name ?? m.user_name}</p>
+                  <p class="text-xs text-gray-500">{m.user_email}</p>
+                </div>
+                <div class="text-right flex items-center gap-1.5">
+                  <span class="text-xs text-gray-500">
+                    {m.vendor_role ? m.vendor_role.charAt(0).toUpperCase() + m.vendor_role.slice(1) : m.role.charAt(0).toUpperCase() + m.role.slice(1)}
+                  </span>
+                  {!!m.can_manage && (
+                    <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">Manager</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Your team (agencies) */}
+        {vendor.is_agency === 1 && (
+          <div class="mb-6">
+            <h3 class="text-sm font-bold text-gray-500 mb-3">Your team</h3>
+            <div
+              class="bg-white border border-papaya-300/30 rounded-2xl p-4"
+              hx-get={`/app/weddings/${wedding.id}/team-assignments`}
+              hx-trigger="load"
+              hx-swap="innerHTML"
+            >
+              <p class="text-xs text-gray-400">Loading team assignments...</p>
+            </div>
+          </div>
+        )}
 
         {/* Places */}
         <WeddingPlaces wedding={wedding} />
@@ -1430,14 +1440,6 @@ function WeddingPlaces({ wedding }: { wedding: Wedding }) {
   )
 }
 
-function InfoCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div class="bg-white border border-papaya-300/30 rounded-2xl px-4 py-3">
-      <p class="text-xs text-gray-500 mb-0.5">{label}</p>
-      <p class="text-sm text-gray-900">{value}</p>
-    </div>
-  )
-}
 
 function InvoiceStatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {

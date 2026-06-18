@@ -179,11 +179,11 @@ export function WebLinks(props: {
 }) {
   return (
     <div class="mt-6" id="weblinks">
+      <div class="mb-3">
+        <h3 class="text-sm font-bold text-gray-500">{t('links.heading')}</h3>
+        <p class="text-[10px] text-gray-400">{t('links.hint')}</p>
+      </div>
       <div class="rounded-2xl overflow-hidden bg-white border border-papaya-300/30">
-        <div class="px-5 py-3 border-b border-papaya-300/30">
-          <h3 class="text-sm font-bold text-gray-500">{t('links.heading')}</h3>
-          <p class="text-[10px] text-gray-400">{t('links.hint')}</p>
-        </div>
         <WebLinkList
           links={props.links}
           basePath={props.basePath}
