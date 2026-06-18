@@ -988,4 +988,94 @@ export const nl: Dictionary = {
   "analytics.teaser.title": "Prestaties",
   "analytics.teaser.link": "Analyses bekijken",
   "analytics.teaser.linkFree": "Bekijk trends, benchmarks en vraag",
+
+  // ─── Onboarding-wizard (eerste keer) ───
+  // Algemeen
+  "onboarding.step": "Stap {current} van {total}",
+  "onboarding.continue": "Doorgaan",
+  "onboarding.yourName": "Uw naam",
+
+  // Keuzescherm
+  "onboarding.start.title": "Aan de slag",
+  "onboarding.start.heading": "Welkom!",
+  "onboarding.start.subtitle": "Wat brengt u naar Wedding Computer?",
+  "onboarding.start.namePrompt": "Eerst: wat is uw naam?",
+  "onboarding.start.namePlaceholder": "Uw naam",
+  "onboarding.start.save": "Opslaan",
+  "onboarding.start.vendor.title": "Ik ben een trouwprofessional",
+  "onboarding.start.vendor.desc": "Stel uw bedrijf in — beheer contacten, agenda, facturen en meer.",
+  "onboarding.start.couple.title": "Ik ben een bruiloft aan het plannen",
+  "onboarding.start.couple.desc": "Maak uw bruiloft aan — houd leveranciers, budget en details op één plek bij.",
+
+  // Bedrijfsstap
+  "onboarding.business.title": "Stel uw bedrijf in",
+  "onboarding.business.subtitle": "Vertel ons iets over uw bedrijf om te beginnen.",
+  "onboarding.business.businessName": "Bedrijfsnaam",
+  "onboarding.business.whatYouDo": "Wat doet u?",
+  "onboarding.business.chooseAtLeastOne": "(kies er ten minste één)",
+  "onboarding.business.emailLabel": "Uw e-mailadres",
+  "onboarding.business.emailHelp": "Kies een naam voor het verzenden en ontvangen van e-mails op Wedding Computer.",
+  "onboarding.business.emailPlaceholder": "uwnaam",
+
+  // Categorielabels (welk soort leverancier)
+  "onboarding.category.celebrant": "Trouwambtenaar",
+  "onboarding.category.photographer": "Fotograaf",
+  "onboarding.category.videographer": "Videograaf",
+  "onboarding.category.florist": "Bloemist",
+  "onboarding.category.planner": "Weddingplanner",
+  "onboarding.category.venue": "Locatie",
+  "onboarding.category.stylist": "Stylist",
+  "onboarding.category.caterer": "Cateraar",
+  "onboarding.category.dj": "DJ",
+  "onboarding.category.band": "Band",
+  "onboarding.category.hair": "Haarstylist",
+  "onboarding.category.makeup": "Visagist",
+  "onboarding.category.cake": "Taartenbakker",
+  "onboarding.category.stationery": "Drukwerkontwerper",
+  "onboarding.category.other": "Anders",
+
+  // Validatiefouten
+  "onboarding.error.pickCategory": "Kies ten minste één categorie",
+  "onboarding.error.handleShort": "De e-mailnaam moet ten minste 3 tekens bevatten",
+  "onboarding.error.handleTaken": "Die e-mailnaam is al in gebruik",
+  "onboarding.error.businessNameRequired": "Bedrijfsnaam is verplicht",
+
+  // Profielstap
+  "onboarding.profile.metaTitle": "Uw gegevens",
+  "onboarding.profile.heading": "Voeg uw gegevens toe",
+  "onboarding.profile.subtitle": "Deze worden getoond op uw profiel en aanvraagformulier. U kunt dit overslaan en later toevoegen.",
+  "onboarding.profile.phone": "Telefoon",
+  "onboarding.profile.location": "Locatie",
+  "onboarding.profile.locationPlaceholder": "Stad of regio die u bedient",
+  "onboarding.profile.website": "Website",
+  "onboarding.profile.instagram": "Instagram",
+  "onboarding.profile.instagramPlaceholder": "@uwnaam",
+  "onboarding.profile.bio": "Korte bio",
+  "onboarding.profile.bioPlaceholder": "Een zin of twee over wat u doet",
+  "onboarding.profile.skip": "Voor nu overslaan",
+
+  // Laatste stap
+  "onboarding.next.metaTitle": "U bent helemaal klaar",
+  "onboarding.next.heading": "U bent helemaal klaar, {name}",
+  "onboarding.next.gotoDashboard": "Ga naar uw dashboard",
+  "onboarding.next.checklistNote": "Daar vindt u een instelchecklist om de basis af te ronden.",
+  "onboarding.next.joined.title.one": "U staat al bij {count} bruiloft",
+  "onboarding.next.joined.title.other": "U staat al bij {count} bruiloften",
+  "onboarding.next.joined.subtitle": "Deze zijn ingesteld door koppels en leveranciers die u toevoegden nog voordat u zich aanmeldde — ze wachten in uw dashboard.",
+  "onboarding.next.joined.dateTbc": "Datum nog te bepalen",
+  "onboarding.next.joined.more": "+{count} meer in uw dashboard",
+
+  // Bruiloftstap voor koppels
+  "onboarding.wedding.metaTitle": "Plan uw bruiloft",
+  "onboarding.wedding.title": "Plan uw bruiloft",
+  "onboarding.wedding.subtitle": "Vertel ons iets over uw dag. U kunt deze gegevens later altijd bijwerken.",
+  "onboarding.wedding.partnerName": "De naam van uw partner",
+  "onboarding.wedding.partnerPlaceholder": "Optioneel — u kunt dit later toevoegen",
+  "onboarding.wedding.date": "Trouwdatum",
+  "onboarding.wedding.dateHelp": "Nog geen datum? Geen zorgen — laat dit leeg.",
+  "onboarding.wedding.location": "Locatie",
+  "onboarding.wedding.locationPlaceholder": "Stad of naam van de locatie",
+  "onboarding.wedding.create": "Maak mijn bruiloft aan",
+  "onboarding.wedding.defaultTitle": "Bruiloft van {name}",
+  "onboarding.wedding.defaultTitleCouple": "Bruiloft van {a} & {b}",
 }

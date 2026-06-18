@@ -9,10 +9,10 @@ import { getFirstCoupleWedding, createWedding, addWeddingMember, listWeddingsFor
 import { formatDate } from '../lib/date'
 import { linkPendingInvites } from '../db/couple-vendors'
 import { ensureCoupleContact } from '../services/couple-contact'
-import { requireString, trimOrNull } from '../lib/validation'
+import { trimOrNull } from '../lib/validation'
 import { FormEnhancements } from '../lib/form-enhance'
 import { VENDOR_CATEGORIES } from '../types'
-import { t } from '../i18n'
+import { t, tp, type MessageKey } from '../i18n'
 import { categorySetup } from '../lib/onboarding'
 
 const onboarding = new Hono<Env>()
@@ -38,27 +38,27 @@ onboarding.get('/onboarding', async (c) => {
   const needsName = !user.name || user.name === user.email.split('@')[0]
 
   return c.html(
-    <AuthLayout title="Get started">
+    <AuthLayout title={t('onboarding.start.title')}>
       <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">
-        <h2 class="text-2xl font-bold mb-1">Welcome!</h2>
-        <p class="text-sm text-gray-500 mb-6">What brings you to Wedding Computer?</p>
+        <h2 class="text-2xl font-bold mb-1">{t('onboarding.start.heading')}</h2>
+        <p class="text-sm text-gray-500 mb-6">{t('onboarding.start.subtitle')}</p>
 
         {needsName && (
           <div class="mb-6 pb-6 border-b border-gray-100">
-            <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">First, what's your name?</p>
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">{t('onboarding.start.namePrompt')}</p>
             <form method="post" action="/onboarding/name" class="flex gap-2">
               <input
                 type="text"
                 name="name"
                 required
-                placeholder="Your name"
+                placeholder={t('onboarding.start.namePlaceholder')}
                 class="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
               />
               <button
                 type="submit"
                 class="bg-horizon-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors shrink-0"
               >
-                Save
+                {t('onboarding.start.save')}
               </button>
             </form>
           </div>
@@ -76,8 +76,8 @@ onboarding.get('/onboarding', async (c) => {
                 </svg>
               </div>
               <div>
-                <div class="font-bold text-gray-900 group-hover:text-horizon-700">I'm a wedding professional</div>
-                <p class="text-sm text-gray-500 mt-0.5">Set up your business — manage contacts, calendar, invoices and more.</p>
+                <div class="font-bold text-gray-900 group-hover:text-horizon-700">{t('onboarding.start.vendor.title')}</div>
+                <p class="text-sm text-gray-500 mt-0.5">{t('onboarding.start.vendor.desc')}</p>
               </div>
             </div>
           </a>
@@ -93,8 +93,8 @@ onboarding.get('/onboarding', async (c) => {
                 </svg>
               </div>
               <div>
-                <div class="font-bold text-gray-900 group-hover:text-grapefruit-700">I'm planning a wedding</div>
-                <p class="text-sm text-gray-500 mt-0.5">Create your wedding — track vendors, budget, and details all in one place.</p>
+                <div class="font-bold text-gray-900 group-hover:text-grapefruit-700">{t('onboarding.start.couple.title')}</div>
+                <p class="text-sm text-gray-500 mt-0.5">{t('onboarding.start.couple.desc')}</p>
               </div>
             </div>
           </a>
@@ -133,25 +133,25 @@ onboarding.get('/onboarding/business', async (c) => {
   const needsName = !user.name || user.name === user.email.split('@')[0]
 
   return c.html(
-    <AuthLayout title="Set up your business">
+    <AuthLayout title={t('onboarding.business.title')}>
       <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">
-        <p class="text-xs font-bold text-horizon-700 mb-2">Step 1 of 3</p>
+        <p class="text-xs font-bold text-horizon-700 mb-2">{t('onboarding.step', { current: 1, total: 3 })}</p>
         <div class="flex items-center gap-2 mb-6">
           <a href="/onboarding" class="text-gray-400 hover:text-gray-600 transition-colors">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
             </svg>
           </a>
-          <h2 class="text-2xl font-bold">Set up your business</h2>
+          <h2 class="text-2xl font-bold">{t('onboarding.business.title')}</h2>
         </div>
-        <p class="text-sm text-gray-500 mb-6">Tell us about your business to get started.</p>
+        <p class="text-sm text-gray-500 mb-6">{t('onboarding.business.subtitle')}</p>
         {error && <p class="text-sm text-grapefruit-700 font-medium mb-4">{error}</p>}
         <form method="post" action="/onboarding/business">
           <div class="space-y-4">
             {needsName && (
               <div>
                 <label class="block text-sm font-bold text-gray-700 mb-1.5" for="name">
-                  Your name
+                  {t('onboarding.yourName')}
                 </label>
                 <input
                   type="text"
@@ -165,7 +165,7 @@ onboarding.get('/onboarding/business', async (c) => {
             )}
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5" for="business_name">
-                Business name
+                {t('onboarding.business.businessName')}
               </label>
               <input
                 type="text"
@@ -178,8 +178,8 @@ onboarding.get('/onboarding/business', async (c) => {
             </div>
             <div>
               <span class="block text-sm font-bold text-gray-700 mb-1.5">
-                What do you do? <span class="text-grapefruit-700">*</span>
-                <span class="font-normal text-gray-400">(choose at least one)</span>
+                {t('onboarding.business.whatYouDo')} <span class="text-grapefruit-700">*</span>
+                <span class="font-normal text-gray-400">{t('onboarding.business.chooseAtLeastOne')}</span>
               </span>
               <p class="text-xs text-gray-500 mb-2">{t('settings.categories.help')}</p>
               <div class="grid grid-cols-2 gap-2">
@@ -192,17 +192,17 @@ onboarding.get('/onboarding/business', async (c) => {
                       checked={selectedCats.includes(cat)}
                       class="rounded border-gray-300 text-horizon-600 focus:ring-horizon-600"
                     />
-                    <span>{cat.charAt(0).toUpperCase() + cat.slice(1)}</span>
+                    <span>{t(`onboarding.category.${cat}` as MessageKey)}</span>
                   </label>
                 ))}
               </div>
             </div>
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5" for="email_handle">
-                Your email address
+                {t('onboarding.business.emailLabel')}
               </label>
               <p class="text-xs text-gray-500 mb-2">
-                Choose a handle for sending and receiving emails on Wedding Computer.
+                {t('onboarding.business.emailHelp')}
               </p>
               <div class="flex items-center gap-0">
                 <input
@@ -210,7 +210,7 @@ onboarding.get('/onboarding/business', async (c) => {
                   id="email_handle"
                   name="email_handle"
                   value={emailHandle}
-                  placeholder="yourname"
+                  placeholder={t('onboarding.business.emailPlaceholder')}
                   pattern="[a-z0-9\-]+"
                   required
                   class="flex-1 border border-gray-300 rounded-l-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
@@ -226,7 +226,7 @@ onboarding.get('/onboarding/business', async (c) => {
             type="submit"
             class="mt-6 w-full bg-horizon-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
           >
-            Continue
+            {t('onboarding.continue')}
           </button>
         </form>
       </div>
@@ -239,8 +239,6 @@ onboarding.post('/onboarding/business', async (c) => {
   const body = await c.req.parseBody({ all: true })
 
   try {
-    const businessName = requireString(body.business_name, 'Business name')
-
     const rawCats = body.category
     const selected = (Array.isArray(rawCats) ? rawCats : rawCats ? [rawCats] : [])
       .map((v) => String(v).trim().toLowerCase())
@@ -258,10 +256,15 @@ onboarding.post('/onboarding/business', async (c) => {
       return `/onboarding/business?${p.toString()}`
     }
 
+    const businessName = typeof body.business_name === 'string' ? body.business_name.trim() : ''
+    if (!businessName) {
+      return c.redirect(preserve(t('onboarding.error.businessNameRequired')))
+    }
+
     // Whitelist and keep canonical order; the first becomes the primary type.
     const categories = VENDOR_CATEGORIES.filter((cat) => selected.includes(cat))
     if (categories.length === 0) {
-      return c.redirect(preserve('Pick at least one category'))
+      return c.redirect(preserve(t('onboarding.error.pickCategory')))
     }
     const category = categories[0]
 
@@ -277,7 +280,7 @@ onboarding.post('/onboarding/business', async (c) => {
     const emailHandle = rawHandle.replace(/[^a-z0-9-]/g, '') || null
 
     if (emailHandle && emailHandle.length < 3) {
-      return c.redirect(preserve('Email handle must be at least 3 characters'))
+      return c.redirect(preserve(t('onboarding.error.handleShort')))
     }
 
     if (emailHandle) {
@@ -286,7 +289,7 @@ onboarding.post('/onboarding/business', async (c) => {
         .bind(emailHandle)
         .first()
       if (existing) {
-        return c.redirect(preserve('That email handle is already taken'))
+        return c.redirect(preserve(t('onboarding.error.handleTaken')))
       }
     }
 
@@ -332,46 +335,46 @@ onboarding.get('/onboarding/profile', async (c) => {
   if (!vendor) return c.redirect('/onboarding/business')
 
   return c.html(
-    <AuthLayout title="Your details">
+    <AuthLayout title={t('onboarding.profile.metaTitle')}>
       <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">
-        <p class="text-xs font-bold text-horizon-700 mb-2">Step 2 of 3</p>
-        <h2 class="text-2xl font-bold mb-1">Add your details</h2>
+        <p class="text-xs font-bold text-horizon-700 mb-2">{t('onboarding.step', { current: 2, total: 3 })}</p>
+        <h2 class="text-2xl font-bold mb-1">{t('onboarding.profile.heading')}</h2>
         <p class="text-sm text-gray-500 mb-6">
-          These show on your profile and enquiry form. You can skip and add them later.
+          {t('onboarding.profile.subtitle')}
         </p>
         <form method="post" action="/onboarding/profile">
           <div class="space-y-4">
             <div>
-              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="phone">Phone</label>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="phone">{t('onboarding.profile.phone')}</label>
               <input type="tel" id="phone" name="phone" value={vendor.phone ?? ''}
                 class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent" />
             </div>
             <div>
-              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="location">Location</label>
-              <input type="text" id="location" name="location" value={vendor.location ?? ''} placeholder="City or region you serve" autocomplete="off" data-region="true"
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="location">{t('onboarding.profile.location')}</label>
+              <input type="text" id="location" name="location" value={vendor.location ?? ''} placeholder={t('onboarding.profile.locationPlaceholder')} autocomplete="off" data-region="true"
                 class="address-autocomplete w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent" />
             </div>
             <div>
-              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="website">Website</label>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="website">{t('onboarding.profile.website')}</label>
               <input type="url" id="website" name="website" value={vendor.website ?? ''} placeholder="https://"
                 class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent" />
             </div>
             <div>
-              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="instagram">Instagram</label>
-              <input type="text" id="instagram" name="instagram" value={vendor.instagram ?? ''} placeholder="@yourhandle"
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="instagram">{t('onboarding.profile.instagram')}</label>
+              <input type="text" id="instagram" name="instagram" value={vendor.instagram ?? ''} placeholder={t('onboarding.profile.instagramPlaceholder')}
                 class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent" />
             </div>
             <div>
-              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="bio">Short bio</label>
-              <textarea id="bio" name="bio" rows={3} placeholder="A sentence or two about what you do"
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="bio">{t('onboarding.profile.bio')}</label>
+              <textarea id="bio" name="bio" rows={3} placeholder={t('onboarding.profile.bioPlaceholder')}
                 class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent">{vendor.bio ?? ''}</textarea>
             </div>
           </div>
           <button type="submit"
             class="mt-6 w-full bg-horizon-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
-            Continue
+            {t('onboarding.continue')}
           </button>
-          <a href="/onboarding/next" class="block text-center text-sm text-gray-400 hover:text-gray-600 mt-3">Skip for now</a>
+          <a href="/onboarding/next" class="block text-center text-sm text-gray-400 hover:text-gray-600 mt-3">{t('onboarding.profile.skip')}</a>
         </form>
       </div>
       <FormEnhancements mapsKey={c.env.GOOGLE_MAPS_API_KEY} />
@@ -410,10 +413,10 @@ onboarding.get('/onboarding/next', async (c) => {
   const joined = (await listWeddingsForVendor(c.env.DB, user.id)).filter((w) => w.role === 'vendor')
 
   return c.html(
-    <AuthLayout title="You're all set">
+    <AuthLayout title={t('onboarding.next.metaTitle')}>
       <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">
-        <p class="text-xs font-bold text-horizon-700 mb-2">Step 3 of 3</p>
-        <h2 class="text-2xl font-bold mb-1">You're all set, {vendor.business_name}</h2>
+        <p class="text-xs font-bold text-horizon-700 mb-2">{t('onboarding.step', { current: 3, total: 3 })}</p>
+        <h2 class="text-2xl font-bold mb-1">{t('onboarding.next.heading', { name: vendor.business_name })}</h2>
         <p class="text-sm text-gray-500 mb-6">{setup.blurb}</p>
 
         {joined.length > 0 && (
@@ -421,22 +424,22 @@ onboarding.get('/onboarding/next', async (c) => {
             <div class="flex items-center gap-2 mb-1">
               <span class="text-lg" aria-hidden="true">🎉</span>
               <h3 class="text-sm font-bold text-horizon-700">
-                You're already on {joined.length} wedding{joined.length !== 1 ? 's' : ''}
+                {tp('onboarding.next.joined.title', joined.length)}
               </h3>
             </div>
             <p class="text-xs text-gray-600 mb-3">
-              These were set up by couples and vendors who added you before you even signed up — they're waiting in your dashboard.
+              {t('onboarding.next.joined.subtitle')}
             </p>
             <div class="space-y-1.5">
               {joined.slice(0, 5).map((w) => (
                 <div class="flex items-center justify-between gap-3 bg-white rounded-lg px-3 py-2">
                   <span class="text-sm font-medium text-gray-900 truncate">{w.title}</span>
-                  <span class="text-xs text-gray-500 shrink-0">{w.date ? formatDate(w.date) : 'Date TBC'}</span>
+                  <span class="text-xs text-gray-500 shrink-0">{w.date ? formatDate(w.date) : t('onboarding.next.joined.dateTbc')}</span>
                 </div>
               ))}
             </div>
             {joined.length > 5 && (
-              <p class="text-xs text-gray-400 mt-2">+{joined.length - 5} more in your dashboard</p>
+              <p class="text-xs text-gray-400 mt-2">{t('onboarding.next.joined.more', { count: joined.length - 5 })}</p>
             )}
           </div>
         )}
@@ -452,9 +455,9 @@ onboarding.get('/onboarding/next', async (c) => {
         </div>
         <a href="/app"
           class="mt-6 block text-center bg-horizon-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
-          Go to your dashboard
+          {t('onboarding.next.gotoDashboard')}
         </a>
-        <p class="text-xs text-gray-400 text-center mt-3">You'll find a setup checklist there to finish the basics.</p>
+        <p class="text-xs text-gray-400 text-center mt-3">{t('onboarding.next.checklistNote')}</p>
       </div>
     </AuthLayout>
   )
@@ -471,7 +474,7 @@ onboarding.get('/onboarding/wedding', async (c) => {
   const needsName = !user.name || user.name === user.email.split('@')[0]
 
   return c.html(
-    <AuthLayout title="Plan your wedding">
+    <AuthLayout title={t('onboarding.wedding.metaTitle')}>
       <div class="bg-white rounded-2xl shadow-lg shadow-horizon/5 p-5 sm:p-8">
         <div class="flex items-center gap-2 mb-6">
           <a href="/onboarding" class="text-gray-400 hover:text-gray-600 transition-colors">
@@ -479,16 +482,16 @@ onboarding.get('/onboarding/wedding', async (c) => {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
             </svg>
           </a>
-          <h2 class="text-2xl font-bold">Plan your wedding</h2>
+          <h2 class="text-2xl font-bold">{t('onboarding.wedding.title')}</h2>
         </div>
-        <p class="text-sm text-gray-500 mb-6">Tell us about your day. You can always update these details later.</p>
+        <p class="text-sm text-gray-500 mb-6">{t('onboarding.wedding.subtitle')}</p>
         {error && <p class="text-sm text-grapefruit-700 font-medium mb-4">{error}</p>}
         <form method="post" action="/onboarding/wedding">
           <div class="space-y-4">
             {needsName && (
               <div>
                 <label class="block text-sm font-bold text-gray-700 mb-1.5" for="name">
-                  Your name
+                  {t('onboarding.yourName')}
                 </label>
                 <input
                   type="text"
@@ -501,19 +504,19 @@ onboarding.get('/onboarding/wedding', async (c) => {
             )}
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5" for="partner_name">
-                Your partner's name
+                {t('onboarding.wedding.partnerName')}
               </label>
               <input
                 type="text"
                 id="partner_name"
                 name="partner_name"
-                placeholder="Optional — you can add this later"
+                placeholder={t('onboarding.wedding.partnerPlaceholder')}
                 class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
               />
             </div>
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5" for="date">
-                Wedding date
+                {t('onboarding.wedding.date')}
               </label>
               <input
                 type="date"
@@ -522,17 +525,17 @@ onboarding.get('/onboarding/wedding', async (c) => {
                 data-future-date="true"
                 class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
               />
-              <p class="text-xs text-gray-400 mt-1">Don't have a date yet? No worries — leave it blank.</p>
+              <p class="text-xs text-gray-400 mt-1">{t('onboarding.wedding.dateHelp')}</p>
             </div>
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5" for="location">
-                Location
+                {t('onboarding.wedding.location')}
               </label>
               <input
                 type="text"
                 id="location"
                 name="location"
-                placeholder="City or venue name"
+                placeholder={t('onboarding.wedding.locationPlaceholder')}
                 autocomplete="off"
                 class="address-autocomplete w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
               />
@@ -542,7 +545,7 @@ onboarding.get('/onboarding/wedding', async (c) => {
             type="submit"
             class="mt-6 w-full bg-grapefruit-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-grapefruit-700 transition-colors"
           >
-            Create my wedding
+            {t('onboarding.wedding.create')}
           </button>
         </form>
       </div>
@@ -567,13 +570,13 @@ onboarding.post('/onboarding/wedding', async (c) => {
     const date = typeof body.date === 'string' && body.date ? body.date : null
     const location = typeof body.location === 'string' ? body.location.trim() : ''
 
-    // Build wedding title from names
+    // Build wedding title from names (localised to the couple's locale)
     const userName = name || user.name
     const firstName = userName.split(' ')[0]
-    let title = firstName + "'s Wedding"
+    let title = t('onboarding.wedding.defaultTitle', { name: firstName })
     if (partnerName) {
       const partnerFirst = partnerName.split(' ')[0]
-      title = `${firstName} & ${partnerFirst}'s Wedding`
+      title = t('onboarding.wedding.defaultTitleCouple', { a: firstName, b: partnerFirst })
     }
 
     // Create the wedding

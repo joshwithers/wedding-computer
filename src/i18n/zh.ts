@@ -986,4 +986,94 @@ export const zh: Dictionary = {
   "analytics.teaser.title": "业务表现",
   "analytics.teaser.link": "查看分析",
   "analytics.teaser.linkFree": "查看趋势、基准和需求",
+
+  // ─── 首次引导向导（商家 + 新人路径）───
+  // 通用
+  "onboarding.step": "第 {current} 步，共 {total} 步",
+  "onboarding.continue": "继续",
+  "onboarding.yourName": "你的名字",
+
+  // 选择
+  "onboarding.start.title": "开始使用",
+  "onboarding.start.heading": "欢迎！",
+  "onboarding.start.subtitle": "是什么让你来到 Wedding Computer？",
+  "onboarding.start.namePrompt": "首先，你叫什么名字？",
+  "onboarding.start.namePlaceholder": "你的名字",
+  "onboarding.start.save": "保存",
+  "onboarding.start.vendor.title": "我是婚礼从业者",
+  "onboarding.start.vendor.desc": "设置你的业务——管理联系人、日历、发票等等。",
+  "onboarding.start.couple.title": "我在筹备婚礼",
+  "onboarding.start.couple.desc": "创建你的婚礼——在一个地方追踪供应商、预算和各项细节。",
+
+  // 业务步骤
+  "onboarding.business.title": "设置你的业务",
+  "onboarding.business.subtitle": "告诉我们一些关于你业务的信息，开始使用吧。",
+  "onboarding.business.businessName": "业务名称",
+  "onboarding.business.whatYouDo": "你做什么？",
+  "onboarding.business.chooseAtLeastOne": "（至少选择一项）",
+  "onboarding.business.emailLabel": "你的电子邮箱地址",
+  "onboarding.business.emailHelp": "选择一个用于在 Wedding Computer 上收发邮件的用户名。",
+  "onboarding.business.emailPlaceholder": "yourname",
+
+  // 类别标签（哪一类供应商）
+  "onboarding.category.celebrant": "婚礼主持人",
+  "onboarding.category.photographer": "摄影师",
+  "onboarding.category.videographer": "摄像师",
+  "onboarding.category.florist": "花艺师",
+  "onboarding.category.planner": "婚礼策划师",
+  "onboarding.category.venue": "婚礼场地",
+  "onboarding.category.stylist": "造型师",
+  "onboarding.category.caterer": "餐饮服务商",
+  "onboarding.category.dj": "DJ",
+  "onboarding.category.band": "乐队",
+  "onboarding.category.hair": "发型师",
+  "onboarding.category.makeup": "化妆师",
+  "onboarding.category.cake": "蛋糕师",
+  "onboarding.category.stationery": "请柬设计师",
+  "onboarding.category.other": "其他",
+
+  // 校验错误
+  "onboarding.error.pickCategory": "至少选择一个类别",
+  "onboarding.error.handleShort": "邮箱用户名至少需要 3 个字符",
+  "onboarding.error.handleTaken": "该邮箱用户名已被占用",
+  "onboarding.error.businessNameRequired": "业务名称为必填项",
+
+  // 个人资料步骤
+  "onboarding.profile.metaTitle": "你的资料",
+  "onboarding.profile.heading": "添加你的资料",
+  "onboarding.profile.subtitle": "这些会显示在你的个人资料和咨询表单上。你可以跳过，稍后再添加。",
+  "onboarding.profile.phone": "电话",
+  "onboarding.profile.location": "所在地",
+  "onboarding.profile.locationPlaceholder": "你服务的城市或地区",
+  "onboarding.profile.website": "网站",
+  "onboarding.profile.instagram": "Instagram",
+  "onboarding.profile.instagramPlaceholder": "@yourhandle",
+  "onboarding.profile.bio": "简短介绍",
+  "onboarding.profile.bioPlaceholder": "一两句话介绍你的工作",
+  "onboarding.profile.skip": "暂时跳过",
+
+  // 最后一步
+  "onboarding.next.metaTitle": "一切就绪",
+  "onboarding.next.heading": "一切就绪，{name}",
+  "onboarding.next.gotoDashboard": "前往你的工作台",
+  "onboarding.next.checklistNote": "你会在那里找到一份设置清单，用来完成基础配置。",
+  "onboarding.next.joined.title.one": "你已经在 {count} 场婚礼中",
+  "onboarding.next.joined.title.other": "你已经在 {count} 场婚礼中",
+  "onboarding.next.joined.subtitle": "这些婚礼是新人和供应商在你注册之前就把你添加进去的——它们正在你的工作台里等着你。",
+  "onboarding.next.joined.dateTbc": "日期待定",
+  "onboarding.next.joined.more": "工作台中还有 +{count} 场",
+
+  // 新人婚礼步骤
+  "onboarding.wedding.metaTitle": "筹备你的婚礼",
+  "onboarding.wedding.title": "筹备你的婚礼",
+  "onboarding.wedding.subtitle": "告诉我们关于你大喜之日的信息。这些细节你随时都能更新。",
+  "onboarding.wedding.partnerName": "你伴侣的名字",
+  "onboarding.wedding.partnerPlaceholder": "可选——你可以稍后再添加",
+  "onboarding.wedding.date": "婚礼日期",
+  "onboarding.wedding.dateHelp": "还没定下日期？没关系——留空即可。",
+  "onboarding.wedding.location": "地点",
+  "onboarding.wedding.locationPlaceholder": "城市或场地名称",
+  "onboarding.wedding.create": "创建我的婚礼",
+  "onboarding.wedding.defaultTitle": "{name} 的婚礼",
+  "onboarding.wedding.defaultTitleCouple": "{a} 和 {b} 的婚礼",
 }

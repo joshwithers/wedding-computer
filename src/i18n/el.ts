@@ -963,4 +963,94 @@ export const el: Dictionary = {
   "analytics.teaser.title": "Απόδοση",
   "analytics.teaser.link": "Προβολή αναλυτικών στοιχείων",
   "analytics.teaser.linkFree": "Δείτε τάσεις, σημεία αναφοράς και ζήτηση",
+
+  // First-run onboarding wizard (vendor + couple paths).
+  // Κοινά
+  "onboarding.step": "Βήμα {current} από {total}",
+  "onboarding.continue": "Συνέχεια",
+  "onboarding.yourName": "Το όνομά σας",
+
+  // Επιλογέας
+  "onboarding.start.title": "Ξεκινήστε",
+  "onboarding.start.heading": "Καλώς ήρθατε!",
+  "onboarding.start.subtitle": "Τι σας φέρνει στο Wedding Computer;",
+  "onboarding.start.namePrompt": "Πρώτα, πώς σας λένε;",
+  "onboarding.start.namePlaceholder": "Το όνομά σας",
+  "onboarding.start.save": "Αποθήκευση",
+  "onboarding.start.vendor.title": "Είμαι επαγγελματίας γάμων",
+  "onboarding.start.vendor.desc": "Ρυθμίστε την επιχείρησή σας — διαχειριστείτε επαφές, ημερολόγιο, τιμολόγια και πολλά άλλα.",
+  "onboarding.start.couple.title": "Σχεδιάζω έναν γάμο",
+  "onboarding.start.couple.desc": "Δημιουργήστε τον γάμο σας — παρακολουθήστε προμηθευτές, προϋπολογισμό και λεπτομέρειες, όλα σε ένα μέρος.",
+
+  // Βήμα επιχείρησης
+  "onboarding.business.title": "Ρυθμίστε την επιχείρησή σας",
+  "onboarding.business.subtitle": "Πείτε μας για την επιχείρησή σας για να ξεκινήσετε.",
+  "onboarding.business.businessName": "Όνομα επιχείρησης",
+  "onboarding.business.whatYouDo": "Με τι ασχολείστε;",
+  "onboarding.business.chooseAtLeastOne": "(επιλέξτε τουλάχιστον ένα)",
+  "onboarding.business.emailLabel": "Η διεύθυνση email σας",
+  "onboarding.business.emailHelp": "Επιλέξτε ένα όνομα χρήστη για την αποστολή και λήψη email στο Wedding Computer.",
+  "onboarding.business.emailPlaceholder": "tonomasas",
+
+  // Ετικέτες κατηγοριών (είδος προμηθευτή)
+  "onboarding.category.celebrant": "Λειτουργός τελετών",
+  "onboarding.category.photographer": "Φωτογράφος",
+  "onboarding.category.videographer": "Βιντεογράφος",
+  "onboarding.category.florist": "Ανθοπώλης",
+  "onboarding.category.planner": "Διοργανωτής",
+  "onboarding.category.venue": "Χώρος εκδήλωσης",
+  "onboarding.category.stylist": "Στυλίστας",
+  "onboarding.category.caterer": "Τροφοδότης",
+  "onboarding.category.dj": "DJ",
+  "onboarding.category.band": "Ορχήστρα",
+  "onboarding.category.hair": "Κομμωτής",
+  "onboarding.category.makeup": "Μακιγιέρ",
+  "onboarding.category.cake": "Ζαχαροπλάστης",
+  "onboarding.category.stationery": "Δημιουργός προσκλητηρίων",
+  "onboarding.category.other": "Άλλο",
+
+  // Σφάλματα επικύρωσης
+  "onboarding.error.pickCategory": "Επιλέξτε τουλάχιστον μία κατηγορία",
+  "onboarding.error.handleShort": "Το όνομα χρήστη email πρέπει να έχει τουλάχιστον 3 χαρακτήρες",
+  "onboarding.error.handleTaken": "Αυτό το όνομα χρήστη email χρησιμοποιείται ήδη",
+  "onboarding.error.businessNameRequired": "Το όνομα επιχείρησης είναι υποχρεωτικό",
+
+  // Βήμα προφίλ
+  "onboarding.profile.metaTitle": "Τα στοιχεία σας",
+  "onboarding.profile.heading": "Προσθέστε τα στοιχεία σας",
+  "onboarding.profile.subtitle": "Αυτά εμφανίζονται στο προφίλ και στη φόρμα ενδιαφέροντός σας. Μπορείτε να τα παραλείψετε και να τα προσθέσετε αργότερα.",
+  "onboarding.profile.phone": "Τηλέφωνο",
+  "onboarding.profile.location": "Τοποθεσία",
+  "onboarding.profile.locationPlaceholder": "Πόλη ή περιοχή που εξυπηρετείτε",
+  "onboarding.profile.website": "Ιστότοπος",
+  "onboarding.profile.instagram": "Instagram",
+  "onboarding.profile.instagramPlaceholder": "@tonomachristi",
+  "onboarding.profile.bio": "Σύντομο βιογραφικό",
+  "onboarding.profile.bioPlaceholder": "Μία ή δύο προτάσεις για το τι κάνετε",
+  "onboarding.profile.skip": "Παράλειψη προς το παρόν",
+
+  // Τελικό βήμα
+  "onboarding.next.metaTitle": "Είστε έτοιμοι",
+  "onboarding.next.heading": "Είστε έτοιμοι, {name}",
+  "onboarding.next.gotoDashboard": "Μετάβαση στον πίνακα ελέγχου σας",
+  "onboarding.next.checklistNote": "Εκεί θα βρείτε μια λίστα ρύθμισης για να ολοκληρώσετε τα βασικά.",
+  "onboarding.next.joined.title.one": "Συμμετέχετε ήδη σε {count} γάμο",
+  "onboarding.next.joined.title.other": "Συμμετέχετε ήδη σε {count} γάμους",
+  "onboarding.next.joined.subtitle": "Αυτοί δημιουργήθηκαν από ζευγάρια και προμηθευτές που σας πρόσθεσαν πριν καν εγγραφείτε — σας περιμένουν στον πίνακα ελέγχου σας.",
+  "onboarding.next.joined.dateTbc": "Ημερομηνία υπό επιβεβαίωση",
+  "onboarding.next.joined.more": "+{count} ακόμη στον πίνακα ελέγχου σας",
+
+  // Βήμα γάμου ζευγαριού
+  "onboarding.wedding.metaTitle": "Σχεδιάστε τον γάμο σας",
+  "onboarding.wedding.title": "Σχεδιάστε τον γάμο σας",
+  "onboarding.wedding.subtitle": "Πείτε μας για τη μέρα σας. Μπορείτε πάντα να ενημερώσετε αυτές τις λεπτομέρειες αργότερα.",
+  "onboarding.wedding.partnerName": "Το όνομα του/της συντρόφου σας",
+  "onboarding.wedding.partnerPlaceholder": "Προαιρετικό — μπορείτε να το προσθέσετε αργότερα",
+  "onboarding.wedding.date": "Ημερομηνία γάμου",
+  "onboarding.wedding.dateHelp": "Δεν έχετε ακόμη ημερομηνία; Κανένα πρόβλημα — αφήστε το κενό.",
+  "onboarding.wedding.location": "Τοποθεσία",
+  "onboarding.wedding.locationPlaceholder": "Πόλη ή όνομα χώρου εκδήλωσης",
+  "onboarding.wedding.create": "Δημιουργία του γάμου μου",
+  "onboarding.wedding.defaultTitle": "Ο γάμος του/της {name}",
+  "onboarding.wedding.defaultTitleCouple": "Ο γάμος των {a} & {b}",
 }

@@ -979,4 +979,94 @@ export const it: Dictionary = {
   "analytics.teaser.title": "Performance",
   "analytics.teaser.link": "Vedi i report",
   "analytics.teaser.linkFree": "Vedi andamenti, benchmark e domanda",
+
+  // First-run onboarding wizard (vendor + couple paths).
+  // Common
+  "onboarding.step": "Passaggio {current} di {total}",
+  "onboarding.continue": "Continua",
+  "onboarding.yourName": "Il tuo nome",
+
+  // Chooser
+  "onboarding.start.title": "Inizia",
+  "onboarding.start.heading": "Benvenuto!",
+  "onboarding.start.subtitle": "Cosa ti porta su Wedding Computer?",
+  "onboarding.start.namePrompt": "Per cominciare, come ti chiami?",
+  "onboarding.start.namePlaceholder": "Il tuo nome",
+  "onboarding.start.save": "Salva",
+  "onboarding.start.vendor.title": "Sono un professionista del wedding",
+  "onboarding.start.vendor.desc": "Configura la tua attività — gestisci contatti, calendario, fatture e altro ancora.",
+  "onboarding.start.couple.title": "Sto organizzando un matrimonio",
+  "onboarding.start.couple.desc": "Crea il tuo matrimonio — tieni traccia di fornitori, budget e dettagli, tutto in un unico posto.",
+
+  // Business step
+  "onboarding.business.title": "Configura la tua attività",
+  "onboarding.business.subtitle": "Parlaci della tua attività per iniziare.",
+  "onboarding.business.businessName": "Nome dell'attività",
+  "onboarding.business.whatYouDo": "Di cosa ti occupi?",
+  "onboarding.business.chooseAtLeastOne": "(scegline almeno uno)",
+  "onboarding.business.emailLabel": "Il tuo indirizzo email",
+  "onboarding.business.emailHelp": "Scegli un nome utente per inviare e ricevere email su Wedding Computer.",
+  "onboarding.business.emailPlaceholder": "iltuonome",
+
+  // Category labels (what kind of vendor)
+  "onboarding.category.celebrant": "Celebrante",
+  "onboarding.category.photographer": "Fotografo",
+  "onboarding.category.videographer": "Videomaker",
+  "onboarding.category.florist": "Fiorista",
+  "onboarding.category.planner": "Wedding planner",
+  "onboarding.category.venue": "Location",
+  "onboarding.category.stylist": "Stylist",
+  "onboarding.category.caterer": "Catering",
+  "onboarding.category.dj": "DJ",
+  "onboarding.category.band": "Band",
+  "onboarding.category.hair": "Parrucchiere",
+  "onboarding.category.makeup": "Make-up artist",
+  "onboarding.category.cake": "Cake designer",
+  "onboarding.category.stationery": "Designer di partecipazioni",
+  "onboarding.category.other": "Altro",
+
+  // Validation errors
+  "onboarding.error.pickCategory": "Scegli almeno una categoria",
+  "onboarding.error.handleShort": "Il nome utente email deve contenere almeno 3 caratteri",
+  "onboarding.error.handleTaken": "Questo nome utente email è già in uso",
+  "onboarding.error.businessNameRequired": "Il nome dell'attività è obbligatorio",
+
+  // Profile step
+  "onboarding.profile.metaTitle": "I tuoi dettagli",
+  "onboarding.profile.heading": "Aggiungi i tuoi dettagli",
+  "onboarding.profile.subtitle": "Questi compaiono sul tuo profilo e sul modulo di richiesta. Puoi saltare e aggiungerli in seguito.",
+  "onboarding.profile.phone": "Telefono",
+  "onboarding.profile.location": "Località",
+  "onboarding.profile.locationPlaceholder": "Città o area in cui operi",
+  "onboarding.profile.website": "Sito web",
+  "onboarding.profile.instagram": "Instagram",
+  "onboarding.profile.instagramPlaceholder": "@iltuonome",
+  "onboarding.profile.bio": "Breve biografia",
+  "onboarding.profile.bioPlaceholder": "Una o due frasi su ciò che fai",
+  "onboarding.profile.skip": "Salta per ora",
+
+  // Final step
+  "onboarding.next.metaTitle": "È tutto pronto",
+  "onboarding.next.heading": "È tutto pronto, {name}",
+  "onboarding.next.gotoDashboard": "Vai alla tua dashboard",
+  "onboarding.next.checklistNote": "Lì troverai una checklist di configurazione per completare le basi.",
+  "onboarding.next.joined.title.one": "Sei già su {count} matrimonio",
+  "onboarding.next.joined.title.other": "Sei già su {count} matrimoni",
+  "onboarding.next.joined.subtitle": "Questi sono stati creati da coppie e fornitori che ti hanno aggiunto prima ancora che ti registrassi — ti aspettano nella tua dashboard.",
+  "onboarding.next.joined.dateTbc": "Data da definire",
+  "onboarding.next.joined.more": "+{count} altri nella tua dashboard",
+
+  // Couple wedding step
+  "onboarding.wedding.metaTitle": "Organizza il tuo matrimonio",
+  "onboarding.wedding.title": "Organizza il tuo matrimonio",
+  "onboarding.wedding.subtitle": "Parlaci del tuo giorno. Potrai sempre aggiornare questi dettagli in seguito.",
+  "onboarding.wedding.partnerName": "Il nome del tuo partner",
+  "onboarding.wedding.partnerPlaceholder": "Facoltativo — puoi aggiungerlo in seguito",
+  "onboarding.wedding.date": "Data del matrimonio",
+  "onboarding.wedding.dateHelp": "Non hai ancora una data? Nessun problema — lascia il campo vuoto.",
+  "onboarding.wedding.location": "Località",
+  "onboarding.wedding.locationPlaceholder": "Città o nome della location",
+  "onboarding.wedding.create": "Crea il mio matrimonio",
+  "onboarding.wedding.defaultTitle": "Matrimonio di {name}",
+  "onboarding.wedding.defaultTitleCouple": "Matrimonio di {a} & {b}",
 }
