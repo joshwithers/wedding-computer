@@ -134,11 +134,15 @@ function FormFields({
   creatable,
   anchorOptions = [],
   sunAvailable = false,
+  scope = 'new',
 }: {
   values?: Partial<RowFields>
   creatable: TimelineVisibility[]
   anchorOptions?: AnchorOption[]
   sunAvailable?: boolean
+  // Unique per rendered form so the Places-autocomplete dropdown id never
+  // collides when an add form + an edit form (or several) are on the page.
+  scope?: string
 }) {
   const fieldCls = 'border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 bg-white'
   const at = values?.anchor_type
@@ -161,7 +165,22 @@ function FormFields({
         {t('timeline.field.end')}
         <input type="time" name="end_time" value={values?.end_time ?? ''} class={fieldCls} />
       </label>
-      <input type="text" name="location" value={values?.location ?? ''} placeholder={t('timeline.field.locationPlaceholder')} class="col-span-2 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 bg-white" />
+      <div class="col-span-2 relative" data-places>
+        <input
+          type="text"
+          name="location"
+          value={values?.location ?? ''}
+          placeholder={t('timeline.field.locationPlaceholder')}
+          autocomplete="off"
+          hx-get="/api/places/search?field=location"
+          hx-trigger="input changed delay:300ms"
+          hx-target={`#suggestions-location-${scope}`}
+          hx-swap="innerHTML"
+          hx-include="this"
+          class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 bg-white"
+        />
+        <div id={`suggestions-location-${scope}`} />
+      </div>
       <label class="text-[10px] text-gray-400 flex flex-col gap-0.5">
         {t('timeline.field.category')}
         <select name="category" class={fieldCls}>
@@ -223,7 +242,7 @@ function RowForm({ item, basePath, creatable, anchorOptions, sunAvailable }: { i
   return (
     <li id={`trow-${item.id}`} class="px-4 py-3 bg-horizon-50/40">
       <form hx-post={`${basePath}/timeline/${item.id}`} hx-target="#timeline-body" hx-swap="outerHTML" class="space-y-2">
-        <FormFields values={item} creatable={creatable.length ? creatable : [item.visibility]} anchorOptions={anchorOptions.filter((o) => o.id !== item.id)} sunAvailable={sunAvailable} />
+        <FormFields values={item} scope={item.id} creatable={creatable.length ? creatable : [item.visibility]} anchorOptions={anchorOptions.filter((o) => o.id !== item.id)} sunAvailable={sunAvailable} />
         <div class="flex items-center gap-2">
           <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700">{t('timeline.save')}</button>
           <button type="button" hx-get={`${basePath}/timeline`} hx-target="#timeline-body" hx-swap="outerHTML" class="text-xs text-gray-400 hover:text-gray-600">{t('timeline.cancel')}</button>
@@ -316,7 +335,7 @@ function PendingCard({ p, basePath, canDecide, creatable, anchorOptions, sunAvai
           </div>
         ) : (
           <form hx-post={`${basePath}/timeline/requests/${p.id}/approve`} hx-target="#timeline-body" hx-swap="outerHTML" class="mt-2 space-y-2">
-            <FormFields values={p.after} creatable={creatable.length ? creatable : ['couple', 'vendors', 'private']} anchorOptions={anchorOptions} sunAvailable={sunAvailable} />
+            <FormFields values={p.after} scope={`req-${p.id}`} creatable={creatable.length ? creatable : ['couple', 'vendors', 'private']} anchorOptions={anchorOptions} sunAvailable={sunAvailable} />
             <div class="flex items-center gap-2">
               <button type="submit" class="bg-horizon-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-horizon-700">{t('timeline.approve')}</button>
               <button type="button" hx-post={`${basePath}/timeline/requests/${p.id}/decline`} hx-target="#timeline-body" hx-swap="outerHTML" class="text-xs text-gray-500 hover:text-red-600">{t('timeline.decline')}</button>
