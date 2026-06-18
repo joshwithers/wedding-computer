@@ -929,10 +929,11 @@ export default {
         logEvent('cron.daily_failed', { error: e.message })
       }
 
-      // Geocode any locations added or changed since the last run (bounded,
-      // KV-cached) so the aggregations below bucket by the wedding's region.
+      // Daily backstop sweep — clears any larger backlog (e.g. a bulk import)
+      // that the 5-minute fast pass hasn't drained yet, so aggregations below
+      // bucket by the wedding's region. Bounded + KV-cached.
       try {
-        await geocodePendingLocations(env, 25)
+        await geocodePendingLocations(env, 200)
       } catch (e: any) {
         console.error('[CRON] geocode catch-up failed', e.message)
       }
@@ -975,6 +976,17 @@ export default {
         if (n > 0) logEvent('cron.sync_enqueued', { jobs: n })
       } catch (e: any) {
         logEvent('cron.sync_failed', { error: e.message })
+      }
+
+      // Fast geocode pass: a new/edited wedding location resolves to precise
+      // coordinates (for the timeline's sunrise/sunset) within ~5 min, instead
+      // of waiting for the daily backstop. On-save geocoding already covers the
+      // happy path; this catches imports, vault edits, and any save that missed.
+      try {
+        const n = await geocodePendingLocations(env, 15)
+        if (n > 0) logEvent('cron.geocode_fast', { rows: n })
+      } catch (e: any) {
+        console.error('[CRON] fast geocode failed', e.message)
       }
     }
   },
