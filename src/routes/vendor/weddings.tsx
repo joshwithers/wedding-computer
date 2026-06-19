@@ -56,6 +56,128 @@ import { WebLinks } from '../../views/web-links'
 import { listWebLinks } from '../../db/web-links'
 import { renderTimelineSection } from '../timeline-handlers'
 import { getOrGenerateClimateNote } from '../../services/climate'
+import { socialUrl, socialDisplay } from '../../lib/social'
+
+/** Couple contact row loaded for the wedding-page couple panel. */
+type CoupleContact = {
+  id: string
+  first_name: string | null
+  last_name: string | null
+  partner_first_name: string | null
+  partner_last_name: string | null
+  email: string | null
+  partner_email: string | null
+  phone: string | null
+  partner_phone: string | null
+  address: string | null
+  instagram: string | null
+  facebook: string | null
+  tiktok: string | null
+  website: string | null
+}
+
+/** Join first + last into a trimmed display name, or null if both empty. */
+function fullName(first: string | null, last: string | null): string | null {
+  const n = [first, last].map((s) => s?.trim()).filter(Boolean).join(' ')
+  return n || null
+}
+
+/** A small inline action link (mailto / tel / sms / external). */
+function ContactAction({ href, label }: { href: string; label: string }) {
+  const external = /^https?:/i.test(href)
+  return (
+    <a
+      href={href}
+      {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+      class="inline-flex items-center px-2.5 py-1 rounded-full bg-papaya-100 text-gray-700 text-xs font-medium hover:bg-papaya-200"
+    >
+      {label}
+    </a>
+  )
+}
+
+/** One partner's name + contact actions. */
+function PartnerRow({ name, email, phone }: { name: string; email: string | null; phone: string | null }) {
+  return (
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-sm font-medium text-gray-900">{name}</span>
+      {email && <ContactAction href={`mailto:${email}`} label={t('weddings.couple.email')} />}
+      {phone && <ContactAction href={`tel:${phone.replace(/\s+/g, '')}`} label={t('weddings.couple.call')} />}
+      {phone && <ContactAction href={`sms:${phone.replace(/\s+/g, '')}`} label={t('weddings.couple.text')} />}
+    </div>
+  )
+}
+
+/** Couple contact panel shown at the top of the wedding detail page. */
+function CouplePanel({ contact, canManage }: { contact: CoupleContact; canManage: boolean }) {
+  const p1Name = fullName(contact.first_name, contact.last_name)
+  const p2Name = fullName(contact.partner_first_name, contact.partner_last_name)
+
+  // "Both" actions — only when we have two addressable parties.
+  const emails = [contact.email, contact.partner_email].filter((e): e is string => !!e)
+  const phones = [contact.phone, contact.partner_phone]
+    .filter((p): p is string => !!p)
+    .map((p) => p.replace(/\s+/g, ''))
+  const showEmailBoth = emails.length > 1
+  const showSmsBoth = phones.length > 1
+
+  const socials: Array<{ net: 'instagram' | 'facebook' | 'tiktok' | 'website'; label: string }> = [
+    { net: 'instagram', label: 'Instagram' },
+    { net: 'facebook', label: 'Facebook' },
+    { net: 'tiktok', label: 'TikTok' },
+    { net: 'website', label: 'Website' },
+  ]
+  const socialLinks = socials
+    .map((s) => ({ ...s, raw: contact[s.net], href: socialUrl(s.net, contact[s.net]) }))
+    .filter((s) => !!s.href)
+
+  return (
+    <div class="bg-white border border-papaya-300/40 rounded-2xl p-4 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-xs font-bold uppercase tracking-wide text-gray-400">{t('weddings.couple.title')}</h3>
+        {canManage && (
+          <a href={`/app/contacts/${contact.id}/edit`} class="text-xs text-gray-400 hover:text-horizon-700">
+            {t('weddings.couple.editContact')}
+          </a>
+        )}
+      </div>
+
+      <div class="space-y-2.5">
+        {p1Name && <PartnerRow name={p1Name} email={contact.email} phone={contact.phone} />}
+        {p2Name && <PartnerRow name={p2Name} email={contact.partner_email} phone={contact.partner_phone} />}
+
+        {(showEmailBoth || showSmsBoth) && (
+          <div class="flex flex-wrap items-center gap-2 pt-0.5">
+            {showEmailBoth && (
+              <ContactAction href={`mailto:${emails.join(',')}`} label={t('weddings.couple.emailBoth')} />
+            )}
+            {showSmsBoth && (
+              <ContactAction href={`sms://open?addresses=${phones.join(',')}`} label={t('weddings.couple.smsBoth')} />
+            )}
+          </div>
+        )}
+
+        {contact.address && (
+          <p class="text-sm text-gray-600">
+            <span class="text-gray-400">{t('weddings.couple.address')}: </span>
+            {contact.address}
+          </p>
+        )}
+
+        {socialLinks.length > 0 && (
+          <div class="flex flex-wrap items-center gap-2 pt-0.5">
+            {socialLinks.map((s) => (
+              <ContactAction
+                href={s.href!}
+                label={s.net === 'website' ? s.label : socialDisplay(s.raw as string)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 /** Compare old and new wedding data and return human-readable change descriptions. */
 function diffWeddingChanges(
@@ -545,11 +667,16 @@ weddings.get('/app/weddings/:id', async (c) => {
 
   // Invoices for this wedding
   const weddingInvoices = await listInvoicesForWedding(c.env.DB, vendor.id, weddingId)
-  // Find the linked contact for "new invoice" link
+  // Find the linked contact — drives the "new invoice" link and the couple panel
   const linkedContact = await c.env.DB
-    .prepare('SELECT id FROM contacts WHERE vendor_id = ? AND wedding_id = ? LIMIT 1')
+    .prepare(
+      `SELECT id, first_name, last_name, partner_first_name, partner_last_name,
+              email, partner_email, phone, partner_phone,
+              address, instagram, facebook, tiktok, website
+       FROM contacts WHERE vendor_id = ? AND wedding_id = ? LIMIT 1`,
+    )
     .bind(vendor.id, weddingId)
-    .first<{ id: string }>()
+    .first<CoupleContact>()
 
   // Todo checklist
   const weddingTodo = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
@@ -631,6 +758,8 @@ weddings.get('/app/weddings/:id', async (c) => {
             </a>
           )}
         </div>
+
+        {linkedContact && <CouplePanel contact={linkedContact} canManage={canManage} />}
 
         {timelinePending && (
           <div class="bg-papaya-100 border border-papaya-300/50 text-gray-700 text-sm rounded-xl p-3 mb-4">

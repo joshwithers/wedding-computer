@@ -837,6 +837,14 @@ export const de: Dictionary = {
   "weddings.cap.body": "Ihr kostenloser Tarif umfasst bis zu {limit} aktive Hochzeiten gleichzeitig. Abgeschlossene Hochzeiten geben automatisch einen Platz frei – oder upgraden Sie auf Pro für unbegrenzte Hochzeiten, Gerätesynchronisierung, Analysen und KI.",
   "weddings.cap.cta": "Auf Pro upgraden",
   "weddings.cap.manage": "Ihre Hochzeiten verwalten",
+  "weddings.couple.title": "Paar",
+  "weddings.couple.address": "Adresse",
+  "weddings.couple.emailBoth": "Beide per E-Mail",
+  "weddings.couple.smsBoth": "Beide per SMS",
+  "weddings.couple.email": "E-Mail",
+  "weddings.couple.call": "Anrufen",
+  "weddings.couple.text": "SMS",
+  "weddings.couple.editContact": "Kontakt bearbeiten",
 
   // ─── Analytics: overview ───
   "analytics.overview.enquiries": "Anfragen",

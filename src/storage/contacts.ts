@@ -33,6 +33,11 @@ type ContactFrontmatter = {
   partner_last_name?: string | null
   partner_email?: string | null
   partner_phone?: string | null
+  address?: string | null
+  instagram?: string | null
+  facebook?: string | null
+  tiktok?: string | null
+  website?: string | null
   source?: string | null
   status: string
   wedding_id?: string | null
@@ -97,6 +102,11 @@ export function contactToMarkdown(contact: Contact): MarkdownDocument<ContactFro
     partner_last_name: contact.partner_last_name,
     partner_email: contact.partner_email,
     partner_phone: contact.partner_phone,
+    address: contact.address,
+    instagram: contact.instagram,
+    facebook: contact.facebook,
+    tiktok: contact.tiktok,
+    website: contact.website,
     source: contact.source,
     status: contact.status,
     wedding_id: contact.wedding_id,
@@ -146,6 +156,11 @@ export function markdownToContact(
     partner_last_name: str(fm.partner_last_name),
     partner_email: str(fm.partner_email),
     partner_phone: str(fm.partner_phone),
+    address: str(fm.address),
+    instagram: str(fm.instagram),
+    facebook: str(fm.facebook),
+    tiktok: str(fm.tiktok),
+    website: str(fm.website),
     source: str(fm.source),
     status: (fm.status as Contact['status']) ?? 'new',
     wedding_id: str(fm.wedding_id),
@@ -174,6 +189,11 @@ export function contactCachedData(contact: Contact): string {
     partner_last_name: contact.partner_last_name,
     partner_email: contact.partner_email,
     partner_phone: contact.partner_phone,
+    address: contact.address,
+    instagram: contact.instagram,
+    facebook: contact.facebook,
+    tiktok: contact.tiktok,
+    website: contact.website,
     source: contact.source,
     status: contact.status,
     wedding_id: contact.wedding_id,
@@ -251,6 +271,11 @@ export async function listContacts(
       partner_last_name: c.partner_last_name ?? null,
       partner_email: c.partner_email ?? null,
       partner_phone: c.partner_phone ?? null,
+      address: c.address ?? null,
+      instagram: c.instagram ?? null,
+      facebook: c.facebook ?? null,
+      tiktok: c.tiktok ?? null,
+      website: c.website ?? null,
       source: c.source ?? null,
       status: c.status ?? 'new',
       wedding_id: c.wedding_id ?? null,
@@ -321,6 +346,11 @@ export async function createContact(
     partner_last_name?: string | null
     partner_email?: string | null
     partner_phone?: string | null
+    address?: string | null
+    instagram?: string | null
+    facebook?: string | null
+    tiktok?: string | null
+    website?: string | null
     source?: string | null
     wedding_id?: string | null
     status?: Contact['status']
@@ -345,6 +375,11 @@ export async function createContact(
     partner_last_name: data.partner_last_name ?? null,
     partner_email: data.partner_email ?? null,
     partner_phone: data.partner_phone ?? null,
+    address: data.address ?? null,
+    instagram: data.instagram ?? null,
+    facebook: data.facebook ?? null,
+    tiktok: data.tiktok ?? null,
+    website: data.website ?? null,
     source: data.source ?? null,
     status: data.status ?? 'new',
     wedding_id: data.wedding_id ?? null,
@@ -415,6 +450,11 @@ export async function updateContact(
       | 'partner_last_name'
       | 'partner_email'
       | 'partner_phone'
+      | 'address'
+      | 'instagram'
+      | 'facebook'
+      | 'tiktok'
+      | 'website'
       | 'source'
       | 'status'
       | 'wedding_id'
@@ -687,9 +727,10 @@ export async function syncToContactsTable(
     .prepare(
       `INSERT INTO contacts (id, vendor_id, first_name, last_name, email, phone,
         partner_first_name, partner_last_name, partner_email, partner_phone,
+        address, instagram, facebook, tiktok, website,
         source, status, wedding_id, wedding_date, wedding_location, notes,
         tags, form_data, last_contacted_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          first_name = excluded.first_name,
          last_name = excluded.last_name,
@@ -699,6 +740,11 @@ export async function syncToContactsTable(
          partner_last_name = excluded.partner_last_name,
          partner_email = excluded.partner_email,
          partner_phone = excluded.partner_phone,
+         address = excluded.address,
+         instagram = excluded.instagram,
+         facebook = excluded.facebook,
+         tiktok = excluded.tiktok,
+         website = excluded.website,
          source = excluded.source,
          status = excluded.status,
          wedding_id = excluded.wedding_id,
@@ -722,6 +768,11 @@ export async function syncToContactsTable(
       contact.partner_last_name,
       contact.partner_email,
       contact.partner_phone,
+      contact.address,
+      contact.instagram,
+      contact.facebook,
+      contact.tiktok,
+      contact.website,
       contact.source,
       contact.status,
       contact.wedding_id,

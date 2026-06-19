@@ -837,6 +837,14 @@ export const el: Dictionary = {
   "weddings.cap.body": "Το δωρεάν πρόγραμμά σας καλύπτει έως {limit} ενεργούς γάμους κάθε φορά. Οι ολοκληρωμένοι γάμοι ελευθερώνουν αυτόματα μια θέση — ή αναβαθμίστε στο Pro για απεριόριστους γάμους, συγχρονισμό συσκευών, αναλυτικά στοιχεία και AI.",
   "weddings.cap.cta": "Αναβάθμιση στο Pro",
   "weddings.cap.manage": "Διαχείριση των γάμων σας",
+  "weddings.couple.title": "Ζευγάρι",
+  "weddings.couple.address": "Διεύθυνση",
+  "weddings.couple.emailBoth": "Email και στους δύο",
+  "weddings.couple.smsBoth": "SMS και στους δύο",
+  "weddings.couple.email": "Email",
+  "weddings.couple.call": "Κλήση",
+  "weddings.couple.text": "SMS",
+  "weddings.couple.editContact": "Επεξεργασία επαφής",
 
   // ─── Analytics ───
   "analytics.overview.enquiries": "Αιτήματα",

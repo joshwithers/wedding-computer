@@ -291,6 +291,11 @@ export type Contact = {
   partner_last_name: string | null
   partner_email: string | null
   partner_phone: string | null
+  address: string | null
+  instagram: string | null
+  facebook: string | null
+  tiktok: string | null
+  website: string | null
   source: string | null
   status: 'new' | 'contacted' | 'meeting' | 'quoted' | 'booked' | 'completed' | 'lost' | 'archived'
   wedding_id: string | null

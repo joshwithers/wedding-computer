@@ -284,6 +284,11 @@ CREATE TABLE IF NOT EXISTS contacts (
   partner_last_name TEXT,
   partner_email TEXT,
   partner_phone TEXT,
+  address TEXT,
+  instagram TEXT,
+  facebook TEXT,
+  tiktok TEXT,
+  website TEXT,
   source TEXT,
   status TEXT NOT NULL DEFAULT 'new'
     CHECK (status IN ('new','contacted','meeting','quoted','booked','completed','lost','archived')),

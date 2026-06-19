@@ -26,6 +26,7 @@ import { requireString, trimOrNull, sanitize } from '../../lib/validation'
 import { ENQUIRY_SOURCES, normalizeSource, sourceLabel } from '../../lib/sources'
 import { generateId } from '../../lib/crypto'
 import { formatDate } from '../../lib/date'
+import { socialUrl, socialDisplay } from '../../lib/social'
 import { draftEmail } from '../../services/ai'
 import { sendEmailMessage } from '../../services/email'
 import { auditLog } from '../../middleware/audit'
@@ -150,6 +151,11 @@ async function createContactFallback(
     partner_last_name?: string | null
     partner_email?: string | null
     partner_phone?: string | null
+    address?: string | null
+    instagram?: string | null
+    facebook?: string | null
+    tiktok?: string | null
+    website?: string | null
     source?: string | null
     wedding_date?: string | null
     wedding_location?: string | null
@@ -162,8 +168,9 @@ async function createContactFallback(
     .prepare(
       `INSERT INTO contacts (id, vendor_id, first_name, last_name, email, phone,
         partner_first_name, partner_last_name, partner_email, partner_phone,
+        address, instagram, facebook, tiktok, website,
         source, status, wedding_date, wedding_location, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?)`
     )
     .bind(
       id,
@@ -176,6 +183,11 @@ async function createContactFallback(
       data.partner_last_name ?? null,
       data.partner_email ?? null,
       data.partner_phone ?? null,
+      data.address ?? null,
+      data.instagram ?? null,
+      data.facebook ?? null,
+      data.tiktok ?? null,
+      data.website ?? null,
       data.source ?? null,
       data.wedding_date ?? null,
       data.wedding_location ?? null,
@@ -196,6 +208,11 @@ async function createContactFallback(
     partner_last_name: data.partner_last_name ?? null,
     partner_email: data.partner_email ?? null,
     partner_phone: data.partner_phone ?? null,
+    address: data.address ?? null,
+    instagram: data.instagram ?? null,
+    facebook: data.facebook ?? null,
+    tiktok: data.tiktok ?? null,
+    website: data.website ?? null,
     source: data.source ?? null,
     status: 'new',
     wedding_id: null,
@@ -427,6 +444,11 @@ contacts.post('/app/contacts/new', async (c) => {
       partner_last_name: trimOrNull(body.partner_last_name),
       partner_email: trimOrNull(body.partner_email),
       partner_phone: trimOrNull(body.partner_phone),
+      address: trimOrNull(body.address),
+      instagram: trimOrNull(body.instagram),
+      facebook: trimOrNull(body.facebook),
+      tiktok: trimOrNull(body.tiktok),
+      website: trimOrNull(body.website),
       source: trimOrNull(body.source),
       wedding_date: trimOrNull(body.wedding_date),
       wedding_location: trimOrNull(body.wedding_location),
@@ -631,6 +653,11 @@ contacts.get('/app/contacts/:id', async (c) => {
               <DetailCard label="Phone" value={contact.phone} href={contact.phone ? `tel:${contact.phone}` : undefined} />
               {contact.partner_email && <DetailCard label="Partner email" value={contact.partner_email} href={`mailto:${contact.partner_email}`} />}
               {contact.partner_phone && <DetailCard label="Partner phone" value={contact.partner_phone} href={`tel:${contact.partner_phone}`} />}
+              <DetailCard label="Address" value={contact.address} />
+              <DetailCard label="Instagram" value={contact.instagram ? socialDisplay(contact.instagram) : null} href={socialUrl('instagram', contact.instagram)} />
+              <DetailCard label="Facebook" value={contact.facebook ? socialDisplay(contact.facebook) : null} href={socialUrl('facebook', contact.facebook)} />
+              <DetailCard label="TikTok" value={contact.tiktok ? socialDisplay(contact.tiktok) : null} href={socialUrl('tiktok', contact.tiktok)} />
+              <DetailCard label="Website" value={contact.website} href={socialUrl('website', contact.website)} />
               <DetailCard label="Wedding date" value={contact.wedding_date ? formatDate(contact.wedding_date) : null} />
               {contact.wedding_date && contact.wedding_date >= today && demandView && (
                 <DemandCard contactId={contact.id} view={demandView} />
@@ -736,6 +763,11 @@ contacts.post('/app/contacts/:id/edit', async (c) => {
       partner_last_name: trimOrNull(body.partner_last_name),
       partner_email: trimOrNull(body.partner_email),
       partner_phone: trimOrNull(body.partner_phone),
+      address: trimOrNull(body.address),
+      instagram: trimOrNull(body.instagram),
+      facebook: trimOrNull(body.facebook),
+      tiktok: trimOrNull(body.tiktok),
+      website: trimOrNull(body.website),
       source: trimOrNull(body.source),
       wedding_date: trimOrNull(body.wedding_date),
       wedding_location: trimOrNull(body.wedding_location),
@@ -1464,6 +1496,19 @@ function ContactForm({
           <FormField label="Last name" name="partner_last_name" value={contact?.partner_last_name} />
           <FormField label="Email" name="partner_email" value={contact?.partner_email} type="email" />
           <FormField label="Phone" name="partner_phone" value={contact?.partner_phone} type="tel" />
+        </div>
+      </section>
+
+      <section>
+        <h3 class="text-sm font-bold text-gray-900 mb-3">Address &amp; social</h3>
+        <div class="space-y-4">
+          <FormField label="Address" name="address" value={contact?.address} placeholder="Street, city, state, postcode" />
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="Instagram" name="instagram" value={contact?.instagram} placeholder="@handle or profile URL" />
+            <FormField label="Facebook" name="facebook" value={contact?.facebook} placeholder="Profile URL" />
+            <FormField label="TikTok" name="tiktok" value={contact?.tiktok} placeholder="@handle or profile URL" />
+            <FormField label="Website" name="website" value={contact?.website} type="url" placeholder="https://" />
+          </div>
         </div>
       </section>
 

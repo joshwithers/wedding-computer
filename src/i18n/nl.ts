@@ -853,6 +853,14 @@ export const nl: Dictionary = {
   "weddings.cap.body": "Uw gratis abonnement omvat tot {limit} actieve bruiloften tegelijk. Afgeronde bruiloften maken automatisch een plek vrij — of upgrade naar Pro voor onbeperkte bruiloften, apparaatsynchronisatie, analyses en AI.",
   "weddings.cap.cta": "Upgrade naar Pro",
   "weddings.cap.manage": "Beheer uw bruiloften",
+  "weddings.couple.title": "Koppel",
+  "weddings.couple.address": "Adres",
+  "weddings.couple.emailBoth": "Beiden e-mailen",
+  "weddings.couple.smsBoth": "Beiden sms'en",
+  "weddings.couple.email": "E-mail",
+  "weddings.couple.call": "Bellen",
+  "weddings.couple.text": "Sms",
+  "weddings.couple.editContact": "Contact bewerken",
 
   // ─── Analytics: overzicht ───
   "analytics.overview.enquiries": "Aanvragen",

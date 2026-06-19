@@ -852,6 +852,14 @@ export const ja: Dictionary = {
   "weddings.cap.body": "無料プランでは同時にアクティブな結婚式 {limit} 件までご利用いただけます。終了した結婚式は自動的に枠が空きます ── または Pro にアップグレードすると、無制限の結婚式、デバイス同期、分析、AI をご利用いただけます。",
   "weddings.cap.cta": "Pro にアップグレード",
   "weddings.cap.manage": "結婚式を管理する",
+  "weddings.couple.title": "カップル",
+  "weddings.couple.address": "住所",
+  "weddings.couple.emailBoth": "両方にメール",
+  "weddings.couple.smsBoth": "両方にSMS",
+  "weddings.couple.email": "メール",
+  "weddings.couple.call": "電話",
+  "weddings.couple.text": "SMS",
+  "weddings.couple.editContact": "連絡先を編集",
 
   // ─── Analytics ───
   "analytics.overview.enquiries": "問い合わせ",

@@ -853,6 +853,14 @@ export const pt: Dictionary = {
   "weddings.cap.body": "Seu plano grátis cobre até {limit} casamentos ativos por vez. Casamentos concluídos liberam uma vaga automaticamente — ou faça upgrade para o Pro e tenha casamentos ilimitados, sincronização de dispositivos, análises e IA.",
   "weddings.cap.cta": "Faça upgrade para o Pro",
   "weddings.cap.manage": "Gerencie seus casamentos",
+  "weddings.couple.title": "Casal",
+  "weddings.couple.address": "Endereço",
+  "weddings.couple.emailBoth": "E-mail para ambos",
+  "weddings.couple.smsBoth": "SMS para ambos",
+  "weddings.couple.email": "E-mail",
+  "weddings.couple.call": "Ligar",
+  "weddings.couple.text": "SMS",
+  "weddings.couple.editContact": "Editar contato",
 
   // ─── Analytics: overview ───
   "analytics.overview.enquiries": "Consultas",

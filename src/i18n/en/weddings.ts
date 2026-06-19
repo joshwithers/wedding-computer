@@ -19,4 +19,14 @@ export const weddings = {
     'Your free plan covers up to {limit} active weddings at a time. Finished weddings free up a slot automatically — or upgrade to Pro for unlimited weddings, device sync, analytics and AI.',
   'weddings.cap.cta': 'Upgrade to Pro',
   'weddings.cap.manage': 'Manage your weddings',
+
+  // Couple contact panel
+  'weddings.couple.title': 'Couple',
+  'weddings.couple.address': 'Address',
+  'weddings.couple.emailBoth': 'Email both',
+  'weddings.couple.smsBoth': 'Text both',
+  'weddings.couple.email': 'Email',
+  'weddings.couple.call': 'Call',
+  'weddings.couple.text': 'Text',
+  'weddings.couple.editContact': 'Edit contact',
 } as const

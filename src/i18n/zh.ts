@@ -851,6 +851,14 @@ export const zh: Dictionary = {
   "weddings.cap.body": "您的免费方案最多可同时管理 {limit} 场进行中的婚礼。完成的婚礼会自动腾出名额——或升级到 Pro，畅享无限场婚礼、设备同步、分析和 AI。",
   "weddings.cap.cta": "升级到 Pro",
   "weddings.cap.manage": "管理您的婚礼",
+  "weddings.couple.title": "新人",
+  "weddings.couple.address": "地址",
+  "weddings.couple.emailBoth": "同时邮件",
+  "weddings.couple.smsBoth": "同时短信",
+  "weddings.couple.email": "邮件",
+  "weddings.couple.call": "致电",
+  "weddings.couple.text": "短信",
+  "weddings.couple.editContact": "编辑联系人",
 
   // ─── 分析：概览 ───
   "analytics.overview.enquiries": "咨询",
