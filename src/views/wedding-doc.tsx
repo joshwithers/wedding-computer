@@ -259,7 +259,10 @@ export function WeddingDoc({
       elPres.textContent='';
       mount(scope,state[scope].canWrite);
     } else {
-      mount(scope,false);
+      // Mount editable straight away for a scope you can write, so the tab
+      // doesn't look disabled while the lock resolves. The first poll claims
+      // the soft-lock (or downgrades to read-only if someone else holds it).
+      mount(scope,state[scope].canWrite);
       poll();
     }
   }

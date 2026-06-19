@@ -41,10 +41,11 @@ describe('canReadDoc', () => {
 })
 
 describe('canWriteDoc', () => {
-  it('gates shared writes on can_manage (couples read but cannot edit)', () => {
-    expect(canWriteDoc(vendor, 'shared')).toBe(false)
+  it('lets any vendor write the shared doc; couples read but cannot edit', () => {
+    expect(canWriteDoc(vendor, 'shared')).toBe(true)
     expect(canWriteDoc(managingVendor, 'shared')).toBe(true)
     expect(canWriteDoc(couple, 'shared')).toBe(false)
+    expect(canWriteDoc(guest, 'shared')).toBe(false)
   })
 
   it('lets vendors write the vendors doc and the couple write the couple doc', () => {

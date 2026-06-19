@@ -3,9 +3,9 @@
 // Mirrors the "one rule, all doors" shape of timeline-edit.ts.
 //
 // Scopes:
-//   • shared  — visible to all vendors + the couple. Editing matches the
-//               legacy shared-notes gate: can_manage only (couples read it but
-//               don't edit it, exactly as today).
+//   • shared  — visible to all vendors + the couple. Any vendor on the wedding
+//               can edit it (it's the team's shared note); the couple reads it
+//               but edits their own 'couple' note instead.
 //   • vendors — vendors only; the couple can neither read nor write.
 //   • couple  — the couple only (both partners); vendors can neither read nor
 //               write.
@@ -48,7 +48,7 @@ export function canReadDoc(member: DocMembership, scope: DocScope): boolean {
 export function canWriteDoc(member: DocMembership, scope: DocScope): boolean {
   switch (scope) {
     case 'shared':
-      return member.can_manage === 1 // managing vendors, same as the old /notes gate
+      return member.role === 'vendor' // any vendor on the wedding (couple is read-only)
     case 'vendors':
       return member.role === 'vendor'
     case 'couple':
