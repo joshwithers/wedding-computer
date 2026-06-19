@@ -1,3 +1,4 @@
+import { runWithI18n, t } from '../i18n'
 import {
   sendEmailMessage,
   EmailSendError,
@@ -51,11 +52,13 @@ export type Recipient = {
   email: string
   name: string
   notification_prefs: string | null
+  locale?: string | null
+  timezone?: string | null
 }
 
 async function recipientById(db: D1Database, userId: string): Promise<Recipient | null> {
   return db
-    .prepare('SELECT id, email, name, notification_prefs FROM users WHERE id = ?')
+    .prepare('SELECT id, email, name, notification_prefs, locale, timezone FROM users WHERE id = ?')
     .bind(userId)
     .first<Recipient>()
 }
@@ -627,19 +630,22 @@ export async function notifyTimelineChangeRequested(env: NotifyEnv, data: {
   for (const userId of data.controllerUserIds) {
     const recipient = await recipientById(env.db, userId)
     if (!recipient) continue
-    await deliver(env, {
-      key: 'wedding_updates',
-      recipient,
-      subject: `Timeline change for ${wedding.title} needs your approval`,
-      html: timelineChangeRequestedEmail({
-        managerName: recipient.name,
-        requesterLabel: data.requesterLabel,
-        weddingTitle: wedding.title,
-        summary: data.summary,
-        appUrl: env.appUrl,
-        weddingId: data.weddingId,
-      }),
-    })
+    // Render in the recipient's language.
+    const { subject, html } = runWithI18n(
+      { locale: recipient.locale ?? undefined, timezone: recipient.timezone ?? undefined },
+      () => ({
+        subject: t('email.timeline.requested.subject', { wedding: wedding.title }),
+        html: timelineChangeRequestedEmail({
+          managerName: recipient.name,
+          requesterLabel: data.requesterLabel,
+          weddingTitle: wedding.title,
+          summary: data.summary,
+          appUrl: env.appUrl,
+          weddingId: data.weddingId,
+        }),
+      })
+    )
+    await deliver(env, { key: 'wedding_updates', recipient, subject, html })
   }
 }
 
@@ -655,20 +661,23 @@ export async function notifyTimelineChangeDecided(env: NotifyEnv, data: {
 
   const recipient = await recipientById(env.db, data.requesterUserId)
   if (!recipient) return
-  await deliver(env, {
-    key: 'wedding_updates',
-    recipient,
-    subject: `Your timeline change for ${wedding.title} was ${data.approved ? 'approved' : 'declined'}`,
-    html: timelineChangeDecidedEmail({
-      requesterName: recipient.name,
-      deciderLabel: data.deciderLabel,
-      weddingTitle: wedding.title,
-      approved: data.approved,
-      summary: data.summary,
-      appUrl: env.appUrl,
-      weddingId: data.weddingId,
-    }),
-  })
+  const v = data.approved ? 'approved' : 'declined'
+  const { subject, html } = runWithI18n(
+    { locale: recipient.locale ?? undefined, timezone: recipient.timezone ?? undefined },
+    () => ({
+      subject: t(`email.timeline.decided.subject.${v}` as const, { wedding: wedding.title }),
+      html: timelineChangeDecidedEmail({
+        requesterName: recipient.name,
+        deciderLabel: data.deciderLabel,
+        weddingTitle: wedding.title,
+        approved: data.approved,
+        summary: data.summary,
+        appUrl: env.appUrl,
+        weddingId: data.weddingId,
+      }),
+    })
+  )
+  await deliver(env, { key: 'wedding_updates', recipient, subject, html })
 }
 
 // ─── Admin notifications ───

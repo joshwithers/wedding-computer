@@ -1069,4 +1069,34 @@ export const it: Dictionary = {
   "onboarding.wedding.create": "Crea il mio matrimonio",
   "onboarding.wedding.defaultTitle": "Matrimonio di {name}",
   "onboarding.wedding.defaultTitleCouple": "Matrimonio di {a} & {b}",
+
+  // Email transazionali — notifiche sulla scaletta
+  "email.timeline.updated.subject": "La scaletta di {wedding} è stata aggiornata",
+  "email.timeline.updated.heading": "La scaletta di {wedding} è stata aggiornata",
+  "email.timeline.updated.body":
+    "Qualcuno del matrimonio ha modificato la scaletta — orari, voci o chi fa cosa. Aprila per vedere le ultime modifiche, così il giorno dell'evento lavorerai sulla versione aggiornata.",
+  "email.timeline.updated.cta": "Vedi la scaletta",
+  "email.timeline.updated.footer": "Ricevi questa email perché hai delle voci nella scaletta di questo matrimonio.",
+  "email.timeline.updated.preheader": "La scaletta di {wedding} è cambiata",
+
+  // Modifica alla scaletta proposta → richiede l'approvazione del planner/della location
+  "email.timeline.requested.subject": "Una modifica alla scaletta di {wedding} richiede la tua approvazione",
+  "email.timeline.requested.heading": "Modifica alla scaletta in attesa della tua approvazione",
+  "email.timeline.requested.body":
+    "Ciao {manager}, {requester} ha proposto una modifica alla scaletta di {wedding}. Nulla viene applicato finché non la approvi.",
+  "email.timeline.requested.cta": "Esamina la modifica",
+  "email.timeline.requested.preheader": "{requester} ha proposto una modifica alla scaletta di {wedding}",
+
+  // Modifica alla scaletta decisa (approvata / rifiutata) → torna al richiedente
+  "email.timeline.decided.subject.approved": "La tua modifica alla scaletta di {wedding} è stata approvata",
+  "email.timeline.decided.subject.declined": "La tua modifica alla scaletta di {wedding} è stata rifiutata",
+  "email.timeline.decided.heading.approved": "Modifica alla scaletta approvata",
+  "email.timeline.decided.heading.declined": "Modifica alla scaletta rifiutata",
+  "email.timeline.decided.body.approved":
+    "Ciao {requester}, {decider} ha approvato la tua modifica alla scaletta di {wedding}. È attiva ora — i calendari di tutti i partecipanti al matrimonio sono stati aggiornati.",
+  "email.timeline.decided.body.declined":
+    "Ciao {requester}, {decider} ha rifiutato la tua modifica alla scaletta di {wedding}. La scaletta è invariata. Contattalo se vuoi parlarne.",
+  "email.timeline.decided.cta": "Vedi il matrimonio",
+  "email.timeline.decided.preheader.approved": "La tua modifica alla scaletta di {wedding} è stata approvata",
+  "email.timeline.decided.preheader.declined": "La tua modifica alla scaletta di {wedding} è stata rifiutata",
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { enquiryConfirmationEmail, vendorWelcomeInviteEmail, vendorInviteReminderEmail } from './email'
+import { enquiryConfirmationEmail, vendorWelcomeInviteEmail, vendorInviteReminderEmail, timelineUpdatedEmail } from './email'
+import { runWithI18n } from '../i18n'
 
 describe('enquiryConfirmationEmail', () => {
   it('renders the enquirer name, vendor name, and body', () => {
@@ -83,5 +84,28 @@ describe('vendorInviteReminderEmail', () => {
   it('signals the last reminder when final', () => {
     const html = vendorInviteReminderEmail({ ...base, finalReminder: true })
     expect(html).toContain("last reminder")
+  })
+})
+
+describe('timelineUpdatedEmail localisation', () => {
+  const data = { weddingTitle: 'Sam & Alex', appUrl: 'https://wedding.computer', weddingId: 'w1' }
+
+  it('renders English by default (no i18n context)', () => {
+    const html = timelineUpdatedEmail(data)
+    expect(html).toContain('The run sheet for Sam &amp; Alex was updated')
+    expect(html).toContain('View the run sheet')
+  })
+
+  it('renders in the recipient locale when wrapped in runWithI18n', () => {
+    const html = runWithI18n({ locale: 'fr-FR' }, () => timelineUpdatedEmail(data))
+    expect(html).toContain('Le déroulé de Sam &amp; Alex a été mis à jour')
+    expect(html).toContain('Voir le déroulé')
+    expect(html).not.toContain('View the run sheet')
+  })
+
+  it('escapes the wedding title in the interpolated heading', () => {
+    const html = runWithI18n({ locale: 'de-DE' }, () => timelineUpdatedEmail({ ...data, weddingTitle: '<b>x</b>' }))
+    expect(html).not.toContain('<b>x</b>')
+    expect(html).toContain('&lt;b&gt;x&lt;/b&gt;')
   })
 })

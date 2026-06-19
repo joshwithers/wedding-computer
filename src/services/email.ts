@@ -1,5 +1,6 @@
 import { createEmail, updateEmailStatus, isEmailSuppressed } from '../db/emails'
 import { sanitize } from '../lib/validation'
+import { t } from '../i18n'
 
 /**
  * Raised when Resend rejects a send. `retryable` is true for transient
@@ -376,15 +377,16 @@ export function timelineChangeRequestedEmail(data: {
   appUrl: string
   weddingId: string
 }): string {
+  const wedding = esc(data.weddingTitle)
+  const requester = esc(data.requesterLabel)
   return emailWrapper(`
-    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Timeline change awaiting your approval</h1>
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">${t('email.timeline.requested.heading')}</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      Hi ${esc(data.managerName)}, ${esc(data.requesterLabel)} proposed a change to the timeline for <strong>${esc(data.weddingTitle)}</strong>.
-      Nothing is applied until you approve it.
+      ${t('email.timeline.requested.body', { manager: esc(data.managerName), requester, wedding })}
     </p>
     ${data.summary ? `<div style="background:#faf5ef;border-radius:12px;padding:14px 16px;margin-bottom:20px;font-size:14px;line-height:1.7;color:#333;">${esc(data.summary)}</div>` : ''}
-    <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">Review change</a>
-  `, { preheader: `${esc(data.requesterLabel)} proposed a timeline change for ${esc(data.weddingTitle)}` })
+    <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">${t('email.timeline.requested.cta')}</a>
+  `, { preheader: t('email.timeline.requested.preheader', { requester, wedding }) })
 }
 
 export function timelineChangeDecidedEmail(data: {
@@ -396,15 +398,16 @@ export function timelineChangeDecidedEmail(data: {
   appUrl: string
   weddingId: string
 }): string {
+  const v = data.approved ? 'approved' : 'declined'
+  const wedding = esc(data.weddingTitle)
   return emailWrapper(`
-    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Timeline change ${data.approved ? 'approved' : 'declined'}</h1>
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">${t(`email.timeline.decided.heading.${v}` as const)}</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      Hi ${esc(data.requesterName)}, ${esc(data.deciderLabel)} ${data.approved ? 'approved' : 'declined'} your timeline change for <strong>${esc(data.weddingTitle)}</strong>.
-      ${data.approved ? "It's live now — calendars for everyone on the wedding have been updated." : 'The timeline is unchanged. Get in touch with them if you want to talk it through.'}
+      ${t(`email.timeline.decided.body.${v}` as const, { requester: esc(data.requesterName), decider: esc(data.deciderLabel), wedding })}
     </p>
     ${data.summary ? `<div style="background:#faf5ef;border-radius:12px;padding:14px 16px;margin-bottom:20px;font-size:14px;line-height:1.7;color:#333;">${esc(data.summary)}</div>` : ''}
-    <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View wedding</a>
-  `, { preheader: `Your timeline change for ${esc(data.weddingTitle)} was ${data.approved ? 'approved' : 'declined'}` })
+    <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">${t('email.timeline.decided.cta')}</a>
+  `, { preheader: t(`email.timeline.decided.preheader.${v}` as const, { wedding }) })
 }
 
 export function timelineUpdatedEmail(data: {
@@ -412,16 +415,17 @@ export function timelineUpdatedEmail(data: {
   appUrl: string
   weddingId: string
 }): string {
+  const wedding = esc(data.weddingTitle)
   return emailWrapper(`
-    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">The run sheet for ${esc(data.weddingTitle)} was updated</h1>
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">${t('email.timeline.updated.heading', { wedding })}</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      Someone on the wedding changed the run sheet — times, items, or who's doing what. Open it to see the latest, so you're working from the current version on the day.
+      ${t('email.timeline.updated.body')}
     </p>
-    <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View the run sheet</a>
+    <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">${t('email.timeline.updated.cta')}</a>
     <p style="margin:24px 0 0;font-size:13px;color:#999;line-height:1.5;">
-      You're getting this because you have items on this wedding's run sheet.
+      ${t('email.timeline.updated.footer')}
     </p>
-  `, { preheader: `The run sheet for ${esc(data.weddingTitle)} has changed` })
+  `, { preheader: t('email.timeline.updated.preheader', { wedding }) })
 }
 
 export function magicLinkEmail(url: string): string {

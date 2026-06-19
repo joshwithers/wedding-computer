@@ -1076,4 +1076,28 @@ export const zh: Dictionary = {
   "onboarding.wedding.create": "创建我的婚礼",
   "onboarding.wedding.defaultTitle": "{name} 的婚礼",
   "onboarding.wedding.defaultTitleCouple": "{a} 和 {b} 的婚礼",
+
+  // 事务性邮件内容（时间表通知）
+  "email.timeline.updated.subject": "{wedding} 的流程单有更新",
+  "email.timeline.updated.heading": "{wedding} 的流程单有更新",
+  "email.timeline.updated.body": "婚礼上有人改动了流程单——时间、事项，或谁负责什么。打开看看最新版本，确保当天你用的是当前版本。",
+  "email.timeline.updated.cta": "查看流程单",
+  "email.timeline.updated.footer": "你收到这封邮件，是因为你在这场婚礼的流程单上有负责的事项。",
+  "email.timeline.updated.preheader": "{wedding} 的流程单已更改",
+
+  "email.timeline.requested.subject": "{wedding} 的时间表改动需要你审批",
+  "email.timeline.requested.heading": "时间表改动等待你审批",
+  "email.timeline.requested.body": "你好 {manager}，{requester} 对 {wedding} 的时间表提出了一项改动。在你批准之前不会生效。",
+  "email.timeline.requested.cta": "查看改动",
+  "email.timeline.requested.preheader": "{requester} 对 {wedding} 提出了时间表改动",
+
+  "email.timeline.decided.subject.approved": "你对 {wedding} 的时间表改动已获批准",
+  "email.timeline.decided.subject.declined": "你对 {wedding} 的时间表改动被拒绝",
+  "email.timeline.decided.heading.approved": "时间表改动已批准",
+  "email.timeline.decided.heading.declined": "时间表改动被拒绝",
+  "email.timeline.decided.body.approved": "你好 {requester}，{decider} 批准了你对 {wedding} 的时间表改动。现已生效——婚礼上每个人的日历都已更新。",
+  "email.timeline.decided.body.declined": "你好 {requester}，{decider} 拒绝了你对 {wedding} 的时间表改动。时间表保持不变。如果你想详谈，请直接联系对方。",
+  "email.timeline.decided.cta": "查看婚礼",
+  "email.timeline.decided.preheader.approved": "你对 {wedding} 的时间表改动已获批准",
+  "email.timeline.decided.preheader.declined": "你对 {wedding} 的时间表改动被拒绝",
 }

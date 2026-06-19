@@ -1062,4 +1062,28 @@ export const de: Dictionary = {
   "onboarding.wedding.create": "Meine Hochzeit erstellen",
   "onboarding.wedding.defaultTitle": "{name}s Hochzeit",
   "onboarding.wedding.defaultTitleCouple": "Hochzeit von {a} & {b}",
+
+  // Transaktionale E-Mails — Benachrichtigungen zum Ablaufplan
+  "email.timeline.updated.subject": "Der Ablaufplan für {wedding} wurde aktualisiert",
+  "email.timeline.updated.heading": "Der Ablaufplan für {wedding} wurde aktualisiert",
+  "email.timeline.updated.body": "Jemand aus dem Hochzeitsteam hat den Ablaufplan geändert – Zeiten, Programmpunkte oder Zuständigkeiten. Öffnen Sie ihn, um den neuesten Stand zu sehen, damit Sie am Tag selbst mit der aktuellen Version arbeiten.",
+  "email.timeline.updated.cta": "Ablaufplan ansehen",
+  "email.timeline.updated.footer": "Sie erhalten diese Nachricht, weil Sie Programmpunkte im Ablaufplan dieser Hochzeit haben.",
+  "email.timeline.updated.preheader": "Der Ablaufplan für {wedding} hat sich geändert",
+
+  "email.timeline.requested.subject": "Eine Ablaufplan-Änderung für {wedding} wartet auf Ihre Freigabe",
+  "email.timeline.requested.heading": "Ablaufplan-Änderung wartet auf Ihre Freigabe",
+  "email.timeline.requested.body": "Hallo {manager}, {requester} hat eine Änderung am Ablaufplan für {wedding} vorgeschlagen. Es wird nichts übernommen, bevor Sie es freigeben.",
+  "email.timeline.requested.cta": "Änderung prüfen",
+  "email.timeline.requested.preheader": "{requester} hat eine Ablaufplan-Änderung für {wedding} vorgeschlagen",
+
+  "email.timeline.decided.subject.approved": "Ihre Ablaufplan-Änderung für {wedding} wurde freigegeben",
+  "email.timeline.decided.subject.declined": "Ihre Ablaufplan-Änderung für {wedding} wurde abgelehnt",
+  "email.timeline.decided.heading.approved": "Ablaufplan-Änderung freigegeben",
+  "email.timeline.decided.heading.declined": "Ablaufplan-Änderung abgelehnt",
+  "email.timeline.decided.body.approved": "Hallo {requester}, {decider} hat Ihre Ablaufplan-Änderung für {wedding} freigegeben. Sie ist jetzt aktiv – die Kalender aller Beteiligten dieser Hochzeit wurden aktualisiert.",
+  "email.timeline.decided.body.declined": "Hallo {requester}, {decider} hat Ihre Ablaufplan-Änderung für {wedding} abgelehnt. Der Ablaufplan bleibt unverändert. Nehmen Sie Kontakt mit der Person auf, wenn Sie es besprechen möchten.",
+  "email.timeline.decided.cta": "Hochzeit ansehen",
+  "email.timeline.decided.preheader.approved": "Ihre Ablaufplan-Änderung für {wedding} wurde freigegeben",
+  "email.timeline.decided.preheader.declined": "Ihre Ablaufplan-Änderung für {wedding} wurde abgelehnt",
 }

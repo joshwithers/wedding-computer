@@ -1078,4 +1078,28 @@ export const es: Dictionary = {
   "onboarding.wedding.create": "Crear mi boda",
   "onboarding.wedding.defaultTitle": "Boda de {name}",
   "onboarding.wedding.defaultTitleCouple": "Boda de {a} y {b}",
+
+  // Contenido de correos transaccionales (notificaciones del cronograma)
+  "email.timeline.updated.subject": "Se ha actualizado el cronograma de {wedding}",
+  "email.timeline.updated.heading": "Se ha actualizado el cronograma de {wedding}",
+  "email.timeline.updated.body": "Alguien de la boda ha modificado el cronograma: horarios, elementos o quién se encarga de qué. Ábrelo para ver lo más reciente y así trabajar con la versión actual el día del evento.",
+  "email.timeline.updated.cta": "Ver el cronograma",
+  "email.timeline.updated.footer": "Recibes este mensaje porque tienes elementos en el cronograma de esta boda.",
+  "email.timeline.updated.preheader": "El cronograma de {wedding} ha cambiado",
+
+  "email.timeline.requested.subject": "Un cambio en el cronograma de {wedding} necesita tu aprobación",
+  "email.timeline.requested.heading": "Cambio en el cronograma pendiente de tu aprobación",
+  "email.timeline.requested.body": "Hola {manager}, {requester} ha propuesto un cambio en el cronograma de {wedding}. No se aplicará nada hasta que lo apruebes.",
+  "email.timeline.requested.cta": "Revisar el cambio",
+  "email.timeline.requested.preheader": "{requester} ha propuesto un cambio en el cronograma de {wedding}",
+
+  "email.timeline.decided.subject.approved": "Tu cambio en el cronograma de {wedding} ha sido aprobado",
+  "email.timeline.decided.subject.declined": "Tu cambio en el cronograma de {wedding} ha sido rechazado",
+  "email.timeline.decided.heading.approved": "Cambio en el cronograma aprobado",
+  "email.timeline.decided.heading.declined": "Cambio en el cronograma rechazado",
+  "email.timeline.decided.body.approved": "Hola {requester}, {decider} ha aprobado tu cambio en el cronograma de {wedding}. Ya está activo: se han actualizado los calendarios de todas las personas de la boda.",
+  "email.timeline.decided.body.declined": "Hola {requester}, {decider} ha rechazado tu cambio en el cronograma de {wedding}. El cronograma no ha cambiado. Ponte en contacto con esa persona si quieres comentarlo.",
+  "email.timeline.decided.cta": "Ver la boda",
+  "email.timeline.decided.preheader.approved": "Tu cambio en el cronograma de {wedding} ha sido aprobado",
+  "email.timeline.decided.preheader.declined": "Tu cambio en el cronograma de {wedding} ha sido rechazado",
 }

@@ -1078,4 +1078,28 @@ export const fr: Dictionary = {
   "onboarding.wedding.create": "Créer mon mariage",
   "onboarding.wedding.defaultTitle": "Mariage de {name}",
   "onboarding.wedding.defaultTitleCouple": "Mariage de {a} & {b}",
+
+  // E-mails transactionnels — notifications de déroulé (timeline)
+  "email.timeline.updated.subject": "Le déroulé de {wedding} a été mis à jour",
+  "email.timeline.updated.heading": "Le déroulé de {wedding} a été mis à jour",
+  "email.timeline.updated.body": "Quelqu'un du mariage a modifié le déroulé — horaires, éléments ou répartition des rôles. Ouvrez-le pour voir la dernière version, afin de travailler à partir de la version à jour le jour J.",
+  "email.timeline.updated.cta": "Voir le déroulé",
+  "email.timeline.updated.footer": "Vous recevez ce message car vous avez des éléments dans le déroulé de ce mariage.",
+  "email.timeline.updated.preheader": "Le déroulé de {wedding} a changé",
+
+  "email.timeline.requested.subject": "Une modification du déroulé de {wedding} requiert votre approbation",
+  "email.timeline.requested.heading": "Modification du déroulé en attente de votre approbation",
+  "email.timeline.requested.body": "Bonjour {manager}, {requester} a proposé une modification du déroulé de {wedding}. Rien n'est appliqué tant que vous ne l'avez pas approuvée.",
+  "email.timeline.requested.cta": "Examiner la modification",
+  "email.timeline.requested.preheader": "{requester} a proposé une modification du déroulé de {wedding}",
+
+  "email.timeline.decided.subject.approved": "Votre modification du déroulé de {wedding} a été approuvée",
+  "email.timeline.decided.subject.declined": "Votre modification du déroulé de {wedding} a été refusée",
+  "email.timeline.decided.heading.approved": "Modification du déroulé approuvée",
+  "email.timeline.decided.heading.declined": "Modification du déroulé refusée",
+  "email.timeline.decided.body.approved": "Bonjour {requester}, {decider} a approuvé votre modification du déroulé de {wedding}. Elle est désormais active — les calendriers de toutes les personnes du mariage ont été mis à jour.",
+  "email.timeline.decided.body.declined": "Bonjour {requester}, {decider} a refusé votre modification du déroulé de {wedding}. Le déroulé est inchangé. Contactez cette personne si vous souhaitez en discuter.",
+  "email.timeline.decided.cta": "Voir le mariage",
+  "email.timeline.decided.preheader.approved": "Votre modification du déroulé de {wedding} a été approuvée",
+  "email.timeline.decided.preheader.declined": "Votre modification du déroulé de {wedding} a été refusée",
 }

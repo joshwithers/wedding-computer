@@ -1,4 +1,5 @@
 import type { Bindings } from '../types'
+import { runWithI18n, t } from '../i18n'
 import { getWedding } from '../db/weddings'
 import { deliver, type NotifyEnv, type Recipient } from './notifications'
 import { timelineUpdatedEmail } from './email'
@@ -31,7 +32,7 @@ export async function markTimelineDirty(kv: KVNamespace, weddingId: string, edit
 async function getRunSheetRecipients(db: D1Database, weddingId: string, editorUserId: string): Promise<Recipient[]> {
   const rows = await db
     .prepare(
-      `SELECT DISTINCT u.id, u.email, u.name, u.notification_prefs
+      `SELECT DISTINCT u.id, u.email, u.name, u.notification_prefs, u.locale, u.timezone
        FROM wedding_members wm
        JOIN users u ON u.id = wm.user_id
        WHERE wm.wedding_id = ?1 AND wm.role = 'vendor' AND wm.status = 'active'
@@ -90,12 +91,15 @@ export async function flushTimelineNotifications(env: Bindings): Promise<number>
     if (wedding) {
       const recipients = await getRunSheetRecipients(env.DB, weddingId, rec.editorUserId ?? '')
       for (const r of recipients) {
-        const ok = await deliver(notifyEnv, {
-          key: 'wedding_updates',
-          recipient: r,
-          subject: `The run sheet for ${wedding.title} was updated`,
-          html: timelineUpdatedEmail({ weddingTitle: wedding.title, appUrl: env.APP_URL, weddingId }),
-        }).catch(() => false)
+        // Render in each recipient's language.
+        const { subject, html } = runWithI18n(
+          { locale: r.locale ?? undefined, timezone: r.timezone ?? undefined },
+          () => ({
+            subject: t('email.timeline.updated.subject', { wedding: wedding.title }),
+            html: timelineUpdatedEmail({ weddingTitle: wedding.title, appUrl: env.APP_URL, weddingId }),
+          })
+        )
+        const ok = await deliver(notifyEnv, { key: 'wedding_updates', recipient: r, subject, html }).catch(() => false)
         if (ok) sent++
       }
     }

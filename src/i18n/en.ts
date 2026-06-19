@@ -24,6 +24,7 @@ import { billing } from './en/billing'
 import { forms } from './en/forms'
 import { planning } from './en/planning'
 import { onboarding } from './en/onboarding'
+import { email } from './en/email'
 import { comms } from './en/comms'
 import { marketing } from './en/marketing'
 import { legal } from './en/legal'
@@ -45,6 +46,7 @@ export const en = {
   ...forms,
   ...planning,
   ...onboarding,
+  ...email,
   ...comms,
   ...marketing,
   ...legal,

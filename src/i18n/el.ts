@@ -1053,4 +1053,28 @@ export const el: Dictionary = {
   "onboarding.wedding.create": "Δημιουργία του γάμου μου",
   "onboarding.wedding.defaultTitle": "Ο γάμος του/της {name}",
   "onboarding.wedding.defaultTitleCouple": "Ο γάμος των {a} & {b}",
+
+  // Περιεχόμενο email συναλλαγών (ειδοποιήσεις χρονοδιαγράμματος)
+  "email.timeline.updated.subject": "Το run sheet για τον γάμο {wedding} ενημερώθηκε",
+  "email.timeline.updated.heading": "Το run sheet για τον γάμο {wedding} ενημερώθηκε",
+  "email.timeline.updated.body": "Κάποιος στον γάμο άλλαξε το run sheet — ώρες, στοιχεία ή το ποιος κάνει τι. Ανοίξτε το για να δείτε τα πιο πρόσφατα, ώστε την ημέρα να δουλεύετε με την τρέχουσα έκδοση.",
+  "email.timeline.updated.cta": "Προβολή του run sheet",
+  "email.timeline.updated.footer": "Το λαμβάνετε αυτό επειδή έχετε στοιχεία στο run sheet αυτού του γάμου.",
+  "email.timeline.updated.preheader": "Το run sheet για τον γάμο {wedding} άλλαξε",
+
+  "email.timeline.requested.subject": "Μια αλλαγή χρονοδιαγράμματος για τον γάμο {wedding} χρειάζεται την έγκρισή σας",
+  "email.timeline.requested.heading": "Αλλαγή χρονοδιαγράμματος σε αναμονή έγκρισης",
+  "email.timeline.requested.body": "Γεια σας {manager}, ο/η {requester} πρότεινε μια αλλαγή στο χρονοδιάγραμμα του γάμου {wedding}. Τίποτα δεν εφαρμόζεται μέχρι να την εγκρίνετε.",
+  "email.timeline.requested.cta": "Έλεγχος αλλαγής",
+  "email.timeline.requested.preheader": "Ο/Η {requester} πρότεινε μια αλλαγή χρονοδιαγράμματος για τον γάμο {wedding}",
+
+  "email.timeline.decided.subject.approved": "Η αλλαγή χρονοδιαγράμματός σας για τον γάμο {wedding} εγκρίθηκε",
+  "email.timeline.decided.subject.declined": "Η αλλαγή χρονοδιαγράμματός σας για τον γάμο {wedding} απορρίφθηκε",
+  "email.timeline.decided.heading.approved": "Η αλλαγή χρονοδιαγράμματος εγκρίθηκε",
+  "email.timeline.decided.heading.declined": "Η αλλαγή χρονοδιαγράμματος απορρίφθηκε",
+  "email.timeline.decided.body.approved": "Γεια σας {requester}, ο/η {decider} ενέκρινε την αλλαγή χρονοδιαγράμματός σας για τον γάμο {wedding}. Είναι ενεργή τώρα — τα ημερολόγια όλων στον γάμο ενημερώθηκαν.",
+  "email.timeline.decided.body.declined": "Γεια σας {requester}, ο/η {decider} απέρριψε την αλλαγή χρονοδιαγράμματός σας για τον γάμο {wedding}. Το χρονοδιάγραμμα παραμένει αμετάβλητο. Επικοινωνήστε μαζί του/της αν θέλετε να το συζητήσετε.",
+  "email.timeline.decided.cta": "Προβολή γάμου",
+  "email.timeline.decided.preheader.approved": "Η αλλαγή χρονοδιαγράμματός σας για τον γάμο {wedding} εγκρίθηκε",
+  "email.timeline.decided.preheader.declined": "Η αλλαγή χρονοδιαγράμματός σας για τον γάμο {wedding} απορρίφθηκε",
 }
