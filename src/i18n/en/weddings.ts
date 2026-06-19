@@ -28,5 +28,7 @@ export const weddings = {
   'weddings.couple.email': 'Email',
   'weddings.couple.call': 'Call',
   'weddings.couple.text': 'Text',
+  'weddings.couple.copy': 'Copy',
+  'weddings.couple.copied': 'Copied!',
   'weddings.couple.editContact': 'Edit contact',
 } as const

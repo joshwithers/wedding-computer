@@ -860,6 +860,8 @@ export const nl: Dictionary = {
   "weddings.couple.email": "E-mail",
   "weddings.couple.call": "Bellen",
   "weddings.couple.text": "Sms",
+  "weddings.couple.copy": "Kopiëren",
+  "weddings.couple.copied": "Gekopieerd!",
   "weddings.couple.editContact": "Contact bewerken",
 
   // ─── Analytics: overzicht ───

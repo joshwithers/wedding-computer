@@ -844,6 +844,8 @@ export const el: Dictionary = {
   "weddings.couple.email": "Email",
   "weddings.couple.call": "Κλήση",
   "weddings.couple.text": "SMS",
+  "weddings.couple.copy": "Αντιγραφή",
+  "weddings.couple.copied": "Αντιγράφηκε!",
   "weddings.couple.editContact": "Επεξεργασία επαφής",
 
   // ─── Analytics ───

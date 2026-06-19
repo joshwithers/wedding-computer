@@ -858,6 +858,8 @@ export const zh: Dictionary = {
   "weddings.couple.email": "邮件",
   "weddings.couple.call": "致电",
   "weddings.couple.text": "短信",
+  "weddings.couple.copy": "复制",
+  "weddings.couple.copied": "已复制",
   "weddings.couple.editContact": "编辑联系人",
 
   // ─── 分析：概览 ───

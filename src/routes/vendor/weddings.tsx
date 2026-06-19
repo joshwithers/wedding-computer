@@ -96,14 +96,33 @@ function ContactAction({ href, label }: { href: string; label: string }) {
   )
 }
 
+/** A small inline "copy to clipboard" pill. */
+function CopyAction({ value }: { value: string }) {
+  const label = t('weddings.couple.copy')
+  const copied = t('weddings.couple.copied')
+  return (
+    <button
+      type="button"
+      onclick={`navigator.clipboard.writeText(${JSON.stringify(value)});this.textContent=${JSON.stringify(
+        copied,
+      )};setTimeout(()=>this.textContent=${JSON.stringify(label)},1500)`}
+      class="inline-flex items-center px-2.5 py-1 rounded-full bg-papaya-50 border border-papaya-200 text-gray-500 text-xs font-medium hover:bg-papaya-100"
+    >
+      {label}
+    </button>
+  )
+}
+
 /** One partner's name + contact actions. */
 function PartnerRow({ name, email, phone }: { name: string; email: string | null; phone: string | null }) {
   return (
     <div class="flex flex-wrap items-center gap-2">
       <span class="text-sm font-medium text-gray-900">{name}</span>
       {email && <ContactAction href={`mailto:${email}`} label={t('weddings.couple.email')} />}
+      {email && <CopyAction value={email} />}
       {phone && <ContactAction href={`tel:${phone.replace(/\s+/g, '')}`} label={t('weddings.couple.call')} />}
       {phone && <ContactAction href={`sms:${phone.replace(/\s+/g, '')}`} label={t('weddings.couple.text')} />}
+      {phone && <CopyAction value={phone} />}
     </div>
   )
 }

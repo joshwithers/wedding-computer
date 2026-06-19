@@ -860,6 +860,8 @@ export const fr: Dictionary = {
   "weddings.couple.email": "E-mail",
   "weddings.couple.call": "Appeler",
   "weddings.couple.text": "SMS",
+  "weddings.couple.copy": "Copier",
+  "weddings.couple.copied": "Copié !",
   "weddings.couple.editContact": "Modifier le contact",
 
   // ─── Analytics: overview ───

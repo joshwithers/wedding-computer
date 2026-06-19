@@ -649,10 +649,10 @@ contacts.get('/app/contacts/:id', async (c) => {
 
             {/* Sidebar */}
             <div class="space-y-4">
-              <DetailCard label="Email" value={contact.email} href={contact.email ? `mailto:${contact.email}` : undefined} />
-              <DetailCard label="Phone" value={contact.phone} href={contact.phone ? `tel:${contact.phone}` : undefined} />
-              {contact.partner_email && <DetailCard label="Partner email" value={contact.partner_email} href={`mailto:${contact.partner_email}`} />}
-              {contact.partner_phone && <DetailCard label="Partner phone" value={contact.partner_phone} href={`tel:${contact.partner_phone}`} />}
+              <DetailCard label="Email" value={contact.email} href={contact.email ? `mailto:${contact.email}` : undefined} copy={contact.email} />
+              <DetailCard label="Phone" value={contact.phone} href={contact.phone ? `tel:${contact.phone}` : undefined} copy={contact.phone} />
+              {contact.partner_email && <DetailCard label="Partner email" value={contact.partner_email} href={`mailto:${contact.partner_email}`} copy={contact.partner_email} />}
+              {contact.partner_phone && <DetailCard label="Partner phone" value={contact.partner_phone} href={`tel:${contact.partner_phone}`} copy={contact.partner_phone} />}
               <DetailCard label="Address" value={contact.address} />
               <DetailCard label="Instagram" value={contact.instagram ? socialDisplay(contact.instagram) : null} href={socialUrl('instagram', contact.instagram)} />
               <DetailCard label="Facebook" value={contact.facebook ? socialDisplay(contact.facebook) : null} href={socialUrl('facebook', contact.facebook)} />
@@ -1333,20 +1333,35 @@ function DetailCard({
   label,
   value,
   href,
+  copy,
 }: {
   label: string
   value: string | null | undefined
   href?: string
+  copy?: string | null
 }) {
   if (!value) return null
   return (
     <div class="bg-white border border-papaya-300/30 rounded-2xl px-4 py-3">
       <p class="text-xs text-gray-500 mb-0.5">{label}</p>
-      {href ? (
-        <a href={href} class="text-sm text-gray-900 hover:underline">{value}</a>
-      ) : (
-        <p class="text-sm text-gray-900">{value}</p>
-      )}
+      <div class="flex items-center justify-between gap-2">
+        {href ? (
+          <a href={href} class="text-sm text-gray-900 hover:underline">{value}</a>
+        ) : (
+          <p class="text-sm text-gray-900">{value}</p>
+        )}
+        {copy && (
+          <button
+            type="button"
+            onclick={`navigator.clipboard.writeText(${JSON.stringify(
+              copy,
+            )});this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)`}
+            class="shrink-0 text-xs font-medium text-gray-400 hover:text-horizon-700"
+          >
+            Copy
+          </button>
+        )}
+      </div>
     </div>
   )
 }

@@ -844,6 +844,8 @@ export const de: Dictionary = {
   "weddings.couple.email": "E-Mail",
   "weddings.couple.call": "Anrufen",
   "weddings.couple.text": "SMS",
+  "weddings.couple.copy": "Kopieren",
+  "weddings.couple.copied": "Kopiert!",
   "weddings.couple.editContact": "Kontakt bearbeiten",
 
   // ─── Analytics: overview ───
