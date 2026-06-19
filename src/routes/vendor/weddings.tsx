@@ -57,6 +57,7 @@ import { listWebLinks } from '../../db/web-links'
 import { renderTimelineSection } from '../timeline-handlers'
 import { getOrGenerateClimateNote } from '../../services/climate'
 import { socialUrl, socialDisplay } from '../../lib/social'
+import { CopyButton } from '../../views/icons'
 
 /** Couple contact row loaded for the wedding-page couple panel. */
 type CoupleContact = {
@@ -96,20 +97,14 @@ function ContactAction({ href, label }: { href: string; label: string }) {
   )
 }
 
-/** A small inline "copy to clipboard" pill. */
+/** A small inline "copy to clipboard" icon button. */
 function CopyAction({ value }: { value: string }) {
-  const label = t('weddings.couple.copy')
-  const copied = t('weddings.couple.copied')
   return (
-    <button
-      type="button"
-      onclick={`navigator.clipboard.writeText(${JSON.stringify(value)});this.textContent=${JSON.stringify(
-        copied,
-      )};setTimeout(()=>this.textContent=${JSON.stringify(label)},1500)`}
-      class="inline-flex items-center px-2.5 py-1 rounded-full bg-papaya-50 border border-papaya-200 text-gray-500 text-xs font-medium hover:bg-papaya-100"
-    >
-      {label}
-    </button>
+    <CopyButton
+      value={value}
+      title={t('weddings.couple.copy')}
+      class="w-7 h-7 rounded-full bg-papaya-50 border border-papaya-200 text-gray-500 hover:bg-papaya-100"
+    />
   )
 }
 

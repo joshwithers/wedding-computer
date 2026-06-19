@@ -860,7 +860,6 @@ export const ja: Dictionary = {
   "weddings.couple.call": "電話",
   "weddings.couple.text": "SMS",
   "weddings.couple.copy": "コピー",
-  "weddings.couple.copied": "コピーしました",
   "weddings.couple.editContact": "連絡先を編集",
 
   // ─── Analytics ───

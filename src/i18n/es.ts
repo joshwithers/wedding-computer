@@ -861,7 +861,6 @@ export const es: Dictionary = {
   "weddings.couple.call": "Llamar",
   "weddings.couple.text": "SMS",
   "weddings.couple.copy": "Copiar",
-  "weddings.couple.copied": "¡Copiado!",
   "weddings.couple.editContact": "Editar contacto",
 
   // ─── Analytics: overview ───

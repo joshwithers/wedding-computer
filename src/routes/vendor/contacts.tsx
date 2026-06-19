@@ -27,6 +27,7 @@ import { ENQUIRY_SOURCES, normalizeSource, sourceLabel } from '../../lib/sources
 import { generateId } from '../../lib/crypto'
 import { formatDate } from '../../lib/date'
 import { socialUrl, socialDisplay } from '../../lib/social'
+import { CopyButton } from '../../views/icons'
 import { draftEmail } from '../../services/ai'
 import { sendEmailMessage } from '../../services/email'
 import { auditLog } from '../../middleware/audit'
@@ -1351,15 +1352,7 @@ function DetailCard({
           <p class="text-sm text-gray-900">{value}</p>
         )}
         {copy && (
-          <button
-            type="button"
-            onclick={`navigator.clipboard.writeText(${JSON.stringify(
-              copy,
-            )});this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)`}
-            class="shrink-0 text-xs font-medium text-gray-400 hover:text-horizon-700"
-          >
-            Copy
-          </button>
+          <CopyButton value={copy} title="Copy" class="shrink-0 text-gray-400 hover:text-horizon-700" />
         )}
       </div>
     </div>
