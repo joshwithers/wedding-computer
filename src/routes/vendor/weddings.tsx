@@ -1074,39 +1074,19 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     const title = requireString(body.title, 'Title')
     const oldWedding = await getWedding(c.env.DB, weddingId)
     const newStatus = (body.status as Wedding['status']) || undefined
-    const startTime = trimOrNull(body.time)
-
-    const gettingReadyTime = trimOrNull(body.getting_ready_time)
-    const gettingReady2Time = trimOrNull(body.getting_ready_2_time)
-    const receptionTime = trimOrNull(body.reception_time)
-    const portraitTime = trimOrNull(body.portrait_time)
     const emoji = trimOrNull(body.emoji)
 
-    // Build update payload — only include fields the form actually submitted
+    // The trimmed edit form only submits these. Ceremony/reception/getting-ready/
+    // portrait times live in the timeline (run sheet) now, and the shared "Notes"
+    // is the "Everyone" scoped note (weddings.notes), edited on the wedding page.
+    // Both are managed elsewhere, so we never write — and must never clear — them
+    // from this form.
     const updateData: Record<string, unknown> = {
       title,
       date: trimOrNull(body.date),
-      time: startTime,
       location: trimOrNull(body.location),
       ceremony_type: trimOrNull(body.ceremony_type),
-      ceremony_location: trimOrNull(body.ceremony_location),
-      reception_location: trimOrNull(body.reception_location),
-      reception_time: receptionTime,
-      getting_ready_location: trimOrNull(body.getting_ready_location),
-      getting_ready_time: gettingReadyTime,
-      getting_ready_1_label: trimOrNull(body.getting_ready_1_label),
-      getting_ready_2_location: trimOrNull(body.getting_ready_2_location),
-      getting_ready_2_label: trimOrNull(body.getting_ready_2_label),
-      getting_ready_2_time: gettingReady2Time,
-      portrait_location: trimOrNull(body.portrait_location),
-      portrait_time: portraitTime,
       emoji,
-      reception_duration_hours: (() => {
-        const raw = trimOrNull(body.reception_duration_hours)
-        const val = raw ? parseFloat(raw) : null
-        return val && !isNaN(val) ? val : null
-      })(),
-      notes: trimOrNull(body.notes),
     }
     // Only include status if the form submitted one (avoid clearing it)
     if (newStatus) updateData.status = newStatus
@@ -1178,22 +1158,10 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     // Log changes
     if (oldWedding) {
       const changes = diffWeddingChanges(oldWedding, {
-        title, date: trimOrNull(body.date), time: startTime,
+        title, date: trimOrNull(body.date),
         location: trimOrNull(body.location), status: newStatus as string | undefined,
         ceremony_type: trimOrNull(body.ceremony_type),
-        ceremony_location: trimOrNull(body.ceremony_location),
-        reception_location: trimOrNull(body.reception_location),
-        reception_time: receptionTime,
-        getting_ready_location: trimOrNull(body.getting_ready_location),
-        getting_ready_time: gettingReadyTime,
-        getting_ready_1_label: trimOrNull(body.getting_ready_1_label),
-        getting_ready_2_location: trimOrNull(body.getting_ready_2_location),
-        getting_ready_2_label: trimOrNull(body.getting_ready_2_label),
-        getting_ready_2_time: gettingReady2Time,
-        portrait_location: trimOrNull(body.portrait_location),
-        portrait_time: portraitTime,
         emoji,
-        notes: trimOrNull(body.notes),
       })
       if (changes.length > 0) {
         try {
@@ -1963,14 +1931,9 @@ function WeddingForm({
         <p class="text-xs text-gray-400 mt-1">For reporting and analytics</p>
       </div>
 
-      {/* Venue locations + times — show in edit mode (not initial create) */}
+      {/* Wedding emoji — ceremony, reception and run-sheet times now live in the timeline */}
       {wedding && (
         <div class="space-y-4">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-gray-700">Places &amp; Times</h3>
-            <p class="text-xs text-gray-400">Each place creates a calendar event</p>
-          </div>
-
           {/* Emoji prefix */}
           <div>
             <label class="block text-xs font-medium text-gray-500 mb-1">{t('weddings.emoji.label')}</label>
@@ -2068,92 +2031,6 @@ function WeddingForm({
             ` }} />
           </div>
 
-          {/* Getting ready — two columns */}
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div class="space-y-1.5">
-              <PlacesField
-                name="getting_ready_location"
-                label={wedding.getting_ready_1_label ? `Getting ready — ${wedding.getting_ready_1_label}` : 'Getting ready (party 1)'}
-                value={wedding.getting_ready_location}
-                placeholder="Where party 1 gets ready"
-                timeName="getting_ready_time"
-                timeValue={wedding.getting_ready_time}
-              />
-              <input
-                type="text"
-                name="getting_ready_1_label"
-                value={wedding.getting_ready_1_label ?? ''}
-                placeholder="Label (e.g. Bride, Partner 1)"
-                class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-500 focus:outline-none focus:ring-1 focus:ring-horizon-600"
-              />
-            </div>
-            <div class="space-y-1.5">
-              <PlacesField
-                name="getting_ready_2_location"
-                label={wedding.getting_ready_2_label ? `Getting ready — ${wedding.getting_ready_2_label}` : 'Getting ready (party 2)'}
-                value={wedding.getting_ready_2_location}
-                placeholder="Where party 2 gets ready"
-                timeName="getting_ready_2_time"
-                timeValue={wedding.getting_ready_2_time}
-              />
-              <input
-                type="text"
-                name="getting_ready_2_label"
-                value={wedding.getting_ready_2_label ?? ''}
-                placeholder="Label (e.g. Groom, Partner 2)"
-                class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-500 focus:outline-none focus:ring-1 focus:ring-horizon-600"
-              />
-            </div>
-          </div>
-
-          {/* Ceremony */}
-          <PlacesField
-            name="ceremony_location"
-            label="Ceremony"
-            value={wedding.ceremony_location}
-            placeholder="Ceremony venue"
-            timeName="time"
-            timeValue={wedding.time}
-          />
-          <p class="text-xs text-gray-400 -mt-2">A 1-hour ceremony prep event is auto-created before this time.</p>
-
-          {/* Portraits */}
-          <PlacesField
-            name="portrait_location"
-            label="Portraits"
-            value={wedding.portrait_location}
-            placeholder="Portrait location"
-            timeName="portrait_time"
-            timeValue={wedding.portrait_time}
-          />
-
-          {/* Reception */}
-          <div class="flex gap-3 items-end">
-            <div class="flex-1">
-              <PlacesField
-                name="reception_location"
-                label="Reception"
-                value={wedding.reception_location}
-                placeholder="Reception venue"
-                timeName="reception_time"
-                timeValue={wedding.reception_time}
-              />
-            </div>
-            <div class="shrink-0">
-              <label class="block text-xs font-medium text-gray-500 mb-1">Duration</label>
-              <select
-                name="reception_duration_hours"
-                class="w-24 border border-gray-200 rounded-xl px-2 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600"
-              >
-                {[1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 6, 7, 8].map((h) => (
-                  <option value={String(h)} selected={h === (wedding.reception_duration_hours ?? 3)}>
-                    {h % 1 === 0 ? `${h}h` : `${Math.floor(h)}h 30m`}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
         </div>
       )}
 
@@ -2171,16 +2048,6 @@ function WeddingForm({
           </select>
         </div>
       )}
-
-      <div>
-        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="notes">Notes</label>
-        <textarea
-          id="notes"
-          name="notes"
-          rows={3}
-          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-        >{wedding?.notes ?? ''}</textarea>
-      </div>
 
       <button
         type="submit"
