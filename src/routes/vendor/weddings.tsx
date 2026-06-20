@@ -20,7 +20,7 @@ import { getContact, updateContact } from '../../storage/contacts'
 import { getStorageWithSecrets } from '../../storage'
 import { pushAllWeddingFiles } from '../../services/storage-push'
 import { createActivity } from '../../db/activities'
-import type { Bindings, VendorProfile, Wedding } from '../../types'
+import type { Bindings, VendorProfile, Wedding, Form } from '../../types'
 import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { getUserByEmail } from '../../db/users'
 import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
@@ -52,6 +52,17 @@ import { weddingCapStatus } from '../../services/plan-limits'
 import { markTimelineDirty } from '../../services/timeline-notify'
 import { WeddingDoc } from '../../views/wedding-doc'
 import { loadDocTabs } from '../../db/wedding-docs'
+import {
+  listForms,
+  getForm,
+  createFormSend,
+  listFormSendsForWedding,
+  listWeddingSubmissions,
+  setSubmissionTeamVisibility,
+  formSubmissionFields,
+  type WeddingFormSend,
+  type WeddingSubmission,
+} from '../../db/forms'
 import { WebLinks } from '../../views/web-links'
 import { listWebLinks } from '../../db/web-links'
 import { renderTimelineSection } from '../timeline-handlers'
@@ -702,6 +713,11 @@ weddings.get('/app/weddings/:id', async (c) => {
   // Web links (galleries, Pinterest, playlists…)
   const webLinks = await listWebLinks(c.env.DB, weddingId)
 
+  // Forms this vendor can send to the couple + responses they can see
+  const sendableForms = (await listForms(c.env.DB, vendor.id)).filter((f) => f.type === 'custom' && f.is_active)
+  const formSends = await listFormSendsForWedding(c.env.DB, weddingId, vendor.id)
+  const formResponses = await listWeddingSubmissions(c.env.DB, weddingId, { role: 'vendor', vendorId: vendor.id })
+
   // Unified wedding timeline / run sheet
   const timelineSection = await renderTimelineSection(c, weddingId, membership, user, `/app/weddings/${weddingId}`)
 
@@ -814,6 +830,16 @@ weddings.get('/app/weddings/:id', async (c) => {
             </div>
           </div>
         )}
+
+        <VendorFormsCard
+          weddingId={weddingId}
+          vendorId={vendor.id}
+          appUrl={c.env.APP_URL}
+          csrfToken={c.get('csrfToken')}
+          sendableForms={sendableForms}
+          sends={formSends}
+          responses={formResponses}
+        />
 
         {/* Details — one dense card instead of a scatter of single-value boxes */}
         <div class="mb-6">
@@ -1467,7 +1493,148 @@ weddings.get('/app/contacts/:id/promote', async (c) => {
   )
 })
 
+// Send one of the vendor's custom forms to this wedding's couple.
+weddings.post('/app/weddings/:id/forms/send', async (c) => {
+  const user = c.get('user')
+  const vendor = c.get('vendor')!
+  const weddingId = c.req.param('id')
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership) return c.text('Wedding not found', 404)
+
+  const body = await c.req.parseBody()
+  const formId = typeof body.form_id === 'string' ? body.form_id : ''
+  const form = formId ? await getForm(c.env.DB, vendor.id, formId) : null
+  if (!form || form.type !== 'custom') {
+    return c.redirect(`/app/weddings/${weddingId}?error=form#forms`)
+  }
+  await createFormSend(c.env.DB, vendor.id, {
+    form_id: form.id,
+    wedding_id: weddingId,
+    created_by_user_id: user.id,
+  })
+  return c.redirect(`/app/weddings/${weddingId}#forms`)
+})
+
+// Owning vendor opens a response to the whole vendor team (or closes it).
+weddings.post('/app/weddings/:id/forms/submissions/:subId/visibility', async (c) => {
+  const user = c.get('user')
+  const vendor = c.get('vendor')!
+  const weddingId = c.req.param('id')
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership) return c.text('Wedding not found', 404)
+
+  const body = await c.req.parseBody()
+  await setSubmissionTeamVisibility(c.env.DB, vendor.id, c.req.param('subId'), body.shared === '1')
+  return c.redirect(`/app/weddings/${weddingId}#forms`)
+})
+
 export default weddings
+
+// Forms a vendor has sent to this couple + the responses they can see. Lets
+// them send another form, copy a send link, view answers, and open a response
+// to the whole vendor team.
+function VendorFormsCard({
+  weddingId,
+  vendorId,
+  appUrl,
+  csrfToken,
+  sendableForms,
+  sends,
+  responses,
+}: {
+  weddingId: string
+  vendorId: string
+  appUrl: string
+  csrfToken: string
+  sendableForms: Form[]
+  sends: WeddingFormSend[]
+  responses: WeddingSubmission[]
+}) {
+  return (
+    <div class="mb-6" id="forms">
+      <h3 class="text-sm font-bold text-gray-500 mb-3">Forms</h3>
+      <div class="bg-white border border-papaya-300/30 rounded-2xl p-4 space-y-4">
+        {sendableForms.length > 0 ? (
+          <form method="post" action={`/app/weddings/${weddingId}/forms/send`} class="flex items-end gap-2">
+            <input type="hidden" name="_csrf" value={csrfToken} />
+            <div class="flex-1 min-w-0">
+              <label class="block text-xs text-gray-500 mb-1" for="form_id">Send a form to this couple</label>
+              <select id="form_id" name="form_id" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent">
+                {sendableForms.map((f) => <option value={f.id}>{f.title}</option>)}
+              </select>
+            </div>
+            <button type="submit" class="bg-horizon-600 text-white py-2 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors shrink-0">Send</button>
+          </form>
+        ) : (
+          <p class="text-sm text-gray-500">
+            Create a <a href="/app/forms" class="text-horizon-600 hover:underline font-medium">custom form</a> (a questionnaire, song requests, dietary needs…) and you'll be able to send it to this couple here.
+          </p>
+        )}
+
+        {sends.length > 0 && (
+          <div class="space-y-2 pt-1">
+            {sends.map((s) => (
+              <div class="flex items-center justify-between gap-2 text-sm border-t border-gray-100 pt-2">
+                <div class="min-w-0">
+                  <p class="font-medium text-gray-900 truncate">{s.form_title}</p>
+                  <p class="text-xs text-gray-400">{s.response_count} response{s.response_count === 1 ? '' : 's'}</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <a href={`/form/${s.token}`} target="_blank" rel="noopener" class="text-xs text-horizon-600 hover:underline">Open</a>
+                  <CopyButton value={`${appUrl}/form/${s.token}`} title="Copy form link" class="w-7 h-7 rounded-full bg-papaya-50 border border-papaya-200 text-gray-500 hover:bg-papaya-100" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {responses.length > 0 && (
+          <div class="space-y-2 pt-1">
+            <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Responses</p>
+            {responses.map((sub) => {
+              const fields = formSubmissionFields(sub.form_config, sub.data)
+              const own = sub.vendor_id === vendorId
+              const shared = sub.shared_with_team === 1
+              return (
+                <details class="border border-gray-100 rounded-xl overflow-hidden">
+                  <summary class="cursor-pointer select-none px-3 py-2 text-sm flex items-center justify-between gap-2 hover:bg-papaya-50">
+                    <span class="font-medium text-gray-900 truncate">{sub.form_title}</span>
+                    <span class="text-xs text-gray-400 shrink-0">{formatDateTime(sub.created_at)}</span>
+                  </summary>
+                  <div class="px-3 pb-3 pt-1 border-t border-gray-100">
+                    {!own && <p class="text-xs text-gray-400 mb-2">Shared by {sub.vendor_name}</p>}
+                    <dl class="space-y-2">
+                      {fields.map((f) => (
+                        <div>
+                          <dt class="text-xs text-gray-500">{f.label}</dt>
+                          <dd class="text-sm text-gray-900 whitespace-pre-wrap">
+                            {f.file ? (
+                              <a href={`/form-file/${f.file.id}`} target="_blank" rel="noopener" class="text-horizon-600 hover:underline font-medium">{f.file.name} &darr;</a>
+                            ) : (f.value || '—')}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                    {own && (
+                      <form method="post" action={`/app/weddings/${weddingId}/forms/submissions/${sub.id}/visibility`} class="mt-3">
+                        <input type="hidden" name="_csrf" value={csrfToken} />
+                        <input type="hidden" name="shared" value={shared ? '0' : '1'} />
+                        <button type="submit" class="text-xs font-bold text-horizon-600 hover:underline">
+                          {shared ? 'Shared with the team — make private' : 'Share with all vendors'}
+                        </button>
+                        <p class="text-xs text-gray-400 mt-0.5">{shared ? 'Every vendor on this wedding can see this response.' : 'Only you and the couple can see this response.'}</p>
+                      </form>
+                    )}
+                  </div>
+                </details>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // ─── Components ───
 

@@ -11,11 +11,13 @@ import {
   clearDocumentShares,
 } from '../db/documents'
 import { getMembership, getWedding } from '../db/weddings'
+import { getFormFile } from '../db/forms'
 import { getStorageWithSecrets } from '../storage'
 
 const files = new Hono<Env>()
 
 files.use('/files/*', requireAuth)
+files.use('/form-file/*', requireAuth)
 
 // Allowed MIME types for uploads
 const ALLOWED_TYPES = new Set([
@@ -213,6 +215,48 @@ files.get('/files/:id', async (c) => {
   headers.set('Content-Length', String(doc.size_bytes))
   headers.set('Cache-Control', 'private, max-age=3600')
 
+  return new Response(object.body, { headers })
+})
+
+// Download a file uploaded through a form's file field. Gated to the owning
+// vendor (the form's vendor) or an active member of the submission's wedding.
+files.get('/form-file/:id', async (c) => {
+  const user = c.get('user')
+  const file = await getFormFile(c.env.DB, c.req.param('id'))
+  if (!file) return c.text('Not found', 404)
+
+  const ownsVendor = await c.env.DB
+    .prepare('SELECT 1 FROM vendor_profiles WHERE id = ? AND user_id = ?')
+    .bind(file.vendor_id, user.id)
+    .first()
+  let allowed = !!ownsVendor
+  if (!allowed) {
+    const sub = await c.env.DB
+      .prepare('SELECT wedding_id, shared_with_team FROM form_submissions WHERE id = ?')
+      .bind(file.submission_id)
+      .first<{ wedding_id: string | null; shared_with_team: number }>()
+    if (sub?.wedding_id) {
+      const m = await getMembership(c.env.DB, sub.wedding_id, user.id)
+      // Mirror listWeddingSubmissions: the couple always sees it; a non-owning
+      // vendor only once the submission is shared with the team.
+      if (m) allowed = m.role === 'couple' || sub.shared_with_team === 1 || m.vendor_profile_id === file.vendor_id
+    }
+  }
+  if (!allowed) return c.text('Forbidden', 403)
+
+  if (!c.env.STORAGE) return c.text('Storage not configured', 500)
+  const object = await c.env.STORAGE.get(file.r2_key)
+  if (!object) return c.text('File not found', 404)
+
+  // Uploads come from anonymous public submitters, so never render inline:
+  // force a download and stop content-type sniffing to neutralise script-
+  // bearing files (e.g. SVG) executing on our origin in the viewer's session.
+  const headers = new Headers()
+  headers.set('Content-Type', file.mime_type ?? 'application/octet-stream')
+  headers.set('X-Content-Type-Options', 'nosniff')
+  headers.set('Content-Disposition', `attachment; filename="${file.filename.replace(/["\r\n]/g, '')}"`)
+  if (file.size_bytes) headers.set('Content-Length', String(file.size_bytes))
+  headers.set('Cache-Control', 'private, max-age=3600')
   return new Response(object.body, { headers })
 })
 

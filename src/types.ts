@@ -814,6 +814,31 @@ export type FormSubmission = {
   status: 'submitted' | 'reviewed' | 'archived'
   ip_address: string | null
   user_agent: string | null
+  wedding_id: string | null
+  form_send_id: string | null
+  shared_with_team: number
+  created_at: string
+}
+
+export type FormSend = {
+  id: string
+  form_id: string
+  wedding_id: string
+  vendor_id: string
+  token: string
+  created_by_user_id: string | null
+  created_at: string
+}
+
+export type FormFile = {
+  id: string
+  submission_id: string
+  vendor_id: string
+  field_id: string
+  r2_key: string
+  filename: string
+  mime_type: string | null
+  size_bytes: number | null
   created_at: string
 }
 

@@ -492,7 +492,38 @@ CREATE TABLE IF NOT EXISTS form_submissions (
     CHECK (status IN ('submitted', 'reviewed', 'archived')),
   ip_address TEXT,
   user_agent TEXT,
+  -- A submission made through a "send to a couple" link belongs to a wedding
+  -- (migration 056). Default visibility is owning vendor + couple; when
+  -- shared_with_team = 1 it's visible to every vendor on the wedding.
+  wedding_id TEXT,
+  form_send_id TEXT,
+  shared_with_team INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Files uploaded through a form's file-upload field (migration 057). Binary in
+-- R2 (r2_key); downloads gated to the owning vendor + the wedding's members.
+CREATE TABLE IF NOT EXISTS form_files (
+  id            TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  submission_id TEXT NOT NULL REFERENCES form_submissions(id) ON DELETE CASCADE,
+  vendor_id     TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  field_id      TEXT NOT NULL,
+  r2_key        TEXT NOT NULL,
+  filename      TEXT NOT NULL,
+  mime_type     TEXT,
+  size_bytes    INTEGER,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Sending a reusable form to a specific wedding's couple (migration 056).
+CREATE TABLE IF NOT EXISTS form_sends (
+  id                 TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  form_id            TEXT NOT NULL REFERENCES forms(id) ON DELETE CASCADE,
+  wedding_id         TEXT NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
+  vendor_id          TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  token              TEXT NOT NULL UNIQUE DEFAULT (lower(hex(randomblob(16)))),
+  created_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_forms_vendor ON forms(vendor_id);
@@ -503,6 +534,10 @@ CREATE INDEX IF NOT EXISTS idx_forms_contact ON forms(contact_id);
 CREATE INDEX IF NOT EXISTS idx_form_submissions_form ON form_submissions(form_id);
 CREATE INDEX IF NOT EXISTS idx_form_submissions_vendor ON form_submissions(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_form_submissions_contact ON form_submissions(contact_id);
+CREATE INDEX IF NOT EXISTS idx_form_submissions_wedding ON form_submissions(wedding_id);
+CREATE INDEX IF NOT EXISTS idx_form_sends_wedding ON form_sends(wedding_id);
+CREATE INDEX IF NOT EXISTS idx_form_sends_form ON form_sends(form_id);
+CREATE INDEX IF NOT EXISTS idx_form_files_submission ON form_files(submission_id);
 
 -- Timeline change requests: when a wedding has a managing planner/venue, other
 -- members' timeline edits are stored here until a controller approves them.

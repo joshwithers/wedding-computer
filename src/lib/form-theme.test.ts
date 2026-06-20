@@ -1,4 +1,29 @@
+import { formSubmissionFields } from '../db/forms'
 import { describe, it, expect } from 'vitest'
+
+describe('formSubmissionFields — file fields', () => {
+  const config = JSON.stringify({
+    fields: [
+      { id: 'name', type: 'text', label: 'Your name' },
+      { id: 'doc', type: 'file', label: 'Upload' },
+    ],
+  })
+  it('returns a file ref for file-type fields', () => {
+    const data = JSON.stringify({ name: 'Sam', doc: JSON.stringify({ id: 'ff1', name: 'brief.pdf' }) })
+    const out = formSubmissionFields(config, data)
+    expect(out.find((f) => f.label === 'Your name')).toEqual({ label: 'Your name', value: 'Sam' })
+    const file = out.find((f) => f.label === 'Upload')
+    expect(file).toEqual({ label: 'Upload', value: 'brief.pdf', file: { id: 'ff1', name: 'brief.pdf' } })
+  })
+  it('shows a dash for a file field with no upload', () => {
+    const out = formSubmissionFields(config, JSON.stringify({ doc: '' }))
+    expect(out.find((f) => f.label === 'Upload')).toEqual({ label: 'Upload', value: '—' })
+  })
+  it('treats non-file fields as plain strings', () => {
+    const out = formSubmissionFields(config, JSON.stringify({ name: 'Alex & Sam' }))
+    expect(out[0]).toEqual({ label: 'Your name', value: 'Alex & Sam' })
+  })
+})
 import {
   sanitizeHex,
   isBrandFont,

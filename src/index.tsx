@@ -54,7 +54,7 @@ import { StorageConflictError } from './storage/conflicts'
 import { sendEmailMessage, EmailSendError, broadcastEmail, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail, enquiryConfirmationEmail, bookingContractCopyEmail, referralRewardEmail } from './services/email'
 import { getBroadcast } from './db/broadcast'
 import { handleInboundEmail } from './services/inbound-email'
-import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, notifyTimelineChangeRequested, notifyTimelineChangeDecided, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
+import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibilityChanged, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, notifyTimelineChangeRequested, notifyTimelineChangeDecided, notifyWeddingFormSubmission, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
 import { aggregateBusynessScores, aggregateDemandHistory } from './db/busyness'
 import { geocodePendingLocations } from './services/geocode'
 import { runWithI18n, resolveLocale } from './i18n'
@@ -716,6 +716,11 @@ export default {
             JSON.parse(body.payload)
           )
           console.log('[QUEUE] notify_admin_signup processed')
+
+        } else if (body.type === 'wedding_form_submission') {
+          // A form sent to a couple was answered — notify couple + vendor(s)
+          await notifyWeddingFormSubmission(notifyEnv(env), { submissionId: body.submissionId })
+          console.log('[QUEUE] wedding_form_submission processed')
 
         } else if (body.type === 'form_submission') {
           // Notify the vendor that someone submitted one of their forms

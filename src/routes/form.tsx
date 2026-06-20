@@ -2,13 +2,18 @@ import { Hono } from 'hono'
 import type { Env } from '../types'
 import { SharedHead } from '../views/head'
 import type { HeadMeta } from '../views/head'
-import { getFormByToken, createFormSubmission, incrementSubmissionCount, getFormSubmission } from '../db/forms'
+import { getFormByToken, getFormSendByToken, createFormSubmission, createFormFile, formSubmissionFields, incrementSubmissionCount, getFormSubmission } from '../db/forms'
+import type { Form, FormSend } from '../types'
+import { isAllowedUpload, uploadExt, ALLOWED_UPLOAD_TYPES, MAX_UPLOAD_BYTES } from '../lib/upload'
+
+const FILE_ACCEPT = [...ALLOWED_UPLOAD_TYPES].join(',')
 import { getVendorById } from '../db/vendors'
 import { verifyTurnstile } from '../services/turnstile'
 import { rateLimit } from '../middleware/rate-limit'
 import { isValidEmail } from '../lib/validation'
 import { COUNTRIES } from '../forms/countries'
 import type { FormConfig, FormField, FormStep, FormAction, ContactMapping } from '../lib/form-schema'
+import { configHasFileField } from '../lib/form-schema'
 import { FormEnhancements } from '../lib/form-enhance'
 import { t } from '../i18n'
 import { BrandThemeHead, BrandLogo, parseBrandTheme, formLogoUrl, formOgImage } from '../lib/form-theme'
@@ -18,11 +23,37 @@ const form = new Hono<Env>()
 
 // ─── Public form render ───
 
+// A /form/:token URL is either a form's own public_token (vendor-global use) or
+// a "send to a couple" token, which also carries the wedding the response
+// belongs to. Resolve to the form to render plus the optional send context.
+async function resolveFormToken(
+  db: D1Database,
+  token: string
+): Promise<{ form: Form; send: FormSend | null } | null> {
+  const sent = await getFormSendByToken(db, token)
+  if (sent) return { form: sent.form, send: sent.send }
+  const form = await getFormByToken(db, token)
+  return form ? { form, send: null } : null
+}
+
+// Coerce a parsed multipart body to plain strings for re-rendering a failed
+// submission (arrays → joined; File objects dropped — file inputs re-prompt).
+function toStringValues(body: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(body)) {
+    if (typeof v === 'string') out[k] = v
+    else if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === 'string').join(', ')
+  }
+  return out
+}
+
 form.get('/form/:token', async (c) => {
-  const formRecord = await getFormByToken(c.env.DB, c.req.param('token'))
-  if (!formRecord) {
+  const token = c.req.param('token')
+  const resolved = await resolveFormToken(c.env.DB, token)
+  if (!resolved) {
     return c.html(<FormShell embed={c.req.query('embed') === '1'}><p class="text-gray-600">This form is no longer available.</p></FormShell>, 404)
   }
+  const formRecord = resolved.form
 
   const vendor = await getVendorById(c.env.DB, formRecord.vendor_id)
   if (!vendor) return c.html(<FormShell embed={false}><p class="text-gray-600">Form unavailable.</p></FormShell>, 404)
@@ -35,7 +66,7 @@ form.get('/form/:token', async (c) => {
     title: 'Form',
     ogTitle: `${config.title} · ${vendor.business_name}`,
     ogDescription: config.subtitle ?? `${config.title} — ${vendor.business_name}.`,
-    ogUrl: `${c.env.APP_URL}/form/${formRecord.public_token}`,
+    ogUrl: `${c.env.APP_URL}/form/${token}`,
     ogImageAlt: vendor.business_name,
     noindex: true,
     ...formOgImage(vendor, c.env.APP_URL),
@@ -48,7 +79,7 @@ form.get('/form/:token', async (c) => {
         formType={formRecord.type}
         vendorName={vendor.business_name}
         siteKey={c.env.TURNSTILE_SITE_KEY}
-        token={formRecord.public_token}
+        token={token}
         mapsKey={c.env.GOOGLE_MAPS_API_KEY}
       />
     </FormShell>
@@ -58,14 +89,18 @@ form.get('/form/:token', async (c) => {
 // ─── Public form submission ───
 
 form.post('/form/:token', rateLimit(10, 60), async (c) => {
-  const formRecord = await getFormByToken(c.env.DB, c.req.param('token'))
-  if (!formRecord) return c.text('Not found', 404)
+  const token = c.req.param('token')
+  const resolved = await resolveFormToken(c.env.DB, token)
+  if (!resolved) return c.text('Not found', 404)
+  const formRecord = resolved.form
+  const send = resolved.send
 
   const vendor = await getVendorById(c.env.DB, formRecord.vendor_id)
   if (!vendor) return c.text('Not found', 404)
 
   const config = JSON.parse(formRecord.config) as FormConfig
-  const body = await c.req.parseBody()
+  // all:true so multi-select checkboxes arrive as arrays; file fields arrive as File objects.
+  const body = await c.req.parseBody({ all: true })
   const embed = c.req.query('embed') === '1'
   const theme = parseBrandTheme(vendor.brand_theme)
   const logoUrl = formLogoUrl(vendor)
@@ -88,9 +123,9 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
           formType={formRecord.type}
           vendorName={vendor.business_name}
           siteKey={c.env.TURNSTILE_SITE_KEY}
-          token={formRecord.public_token}
+          token={token}
           error="Verification failed. Please try again."
-          values={body as Record<string, string>}
+          values={toStringValues(body)}
           mapsKey={c.env.GOOGLE_MAPS_API_KEY}
         />
       </FormShell>
@@ -102,30 +137,117 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
   // here would double-encode in the vendor's UI and the NOIM email/PDF.
   const formData: Record<string, string> = {}
   const allFields = config.steps ? config.steps.flatMap(s => s.fields) : config.fields
-  const fieldLabels: Record<string, string> = {}
+  const fileFields: FormField[] = []
 
   for (const field of allFields) {
     if (field.type === 'heading') continue
-    fieldLabels[field.id] = field.label
+    if (field.type === 'file') { fileFields.push(field); continue } // validated + uploaded below
     const rawVal = body[field.id]
-    if (rawVal !== undefined && rawVal !== '') {
-      formData[field.id] = String(rawVal).slice(0, 2000).trim()
+    if (field.type === 'multiselect') {
+      const arr = Array.isArray(rawVal) ? rawVal : rawVal !== undefined && rawVal !== '' ? [rawVal] : []
+      const vals = arr.filter((x): x is string => typeof x === 'string').map((x) => x.slice(0, 200).trim()).filter(Boolean)
+      if (vals.length) formData[field.id] = vals.join(', ')
+    } else if (typeof rawVal === 'string' && rawVal !== '') {
+      formData[field.id] = rawVal.slice(0, 2000).trim()
     }
   }
 
-  // Label/value pairs for email notifications (raw values; escaped on render)
-  const submittedFields = allFields
-    .filter((f) => f.type !== 'heading' && formData[f.id])
-    .map((f) => ({ label: f.label, value: formData[f.id] }))
+  // Validate uploaded files before committing anything: a chosen file that is
+  // too large / unsupported is an error (not a silent drop), and a missing
+  // file for a required field is an error too. Keep the valid File objects to
+  // upload after the submission row exists.
+  const validFiles = new Map<string, File>()
+  const errors: string[] = []
+  for (const field of fileFields) {
+    const raw = body[field.id]
+    const file = Array.isArray(raw) ? raw.find((x) => x instanceof File && x.size > 0) : raw
+    if (file instanceof File && file.size > 0) {
+      if (isAllowedUpload(file)) validFiles.set(field.id, file)
+      else errors.push(`${field.label}: that file is too large or an unsupported type (max 10MB).`)
+    } else if (field.required && !field.conditions) {
+      errors.push(`${field.label} is required.`)
+    }
+  }
 
-  // Store submission
+  // Server-side "required" enforcement for the widget types whose hidden inputs
+  // the browser can't validate (rating/scale/multiselect). Skip conditional
+  // fields, whose visibility is decided client-side.
+  for (const field of allFields) {
+    if (field.type !== 'rating' && field.type !== 'scale' && field.type !== 'multiselect') continue
+    if (field.required && !field.conditions && !formData[field.id]) {
+      errors.push(`${field.label} is required.`)
+    }
+  }
+
+  if (errors.length > 0) {
+    return c.html(
+      <FormShell embed={embed} theme={theme} logoUrl={logoUrl}>
+        <FormRenderer
+          config={config}
+          formType={formRecord.type}
+          vendorName={vendor.business_name}
+          siteKey={c.env.TURNSTILE_SITE_KEY}
+          token={token}
+          error={errors[0]}
+          values={toStringValues(body)}
+          mapsKey={c.env.GOOGLE_MAPS_API_KEY}
+        />
+      </FormShell>
+    )
+  }
+
+  // Store submission. When this came through a "send to a couple" link, stamp
+  // the wedding so it surfaces on the wedding page for the couple + vendor.
   const submission = await createFormSubmission(c.env.DB, vendor.id, {
     form_id: formRecord.id,
     data: JSON.stringify(formData),
     ip_address: ip,
     user_agent: c.req.header('user-agent') ?? null,
+    wedding_id: send?.wedding_id ?? null,
+    form_send_id: send?.id ?? null,
   })
   await incrementSubmissionCount(c.env.DB, formRecord.id)
+
+  // Upload the validated files now that we have a submission id to scope them
+  // to. Each goes to R2 + a form_files row; the field's stored value becomes a
+  // {id,name} marker that renders as a gated download link everywhere.
+  if (validFiles.size > 0 && c.env.STORAGE) {
+    for (const [fieldId, file] of validFiles) {
+      const r2Key = `form-uploads/${submission.id}/${crypto.randomUUID()}.${uploadExt(file.name)}`
+      await c.env.STORAGE.put(r2Key, file.stream(), {
+        httpMetadata: { contentType: file.type },
+        customMetadata: { originalName: file.name },
+      })
+      const rec = await createFormFile(c.env.DB, {
+        submission_id: submission.id,
+        vendor_id: vendor.id,
+        field_id: fieldId,
+        r2_key: r2Key,
+        filename: file.name,
+        mime_type: file.type,
+        size_bytes: file.size,
+      })
+      formData[fieldId] = JSON.stringify({ id: rec.id, name: file.name })
+    }
+    await c.env.DB.prepare('UPDATE form_submissions SET data = ? WHERE id = ?')
+      .bind(JSON.stringify(formData), submission.id)
+      .run()
+  }
+
+  // Label/value pairs for email notifications, built from the final data so
+  // file fields carry a download reference (escaped/linked at render time).
+  const submittedFields = formSubmissionFields(formRecord.config, JSON.stringify(formData))
+
+  // Wedding-linked responses notify the couple + the owning vendor (and the
+  // team once shared) via the richer wedding notification, so skip the plain
+  // notify_vendor email below to avoid double-pinging the vendor.
+  if (send) {
+    try {
+      await c.env.EMAIL_QUEUE.send({ type: 'wedding_form_submission', submissionId: submission.id })
+    } catch (e: any) {
+      console.error('[form] wedding_form_submission enqueue failed', e.message)
+    }
+  }
 
   // Execute actions
   const actions = config.actions.actions ?? []
@@ -143,8 +265,8 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
     }
   }
 
-  // Action: notify_vendor
-  if (config.actions.notifyVendor) {
+  // Action: notify_vendor (skipped for wedding sends — covered above)
+  if (config.actions.notifyVendor && !send) {
     try {
       await c.env.EMAIL_QUEUE.send({
         type: 'form_submission',
@@ -316,7 +438,11 @@ async function handleCreateContact(
     if (field.type === 'heading') continue
     const val = formData[field.id]
     if (!val) continue
-    if (field.mapTo) {
+    if (field.type === 'file') {
+      // formData holds a {id,name} marker for files — surface the filename, not
+      // the internal JSON, in the contact's custom data.
+      try { extra[field.label || field.id] = String(JSON.parse(val).name ?? 'File') } catch { /* skip */ }
+    } else if (field.mapTo) {
       mapped[field.mapTo] = val
     } else {
       extra[field.label || field.id] = val
@@ -404,6 +530,7 @@ function FormRenderer({
 }) {
   const isMultiStep = !!(config.steps && config.steps.length > 0)
   const allFields = isMultiStep ? config.steps!.flatMap(s => s.fields) : config.fields
+  const hasFile = configHasFileField(config)
 
   return (
     <div>
@@ -417,7 +544,7 @@ function FormRenderer({
         <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 mb-4">{error}</div>
       )}
 
-      <form method="post" action={`/form/${token}`} id="main-form">
+      <form method="post" action={`/form/${token}`} id="main-form" enctype={hasFile ? 'multipart/form-data' : undefined}>
         {/* Honeypot */}
         <div style="position:absolute;left:-9999px" aria-hidden="true">
           <input type="text" name="website_url" tabindex={-1} autocomplete="off" />
@@ -563,6 +690,59 @@ function FieldRenderer({ field, value }: { field: FormField; value?: string }) {
           class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm address-autocomplete"
           data-title-case={field.titleCase ? 'true' : undefined}
         />
+      ) : field.type === 'multiselect' ? (
+        <div class="space-y-2">
+          {field.options?.map((opt) => {
+            const optValue = typeof opt === 'string' ? opt : opt.value
+            const optLabel = typeof opt === 'string' ? opt : opt.label
+            const selected = (value ?? '').split(', ').includes(optValue)
+            return (
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" name={field.id} value={optValue} checked={selected} />
+                {optLabel}
+              </label>
+            )
+          })}
+        </div>
+      ) : field.type === 'file' ? (
+        <>
+          <input
+            type="file"
+            name={field.id}
+            required={field.required}
+            accept={FILE_ACCEPT}
+            data-max-size={String(MAX_UPLOAD_BYTES)}
+            class="form-file w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-[var(--form-accent-tint)] file:text-[var(--form-accent)] cursor-pointer"
+          />
+          <p class="text-xs text-gray-400 mt-1">{field.accept ? `${field.accept} · ` : ''}Max 10MB</p>
+        </>
+      ) : field.type === 'rating' ? (
+        <div class="rating flex items-center gap-1" data-rating={field.id} data-max={String(field.max ?? 5)}>
+          <input type="hidden" name={field.id} value={value ?? ''} />
+          {Array.from({ length: field.max ?? 5 }).map((_, i) => (
+            <button type="button" data-val={String(i + 1)} aria-label={`${i + 1}`} class="star w-8 h-8 text-gray-300 hover:text-[var(--form-accent)] transition-colors">
+              <svg viewBox="0 0 24 24" fill="currentColor" class="w-full h-full"><path d="M11.48 3.5l2.36 4.78 5.28.77-3.82 3.72.9 5.26-4.72-2.48-4.72 2.48.9-5.26L3.84 9.05l5.28-.77z" /></svg>
+            </button>
+          ))}
+        </div>
+      ) : field.type === 'scale' ? (
+        <div>
+          <div class="scale flex flex-wrap gap-2" data-scale={field.id}>
+            <input type="hidden" name={field.id} value={value ?? ''} />
+            {Array.from({ length: (field.max ?? 10) - (field.min ?? 1) + 1 }).map((_, i) => {
+              const n = (field.min ?? 1) + i
+              return (
+                <button type="button" data-val={String(n)} class="scale-opt w-10 h-10 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:border-[var(--form-accent)]">{n}</button>
+              )
+            })}
+          </div>
+          {(field.minLabel || field.maxLabel) && (
+            <div class="flex justify-between text-xs text-gray-400 mt-1">
+              <span>{field.minLabel ?? ''}</span>
+              <span>{field.maxLabel ?? ''}</span>
+            </div>
+          )}
+        </div>
       ) : (
         <input
           type={field.type}
@@ -615,6 +795,39 @@ function ThankYou({ title, vendorName, formType, submissionId, token, showPdfLin
 function formLogicScript(): string {
   return `
 (function() {
+  // File fields: reject an over-size pick immediately rather than on submit.
+  document.querySelectorAll('.form-file').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      var max = parseInt(inp.getAttribute('data-max-size')||'0',10);
+      var f = inp.files && inp.files[0];
+      if (f && max && f.size > max){ alert('That file is too large (max 10MB). Please choose a smaller file.'); inp.value=''; }
+    });
+  });
+
+  // Star-rating widgets: clicking a star fills up to it and stores the number
+  // in the hidden input. Hover previews; mouse-leave restores the choice.
+  document.querySelectorAll('.rating').forEach(function(box){
+    var hidden = box.querySelector('input[type=hidden]');
+    var stars = box.querySelectorAll('.star');
+    function paint(n){ stars.forEach(function(s,i){ s.style.color = (i < n) ? 'var(--form-accent)' : ''; }); }
+    function cur(){ return parseInt(hidden.value||'0',10)||0; }
+    stars.forEach(function(s){
+      s.addEventListener('click', function(){ hidden.value = s.getAttribute('data-val'); paint(cur()); });
+      s.addEventListener('mouseenter', function(){ paint(parseInt(s.getAttribute('data-val'),10)); });
+    });
+    box.addEventListener('mouseleave', function(){ paint(cur()); });
+    paint(cur());
+  });
+
+  // Linear-scale widgets: clicking a number highlights it and stores the value.
+  document.querySelectorAll('.scale').forEach(function(box){
+    var hidden = box.querySelector('input[type=hidden]');
+    var opts = box.querySelectorAll('.scale-opt');
+    function paint(){ var v = hidden.value; opts.forEach(function(o){ var on = o.getAttribute('data-val') === v; o.style.background = on ? 'var(--form-accent)' : ''; o.style.color = on ? 'var(--form-accent-ink)' : ''; o.style.borderColor = on ? 'var(--form-accent)' : ''; }); }
+    opts.forEach(function(o){ o.addEventListener('click', function(){ hidden.value = o.getAttribute('data-val'); paint(); }); });
+    paint();
+  });
+
   // Build the NOIM document checklist client-side from the current answers.
   // Mirrors buildDocumentChecklist() in forms/noim/pdf-generator.ts.
   function populateDocChecklist(stepEl) {

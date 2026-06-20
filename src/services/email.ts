@@ -904,6 +904,24 @@ export function formSubmissionEmail(data: {
   `, { preheader: `New submission to ${esc(data.formTitle)}` })
 }
 
+// A response to a form that was sent to a couple. Goes to the couple + the
+// owning vendor (and the wider team when shared). viewUrl points at the
+// recipient's wedding page (couple vs vendor app).
+export function weddingFormResponseEmail(data: {
+  formTitle: string
+  weddingTitle: string
+  vendorName: string
+  fields: { label: string; value: string }[]
+  viewUrl: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">New response: ${esc(data.formTitle)}</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">A response to ${esc(data.vendorName)}'s "${esc(data.formTitle)}" form was submitted for ${esc(data.weddingTitle)}.</p>
+    ${fieldsTable(data.fields)}
+    <a href="${data.viewUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View on the wedding</a>
+  `, { preheader: `New response to ${esc(data.formTitle)} for ${esc(data.weddingTitle)}` })
+}
+
 // Notification to a specific recipient configured on the form
 export function formNotificationEmail(data: {
   formTitle: string

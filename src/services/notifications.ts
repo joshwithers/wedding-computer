@@ -20,9 +20,11 @@ import {
   dailyDigestEmail,
   timelineChangeRequestedEmail,
   timelineChangeDecidedEmail,
+  weddingFormResponseEmail,
 } from './email'
 import { getWedding, getWeddingMembers } from '../db/weddings'
 import { getVendorWithEmail } from '../db/vendors'
+import { formSubmissionFields } from '../db/forms'
 import { formatDate } from '../lib/date'
 import {
   isNotificationEnabled,
@@ -922,5 +924,64 @@ export async function digestForVendor(env: NotifyEnv, vendor: DigestVendorRow): 
       vendorId: vendor.id,
     })
     return ok
+  }
+}
+
+// A custom form sent to a couple was answered. Notify the couple and the
+// owning vendor; include the wider vendor team only once the submission has
+// been shared with them. Each delivery respects the recipient's preferences.
+export async function notifyWeddingFormSubmission(
+  env: NotifyEnv,
+  data: { submissionId: string }
+): Promise<void> {
+  const sub = await env.db
+    .prepare(
+      `SELECT s.id, s.vendor_id AS owner_vendor_id, s.data, s.wedding_id, s.shared_with_team,
+              f.title AS form_title, f.config AS form_config, vp.business_name AS vendor_name
+       FROM form_submissions s
+       JOIN forms f ON f.id = s.form_id
+       JOIN vendor_profiles vp ON vp.id = s.vendor_id
+       WHERE s.id = ?`
+    )
+    .bind(data.submissionId)
+    .first<Record<string, any>>()
+  if (!sub || !sub.wedding_id) return
+
+  const wedding = await getWedding(env.db, sub.wedding_id)
+  if (!wedding) return
+  const weddingTitle = wedding.title || 'your wedding'
+
+  const members = await getWeddingMembers(env.db, sub.wedding_id)
+  const fields = formSubmissionFields(sub.form_config, sub.data)
+
+  for (const m of members) {
+    if (m.role === 'guest') continue
+    const isOwner = m.role === 'vendor' && m.vendor_profile_id === sub.owner_vendor_id
+    const isOtherVendor = m.role === 'vendor' && !isOwner
+    // Other vendors only hear about it once it's been shared with the team.
+    if (isOtherVendor && !sub.shared_with_team) continue
+
+    const viewUrl = m.role === 'couple'
+      ? `${env.appUrl}/wedding/${sub.wedding_id}`
+      : `${env.appUrl}/app/weddings/${sub.wedding_id}`
+
+    await deliver(env, {
+      key: 'wedding_updates',
+      recipient: {
+        id: m.user_id,
+        email: m.user_email,
+        name: m.user_name,
+        notification_prefs: m.user_notification_prefs,
+      },
+      subject: `New form response — ${sub.form_title}`,
+      html: weddingFormResponseEmail({
+        formTitle: sub.form_title,
+        weddingTitle,
+        vendorName: sub.vendor_name,
+        fields,
+        viewUrl,
+      }),
+      vendorId: m.vendor_profile_id ?? null,
+    })
   }
 }

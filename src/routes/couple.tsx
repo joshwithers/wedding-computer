@@ -22,6 +22,7 @@ import { isDocScope } from '../services/doc-permissions'
 import { docSave, docHeartbeat, docClaim, docRelease } from './wedding-docs-handlers'
 import { WebLinks } from '../views/web-links'
 import { listWebLinks } from '../db/web-links'
+import { listFormSendsForWedding, listWeddingSubmissions, formSubmissionFields, type WeddingFormSend, type WeddingSubmission } from '../db/forms'
 import { addLink, togglePin, removeLink } from './web-links-handlers'
 import {
   renderTimelineSection,
@@ -178,6 +179,11 @@ couple.get('/wedding/:id', async (c) => {
 
   // Web links (galleries, Pinterest, playlists…)
   const webLinks = await listWebLinks(c.env.DB, weddingId)
+
+  // Forms vendors have sent + the couple's responses
+  const allSends = await listFormSendsForWedding(c.env.DB, weddingId)
+  const pendingForms = allSends.filter((s) => s.response_count === 0)
+  const formResponses = await listWeddingSubmissions(c.env.DB, weddingId, { role: membership.role })
 
   // Unified wedding timeline / run sheet
   const timelineSection = membership.role === 'couple'
@@ -385,6 +391,9 @@ couple.get('/wedding/:id', async (c) => {
             </div>
           </section>
         )}
+
+        {/* Forms your vendors have sent you */}
+        <CoupleForms pending={pendingForms} responses={formResponses} />
 
         {/* Files */}
         <CoupleFiles
@@ -1792,6 +1801,60 @@ function fileIcon(mimeType: string): string {
   if (mimeType.startsWith('image/')) return 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'
   if (mimeType === 'application/pdf') return 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z'
   return 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'
+}
+
+// Forms a vendor has sent to the couple: those still awaiting an answer (with
+// a Fill-out button) and the responses already submitted (read-only).
+function CoupleForms({ pending, responses }: { pending: WeddingFormSend[]; responses: WeddingSubmission[] }) {
+  if (pending.length === 0 && responses.length === 0) return null
+  return (
+    <section>
+      <h2 class="text-sm font-bold text-gray-500 mb-3">Forms</h2>
+      {pending.length > 0 && (
+        <div class="space-y-2 mb-3">
+          {pending.map((s) => (
+            <div class="flex items-center justify-between gap-3 bg-papaya-100 border border-papaya-300/50 rounded-2xl px-4 py-3">
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-gray-900 truncate">{s.form_title}</p>
+                <p class="text-xs text-gray-500">{s.vendor_name ? `From ${s.vendor_name}` : 'From your vendor'}</p>
+              </div>
+              <a href={`/form/${s.token}`} class="bg-grapefruit-700 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-grapefruit-800 transition-colors shrink-0">Fill out</a>
+            </div>
+          ))}
+        </div>
+      )}
+      {responses.length > 0 && (
+        <div class="bg-white border border-papaya-300/30 rounded-2xl divide-y divide-gray-100">
+          {responses.map((sub) => {
+            const fields = formSubmissionFields(sub.form_config, sub.data)
+            return (
+              <details>
+                <summary class="cursor-pointer select-none px-5 py-3 text-sm flex items-center justify-between gap-2 hover:bg-papaya-50">
+                  <span class="min-w-0 truncate">
+                    <span class="font-medium text-gray-900">{sub.form_title}</span>
+                    <span class="text-gray-400"> · {sub.vendor_name}</span>
+                  </span>
+                  <span class="text-xs text-gray-400 shrink-0">{formatDate(sub.created_at)}</span>
+                </summary>
+                <dl class="px-5 pb-3 space-y-2">
+                  {fields.map((f) => (
+                    <div>
+                      <dt class="text-xs text-gray-500">{f.label}</dt>
+                      <dd class="text-sm text-gray-900 whitespace-pre-wrap">
+                        {f.file ? (
+                          <a href={`/form-file/${f.file.id}`} target="_blank" rel="noopener" class="text-grapefruit-700 hover:underline font-medium">{f.file.name} &darr;</a>
+                        ) : (f.value || '—')}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
 }
 
 function CoupleFiles({
