@@ -178,6 +178,7 @@ export async function updateVendor(
       | 'location_lng'
       | 'location_place_id'
       | 'logo_r2_key'
+      | 'brand_theme'
       | 'availability_sharing'
       | 'directory_listed'
     >

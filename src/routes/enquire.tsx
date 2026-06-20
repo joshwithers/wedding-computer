@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../types'
 import { SharedHead } from '../views/head'
+import type { HeadMeta } from '../views/head'
 import { getVendorById } from '../db/vendors'
 import { verifyTurnstile } from '../services/turnstile'
 import { rateLimit } from '../middleware/rate-limit'
@@ -9,6 +10,8 @@ import type { FormConfig, FormField } from '../lib/form-schema'
 import { FormEnhancements } from '../lib/form-enhance'
 import { t } from '../i18n'
 import { processSubmission, createEnquiry } from '../services/enquiry'
+import { BrandThemeHead, BrandLogo, parseBrandTheme, formLogoUrl, formOgImage } from '../lib/form-theme'
+import type { BrandTheme } from '../lib/form-theme'
 
 const enquire = new Hono<Env>()
 
@@ -25,14 +28,26 @@ enquire.get('/enquire/:vendorId', async (c) => {
   }
 
   const config = parseFormConfig(vendor.enquiry_form)
+  const theme = parseBrandTheme(vendor.brand_theme)
+  const logoUrl = formLogoUrl(vendor)
+  const category = vendor.category.charAt(0).toUpperCase() + vendor.category.slice(1)
+  const meta: HeadMeta = {
+    title: 'Enquiry',
+    ogTitle: `Enquire with ${vendor.business_name}`,
+    ogDescription: config.subtitle ?? `Send an enquiry to ${vendor.business_name} · ${category}.`,
+    ogUrl: `${c.env.APP_URL}/enquire/${vendor.id}`,
+    ogImageAlt: vendor.business_name,
+    ...formOgImage(vendor, c.env.APP_URL),
+  }
 
   return c.html(
-    <EnquiryShell embed={embed}>
+    <EnquiryShell embed={embed} theme={theme} meta={meta}>
       <EnquiryForm
         vendor={vendor}
         config={config}
         siteKey={c.env.TURNSTILE_SITE_KEY}
         mapsKey={c.env.GOOGLE_MAPS_API_KEY}
+        logoUrl={logoUrl}
       />
     </EnquiryShell>
   )
@@ -44,12 +59,14 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
   if (!vendor) return c.text('Not found', 404)
 
   const config = parseFormConfig(vendor.enquiry_form)
+  const theme = parseBrandTheme(vendor.brand_theme)
+  const logoUrl = formLogoUrl(vendor)
   const body = await c.req.parseBody()
   const embed = c.req.query('embed') === '1'
 
   if (body.website_url) {
     return c.html(
-      <EnquiryShell embed={embed}>
+      <EnquiryShell embed={embed} theme={theme}>
         <ThankYou businessName={vendor.business_name} />
       </EnquiryShell>
     )
@@ -68,7 +85,7 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
 
   if (!turnstileOk) {
     return c.html(
-      <EnquiryShell embed={embed}>
+      <EnquiryShell embed={embed} theme={theme}>
         <EnquiryForm
           vendor={vendor}
           config={config}
@@ -76,6 +93,7 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
           error="Verification failed. Please try again."
           values={body as Record<string, string>}
           mapsKey={c.env.GOOGLE_MAPS_API_KEY}
+          logoUrl={logoUrl}
         />
       </EnquiryShell>
     )
@@ -96,13 +114,13 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
     }
 
     return c.html(
-      <EnquiryShell embed={embed}>
+      <EnquiryShell embed={embed} theme={theme}>
         <ThankYou businessName={vendor.business_name} />
       </EnquiryShell>
     )
   } catch (e: any) {
     return c.html(
-      <EnquiryShell embed={embed}>
+      <EnquiryShell embed={embed} theme={theme}>
         <EnquiryForm
           vendor={vendor}
           config={config}
@@ -110,6 +128,7 @@ enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
           error={e.message}
           values={body as Record<string, string>}
           mapsKey={c.env.GOOGLE_MAPS_API_KEY}
+          logoUrl={logoUrl}
         />
       </EnquiryShell>
     )
@@ -132,14 +151,15 @@ function isValidRedirect(url: string): boolean {
 
 // ─── Components ───
 
-function EnquiryShell({ embed, children }: { embed?: boolean; children: any }) {
+function EnquiryShell({ embed, children, theme, meta }: { embed?: boolean; children: any; theme?: BrandTheme; meta?: HeadMeta }) {
   return (
     <html lang="en">
       <head>
-        <SharedHead title="Enquiry" />
+        <SharedHead title="Enquiry" {...meta} />
+        <BrandThemeHead theme={theme} />
         <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
       </head>
-      <body class={`text-gray-900 antialiased font-sans ${embed ? 'bg-transparent' : 'bg-papaya-50 min-h-screen flex items-center justify-center'}`}>
+      <body class={`antialiased ${embed ? 'bg-transparent' : 'bg-[var(--form-bg)] min-h-screen flex items-center justify-center'}`}>
         <div class={`w-full max-w-lg mx-auto ${embed ? 'p-0' : 'px-4 py-8 sm:py-12'}`}>
           {children}
         </div>
@@ -155,6 +175,7 @@ function EnquiryForm({
   error,
   values,
   mapsKey,
+  logoUrl,
 }: {
   vendor: { business_name: string; category: string }
   config: FormConfig
@@ -162,12 +183,15 @@ function EnquiryForm({
   error?: string
   values?: Record<string, string>
   mapsKey?: string
+  logoUrl?: string | null
 }) {
   const v = (name: string) => (values?.[name] as string) ?? ''
   const category = vendor.category.charAt(0).toUpperCase() + vendor.category.slice(1)
 
   return (
-    <div class="bg-white rounded-2xl shadow-lg shadow-gray-900/5 p-5 sm:p-8">
+    <>
+    <BrandLogo logoUrl={logoUrl} />
+    <div class="bg-[var(--form-surface)] rounded-2xl shadow-lg shadow-gray-900/5 p-5 sm:p-8">
       <div class="mb-6">
         <h1 class="text-xl font-bold mb-1">{config.title}</h1>
         <p class="text-sm text-gray-500">
@@ -197,7 +221,7 @@ function EnquiryForm({
 
         <button
           type="submit"
-          class="mt-6 w-full bg-grapefruit-700 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-grapefruit-800 transition-colors"
+          class="mt-6 w-full bg-[var(--form-accent)] text-[var(--form-accent-ink)] py-3 px-4 rounded-xl text-sm font-bold hover:bg-[var(--form-accent-hover)] transition-colors"
         >
           {config.submitLabel}
         </button>
@@ -209,6 +233,7 @@ function EnquiryForm({
 
       <FormEnhancements mapsKey={mapsKey} />
     </div>
+    </>
   )
 }
 
@@ -383,7 +408,7 @@ function RenderField({ field, value }: { field: FormField; value: string }) {
 
 function ThankYou({ businessName }: { businessName: string }) {
   return (
-    <div class="bg-white rounded-2xl shadow-lg shadow-gray-900/5 p-5 sm:p-8 text-center">
+    <div class="bg-[var(--form-surface)] rounded-2xl shadow-lg shadow-gray-900/5 p-5 sm:p-8 text-center">
       <div class="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
         <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />

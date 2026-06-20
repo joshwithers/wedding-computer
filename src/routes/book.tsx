@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Env } from '../types'
 import type { LineItem } from '../types'
 import { SharedHead } from '../views/head'
+import type { HeadMeta } from '../views/head'
 import { getInvoiceByToken } from '../db/invoices'
 import { listPayments, claimBookingSubmission } from '../db/invoices'
 import { updateContact } from '../storage/contacts'
@@ -17,6 +18,8 @@ import { FormEnhancements } from '../lib/form-enhance'
 import { t } from '../i18n'
 import { verifyTurnstile } from '../services/turnstile'
 import { rateLimit } from '../middleware/rate-limit'
+import { BrandThemeHead, BrandLogo, parseBrandTheme, formLogoUrl, formOgImage } from '../lib/form-theme'
+import type { BrandTheme } from '../lib/form-theme'
 
 const book = new Hono<Env>()
 
@@ -25,7 +28,7 @@ book.get('/book/:token', async (c) => {
   if (!invoice) {
     return c.html(
       <FormShell embed={c.req.query('embed') === '1'}>
-        <div class="bg-white rounded-2xl shadow-lg shadow-gray-900/5 p-5 sm:p-8 text-center">
+        <div class="bg-[var(--form-surface)] rounded-2xl shadow-lg shadow-gray-900/5 p-5 sm:p-8 text-center">
           <p class="text-gray-600">This booking link is no longer available.</p>
         </div>
       </FormShell>,
@@ -52,9 +55,22 @@ book.get('/book/:token', async (c) => {
   const contractSigned = contract?.signed_at != null
   const showContract = contract && !contractSigned && showForm
 
+  const theme = vendor ? parseBrandTheme(vendor.brand_theme) : {}
+  const logoUrl = vendor ? formLogoUrl(vendor) : null
+  const meta: HeadMeta = {
+    title: 'Booking',
+    ogTitle: `${invoice.title} · ${invoice.vendor_name}`,
+    ogDescription: `Review and confirm your booking with ${invoice.vendor_name}.`,
+    ogUrl: `${c.env.APP_URL}/book/${c.req.param('token')}`,
+    ogImageAlt: invoice.vendor_name,
+    noindex: true,
+    ...(vendor ? formOgImage(vendor, c.env.APP_URL) : {}),
+  }
+
   return c.html(
-    <FormShell embed={embed}>
-      <div class="bg-white rounded-2xl shadow-lg shadow-gray-900/5 p-5 sm:p-8">
+    <FormShell embed={embed} theme={theme} meta={meta}>
+      <BrandLogo logoUrl={logoUrl} />
+      <div class="bg-[var(--form-surface)] rounded-2xl shadow-lg shadow-gray-900/5 p-5 sm:p-8">
         {/* Vendor header */}
         <div class="mb-6 pb-4 border-b border-gray-100">
           <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">{category}</p>
@@ -457,14 +473,15 @@ async function createStripeCheckoutSession(
 
 // ─── Components ───
 
-function FormShell({ embed, children }: { embed: boolean; children: any }) {
+function FormShell({ embed, children, theme, meta }: { embed: boolean; children: any; theme?: BrandTheme; meta?: HeadMeta }) {
   return (
     <html lang="en">
       <head>
-        <SharedHead title="Booking" />
+        <SharedHead title="Booking" {...meta} />
+        <BrandThemeHead theme={theme} />
         <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
       </head>
-      <body class={`text-gray-900 antialiased font-sans ${embed ? 'bg-transparent' : 'bg-papaya-50 min-h-screen flex items-center justify-center'}`}>
+      <body class={`antialiased ${embed ? 'bg-transparent' : 'bg-[var(--form-bg)] min-h-screen flex items-center justify-center'}`}>
         <div class={`w-full max-w-lg mx-auto ${embed ? 'p-0' : 'px-4 py-8 sm:py-12'}`}>
           {children}
         </div>
@@ -574,7 +591,7 @@ function BookingForm({
 
         <button
           type="submit"
-          class="mt-6 w-full bg-grapefruit-700 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-grapefruit-800 transition-colors"
+          class="mt-6 w-full bg-[var(--form-accent)] text-[var(--form-accent-ink)] py-3 px-4 rounded-xl text-sm font-bold hover:bg-[var(--form-accent-hover)] transition-colors"
         >
           {hasFields && config!.submitLabel ? config!.submitLabel : 'Confirm booking'}
         </button>

@@ -130,6 +130,7 @@ export type VendorProfile = {
   location_lng: number | null
   location_place_id: string | null
   logo_r2_key: string | null
+  brand_theme: string | null
   availability_sharing: 'private' | 'vendors_only' | 'public' | 'ai_reply'
   directory_listed: number
   referral_code: string | null

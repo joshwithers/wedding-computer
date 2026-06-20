@@ -19,6 +19,16 @@ import { verifyGitHubToken, createGitHubRepo, ensureGitHubWebhook } from '../../
 import { deleteVendorSecret, putVendorSecret, resolveSecret } from '../../services/secrets'
 import { geocodeAddress } from '../../services/geocode'
 import { redactedVendorProfile } from '../../lib/redaction'
+import {
+  BRAND_FONTS,
+  THEME_DEFAULTS,
+  parseBrandTheme,
+  resolveBrandTheme,
+  brandThemeVars,
+  sanitizeHex,
+  isBrandFont,
+  type BrandTheme,
+} from '../../lib/form-theme'
 
 const settings = new Hono<Env>()
 
@@ -61,6 +71,7 @@ settings.get('/app/settings', async (c) => {
             <a href="#invoicing" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Payments &amp; invoicing</a>
             <a href="#email" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Email</a>
             <a href="#sharing" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Sharing</a>
+            <a href="#brand" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">{t('settings.nav.brand')}</a>
             <a href="#integrations" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Integrations</a>
             <a href="#data" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Your data</a>
           </div>
@@ -541,6 +552,124 @@ settings.get('/app/settings', async (c) => {
         .catch(function(){ statusEl.textContent='Upload failed. Please try again.'; saveBtn.disabled=false; });
     },'image/png');
   });
+})();
+` }} />
+        </section>
+
+        <section id="brand" class="mt-10 pt-8 border-t border-gray-200 scroll-mt-24">
+          <h2 class="text-base font-bold mb-2">{t('settings.brand.title')}</h2>
+          <p class="text-sm text-gray-500 mb-4">{t('settings.brand.help')}</p>
+          {(() => {
+            const bt = parseBrandTheme(vendor.brand_theme)
+            const accent = bt.accent ?? THEME_DEFAULTS.accent
+            const background = bt.background ?? THEME_DEFAULTS.background
+            const ink = bt.ink ?? THEME_DEFAULTS.ink
+            const fontId = isBrandFont(bt.font) ? bt.font : THEME_DEFAULTS.font
+            const showLogo = bt.logo === true
+            const previewStyle = `${brandThemeVars(bt)}background:var(--form-bg);font-family:var(--form-font);`
+            const colorRow = (name: string, label: string, help: string, val: string) => (
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label for={name} class="block text-sm font-bold text-gray-700">{label}</label>
+                  <p class="text-xs text-gray-400">{help}</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <span id={`${name}_hex`} class="text-xs text-gray-400 tabular-nums uppercase">{val}</span>
+                  <input type="color" id={name} name={name} value={val}
+                    class="w-10 h-10 rounded-lg border border-gray-200 bg-white p-0.5 cursor-pointer" />
+                </div>
+              </div>
+            )
+            return (
+              <div id="brand-editor" class="grid gap-6 sm:grid-cols-2 items-start" data-csrf={c.get('csrfToken')}>
+                <form method="post" action="/app/settings/brand" class="space-y-4">
+                  <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                  {colorRow('brand_accent', t('settings.brand.accent'), t('settings.brand.accentHelp'), accent)}
+                  {colorRow('brand_background', t('settings.brand.background'), t('settings.brand.backgroundHelp'), background)}
+                  {colorRow('brand_ink', t('settings.brand.ink'), t('settings.brand.inkHelp'), ink)}
+                  <div>
+                    <label for="brand_font" class="block text-sm font-bold text-gray-700 mb-1.5">{t('settings.brand.font')}</label>
+                    <select id="brand_font" name="brand_font"
+                      class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent">
+                      {BRAND_FONTS.map((f) => (
+                        <option value={f.id} selected={f.id === fontId}>{f.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {vendor.logo_r2_key ? (
+                    <label class="flex items-center gap-3 cursor-pointer">
+                      <input type="checkbox" name="brand_show_logo" value="1" checked={showLogo}
+                        class="w-4 h-4 rounded border-gray-300 text-horizon-600 focus:ring-horizon-600" />
+                      <span class="text-sm text-gray-700">{t('settings.brand.showLogo')}</span>
+                    </label>
+                  ) : (
+                    <p class="text-xs text-gray-400">{t('settings.brand.noLogo')}</p>
+                  )}
+                  <div class="flex items-center gap-2 pt-1">
+                    <button type="submit"
+                      class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
+                      {t('settings.brand.save')}
+                    </button>
+                    <button type="submit" formaction="/app/settings/brand/reset"
+                      class="border border-gray-300 text-gray-700 py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors">
+                      {t('settings.brand.reset')}
+                    </button>
+                  </div>
+                </form>
+
+                {/* Live preview — mirrors the public form's CSS variables */}
+                <div>
+                  <p class="text-xs font-bold uppercase tracking-wide text-gray-400 mb-2">{t('settings.brand.preview')}</p>
+                  <div id="brand-preview" style={previewStyle} class="rounded-2xl p-5 border border-gray-100">
+                    <div style="background:var(--form-surface)" class="rounded-xl shadow-sm p-4">
+                      <p style="color:var(--form-ink)" class="text-base font-bold mb-1">{t('settings.brand.previewTitle')}</p>
+                      <p style="color:var(--form-ink-muted)" class="text-xs mb-3">{t('settings.brand.previewSubtitle')}</p>
+                      <label style="color:var(--form-ink)" class="block text-xs font-medium mb-1">{t('settings.brand.previewField')}</label>
+                      <div class="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-400 bg-white mb-3">Alex &amp; Sam</div>
+                      <button type="button" style="background:var(--form-accent);color:var(--form-accent-ink)"
+                        class="w-full py-2 rounded-lg text-xs font-bold">{t('settings.brand.previewButton')}</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+          <script dangerouslySetInnerHTML={{ __html: `
+(function(){
+  var root=document.getElementById('brand-editor'); if(!root) return;
+  var preview=document.getElementById('brand-preview');
+  var accent=document.getElementById('brand_accent');
+  var bg=document.getElementById('brand_background');
+  var ink=document.getElementById('brand_ink');
+  var font=document.getElementById('brand_font');
+  if(!preview||!accent||!bg||!ink||!font) return;
+  var STACKS=${JSON.stringify(Object.fromEntries(BRAND_FONTS.map((f) => [f.id, f.stack])))};
+  var GOOGLE=${JSON.stringify(Object.fromEntries(BRAND_FONTS.filter((f) => f.google).map((f) => [f.id, f.google])))};
+  function rgb(h){h=h.replace('#','');return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
+  function hx(r,g,b){function c(n){n=Math.max(0,Math.min(255,Math.round(n)));return ('0'+n.toString(16)).slice(-2);}return '#'+c(r)+c(g)+c(b);}
+  function mix(a,b,t){var x=rgb(a),y=rgb(b);return hx(x[0]+(y[0]-x[0])*t,x[1]+(y[1]-x[1])*t,x[2]+(y[2]-x[2])*t);}
+  function lum(h){var c=rgb(h).map(function(v){v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);});return 0.2126*c[0]+0.7152*c[1]+0.0722*c[2];}
+  function inkOn(h){return lum(h)>0.5?'#1a1a1a':'#ffffff';}
+  function setHex(id,v){var el=document.getElementById(id); if(el) el.textContent=v;}
+  var loaded={};
+  function loadFont(id){var fam=GOOGLE[id]; if(!fam||loaded[id]) return; loaded[id]=true; var l=document.createElement('link'); l.rel='stylesheet'; l.href='https://fonts.googleapis.com/css2?family='+fam+'&display=swap'; document.head.appendChild(l);}
+  function apply(){
+    var a=accent.value,b=bg.value,k=ink.value,f=font.value,s=preview.style;
+    s.setProperty('--form-bg',b);
+    s.setProperty('--form-surface','#ffffff');
+    s.setProperty('--form-ink',k);
+    s.setProperty('--form-ink-muted',mix(k,'#ffffff',0.45));
+    s.setProperty('--form-accent',a);
+    s.setProperty('--form-accent-ink',inkOn(a));
+    s.setProperty('--form-accent-hover',mix(a,'#000000',0.16));
+    s.setProperty('--form-accent-tint',mix(a,'#ffffff',0.88));
+    s.setProperty('--form-font',STACKS[f]||STACKS['dm-sans']);
+    setHex('brand_accent_hex',a); setHex('brand_background_hex',b); setHex('brand_ink_hex',k);
+    loadFont(f);
+  }
+  [accent,bg,ink].forEach(function(el){el.addEventListener('input',apply);});
+  font.addEventListener('change',apply);
+  apply();
 })();
 ` }} />
         </section>
@@ -1102,6 +1231,36 @@ settings.post('/app/settings/directory-listing', async (c) => {
 
   await updateVendor(c.env.DB, vendor.id, { directory_listed: listed })
   return c.redirect('/app/settings?saved=1')
+})
+
+// ─── Form branding (colours/font/logo for public forms) ───
+
+settings.post('/app/settings/brand', async (c) => {
+  const vendor = c.get('vendor')!
+  const body = await c.req.parseBody()
+
+  // Only persist what the vendor actually changed from the house default, and
+  // only well-formed values — sanitizeHex/isBrandFont reject anything that
+  // could break (or inject into) the form's <style> block.
+  const theme: BrandTheme = {}
+  const accent = sanitizeHex(body.brand_accent)
+  const background = sanitizeHex(body.brand_background)
+  const ink = sanitizeHex(body.brand_ink)
+  if (accent && accent !== THEME_DEFAULTS.accent) theme.accent = accent
+  if (background && background !== THEME_DEFAULTS.background) theme.background = background
+  if (ink && ink !== THEME_DEFAULTS.ink) theme.ink = ink
+  if (isBrandFont(body.brand_font) && body.brand_font !== THEME_DEFAULTS.font) theme.font = body.brand_font
+  if (body.brand_show_logo === '1') theme.logo = true
+
+  const brand_theme = Object.keys(theme).length > 0 ? JSON.stringify(theme) : null
+  await updateVendor(c.env.DB, vendor.id, { brand_theme })
+  return c.redirect('/app/settings?saved=1#brand')
+})
+
+settings.post('/app/settings/brand/reset', async (c) => {
+  const vendor = c.get('vendor')!
+  await updateVendor(c.env.DB, vendor.id, { brand_theme: null })
+  return c.redirect('/app/settings?saved=1#brand')
 })
 
 // ─── Logo / icon (square, cropped client-side, stored in R2) ───

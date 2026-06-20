@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../types'
 import { SharedHead } from '../views/head'
+import type { HeadMeta } from '../views/head'
 import { getFormByToken, createFormSubmission, incrementSubmissionCount, getFormSubmission } from '../db/forms'
 import { getVendorById } from '../db/vendors'
 import { verifyTurnstile } from '../services/turnstile'
@@ -10,6 +11,8 @@ import { COUNTRIES } from '../forms/countries'
 import type { FormConfig, FormField, FormStep, FormAction, ContactMapping } from '../lib/form-schema'
 import { FormEnhancements } from '../lib/form-enhance'
 import { t } from '../i18n'
+import { BrandThemeHead, BrandLogo, parseBrandTheme, formLogoUrl, formOgImage } from '../lib/form-theme'
+import type { BrandTheme } from '../lib/form-theme'
 
 const form = new Hono<Env>()
 
@@ -26,9 +29,20 @@ form.get('/form/:token', async (c) => {
 
   const config = JSON.parse(formRecord.config) as FormConfig
   const embed = c.req.query('embed') === '1'
+  const theme = parseBrandTheme(vendor.brand_theme)
+  const logoUrl = formLogoUrl(vendor)
+  const meta: HeadMeta = {
+    title: 'Form',
+    ogTitle: `${config.title} · ${vendor.business_name}`,
+    ogDescription: config.subtitle ?? `${config.title} — ${vendor.business_name}.`,
+    ogUrl: `${c.env.APP_URL}/form/${formRecord.public_token}`,
+    ogImageAlt: vendor.business_name,
+    noindex: true,
+    ...formOgImage(vendor, c.env.APP_URL),
+  }
 
   return c.html(
-    <FormShell embed={embed}>
+    <FormShell embed={embed} theme={theme} logoUrl={logoUrl} meta={meta}>
       <FormRenderer
         config={config}
         formType={formRecord.type}
@@ -53,10 +67,12 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
   const config = JSON.parse(formRecord.config) as FormConfig
   const body = await c.req.parseBody()
   const embed = c.req.query('embed') === '1'
+  const theme = parseBrandTheme(vendor.brand_theme)
+  const logoUrl = formLogoUrl(vendor)
 
   // Honeypot
   if (body.website_url) {
-    return c.html(<FormShell embed={embed}><ThankYou title={config.title} vendorName={vendor.business_name} formType={formRecord.type} /></FormShell>)
+    return c.html(<FormShell embed={embed} theme={theme} logoUrl={logoUrl}><ThankYou title={config.title} vendorName={vendor.business_name} formType={formRecord.type} /></FormShell>)
   }
 
   // Turnstile verification
@@ -66,7 +82,7 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
 
   if (!turnstileOk) {
     return c.html(
-      <FormShell embed={embed}>
+      <FormShell embed={embed} theme={theme} logoUrl={logoUrl}>
         <FormRenderer
           config={config}
           formType={formRecord.type}
@@ -226,7 +242,7 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
   }
 
   return c.html(
-    <FormShell embed={embed}>
+    <FormShell embed={embed} theme={theme} logoUrl={logoUrl}>
       <ThankYou
         title={config.title}
         vendorName={vendor.business_name}
@@ -338,15 +354,19 @@ async function handleCreateContact(
 
 // ─── Components ───
 
-function FormShell({ children, embed }: { children: any; embed?: boolean }) {
+function FormShell({ children, embed, theme, logoUrl, meta }: { children: any; embed?: boolean; theme?: BrandTheme; logoUrl?: string | null; meta?: HeadMeta }) {
   if (embed) {
     return (
       <html>
         <head>
-          <SharedHead title="Form" />
+          <SharedHead title="Form" {...meta} />
+          <BrandThemeHead theme={theme} />
         </head>
-        <body class="bg-white p-4">
-          {children}
+        <body class="bg-transparent p-4">
+          <BrandLogo logoUrl={logoUrl} />
+          <div class="bg-[var(--form-surface)] rounded-2xl p-5 sm:p-6">
+            {children}
+          </div>
         </body>
       </html>
     )
@@ -355,11 +375,15 @@ function FormShell({ children, embed }: { children: any; embed?: boolean }) {
   return (
     <html>
       <head>
-        <SharedHead title="Form" />
+        <SharedHead title="Form" {...meta} />
+        <BrandThemeHead theme={theme} />
       </head>
-      <body class="bg-gray-50 min-h-screen">
-        <div class="max-w-2xl mx-auto py-8 px-4">
-          {children}
+      <body class="bg-[var(--form-bg)] min-h-screen">
+        <div class="max-w-2xl mx-auto px-4 py-8 sm:py-12">
+          <BrandLogo logoUrl={logoUrl} />
+          <div class="bg-[var(--form-surface)] rounded-2xl shadow-lg shadow-gray-900/5 p-5 sm:p-8">
+            {children}
+          </div>
         </div>
       </body>
     </html>
@@ -384,8 +408,8 @@ function FormRenderer({
   return (
     <div>
       <div class="mb-6">
-        <h1 class="text-2xl font-bold text-gray-900">{config.title}</h1>
-        {config.subtitle && <p class="text-sm text-gray-600 mt-1">{config.subtitle}</p>}
+        <h1 class="text-2xl font-bold text-[var(--form-ink)]">{config.title}</h1>
+        {config.subtitle && <p class="text-sm text-[var(--form-ink-muted)] mt-1">{config.subtitle}</p>}
         <p class="text-xs text-gray-400 mt-2">{vendorName}</p>
       </div>
 
@@ -405,9 +429,9 @@ function FormRenderer({
               <div class="form-step" data-step={i} style={i === 0 ? {} : { display: 'none' }}>
                 <div class="mb-4">
                   <div class="flex items-center gap-2 mb-2">
-                    <span class="text-xs bg-horizon-100 text-horizon-700 px-2 py-0.5 rounded-full">Step {i + 1} of {config.steps!.length}</span>
+                    <span class="text-xs bg-[var(--form-accent-tint)] text-[var(--form-accent)] px-2 py-0.5 rounded-full">Step {i + 1} of {config.steps!.length}</span>
                   </div>
-                  <h2 class="text-lg font-bold text-gray-900">{step.title}</h2>
+                  <h2 class="text-lg font-bold text-[var(--form-ink)]">{step.title}</h2>
                   {step.description && <p class="text-sm text-gray-600">{step.description}</p>}
                 </div>
                 <div class="space-y-4">
@@ -425,11 +449,11 @@ function FormRenderer({
                     <button type="button" class="text-sm text-gray-600 hover:text-gray-900 px-4 py-2 border border-gray-200 rounded-lg step-prev">Back</button>
                   )}
                   {i < config.steps!.length - 1 ? (
-                    <button type="button" class="ml-auto text-sm text-white bg-horizon-600 hover:bg-horizon-700 px-4 py-2 rounded-lg font-bold step-next">Continue</button>
+                    <button type="button" class="ml-auto text-sm text-[var(--form-accent-ink)] bg-[var(--form-accent)] hover:bg-[var(--form-accent-hover)] px-4 py-2 rounded-lg font-bold step-next">Continue</button>
                   ) : (
                     <div class="ml-auto flex flex-col items-end gap-3">
                       <div class="cf-turnstile" data-sitekey={siteKey} data-theme="light"></div>
-                      <button type="submit" class="text-sm text-white bg-horizon-600 hover:bg-horizon-700 px-6 py-2 rounded-lg font-bold">{config.submitLabel}</button>
+                      <button type="submit" class="text-sm text-[var(--form-accent-ink)] bg-[var(--form-accent)] hover:bg-[var(--form-accent-hover)] px-6 py-2 rounded-lg font-bold">{config.submitLabel}</button>
                     </div>
                   )}
                 </div>
@@ -443,7 +467,7 @@ function FormRenderer({
             ))}
             <div class="mt-4 flex flex-col items-start gap-3">
               <div class="cf-turnstile" data-sitekey={siteKey} data-theme="light"></div>
-              <button type="submit" class="text-sm text-white bg-horizon-600 hover:bg-horizon-700 px-6 py-2 rounded-lg font-bold">{config.submitLabel}</button>
+              <button type="submit" class="text-sm text-[var(--form-accent-ink)] bg-[var(--form-accent)] hover:bg-[var(--form-accent-hover)] px-6 py-2 rounded-lg font-bold">{config.submitLabel}</button>
             </div>
           </div>
         )}
@@ -566,7 +590,7 @@ function ThankYou({ title, vendorName, formType, submissionId, token, showPdfLin
   return (
     <div class="text-center py-8">
       <div class="text-4xl mb-4">&#10003;</div>
-      <h2 class="text-xl font-bold text-gray-900 mb-2">Submitted successfully</h2>
+      <h2 class="text-xl font-bold text-[var(--form-ink)] mb-2">Submitted successfully</h2>
       <p class="text-sm text-gray-600 mb-4">Thank you for completing the {title.toLowerCase()} form.</p>
       {showPdfLink && token && submissionId && (
         <div class="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
