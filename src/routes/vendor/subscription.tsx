@@ -158,6 +158,9 @@ subscription.post('/app/subscription/checkout', async (c) => {
 
   const params: Record<string, string> = {
     'mode': 'subscription',
+    // Let customers enter a marketing promotion code at checkout. Stripe
+    // validates the code + enforces its expiry/usage limits atomically.
+    'allow_promotion_codes': 'true',
     'line_items[0][price_data][currency]': 'aud',
     'line_items[0][price_data][product_data][name]': 'Wedding Computer Pro',
     'line_items[0][price_data][product_data][description]': 'Analytics, insights, AI features, and business goals',

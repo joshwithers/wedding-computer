@@ -44,6 +44,7 @@ const AdminLayout: FC<PropsWithChildren<{ title?: string; user: User; csrfToken:
             <a href="/admin/waitlist" class="text-sm text-gray-400 hover:text-white">Waitlist</a>
             <a href="/admin/broadcast" class="text-sm text-gray-400 hover:text-white">Broadcast</a>
             <a href="/admin/gifts" class="text-sm text-gray-400 hover:text-white">Gifts</a>
+            <a href="/admin/coupons" class="text-sm text-gray-400 hover:text-white">Coupons</a>
             <a href="/app" class="text-sm text-gray-400 hover:text-white">Back to app</a>
             <span class="text-sm text-gray-500">{user.email}</span>
           </div>
@@ -473,6 +474,220 @@ admin.post('/admin/gift-months', async (c) => {
   return c.redirect(
     `/admin/gifts?granted=${result.applied}&email=${encodeURIComponent(email)}&clamped=${result.clamped ? '1' : '0'}`
   )
+})
+
+// ─── Coupons (Stripe promotion codes) ───
+
+/** Thin Stripe REST helper (form-encoded), mirroring the checkout call. */
+async function stripeApi(
+  secretKey: string,
+  method: 'GET' | 'POST',
+  path: string,
+  body?: Record<string, string>
+): Promise<{ ok: boolean; status: number; data: any }> {
+  const res = await fetch('https://api.stripe.com/v1/' + path, {
+    method,
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      ...(method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+    },
+    body: method === 'POST' && body ? new URLSearchParams(body).toString() : undefined,
+  })
+  const data = await res.json().catch(() => ({}))
+  return { ok: res.ok, status: res.status, data }
+}
+
+const couponDiscountLabel = (coupon: any): string =>
+  coupon?.percent_off != null ? `${coupon.percent_off}% off`
+  : coupon?.amount_off != null ? `${formatCents(coupon.amount_off)} off`
+  : '—'
+
+const couponDurationLabel = (coupon: any): string =>
+  coupon?.duration === 'repeating' ? `for ${coupon.duration_in_months} months`
+  : coupon?.duration === 'forever' ? 'forever'
+  : 'first payment'
+
+admin.get('/admin/coupons', async (c) => {
+  const user = c.get('user')
+  const csrfToken = c.get('csrfToken')
+  const created = c.req.query('created')
+  const deactivated = c.req.query('deactivated') === '1'
+  const error = c.req.query('error')
+
+  const list = await stripeApi(c.env.STRIPE_SECRET_KEY, 'GET', 'promotion_codes?limit=100&expand[]=data.coupon')
+  const codes: any[] = list.ok && Array.isArray(list.data?.data) ? list.data.data : []
+  const fmtDate = (ts?: number | null) => (ts ? new Date(ts * 1000).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : null)
+
+  return c.html(
+    <AdminLayout title="Coupons" user={user} csrfToken={csrfToken}>
+      <div class="space-y-8 max-w-3xl">
+        <div>
+          <h1 class="text-2xl font-bold">Discount codes</h1>
+          <p class="text-sm text-gray-500 mt-1">
+            Create a marketing code customers enter at Pro checkout. Stripe enforces the
+            discount, expiry and usage limit. Percentage or fixed amount, one-off or recurring.
+          </p>
+        </div>
+
+        {created && (
+          <div class="bg-green-50 border border-green-200 text-green-800 text-sm rounded-xl p-3">
+            Created code <strong>{created}</strong>. Customers can enter it at checkout now.
+          </div>
+        )}
+        {deactivated && (
+          <div class="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl p-3">Code deactivated.</div>
+        )}
+        {error && <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3">{error}</div>}
+
+        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-gray-200">
+          <form method="post" action="/admin/coupons" class="space-y-4">
+            <input type="hidden" name="_csrf" value={csrfToken} />
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="code">Code</label>
+              <input type="text" id="code" name="code" required placeholder="LAUNCH50" autocomplete="off"
+                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              <p class="text-xs text-gray-400 mt-1">Letters, numbers, - or _. Shown to customers exactly.</p>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1" for="discount_type">Discount</label>
+                <select id="discount_type" name="discount_type" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                  <option value="percent">Percentage off</option>
+                  <option value="amount">Fixed amount off (AUD)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1" for="value">Value</label>
+                <input type="number" id="value" name="value" min="1" step="0.01" required placeholder="50"
+                  class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                <p class="text-xs text-gray-400 mt-1">e.g. 50 = 50% or $50</p>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1" for="duration">Applies to</label>
+                <select id="duration" name="duration" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                  <option value="once">First payment only</option>
+                  <option value="repeating">First N months</option>
+                  <option value="forever">Every payment (forever)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1" for="duration_months">Months (if "First N")</label>
+                <input type="number" id="duration_months" name="duration_months" min="1" placeholder="3"
+                  class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1" for="expires">Expires (optional)</label>
+                <input type="date" id="expires" name="expires" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1" for="max_redemptions">Max uses (optional)</label>
+                <input type="number" id="max_redemptions" name="max_redemptions" min="1" placeholder="∞"
+                  class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              </div>
+            </div>
+            <button type="submit" class="bg-gray-900 text-white rounded-xl px-6 py-2.5 text-sm font-bold hover:bg-gray-800 transition-colors">
+              Create code
+            </button>
+          </form>
+        </div>
+
+        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-gray-200">
+          <h2 class="text-lg font-bold mb-4">Active &amp; past codes</h2>
+          {!list.ok ? (
+            <p class="text-sm text-red-500">Couldn't load codes from Stripe ({list.status}).</p>
+          ) : codes.length === 0 ? (
+            <p class="text-sm text-gray-400">No codes yet.</p>
+          ) : (
+            <div class="divide-y divide-gray-100">
+              {codes.map((p: any) => (
+                <div class="py-3 flex items-center justify-between gap-4 text-sm">
+                  <div class="min-w-0">
+                    <p class="font-bold text-gray-900 font-mono">
+                      {p.code}
+                      {!p.active && <span class="ml-2 text-[10px] font-bold uppercase tracking-wide text-gray-400 bg-gray-100 rounded px-1.5 py-0.5">inactive</span>}
+                    </p>
+                    <p class="text-xs text-gray-500">
+                      {couponDiscountLabel(p.coupon)} · {couponDurationLabel(p.coupon)}
+                      {p.expires_at && ` · expires ${fmtDate(p.expires_at)}`}
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-3 shrink-0">
+                    <div class="text-right">
+                      <p class="font-bold text-gray-900">{p.times_redeemed}{p.max_redemptions ? ` / ${p.max_redemptions}` : ''}</p>
+                      <p class="text-xs text-gray-400">used</p>
+                    </div>
+                    {p.active && (
+                      <form method="post" action={`/admin/coupons/${p.id}/deactivate`}>
+                        <input type="hidden" name="_csrf" value={csrfToken} />
+                        <button type="submit" class="text-xs text-gray-400 hover:text-red-600 border border-gray-200 rounded-lg px-2.5 py-1.5">Deactivate</button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </AdminLayout>
+  )
+})
+
+admin.post('/admin/coupons', async (c) => {
+  const body = await c.req.parseBody()
+  const code = String(body.code || '').trim().toUpperCase()
+  const discountType = String(body.discount_type || 'percent')
+  const value = parseFloat(String(body.value || '0'))
+  const duration = String(body.duration || 'once')
+  const durationMonths = parseInt(String(body.duration_months || '0'), 10)
+  const expires = String(body.expires || '').trim()
+  const maxRedemptions = parseInt(String(body.max_redemptions || '0'), 10)
+  const fail = (msg: string) => c.redirect('/admin/coupons?error=' + encodeURIComponent(msg))
+
+  if (!/^[A-Z0-9_-]{2,40}$/.test(code)) return fail('Enter a code using letters, numbers, - or _ (2–40 chars).')
+  if (!Number.isFinite(value) || value <= 0) return fail('Enter a discount value greater than 0.')
+  if (discountType === 'percent' && value > 100) return fail('Percentage off can’t exceed 100.')
+
+  // 1) Coupon = the discount definition.
+  const couponParams: Record<string, string> = { duration, name: code }
+  if (discountType === 'amount') {
+    couponParams.amount_off = String(Math.round(value * 100))
+    couponParams.currency = 'aud'
+  } else {
+    couponParams.percent_off = String(value)
+  }
+  if (duration === 'repeating') {
+    if (!Number.isFinite(durationMonths) || durationMonths < 1) return fail('Enter how many months a recurring discount lasts.')
+    couponParams.duration_in_months = String(durationMonths)
+  }
+  const coupon = await stripeApi(c.env.STRIPE_SECRET_KEY, 'POST', 'coupons', couponParams)
+  if (!coupon.ok) return fail('Stripe rejected the discount: ' + (coupon.data?.error?.message ?? coupon.status))
+
+  // 2) Promotion code = the customer-facing code + expiry/usage limits.
+  const promoParams: Record<string, string> = { coupon: coupon.data.id, code }
+  if (Number.isFinite(maxRedemptions) && maxRedemptions > 0) promoParams.max_redemptions = String(maxRedemptions)
+  if (expires) {
+    const ts = Math.floor(new Date(expires + 'T23:59:59').getTime() / 1000)
+    if (!Number.isFinite(ts) || ts <= Math.floor(Date.now() / 1000)) return fail('Expiry date must be in the future.')
+    promoParams.expires_at = String(ts)
+  }
+  const promo = await stripeApi(c.env.STRIPE_SECRET_KEY, 'POST', 'promotion_codes', promoParams)
+  if (!promo.ok) return fail(`Couldn’t create code “${code}” (it may already exist): ` + (promo.data?.error?.message ?? promo.status))
+
+  await auditLog(c, 'create_coupon', 'coupon', promo.data.id, { code, discountType, value, duration, expires, maxRedemptions }).catch(() => {})
+  return c.redirect('/admin/coupons?created=' + encodeURIComponent(code))
+})
+
+admin.post('/admin/coupons/:id/deactivate', async (c) => {
+  const id = c.req.param('id')
+  const res = await stripeApi(c.env.STRIPE_SECRET_KEY, 'POST', `promotion_codes/${id}`, { active: 'false' })
+  await auditLog(c, 'deactivate_coupon', 'coupon', id, {}).catch(() => {})
+  if (!res.ok) return c.redirect('/admin/coupons?error=' + encodeURIComponent('Couldn’t deactivate that code.'))
+  return c.redirect('/admin/coupons?deactivated=1')
 })
 
 // ─── Waitlist ───
