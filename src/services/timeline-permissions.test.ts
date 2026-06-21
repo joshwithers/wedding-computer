@@ -79,6 +79,11 @@ describe('canManageAssignees', () => {
     expect(canManageAssignees(privateItem, vendorOther, lead)).toBe(true)
     expect(canManageAssignees(privateItem, vendorLead, lead)).toBe(false)
   })
+  it('sun markers are facts — nobody is "on" a sunrise', () => {
+    const marker = { visibility: 'couple' as const, owner_vendor_id: null, marker: 'sunrise' as const }
+    expect(canManageAssignees(marker, vendorLead, lead)).toBe(false)
+    expect(canManageAssignees(marker, couple, lead)).toBe(false)
+  })
 })
 
 describe('canCreateDirect', () => {

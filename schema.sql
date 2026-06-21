@@ -252,6 +252,9 @@ CREATE TABLE IF NOT EXISTS timeline_items (
   anchor_offset_minutes INTEGER NOT NULL DEFAULT 0,
   pinned                INTEGER NOT NULL DEFAULT 0,
   actual_start          TEXT,
+  -- Astronomical fact row ('sunrise' | 'sunset'); NULL = a normal item. Facts
+  -- are points in time (no people, no start/stop), rendered inline by time.
+  marker                TEXT,
   created_at         TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );

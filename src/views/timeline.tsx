@@ -41,6 +41,14 @@ function initials(name: string): string {
   return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?'
 }
 
+// "HH:MM" → minutes since midnight, for chronologically placing sun markers.
+function toMin(s: string | null): number | null {
+  if (!s) return null
+  const [h, m] = s.split(':')
+  const n = Number(h) * 60 + (Number(m) || 0)
+  return Number.isFinite(n) ? n : null
+}
+
 export type PendingView = {
   id: string
   op: 'create' | 'update' | 'delete'
@@ -315,6 +323,28 @@ function Row({ item, basePath, roster, canEdit, canAssign, viewerUserId, refTitl
   )
 }
 
+// A sunrise/sunset fact: a point in time, no people, no start/stop, no edit —
+// just the icon, label and clock, placed inline at its time. Removable (facts
+// in, facts out) but otherwise immutable, since the time is the sun's, not ours.
+function SunMarkerRow({ item, basePath, canRemove }: { item: TimelineItemView; basePath: string; canRemove: boolean }) {
+  const icon = item.marker === 'sunrise' ? '🌅' : '🌇'
+  return (
+    <li class="group flex items-center gap-3 px-4 py-1.5 bg-papaya-50/50">
+      <div class="w-14 flex-shrink-0 text-xs tabular-nums font-bold text-amber-700/90">{item.start_time || '—'}</div>
+      <div class="flex-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-800/80">
+        <span aria-hidden="true">{icon}</span>
+        <span>{item.title}</span>
+      </div>
+      {canRemove && (
+        <button type="button" hx-post={`${basePath}/timeline/${item.id}/delete`} hx-target="#timeline-body" hx-swap="outerHTML" hx-confirm={t('timeline.confirmRemove')}
+          class="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-600" aria-label={t('timeline.remove')}>
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      )}
+    </li>
+  )
+}
+
 function PendingCard({ p, basePath, canDecide, creatable, anchorOptions, sunAvailable }: { p: PendingView; basePath: string; canDecide: boolean; creatable: TimelineVisibility[]; anchorOptions: AnchorOption[]; sunAvailable: boolean }) {
   const opLabel = t(`timeline.op.${p.op}` as MessageKey)
   return (
@@ -406,27 +436,59 @@ export function TimelineBody(props: TimelineProps) {
         <p class="px-4 py-6 text-sm text-gray-400 text-center">{t('timeline.empty')}</p>
       ) : (
         <div>
-          {TIMELINE_CATEGORIES.map((cat) => {
-            const rows = items.filter((i) => i.category === cat)
-            if (rows.length === 0) return null
+          {(() => {
+            // Sun markers are facts placed inline by their time. Each one sorts
+            // into the lane it falls within (the last phase whose earliest item
+            // is at or before it); a marker earlier than every lane (e.g. an
+            // early sunrise) leads the list.
+            const markers = items.filter((i) => i.marker)
+            const lanes = TIMELINE_CATEGORIES
+              .map((cat) => ({ cat, rows: items.filter((i) => i.category === cat && !i.marker) }))
+              .filter((l) => l.rows.length > 0)
+              .map((l) => ({
+                ...l,
+                minMin: Math.min(...l.rows.map((r) => toMin(r.start_time)).filter((n): n is number => n != null), Infinity),
+              }))
+
+            const leading: TimelineItemView[] = []
+            const byLane = new Map<number, TimelineItemView[]>()
+            for (const m of markers) {
+              const mt = toMin(m.start_time) ?? Infinity
+              let idx = -1
+              for (let j = 0; j < lanes.length; j++) if (lanes[j].minMin <= mt) idx = j
+              if (idx < 0) leading.push(m)
+              else byLane.set(idx, [...(byLane.get(idx) ?? []), m])
+            }
+
+            const byTime = (a: TimelineItemView, b: TimelineItemView) =>
+              (toMin(a.start_time) ?? Infinity) - (toMin(b.start_time) ?? Infinity)
+            const renderRow = (item: TimelineItemView) =>
+              item.marker ? (
+                <SunMarkerRow item={item} basePath={basePath} canRemove={canEditOrPropose(item, viewer, lead)} />
+              ) : item.id === editId ? (
+                <RowForm item={item} basePath={basePath} creatable={creatable} anchorOptions={anchorOptions} sunAvailable={sunAvailable} />
+              ) : (
+                <Row item={item} basePath={basePath} roster={roster} canEdit={canEditOrPropose(item, viewer, lead)} canAssign={canManageAssignees(item, viewer, lead)} viewerUserId={viewer.userId} refTitle={item.anchor_ref ? titleById.get(item.anchor_ref) : undefined} conflicted={props.conflictIds?.has(item.id)} liveMode={!!props.live} projected={props.live?.projected.get(item.id)} slipped={props.live?.slipIds.has(item.id)} canStart={canEditDirect(item, viewer, lead)} />
+              )
+
             return (
               <div>
-                <div class="flex items-center gap-2 px-4 pt-3 pb-1">
-                  <span class="w-2 h-2 rounded-full" style={`background:${CAT_COLOR[cat]}`}></span>
-                  <span class="text-[10px] font-bold uppercase tracking-wide text-gray-400">{catLabel(cat)}</span>
-                </div>
-                <ul class="divide-y divide-gray-50">
-                  {rows.map((item) =>
-                    item.id === editId ? (
-                      <RowForm item={item} basePath={basePath} creatable={creatable} anchorOptions={anchorOptions} sunAvailable={sunAvailable} />
-                    ) : (
-                      <Row item={item} basePath={basePath} roster={roster} canEdit={canEditOrPropose(item, viewer, lead)} canAssign={canManageAssignees(item, viewer, lead)} viewerUserId={viewer.userId} refTitle={item.anchor_ref ? titleById.get(item.anchor_ref) : undefined} conflicted={props.conflictIds?.has(item.id)} liveMode={!!props.live} projected={props.live?.projected.get(item.id)} slipped={props.live?.slipIds.has(item.id)} canStart={canEditDirect(item, viewer, lead)} />
-                    )
-                  )}
-                </ul>
+                {leading.length > 0 && <ul class="divide-y divide-gray-50">{leading.map(renderRow)}</ul>}
+                {lanes.map((lane, j) => {
+                  const merged = [...lane.rows, ...(byLane.get(j) ?? [])].sort(byTime)
+                  return (
+                    <div>
+                      <div class="flex items-center gap-2 px-4 pt-3 pb-1">
+                        <span class="w-2 h-2 rounded-full" style={`background:${CAT_COLOR[lane.cat]}`}></span>
+                        <span class="text-[10px] font-bold uppercase tracking-wide text-gray-400">{catLabel(lane.cat)}</span>
+                      </div>
+                      <ul class="divide-y divide-gray-50">{merged.map(renderRow)}</ul>
+                    </div>
+                  )
+                })}
               </div>
             )
-          })}
+          })()}
         </div>
       )}
     </div>

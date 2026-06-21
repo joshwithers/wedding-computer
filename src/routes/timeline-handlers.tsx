@@ -382,6 +382,7 @@ export async function addSunTimes(c: Ctx, weddingId: string, member: WeddingMemb
       anchor_ref: ev.ref,
       anchor_offset_minutes: 0,
       pinned: 0,
+      marker: ev.ref as 'sunrise' | 'sunset',
       owner_vendor_id: member.vendor_profile_id,
       created_by_user_id: user.id,
     })
@@ -429,6 +430,12 @@ export async function updateTimelineItem(c: Ctx, weddingId: string, member: Wedd
 export async function deleteTimelineItem(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string, itemId: string) {
   const item = await getItem(c.env.DB, weddingId, itemId)
   if (!item) return renderTimeline(c, weddingId, member, user, basePath)
+  // Sun markers are facts anyone may add — and remove — directly, no approval.
+  if (item.marker) {
+    await deleteItem(c.env.DB, weddingId, itemId)
+    await afterWrite(c, weddingId)
+    return renderTimeline(c, weddingId, member, user, basePath)
+  }
   const viewer = viewerOf(user, member)
   const lead = await getTimelineLead(c.env.DB, weddingId)
   if (canEditDirect(item, viewer, lead)) {

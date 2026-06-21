@@ -747,9 +747,14 @@ export type TimelineItem = {
   anchor_offset_minutes: number
   pinned: number
   actual_start: string | null
+  // Astronomical fact row ('sunrise' | 'sunset'); null = a normal item. Facts are
+  // points in time (no people, no start/stop, time derived from the sun anchor).
+  marker: TimelineMarker | null
   created_at: string
   updated_at: string
 }
+
+export type TimelineMarker = 'sunrise' | 'sunset'
 
 export type TimelineItemAssignee = {
   id: string

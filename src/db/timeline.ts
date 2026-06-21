@@ -3,7 +3,7 @@
 // services/timeline-permissions. Reuses updateWedding for the projection shim
 // that keeps the legacy weddings.* slot columns in step during phases 1-3.
 
-import type { TimelineItem, TimelineItemAssignee, TimelineCategory, TimelineVisibility, TimelineSlot, RunSheetItem } from '../types'
+import type { TimelineItem, TimelineItemAssignee, TimelineCategory, TimelineVisibility, TimelineSlot, TimelineMarker, RunSheetItem } from '../types'
 import { updateWedding, getWedding } from './weddings'
 import { solveTimeline, minToHhmm, type SolverItem, type SunMinutes } from '../lib/timeline-solver'
 import { sunMinutesFor } from '../lib/sun'
@@ -92,6 +92,7 @@ export async function createItem(
     anchor_ref?: string | null
     anchor_offset_minutes?: number | null
     pinned?: number | null
+    marker?: TimelineMarker | null
   }
 ): Promise<TimelineItem> {
   const next = await db
@@ -103,8 +104,8 @@ export async function createItem(
       `INSERT INTO timeline_items
          (wedding_id, start_time, end_time, title, description, location, category,
           owner_vendor_id, created_by_user_id, visibility, slot, sort_order,
-          duration_minutes, anchor_type, anchor_ref, anchor_offset_minutes, pinned)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          duration_minutes, anchor_type, anchor_ref, anchor_offset_minutes, pinned, marker)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
@@ -124,7 +125,8 @@ export async function createItem(
       data.anchor_type ?? null,
       data.anchor_ref ?? null,
       data.anchor_offset_minutes ?? 0,
-      data.pinned ?? 0
+      data.pinned ?? 0,
+      data.marker ?? null
     )
     .first<TimelineItem>()
   return row!

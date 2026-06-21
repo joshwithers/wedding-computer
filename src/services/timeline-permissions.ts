@@ -139,10 +139,12 @@ export function canEditOrPropose(
  * approval). Private rows: the owner only.
  */
 export function canManageAssignees(
-  item: Pick<TimelineItem, 'visibility' | 'owner_vendor_id'>,
+  item: Pick<TimelineItem, 'visibility' | 'owner_vendor_id'> & { marker?: TimelineItem['marker'] },
   viewer: TimelineViewer,
   lead: TimelineLead
 ): boolean {
+  // Sun markers are facts of earth — nobody is "on" a sunrise.
+  if (item.marker) return false
   if (item.visibility === 'private') return canEditDirect(item, viewer, lead)
   return canSeeItem(item, viewer)
 }
