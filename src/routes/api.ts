@@ -46,12 +46,22 @@ async function authenticate(c: any): Promise<VendorProfile | Response> {
 }
 
 // Per-vendor rate limit (server-to-server callers may share IPs, so key on the
-// vendor rather than IP). 120 requests/minute.
+// vendor rather than IP). A 120/minute burst limit plus a daily ceiling so a
+// leaked write-only enquiry key can't flood a vendor's CRM around the clock.
+const API_BURST_LIMIT = 120 // per minute
+const API_DAILY_LIMIT = 2000 // per UTC day
+
 async function rateLimited(c: any, vendorId: string): Promise<boolean> {
-  const rlKey = `rl:apienq:${vendorId}`
-  const count = parseInt((await c.env.KV.get(rlKey)) ?? '0', 10)
-  if (count >= 120) return true
-  await c.env.KV.put(rlKey, String(count + 1), { expirationTtl: 60 })
+  const minuteKey = `rl:apienq:${vendorId}`
+  const dayKey = `rl:apienq:day:${vendorId}:${new Date().toISOString().slice(0, 10)}`
+  const [minuteRaw, dayRaw] = await Promise.all([c.env.KV.get(minuteKey), c.env.KV.get(dayKey)])
+  const minute = parseInt(minuteRaw ?? '0', 10)
+  const day = parseInt(dayRaw ?? '0', 10)
+  if (minute >= API_BURST_LIMIT || day >= API_DAILY_LIMIT) return true
+  await Promise.all([
+    c.env.KV.put(minuteKey, String(minute + 1), { expirationTtl: 60 }),
+    c.env.KV.put(dayKey, String(day + 1), { expirationTtl: 60 * 60 * 25 }),
+  ])
   return false
 }
 
@@ -63,7 +73,7 @@ api.post('/api/v1/enquiries', async (c) => {
   const vendor = auth
 
   if (await rateLimited(c, vendor.id)) {
-    return c.json({ ok: false, error: 'Rate limit exceeded (120/min). Try again shortly.' }, 429)
+    return c.json({ ok: false, error: 'Rate limit exceeded (120/min or 2000/day). Try again later.' }, 429)
   }
 
   let payload: EnquiryJson

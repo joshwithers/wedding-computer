@@ -7,12 +7,20 @@ import { hasCategory } from '../../lib/categories'
 import type { FormConfig, FormStep, FormField } from '../../lib/form-schema'
 import { defaultFormConfig, generateFieldId, BUILDER_FIELD_TYPES, CONTACT_MAPPINGS, sanitizeBuilderFields, validateBuilderFields } from '../../lib/form-schema'
 import { requireEmailHandle } from '../../middleware/email-handle'
+import { requireAuth } from '../../middleware/auth'
+import { requireVendor } from '../../middleware/tenant'
+import { csrf } from '../../middleware/csrf'
 
 const forms = new Hono<Env>()
 
-// Custom forms send email on our domain too — require the handle first. Auth +
-// vendor are already applied by the shared /app/* guard chain; this runs after
-// them (vendor is in context), and is defensive if it isn't.
+// Own guard chain — don't rely on mount-order inheritance from another sub-app.
+// (CSRF + requireAuth/requireVendor are idempotent, so the dashboard guard also
+// matching /app/* is harmless; this makes the surface self-protecting.)
+forms.use('/app/forms', requireAuth, csrf, requireVendor)
+forms.use('/app/forms/*', requireAuth, csrf, requireVendor)
+
+// Custom forms send email on our domain too — require the handle once a vendor
+// is in context (the guards above set it).
 forms.use('/app/forms', requireEmailHandle)
 forms.use('/app/forms/*', requireEmailHandle)
 

@@ -36,6 +36,18 @@ async function resolveFormToken(
   return form ? { form, send: null } : null
 }
 
+// Per-recipient daily cap for the submitter-facing confirmation email. The
+// public submitter chooses this recipient, so bound how much mail any one
+// address can be sent from our domain (stops the receipt being used to spam a
+// chosen victim). Generous for legitimate re-submits. Returns true when over.
+async function confirmationCapReached(kv: KVNamespace, email: string, limit = 5): Promise<boolean> {
+  const key = `rl:formconf:${new Date().toISOString().slice(0, 10)}:${email.toLowerCase()}`
+  const n = parseInt((await kv.get(key)) ?? '0', 10)
+  if (n >= limit) return true
+  await kv.put(key, String(n + 1), { expirationTtl: 60 * 60 * 25 })
+  return false
+}
+
 // Coerce a parsed multipart body to plain strings for re-rendering a failed
 // submission (arrays → joined; File objects dropped — file inputs re-prompt).
 function toStringValues(body: Record<string, unknown>): Record<string, string> {
@@ -144,9 +156,17 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
     if (field.type === 'file') { fileFields.push(field); continue } // validated + uploaded below
     const rawVal = body[field.id]
     if (field.type === 'multiselect') {
+      // Only accept values that are actually configured options, cap the count,
+      // and cap the joined length — a public submitter can otherwise post
+      // thousands of repeated/arbitrary values to bloat the stored row + emails.
       const arr = Array.isArray(rawVal) ? rawVal : rawVal !== undefined && rawVal !== '' ? [rawVal] : []
-      const vals = arr.filter((x): x is string => typeof x === 'string').map((x) => x.slice(0, 200).trim()).filter(Boolean)
-      if (vals.length) formData[field.id] = vals.join(', ')
+      const allowed = new Set((field.options ?? []).map((o) => (typeof o === 'string' ? o : o.value)))
+      const vals = arr
+        .filter((x): x is string => typeof x === 'string')
+        .map((x) => x.trim())
+        .filter((x) => x && allowed.has(x))
+        .slice(0, 50)
+      if (vals.length) formData[field.id] = vals.join(', ').slice(0, 2000)
     } else if (typeof rawVal === 'string' && rawVal !== '') {
       formData[field.id] = rawVal.slice(0, 2000).trim()
     }
@@ -342,7 +362,7 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
   const emailSubmitterAction = actions.find(a => a.type === 'email_submitter' && a.enabled)
   if (emailSubmitterAction) {
     const submitterEmail = emailSubmitterAction.emailField ? formData[emailSubmitterAction.emailField] : formData.email
-    if (submitterEmail && isValidEmail(submitterEmail)) {
+    if (submitterEmail && isValidEmail(submitterEmail) && !(await confirmationCapReached(c.env.KV, submitterEmail))) {
       try {
         await c.env.EMAIL_QUEUE.send({
           type: 'form_confirmation',
