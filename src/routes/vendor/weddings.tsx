@@ -684,9 +684,12 @@ weddings.get('/app/weddings/:id', async (c) => {
   const invited = c.req.query('invited')
 
   const canManage = !!membership.can_manage
+  // When vendors are hidden from one another, a non-manager still sees the
+  // couple, themselves — and any managing vendor (planner/venue/organiser), who
+  // coordinates the wedding and is already named as its manager elsewhere.
   const members = canManage || wedding.vendor_visibility === 'visible'
     ? allMembers
-    : allMembers.filter((m) => m.user_id === user.id || m.role === 'couple' || m.role === 'guest')
+    : allMembers.filter((m) => m.user_id === user.id || m.role === 'couple' || m.role === 'guest' || !!m.can_manage)
 
   const documents = await listDocumentsForWedding(c.env.DB, weddingId, user.id)
   const uploaded = c.req.query('uploaded')

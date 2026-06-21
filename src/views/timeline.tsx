@@ -388,6 +388,11 @@ export function TimelineBody(props: TimelineProps) {
   const anchorOptions: AnchorOption[] = items.map((i) => ({ id: i.id, title: i.title }))
   const titleById = new Map(items.map((i) => [i.id, i.title]))
   const sunAvailable = !!(props.sun && (props.sun.sunset || props.sun.sunrise || props.sun.goldenHourStart))
+  // Offer the quick-add only while there's still a sun event left to place — the
+  // button disappears once sunrise and sunset are both on the timeline.
+  const placedMarkers = new Set(items.filter((i) => i.marker).map((i) => i.marker as string))
+  const sunRefs = [props.sun?.sunrise ? 'sunrise' : null, props.sun?.sunset ? 'sunset' : null].filter(Boolean) as string[]
+  const canAddSun = sunAvailable && sunRefs.some((r) => !placedMarkers.has(r))
   return (
     <div id="timeline-body">
       {flash && <p class="px-4 py-2 text-xs text-horizon-700 bg-horizon-50 border-b border-horizon-100">{flash}</p>}
@@ -422,7 +427,7 @@ export function TimelineBody(props: TimelineProps) {
         <button type="submit" class="bg-horizon-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700">{t('timeline.add')}</button>
       </form>
 
-      {sunAvailable && (
+      {canAddSun && (
         <div class="px-4 py-2 border-b border-gray-100 bg-gray-50/30">
           <button type="button" hx-post={`${basePath}/timeline/sun`} hx-target="#timeline-body" hx-swap="outerHTML"
             class="text-xs font-medium text-amber-700 hover:text-amber-900 inline-flex items-center gap-1"
