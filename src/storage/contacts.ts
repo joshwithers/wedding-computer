@@ -551,7 +551,9 @@ export async function updateContact(
     // D1 succeeded — safe to remove the old file (best-effort)
     try { await storage.delete(filePath) } catch { /* orphaned old file is acceptable */ }
   } else {
-    const etag = await storage.write(filePath, content)
+    // Reuse the SHA from the read above so a git backend skips a redundant
+    // GET-for-SHA round-trip (R2 ignores it). remoteEtag is that blob's SHA.
+    const etag = await storage.write(filePath, content, remoteEtag)
     await upsertIndex(db, vendorId, updated, filePath, etag)
   }
 
