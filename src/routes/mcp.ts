@@ -218,6 +218,57 @@ const TOOLS = [
     },
   },
   {
+    name: 'save_timeline_item',
+    description: 'Add ONE timeline item (omit id) or edit one of YOUR items (with id). Granular alternative to update_run_sheet. Fields: title (required when adding), time ("14:30"), end_time, location, assigned_to (who), category (getting_ready|ceremony|portraits|reception|other), description, visibility (couple=everyone, vendors=vendors only, private=just you; default couple). You can only edit/own items you created.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        wedding_id: { type: 'string', description: 'Wedding ID' },
+        id: { type: 'string', description: 'Existing item id to edit (omit to add a new item)' },
+        title: { type: 'string', description: 'What happens (required when adding)' },
+        time: { type: 'string', description: 'Start time, e.g. "14:30"' },
+        end_time: { type: 'string' },
+        location: { type: 'string' },
+        assigned_to: { type: 'string', description: 'Who is on it (name or role)' },
+        category: { type: 'string', enum: ['getting_ready', 'ceremony', 'portraits', 'reception', 'other'] },
+        description: { type: 'string' },
+        visibility: { type: 'string', enum: ['couple', 'vendors', 'private'] },
+      },
+      required: ['wedding_id'],
+    },
+  },
+  {
+    name: 'remove_timeline_item',
+    description: 'Delete one of YOUR timeline items by id.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: { wedding_id: { type: 'string', description: 'Wedding ID' }, id: { type: 'string', description: 'Timeline item id' } },
+      required: ['wedding_id', 'id'],
+    },
+  },
+  {
+    name: 'set_timeline_item_started',
+    description: 'Live mode (on the wedding day): mark a timeline item as started right now (stamps the venue-local time and drives the running-ahead/behind status), or clear it with started=false. The timeline lead can mark any item; otherwise you can mark your own.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        wedding_id: { type: 'string', description: 'Wedding ID' },
+        id: { type: 'string', description: 'Timeline item id' },
+        started: { type: 'boolean', description: 'true = started now (default), false = clear the recorded start' },
+      },
+      required: ['wedding_id', 'id'],
+    },
+  },
+  {
+    name: 'end_live_timeline',
+    description: 'End live mode for the day — clears every recorded start time on the timeline. Timeline lead only.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: { wedding_id: { type: 'string', description: 'Wedding ID' } },
+      required: ['wedding_id'],
+    },
+  },
+  {
     name: 'get_wedding_vendors',
     description: 'Get the wedding team — couple, vendor members, and the couple\'s vendor list — as markdown.',
     inputSchema: {
@@ -508,7 +559,23 @@ async function handleTool(
         otherVendors: await listVisibleOtherItemRows(db, weddingId, vendor.id),
         pendingRequests: await listPendingTimelineRequests(db, weddingId),
       })
-      return { content: [{ type: 'text', text: md }] }
+      // Live status (on the day): any recorded starts + the running drift, so a
+      // client can show "running N behind" and drive set_timeline_item_started.
+      const startedRows = await db
+        .prepare("SELECT title, start_time, actual_start FROM timeline_items WHERE wedding_id = ? AND actual_start IS NOT NULL ORDER BY actual_start")
+        .bind(weddingId)
+        .all<{ title: string; start_time: string | null; actual_start: string }>()
+        .then((r) => r.results)
+      let out = md
+      if (startedRows.length > 0) {
+        const { hhmmToMin } = await import('../lib/timeline-solver')
+        const latest = startedRows[startedRows.length - 1]
+        const drift = (hhmmToMin(latest.actual_start) ?? 0) - (hhmmToMin(latest.start_time) ?? hhmmToMin(latest.actual_start) ?? 0)
+        const status = drift > 0 ? `running ${drift} min behind schedule` : drift < 0 ? `running ${-drift} min ahead of schedule` : 'on schedule'
+        out += `\n\n## Live status\nLIVE — ${status}.\n\nStarted:\n` +
+          startedRows.map((s) => `- ${s.actual_start} ${s.title}${s.start_time ? ` (planned ${s.start_time})` : ''}`).join('\n')
+      }
+      return { content: [{ type: 'text', text: out }] }
     }
 
     case 'update_run_sheet': {
@@ -718,6 +785,132 @@ async function handleTool(
       }
       await pushVault(env, vendor, weddingId, ctx)
       return { content: [{ type: 'text', text: `Added ${created.join(' and ')} to the timeline.` }] }
+    }
+
+    case 'save_timeline_item': {
+      const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const userId = await vendorUserId(db, vendor.id)
+      if (!userId) return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      const { getItem, createItem, updateItem, addAssignee, resolveAndMaterialize, weddingSunMinutes } = await import('../db/timeline')
+      const { RUN_SHEET_CATEGORIES } = await import('../types')
+
+      const id = args.id ? String(args.id) : null
+      const catRaw = args.category != null ? String(args.category) : undefined
+      const category = catRaw && (RUN_SHEET_CATEGORIES as readonly string[]).includes(catRaw) ? (catRaw as (typeof RUN_SHEET_CATEGORIES)[number]) : undefined
+      const visRaw = args.visibility != null ? String(args.visibility) : undefined
+      const visibility = visRaw && (['couple', 'vendors', 'private'] as const).includes(visRaw as any) ? (visRaw as 'couple' | 'vendors' | 'private') : undefined
+      const str = (v: unknown) => (v != null ? String(v).trim() || null : undefined)
+
+      let itemId: string
+      let action: string
+      if (id) {
+        const item = await getItem(db, weddingId, id)
+        if (!item || item.owner_vendor_id !== vendor.id) {
+          return { content: [{ type: 'text', text: "That item doesn't exist or isn't yours to edit." }] }
+        }
+        const patch: Record<string, unknown> = {}
+        if (args.title != null) patch.title = String(args.title).trim()
+        if (args.time !== undefined) patch.start_time = str(args.time)
+        if (args.end_time !== undefined) patch.end_time = str(args.end_time)
+        if (args.location !== undefined) patch.location = str(args.location)
+        if (args.description !== undefined) patch.description = str(args.description)
+        if (category !== undefined) patch.category = category
+        if (visibility !== undefined) patch.visibility = visibility
+        if (Object.keys(patch).length > 0) await updateItem(db, weddingId, id, patch as any)
+        itemId = id
+        action = 'Updated'
+      } else {
+        const title = args.title != null ? String(args.title).trim() : ''
+        if (!title) return { content: [{ type: 'text', text: 'A title is required to add a timeline item.' }] }
+        const created = await createItem(db, {
+          wedding_id: weddingId,
+          title,
+          start_time: str(args.time) ?? null,
+          end_time: str(args.end_time) ?? null,
+          location: str(args.location) ?? null,
+          description: str(args.description) ?? null,
+          category: category ?? 'other',
+          visibility: visibility ?? 'couple',
+          owner_vendor_id: vendor.id,
+          created_by_user_id: userId,
+        })
+        itemId = created.id
+        action = 'Added'
+      }
+      // 'who' → a single label assignee (replace any existing on the item).
+      if (args.assigned_to !== undefined) {
+        const who = String(args.assigned_to ?? '').trim()
+        await db.prepare('DELETE FROM timeline_item_assignees WHERE timeline_item_id = ?').bind(itemId).run()
+        if (who) await addAssignee(db, itemId, { label: who })
+      }
+      await resolveAndMaterialize(db, weddingId, await weddingSunMinutes(db, weddingId))
+      await pushVault(env, vendor, weddingId, ctx)
+      return { content: [{ type: 'text', text: `${action} timeline item (id ${itemId}).` }] }
+    }
+
+    case 'remove_timeline_item': {
+      const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const id = String(args.id ?? '')
+      const { getItem, deleteItem, resolveAndMaterialize, weddingSunMinutes } = await import('../db/timeline')
+      const item = await getItem(db, weddingId, id)
+      if (!item || item.owner_vendor_id !== vendor.id) {
+        return { content: [{ type: 'text', text: "That item doesn't exist or isn't yours to remove." }] }
+      }
+      await deleteItem(db, weddingId, id)
+      await resolveAndMaterialize(db, weddingId, await weddingSunMinutes(db, weddingId))
+      await pushVault(env, vendor, weddingId, ctx)
+      return { content: [{ type: 'text', text: `Removed "${item.title}".` }] }
+    }
+
+    case 'set_timeline_item_started': {
+      const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const id = String(args.id ?? '')
+      const { getItem, setActualStart } = await import('../db/timeline')
+      const item = await getItem(db, weddingId, id)
+      if (!item) return { content: [{ type: 'text', text: 'Timeline item not found.' }] }
+      const userId = await vendorUserId(db, vendor.id)
+      const { getTimelineLead, isTimelineLead } = await import('../services/timeline-permissions')
+      const lead = await getTimelineLead(db, weddingId)
+      const isLead = !!userId && isTimelineLead(lead, userId)
+      if (!isLead && item.owner_vendor_id !== vendor.id) {
+        return { content: [{ type: 'text', text: 'Only the timeline lead can mark shared items started — you can mark your own.' }] }
+      }
+      const started = args.started !== false
+      let stamp: string | null = null
+      if (started) {
+        const w = await db.prepare('SELECT location_country, location_state FROM weddings WHERE id = ?').bind(weddingId).first<{ location_country: string | null; location_state: string | null }>()
+        const { resolveLocationTimezone } = await import('../lib/sun')
+        const { nowTimeString } = await import('../lib/date')
+        const tz = resolveLocationTimezone(w?.location_country, w?.location_state, 'Australia/Sydney')
+        stamp = nowTimeString(tz)
+      }
+      await setActualStart(db, weddingId, id, stamp)
+      return { content: [{ type: 'text', text: started ? `Marked "${item.title}" started at ${stamp}.` : `Cleared the start time on "${item.title}".` }] }
+    }
+
+    case 'end_live_timeline': {
+      const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const userId = await vendorUserId(db, vendor.id)
+      const { getTimelineLead, isTimelineLead } = await import('../services/timeline-permissions')
+      const lead = await getTimelineLead(db, weddingId)
+      if (!userId || !isTimelineLead(lead, userId)) {
+        return { content: [{ type: 'text', text: 'Only the timeline lead can end live mode.' }] }
+      }
+      const { clearAllActuals } = await import('../db/timeline')
+      await clearAllActuals(db, weddingId)
+      return { content: [{ type: 'text', text: 'Ended live mode — cleared all recorded start times.' }] }
     }
 
     case 'get_wedding_vendors': {
