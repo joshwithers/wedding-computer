@@ -360,16 +360,16 @@ export async function addSunTimes(c: Ctx, weddingId: string, member: WeddingMemb
   const existing = await listTimeline(c.env.DB, weddingId)
   const present = (title: string) => existing.some((it) => it.title.trim().toLowerCase() === title.toLowerCase())
 
-  const viewer = viewerOf(user, member)
-  // Sun events are facts everyone should see — the couple-visible ("shared") row.
+  // Sunrise/sunset are objective facts of the date + venue, not scheduling
+  // decisions — so any member adds them straight to the shared (couple-visible)
+  // timeline with no lead-approval handshake. afterWrite materialises the clock.
   const visibility: TimelineVisibility = 'couple'
-  const lead = await getTimelineLead(c.env.DB, weddingId)
 
   let created = 0
-  let proposed = 0
   for (const ev of events) {
     if (present(ev.title)) continue
-    const fields: RowFields = {
+    await createItem(c.env.DB, {
+      wedding_id: weddingId,
       title: ev.title,
       start_time: null,
       end_time: null,
@@ -382,25 +382,13 @@ export async function addSunTimes(c: Ctx, weddingId: string, member: WeddingMemb
       anchor_ref: ev.ref,
       anchor_offset_minutes: 0,
       pinned: 0,
-    }
-    if (canCreateDirect(viewer, lead, visibility)) {
-      await createItem(c.env.DB, { wedding_id: weddingId, ...fields, owner_vendor_id: member.vendor_profile_id, created_by_user_id: user.id })
-      created++
-    } else {
-      await proposeChange(c.env.DB, {
-        weddingId, op: 'create', itemId: null,
-        payload: { after: fields, owner_vendor_id: member.vendor_profile_id, created_by_user_id: user.id },
-        requestedByUserId: user.id, requestedByLabel: user.name, vendorProfileId: member.vendor_profile_id,
-        leadUserIds: lead.leadUserIds, queue: c.env.EMAIL_QUEUE,
-      })
-      proposed++
-    }
+      owner_vendor_id: member.vendor_profile_id,
+      created_by_user_id: user.id,
+    })
+    created++
   }
 
   if (created > 0) await afterWrite(c, weddingId)
-  if (proposed > 0) {
-    return renderTimeline(c, weddingId, member, user, basePath, { flash: PROPOSED_FLASH(await leadLabel(c, weddingId, lead.leadUserIds)) })
-  }
   if (created === 0) {
     return renderTimeline(c, weddingId, member, user, basePath, { flash: t('timeline.sun.alreadyAdded') })
   }

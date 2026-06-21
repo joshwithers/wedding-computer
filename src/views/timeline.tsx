@@ -221,7 +221,11 @@ function FormFields({
                   {anchorOptions.map((o) => <option value={`before:${o.id}`} selected={cur === `before:${o.id}`}>{o.title}</option>)}
                 </optgroup>
               )}
-              {sunAvailable && (
+              {/* Render the sun options whenever sun is available OR this row is
+                  already sun-anchored — otherwise approving a sun proposal made
+                  while sun was available would drop the option, submit an empty
+                  anchor, and silently strip the sunrise/sunset anchor on merge. */}
+              {(sunAvailable || at === 'sun') && (
                 <optgroup label={t('timeline.anchor.sunGroup')}>
                   <option value="sunbefore:sunset" selected={cur === 'sunbefore:sunset'}>{t('timeline.anchor.beforeSunset')}</option>
                   <option value="sunafter:sunset" selected={cur === 'sunafter:sunset'}>{t('timeline.anchor.afterSunset')}</option>
