@@ -13,6 +13,8 @@ import { listWeddingTodosWithProgress } from '../../db/todos'
 import { todoStats } from '../../lib/todo-parser'
 import { buildSetupChecklist, categorySetup, type SetupChecklist, type CategorySetup } from '../../lib/onboarding'
 import { dismissSetup } from '../../db/vendors'
+import { seedDemoData, teardownDemoData, hasDemoData } from '../../services/demo-data'
+import { auditLog } from '../../middleware/audit'
 
 const dashboard = new Hono<Env>()
 
@@ -139,6 +141,9 @@ dashboard.get('/app', async (c) => {
 
   const bookingRate30 = enquiries30 > 0 ? Math.round((bookings30 / enquiries30) * 100) : 0
 
+  let demoExists = false
+  try { demoExists = await hasDemoData(db, vendor.id, user.id) } catch (err) { console.error('[dashboard] hasDemoData failed:', err) }
+
   const hasData = counts.total > 0 || upcomingWeddings.length > 0
   const checklist = buildSetupChecklist(vendor, { contacts: counts.total, events: eventsCount })
   const showChecklist = vendor.setup_dismissed !== 1 && checklist.percent < 100
@@ -148,6 +153,7 @@ dashboard.get('/app', async (c) => {
     <AppLayout title={t('dashboard.title')} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-4xl">
         {showChecklist && <SetupCard checklist={checklist} />}
+        <DemoDataCard demoExists={demoExists} />
 
         {!hasData ? (
           <DiscoveryGrid userName={user.name} discovery={discovery} />
@@ -370,7 +376,88 @@ dashboard.post('/app/dashboard/dismiss-setup', async (c) => {
   return c.body('') // htmx outerHTML swap removes the card
 })
 
+// ─── Demo / sample data (first-run) ───
+
+dashboard.post('/app/dashboard/demo/add', async (c) => {
+  const user = c.get('user')
+  const vendor = c.get('vendor')
+  if (!user || !vendor) return c.body('', 400)
+  // Guard against double-clicks creating two sets.
+  if (await hasDemoData(c.env.DB, vendor.id, user.id)) return c.html(<DemoDataCard demoExists={true} />)
+  try {
+    await seedDemoData(c.env, vendor, user)
+  } catch (err) {
+    console.error('[dashboard] seedDemoData failed:', err)
+    return c.html(<DemoDataCard demoExists={false} error />)
+  }
+  await auditLog(c, 'demo_data_seed', 'vendor', vendor.id).catch(() => {})
+  return c.html(<DemoDataCard demoExists={true} />)
+})
+
+dashboard.post('/app/dashboard/demo/remove', async (c) => {
+  const user = c.get('user')
+  const vendor = c.get('vendor')
+  if (!user || !vendor) return c.body('', 400)
+  try {
+    await teardownDemoData(c.env, vendor, user)
+  } catch (err) {
+    console.error('[dashboard] teardownDemoData failed:', err)
+    return c.html(<DemoDataCard demoExists={true} error />)
+  }
+  await auditLog(c, 'demo_data_remove', 'vendor', vendor.id).catch(() => {})
+  return c.html(<DemoDataCard demoExists={false} />)
+})
+
 export default dashboard
+
+function DemoDataCard({ demoExists, error }: { demoExists: boolean; error?: boolean }) {
+  const spinner = (
+    <svg class="htmx-indicator animate-spin h-4 w-4 ml-2 inline" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+    </svg>
+  )
+  return (
+    <section id="demo-card" class="bg-white border border-papaya-300/30 rounded-2xl p-5 mb-6">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h3 class="text-sm font-bold text-gray-900">
+            {demoExists ? t('dashboard.demo.loadedTitle') : t('dashboard.demo.addTitle')}
+          </h3>
+          <p class="text-xs text-gray-500 mt-0.5">
+            {demoExists ? t('dashboard.demo.loadedBlurb') : t('dashboard.demo.addBlurb')}
+          </p>
+          {error && <p class="text-xs text-grapefruit-600 font-bold mt-1.5">{t('dashboard.demo.error')}</p>}
+        </div>
+        {demoExists ? (
+          <button
+            type="button"
+            hx-post="/app/dashboard/demo/remove"
+            hx-target="#demo-card"
+            hx-swap="outerHTML"
+            hx-disabled-elt="this"
+            class="whitespace-nowrap text-sm font-bold text-grapefruit-600 hover:text-grapefruit-700 border border-grapefruit-600/30 rounded-xl px-4 py-2 transition-colors disabled:opacity-50"
+          >
+            {t('dashboard.demo.removeCta')}
+            {spinner}
+          </button>
+        ) : (
+          <button
+            type="button"
+            hx-post="/app/dashboard/demo/add"
+            hx-target="#demo-card"
+            hx-swap="outerHTML"
+            hx-disabled-elt="this"
+            class="whitespace-nowrap text-sm font-bold text-white bg-horizon-600 hover:bg-horizon-700 rounded-xl px-4 py-2 transition-colors disabled:opacity-60"
+          >
+            {t('dashboard.demo.addCta')}
+            {spinner}
+          </button>
+        )}
+      </div>
+    </section>
+  )
+}
 
 function SetupCard({ checklist }: { checklist: SetupChecklist }) {
   return (

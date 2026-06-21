@@ -28,6 +28,13 @@ export const dashboard = {
   'dashboard.setup.item.enquiry': 'Set up your enquiry form',
   'dashboard.setup.item.contact': 'Add your first contact',
   'dashboard.setup.item.calendar': 'Add your availability',
+  'dashboard.demo.addTitle': 'See it with real data',
+  'dashboard.demo.addBlurb': 'Load a sample week — 3 weddings, their vendor teams, run-sheets and notes, plus a few fresh enquiries. Remove it any time.',
+  'dashboard.demo.addCta': 'Load sample data',
+  'dashboard.demo.loadedTitle': 'Sample data loaded',
+  'dashboard.demo.loadedBlurb': '3 demo weddings and 3 enquiries are in your account. Remove them whenever you’re ready.',
+  'dashboard.demo.removeCta': 'Remove sample data',
+  'dashboard.demo.error': 'Something went wrong. Please try again in a moment.',
   'dashboard.data.title': 'Your data is stored as plain text',
   'dashboard.data.desc':
     'Every contact and wedding is a Markdown file with YAML frontmatter. Your data is readable, portable, and yours forever.',

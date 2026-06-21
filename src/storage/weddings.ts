@@ -447,7 +447,7 @@ export async function deleteWeddingFile(
     // cleaned up on next sync. The reverse would leave a dangling index.
     await db
       .prepare(
-        "DELETE FROM file_index WHERE vendor_id = ? AND entity_type IN ('wedding', 'todo', 'timeline', 'notes', 'vendors', 'log') AND entity_id = ?"
+        "DELETE FROM file_index WHERE vendor_id = ? AND entity_type IN ('wedding', 'todo', 'timeline', 'notes', 'vendors', 'log', 'doc') AND entity_id = ?"
       )
       .bind(vendorId, weddingId)
       .run()
@@ -458,6 +458,7 @@ export async function deleteWeddingFile(
       folder + 'timeline.md',
       folder + 'notes.md',
       folder + 'vendors.md',
+      folder + 'team.md',
       folder + 'log.md',
     ]) {
       try {

@@ -38,6 +38,7 @@ export async function countActiveOwnWeddings(
        JOIN wedding_members wm ON wm.wedding_id = w.id
        WHERE wm.user_id = ? AND wm.role = 'vendor' AND wm.status = 'active'
          AND w.created_by_user_id = ?
+         AND w.is_demo = 0
          AND (w.status IS NULL OR w.status NOT IN ('completed', 'cancelled'))
          AND (w.date IS NULL OR w.date >= ?)`
     )

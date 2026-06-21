@@ -138,6 +138,8 @@ CREATE TABLE IF NOT EXISTS weddings (
   guest_count INTEGER,
   notes TEXT,
   created_by_user_id TEXT NOT NULL REFERENCES users(id),
+  -- Sample/onboarding data (migration 060); scoped per vendor via created_by_user_id.
+  is_demo INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -282,6 +284,7 @@ CREATE INDEX IF NOT EXISTS idx_tia_member ON timeline_item_assignees(wedding_mem
 CREATE TABLE IF NOT EXISTS contacts (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
   vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  is_demo INTEGER NOT NULL DEFAULT 0,  -- sample/onboarding data (migration 060)
   first_name TEXT NOT NULL,
   last_name TEXT NOT NULL,
   email TEXT,
