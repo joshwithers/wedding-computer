@@ -200,6 +200,24 @@ const TOOLS = [
     },
   },
   {
+    name: 'get_wedding_weather',
+    description: 'Weather outlook for a wedding: sunrise, golden hour and sunset times for the day, plus the live forecast (run-up days + an hour-by-hour view once the wedding is within ~10 days). Read-only.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: { wedding_id: { type: 'string', description: 'Wedding ID' } },
+      required: ['wedding_id'],
+    },
+  },
+  {
+    name: 'add_sun_times',
+    description: 'Add Sunrise and Sunset markers to the wedding timeline at their real local times (point-in-time facts). Idempotent — skips any already present. Needs the wedding date + a location.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: { wedding_id: { type: 'string', description: 'Wedding ID' } },
+      required: ['wedding_id'],
+    },
+  },
+  {
     name: 'get_wedding_vendors',
     description: 'Get the wedding team — couple, vendor members, and the couple\'s vendor list — as markdown.',
     inputSchema: {
@@ -623,6 +641,83 @@ async function handleTool(
       }
       await pushVault(env, vendor, weddingId, ctx)
       return { content: [{ type: 'text', text: `Applied: ${summary}` }] }
+    }
+
+    case 'get_wedding_weather': {
+      const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const wedding = await db.prepare('SELECT * FROM weddings WHERE id = ?').bind(weddingId).first<any>()
+      if (!wedding) return { content: [{ type: 'text', text: 'Wedding not found' }] }
+
+      const { daylightStrip } = await import('../lib/sun')
+      const sun = daylightStrip({
+        lat: wedding.location_lat, lng: wedding.location_lng, dateStr: wedding.date,
+        location: wedding.location, city: wedding.location_city, country: wedding.location_country,
+        state: wedding.location_state, fallbackTimezone: 'Australia/Sydney', locale: 'en-AU',
+      })
+
+      const lines: string[] = [
+        `# Weather — ${wedding.title ?? 'wedding'}${wedding.date ? ` (${wedding.date})` : ''}${wedding.location ? ` · ${wedding.location}` : ''}`,
+      ]
+      if (sun && (sun.sunrise || sun.sunset || sun.goldenHourStart)) {
+        lines.push('', '## Daylight')
+        if (sun.sunrise) lines.push(`- Sunrise: ${sun.sunrise}`)
+        if (sun.goldenHourStart) lines.push(`- Golden hour: ${sun.goldenHourStart}`)
+        if (sun.sunset) lines.push(`- Sunset: ${sun.sunset}`)
+        if (sun.approx) lines.push('- _(approximate — set a precise venue address for exact times)_')
+      } else {
+        lines.push('', '_Add the wedding date and a location to compute sun times._')
+      }
+
+      if (wedding.location_lat != null && wedding.location_lng != null && wedding.date) {
+        const { getVenueForecast, wmoCondition, displayTemp } = await import('../services/weather')
+        const forecast = await getVenueForecast(env, { lat: wedding.location_lat, lng: wedding.location_lng })
+        const hasWeddingDay = forecast?.daily?.some((d) => d.date === wedding.date)
+        if (forecast && hasWeddingDay) {
+          lines.push('', '## Forecast')
+          const days = forecast.daily.filter((d) => d.date <= wedding.date).slice(-3)
+          for (const d of days) {
+            const cond = wmoCondition(d.code, true)
+            const hi = displayTemp(d.tempMax, 'c'); const lo = displayTemp(d.tempMin, 'c')
+            const label = d.date === wedding.date ? 'Wedding day' : d.date
+            const rain = d.precipProb != null && d.precipProb > 0 ? `, ${d.precipProb}% rain` : ''
+            lines.push(`- ${label}: ${cond.icon} ${hi ? hi.value + hi.unit : '—'} / ${lo ? lo.value + lo.unit : '—'}${rain}`)
+          }
+          const hours = forecast.hourly.filter((h) => h.time.slice(0, 10) === wedding.date && h.hour >= 6 && h.hour <= 22)
+          if (hours.length > 0) {
+            lines.push('', '### On the day, hour by hour')
+            for (const h of hours) {
+              const cond = wmoCondition(h.code, h.isDay)
+              const t2 = displayTemp(h.temp, 'c')
+              lines.push(`- ${String(h.hour).padStart(2, '0')}:00 ${cond.icon} ${t2 ? t2.value + t2.unit : '—'}`)
+            }
+          }
+        } else if (forecast) {
+          lines.push('', '_Live forecast appears within ~10 days of the wedding._')
+        }
+      }
+      return { content: [{ type: 'text', text: lines.join('\n') }] }
+    }
+
+    case 'add_sun_times': {
+      const weddingId = String(args.wedding_id ?? '')
+      if (!(await vendorCanAccessWedding(db, vendor.id, weddingId))) {
+        return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      }
+      const userId = await vendorUserId(db, vendor.id)
+      if (!userId) return { content: [{ type: 'text', text: 'Wedding not found' }] }
+      const { addSunMarkers } = await import('./timeline-handlers')
+      const { available, created } = await addSunMarkers(db, weddingId, vendor.id, userId)
+      if (!available) {
+        return { content: [{ type: 'text', text: 'Add the wedding date and a location first to compute sun times.' }] }
+      }
+      if (created.length === 0) {
+        return { content: [{ type: 'text', text: 'Sunrise and sunset are already on the timeline.' }] }
+      }
+      await pushVault(env, vendor, weddingId, ctx)
+      return { content: [{ type: 'text', text: `Added ${created.join(' and ')} to the timeline.` }] }
     }
 
     case 'get_wedding_vendors': {

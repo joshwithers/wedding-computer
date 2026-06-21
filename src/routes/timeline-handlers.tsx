@@ -372,33 +372,32 @@ export async function addTimelineItem(c: Ctx, weddingId: string, member: Wedding
   return renderTimeline(c, weddingId, member, user, basePath, { flash: PROPOSED_FLASH(await leadLabel(c, weddingId, lead.leadUserIds)) })
 }
 
-// Drop "Sunrise" and "Sunset" onto the timeline as sun-anchored items (offset
-// 0), so they show the right local time and stay correct if the date/location
-// changes. Skips events already present; needs a date + location to compute.
-export async function addSunTimes(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string) {
-  const sun = await weddingSunMinutes(c.env.DB, weddingId)
-  const events: { ref: string; title: string }[] = []
+// Core: drop "Sunrise"/"Sunset" markers onto the timeline as sun-anchored items
+// (offset 0) and materialise their clock. Sunrise/sunset are objective facts of
+// the date + venue, so they go straight to the shared (couple-visible) timeline
+// with no approval. Skips events already present (title match, so a real
+// "Portraits" anchored to sunset doesn't block the actual Sunset marker). Shared
+// by the timeline UI handler and the MCP add_sun_times tool. Needs a date +
+// location to compute; returns the titles created.
+export async function addSunMarkers(
+  db: D1Database,
+  weddingId: string,
+  ownerVendorId: string | null,
+  createdByUserId: string
+): Promise<{ available: boolean; created: string[] }> {
+  const sun = await weddingSunMinutes(db, weddingId)
+  const events: { ref: 'sunrise' | 'sunset'; title: string }[] = []
   if (sun.sunrise != null) events.push({ ref: 'sunrise', title: t('timeline.sun.sunrise') })
   if (sun.sunset != null) events.push({ ref: 'sunset', title: t('timeline.sun.sunset') })
-  if (events.length === 0) {
-    return renderTimeline(c, weddingId, member, user, basePath, { flash: t('timeline.sun.unavailable') })
-  }
+  if (events.length === 0) return { available: false, created: [] }
 
-  // Don't duplicate — skip if a marker with this title already exists. (We match
-  // on title, not the sun anchor, so a real event like "Portraits" anchored to
-  // sunset doesn't block adding the actual Sunset marker.)
-  const existing = await listTimeline(c.env.DB, weddingId)
+  const existing = await listTimeline(db, weddingId)
   const present = (title: string) => existing.some((it) => it.title.trim().toLowerCase() === title.toLowerCase())
 
-  // Sunrise/sunset are objective facts of the date + venue, not scheduling
-  // decisions — so any member adds them straight to the shared (couple-visible)
-  // timeline with no lead-approval handshake. afterWrite materialises the clock.
-  const visibility: TimelineVisibility = 'couple'
-
-  let created = 0
+  const created: string[] = []
   for (const ev of events) {
     if (present(ev.title)) continue
-    await createItem(c.env.DB, {
+    await createItem(db, {
       wedding_id: weddingId,
       title: ev.title,
       start_time: null,
@@ -406,20 +405,28 @@ export async function addSunTimes(c: Ctx, weddingId: string, member: WeddingMemb
       location: null,
       description: null,
       category: 'other',
-      visibility,
+      visibility: 'couple',
       duration_minutes: null,
       anchor_type: 'sun',
       anchor_ref: ev.ref,
       anchor_offset_minutes: 0,
       pinned: 0,
-      marker: ev.ref as 'sunrise' | 'sunset',
-      owner_vendor_id: member.vendor_profile_id,
-      created_by_user_id: user.id,
+      marker: ev.ref,
+      owner_vendor_id: ownerVendorId,
+      created_by_user_id: createdByUserId,
     })
-    created++
+    created.push(ev.title)
   }
+  if (created.length > 0) await resolveAndMaterialize(db, weddingId, sun)
+  return { available: true, created }
+}
 
-  if (created === 0) {
+export async function addSunTimes(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string) {
+  const { available, created } = await addSunMarkers(c.env.DB, weddingId, member.vendor_profile_id, user.id)
+  if (!available) {
+    return renderTimeline(c, weddingId, member, user, basePath, { flash: t('timeline.sun.unavailable') })
+  }
+  if (created.length === 0) {
     return renderTimeline(c, weddingId, member, user, basePath, { flash: t('timeline.sun.alreadyAdded') })
   }
   const wedding = await afterWrite(c, weddingId)
