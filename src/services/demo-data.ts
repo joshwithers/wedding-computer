@@ -359,3 +359,17 @@ export async function hasDemoData(db: D1Database, vendorId: string, userId: stri
     .first<{ c: number }>()
   return (row?.c ?? 0) > 0
 }
+
+// "New/empty" = no REAL (non-demo) weddings AND no REAL contacts. Gates the
+// first-run "Load sample data" invite — an experienced vendor never sees it.
+export async function isNewVendor(db: D1Database, vendorId: string, userId: string): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT (SELECT COUNT(*) FROM wedding_members wm JOIN weddings w ON w.id = wm.wedding_id
+                WHERE wm.user_id = ? AND wm.status = 'active' AND w.is_demo = 0)
+            + (SELECT COUNT(*) FROM contacts WHERE vendor_id = ? AND is_demo = 0) AS c`
+    )
+    .bind(userId, vendorId)
+    .first<{ c: number }>()
+  return (row?.c ?? 0) === 0
+}

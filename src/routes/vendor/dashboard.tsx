@@ -12,8 +12,8 @@ import { isProVendor } from '../../db/subscriptions'
 import { listWeddingTodosWithProgress } from '../../db/todos'
 import { todoStats } from '../../lib/todo-parser'
 import { buildSetupChecklist, categorySetup, type SetupChecklist, type CategorySetup } from '../../lib/onboarding'
-import { dismissSetup } from '../../db/vendors'
-import { seedDemoData, teardownDemoData, hasDemoData } from '../../services/demo-data'
+import { dismissSetup, dismissDemo } from '../../db/vendors'
+import { seedDemoData, teardownDemoData, hasDemoData, isNewVendor } from '../../services/demo-data'
 import { auditLog } from '../../middleware/audit'
 
 const dashboard = new Hono<Env>()
@@ -141,8 +141,13 @@ dashboard.get('/app', async (c) => {
 
   const bookingRate30 = enquiries30 > 0 ? Math.round((bookings30 / enquiries30) * 100) : 0
 
-  let demoExists = false
-  try { demoExists = await hasDemoData(db, vendor.id, user.id) } catch (err) { console.error('[dashboard] hasDemoData failed:', err) }
+  // Demo-data card: show "Remove" whenever demo data is loaded; otherwise show
+  // the first-run "Load" invite only to a new/empty vendor who hasn't dismissed it.
+  let demoCard: 'loaded' | 'invite' | null = null
+  try {
+    if (await hasDemoData(db, vendor.id, user.id)) demoCard = 'loaded'
+    else if (vendor.demo_dismissed !== 1 && (await isNewVendor(db, vendor.id, user.id))) demoCard = 'invite'
+  } catch (err) { console.error('[dashboard] demo card state failed:', err) }
 
   const hasData = counts.total > 0 || upcomingWeddings.length > 0
   const checklist = buildSetupChecklist(vendor, { contacts: counts.total, events: eventsCount })
@@ -153,7 +158,7 @@ dashboard.get('/app', async (c) => {
     <AppLayout title={t('dashboard.title')} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-4xl">
         {showChecklist && <SetupCard checklist={checklist} />}
-        <DemoDataCard demoExists={demoExists} />
+        {demoCard && <DemoDataCard demoExists={demoCard === 'loaded'} />}
 
         {!hasData ? (
           <DiscoveryGrid userName={user.name} discovery={discovery} />
@@ -405,7 +410,15 @@ dashboard.post('/app/dashboard/demo/remove', async (c) => {
     return c.html(<DemoDataCard demoExists={true} error />)
   }
   await auditLog(c, 'demo_data_remove', 'vendor', vendor.id).catch(() => {})
-  return c.html(<DemoDataCard demoExists={false} />)
+  // Revert to the Load invite if they're still new/empty; otherwise drop the card.
+  const stillInvite = vendor.demo_dismissed !== 1 && (await isNewVendor(c.env.DB, vendor.id, user.id))
+  return stillInvite ? c.html(<DemoDataCard demoExists={false} />) : c.body('')
+})
+
+dashboard.post('/app/dashboard/demo/dismiss', async (c) => {
+  const vendor = c.get('vendor')
+  if (vendor) await dismissDemo(c.env.DB, vendor.id)
+  return c.body('') // htmx outerHTML swap removes the card
 })
 
 export default dashboard
@@ -442,17 +455,28 @@ function DemoDataCard({ demoExists, error }: { demoExists: boolean; error?: bool
             {spinner}
           </button>
         ) : (
-          <button
-            type="button"
-            hx-post="/app/dashboard/demo/add"
-            hx-target="#demo-card"
-            hx-swap="outerHTML"
-            hx-disabled-elt="this"
-            class="whitespace-nowrap text-sm font-bold text-white bg-horizon-600 hover:bg-horizon-700 rounded-xl px-4 py-2 transition-colors disabled:opacity-60"
-          >
-            {t('dashboard.demo.addCta')}
-            {spinner}
-          </button>
+          <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
+            <button
+              type="button"
+              hx-post="/app/dashboard/demo/add"
+              hx-target="#demo-card"
+              hx-swap="outerHTML"
+              hx-disabled-elt="this"
+              class="whitespace-nowrap text-sm font-bold text-white bg-horizon-600 hover:bg-horizon-700 rounded-xl px-4 py-2 transition-colors disabled:opacity-60"
+            >
+              {t('dashboard.demo.addCta')}
+              {spinner}
+            </button>
+            <button
+              type="button"
+              hx-post="/app/dashboard/demo/dismiss"
+              hx-target="#demo-card"
+              hx-swap="outerHTML"
+              class="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              {t('common.dismiss')}
+            </button>
+          </div>
         )}
       </div>
     </section>

@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   referred_by_vendor_id TEXT REFERENCES vendor_profiles(id),
   free_months INTEGER NOT NULL DEFAULT 0,
   setup_dismissed INTEGER NOT NULL DEFAULT 0,
+  demo_dismissed INTEGER NOT NULL DEFAULT 0,  -- dismissed the demo-data first-run invite (migration 061)
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
