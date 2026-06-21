@@ -424,8 +424,11 @@ dashboard.post('/app/dashboard/demo/dismiss', async (c) => {
 export default dashboard
 
 function DemoDataCard({ demoExists, error }: { demoExists: boolean; error?: boolean }) {
+  // Centered overlay spinner: takes no layout space when idle (so the label
+  // sits with even padding), fades in over the hidden label while the request
+  // is in flight (htmx adds .htmx-request to the button).
   const spinner = (
-    <svg class="htmx-indicator animate-spin h-4 w-4 ml-2 inline" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg class="hidden group-[.htmx-request]:block absolute inset-0 m-auto animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
     </svg>
@@ -449,9 +452,9 @@ function DemoDataCard({ demoExists, error }: { demoExists: boolean; error?: bool
             hx-target="#demo-card"
             hx-swap="outerHTML"
             hx-disabled-elt="this"
-            class="whitespace-nowrap text-sm font-bold text-grapefruit-600 hover:text-grapefruit-700 border border-grapefruit-600/30 rounded-xl px-4 py-2 transition-colors disabled:opacity-50"
+            class="group relative whitespace-nowrap text-sm font-bold text-grapefruit-600 hover:text-grapefruit-700 border border-grapefruit-600/30 rounded-xl px-4 py-2 transition-colors disabled:opacity-90"
           >
-            {t('dashboard.demo.removeCta')}
+            <span class="group-[.htmx-request]:invisible">{t('dashboard.demo.removeCta')}</span>
             {spinner}
           </button>
         ) : (
@@ -462,9 +465,9 @@ function DemoDataCard({ demoExists, error }: { demoExists: boolean; error?: bool
               hx-target="#demo-card"
               hx-swap="outerHTML"
               hx-disabled-elt="this"
-              class="whitespace-nowrap text-sm font-bold text-white bg-horizon-600 hover:bg-horizon-700 rounded-xl px-4 py-2 transition-colors disabled:opacity-60"
+              class="group relative whitespace-nowrap text-sm font-bold text-white bg-horizon-600 hover:bg-horizon-700 rounded-xl px-4 py-2 transition-colors disabled:opacity-90"
             >
-              {t('dashboard.demo.addCta')}
+              <span class="group-[.htmx-request]:invisible">{t('dashboard.demo.addCta')}</span>
               {spinner}
             </button>
             <button

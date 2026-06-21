@@ -28,7 +28,7 @@ export const dashboard = {
   'dashboard.setup.item.enquiry': 'Set up your enquiry form',
   'dashboard.setup.item.contact': 'Add your first contact',
   'dashboard.setup.item.calendar': 'Add your availability',
-  'dashboard.demo.addTitle': 'See it with real data',
+  'dashboard.demo.addTitle': 'Load some demo weddings into your Wedding Computer',
   'dashboard.demo.addBlurb': 'Load a sample week — 3 weddings, their vendor teams, run-sheets and notes, plus a few fresh enquiries. Remove it any time.',
   'dashboard.demo.addCta': 'Load sample data',
   'dashboard.demo.loadedTitle': 'Sample data loaded',
