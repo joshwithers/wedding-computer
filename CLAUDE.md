@@ -349,4 +349,5 @@ Australia/Sydney).
 - [TARDIS-MIGRATION.md](TARDIS-MIGRATION.md) — runbook for migrating Josh's businesses out of TARDIS
 - [CARDDAV-CONTACTS-GUIDE.md](CARDDAV-CONTACTS-GUIDE.md) — device sync setup
 - [AUDIT-2026-06-10.md](AUDIT-2026-06-10.md) — security audit findings
+- [SCALING.md](SCALING.md) — perf-at-scale, Cloudflare cost forecast, portability, deferred follow-ups
 - [migrations/README.md](migrations/README.md) — migration workflow
