@@ -219,20 +219,25 @@ const TOOLS = [
   },
   {
     name: 'save_timeline_item',
-    description: 'Add ONE timeline item (omit id) or edit one of YOUR items (with id). Granular alternative to update_run_sheet. Fields: title (required when adding), time ("14:30"), end_time, location, assigned_to (who), category (getting_ready|ceremony|portraits|reception|other), description, visibility (couple=everyone, vendors=vendors only, private=just you; default couple). You can only edit/own items you created.',
+    description: 'Add ONE timeline item (omit id) or edit one of YOUR items (with id). Granular alternative to update_run_sheet. Fields: title (required when adding), time ("14:30"), end_time, location, assigned_to (who), category (getting_ready|ceremony|portraits|reception|other), description, visibility (couple=everyone, vendors=vendors only, private=just you; default couple). Relative timing: set relative_to + relation + gap_minutes to time this item relative to another item or the sun (its clock is then computed). duration_minutes/pinned supported. You can only edit items you own.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         wedding_id: { type: 'string', description: 'Wedding ID' },
         id: { type: 'string', description: 'Existing item id to edit (omit to add a new item)' },
         title: { type: 'string', description: 'What happens (required when adding)' },
-        time: { type: 'string', description: 'Start time, e.g. "14:30"' },
+        time: { type: 'string', description: 'Absolute start time, e.g. "14:30" (ignored when relative_to is set)' },
         end_time: { type: 'string' },
         location: { type: 'string' },
         assigned_to: { type: 'string', description: 'Who is on it (name or role)' },
         category: { type: 'string', enum: ['getting_ready', 'ceremony', 'portraits', 'reception', 'other'] },
         description: { type: 'string' },
         visibility: { type: 'string', enum: ['couple', 'vendors', 'private'] },
+        duration_minutes: { type: 'number', description: 'How long it runs, in minutes (0 clears it)' },
+        pinned: { type: 'boolean', description: 'Fixed time that won’t shift when the timeline reflows' },
+        relative_to: { type: 'string', description: 'Time this item relative to another item\'s id, OR a sun event: "sunrise", "sunset", "golden_hour". Empty string clears relative timing and uses `time`.' },
+        relation: { type: 'string', enum: ['before', 'after'], description: 'Start before or after relative_to (default after)' },
+        gap_minutes: { type: 'number', description: 'Minutes of gap from relative_to, e.g. 30 with relation=before + relative_to=sunset → "30 min before sunset"' },
       },
       required: ['wedding_id'],
     },
@@ -575,6 +580,32 @@ async function handleTool(
         out += `\n\n## Live status\nLIVE — ${status}.\n\nStarted:\n` +
           startedRows.map((s) => `- ${s.actual_start} ${s.title}${s.start_time ? ` (planned ${s.start_time})` : ''}`).join('\n')
       }
+      // Relative timing: items anchored to another item or the sun (clock computed),
+      // so a client can see + re-edit them via save_timeline_item's relative_to.
+      const anchoredRows = await db
+        .prepare("SELECT id, title, anchor_type, anchor_ref, anchor_offset_minutes FROM timeline_items WHERE wedding_id = ? AND anchor_type IS NOT NULL AND marker IS NULL")
+        .bind(weddingId)
+        .all<{ id: string; title: string; anchor_type: string; anchor_ref: string | null; anchor_offset_minutes: number }>()
+        .then((r) => r.results)
+      if (anchoredRows.length > 0) {
+        const allTitles = await db
+          .prepare('SELECT id, title FROM timeline_items WHERE wedding_id = ?')
+          .bind(weddingId)
+          .all<{ id: string; title: string }>()
+          .then((r) => r.results)
+        const titleById = new Map(allTitles.map((a) => [a.id, a.title]))
+        const describe = (a: { anchor_type: string; anchor_ref: string | null; anchor_offset_minutes: number }) => {
+          const mag = Math.abs(a.anchor_offset_minutes || 0)
+          if (a.anchor_type === 'sun') {
+            const ev = a.anchor_ref === 'golden_hour' ? 'golden hour' : a.anchor_ref ?? 'sun'
+            return mag === 0 ? `at ${ev}` : `${mag} min ${a.anchor_offset_minutes < 0 ? 'before' : 'after'} ${ev}`
+          }
+          const refName = (a.anchor_ref && titleById.get(a.anchor_ref)) || 'another item'
+          return mag === 0 ? `right ${a.anchor_type} "${refName}"` : `${mag} min ${a.anchor_type} "${refName}"`
+        }
+        out += `\n\n## Relative timing\nThese items are timed relative to another item or the sun (clock auto-computed):\n` +
+          anchoredRows.map((a) => `- "${a.title}" (id ${a.id}): ${describe(a)}`).join('\n')
+      }
       return { content: [{ type: 'text', text: out }] }
     }
 
@@ -803,6 +834,36 @@ async function handleTool(
       const visRaw = args.visibility != null ? String(args.visibility) : undefined
       const visibility = visRaw && (['couple', 'vendors', 'private'] as const).includes(visRaw as any) ? (visRaw as 'couple' | 'vendors' | 'private') : undefined
       const str = (v: unknown) => (v != null ? String(v).trim() || null : undefined)
+      const nonNegInt = (v: unknown): number | null => {
+        const n = parseInt(String(v ?? ''), 10)
+        return Number.isFinite(n) && n > 0 ? n : null
+      }
+
+      // Relative timing → anchor fields. `anchor` undefined = leave as-is; a value
+      // (possibly all-null) = set/clear it. Sun before = negative offset; item
+      // after/before carry a positive magnitude (the solver applies the sign).
+      const SUN_REFS = ['sunrise', 'sunset', 'golden_hour']
+      let anchor: { anchor_type: 'after' | 'before' | 'sun' | null; anchor_ref: string | null; anchor_offset_minutes: number } | undefined
+      if (args.relative_to !== undefined) {
+        const relTo = String(args.relative_to ?? '').trim()
+        if (!relTo) {
+          anchor = { anchor_type: null, anchor_ref: null, anchor_offset_minutes: 0 }
+        } else {
+          const relation = String(args.relation ?? 'after') === 'before' ? 'before' : 'after'
+          const gap = nonNegInt(args.gap_minutes) ?? 0
+          if (SUN_REFS.includes(relTo)) {
+            anchor = { anchor_type: 'sun', anchor_ref: relTo, anchor_offset_minutes: relation === 'before' ? -gap : gap }
+          } else {
+            const ref = await getItem(db, weddingId, relTo)
+            if (!ref) return { content: [{ type: 'text', text: `relative_to "${relTo}" isn't an item in this wedding (or use sunrise / sunset / golden_hour).` }] }
+            if (id && relTo === id) return { content: [{ type: 'text', text: "An item can't be timed relative to itself." }] }
+            anchor = { anchor_type: relation, anchor_ref: relTo, anchor_offset_minutes: gap }
+          }
+        }
+      }
+      const anchored = !!anchor && anchor.anchor_type != null
+      const duration = args.duration_minutes !== undefined ? nonNegInt(args.duration_minutes) : undefined
+      const pinned = args.pinned !== undefined ? (args.pinned ? 1 : 0) : undefined
 
       let itemId: string
       let action: string
@@ -819,6 +880,14 @@ async function handleTool(
         if (args.description !== undefined) patch.description = str(args.description)
         if (category !== undefined) patch.category = category
         if (visibility !== undefined) patch.visibility = visibility
+        if (duration !== undefined) patch.duration_minutes = duration
+        if (pinned !== undefined) patch.pinned = pinned
+        if (anchor !== undefined) {
+          patch.anchor_type = anchor.anchor_type
+          patch.anchor_ref = anchor.anchor_ref
+          patch.anchor_offset_minutes = anchor.anchor_offset_minutes
+          if (anchored) patch.start_time = null // anchor governs the clock
+        }
         if (Object.keys(patch).length > 0) await updateItem(db, weddingId, id, patch as any)
         itemId = id
         action = 'Updated'
@@ -828,7 +897,7 @@ async function handleTool(
         const created = await createItem(db, {
           wedding_id: weddingId,
           title,
-          start_time: str(args.time) ?? null,
+          start_time: anchored ? null : (str(args.time) ?? null),
           end_time: str(args.end_time) ?? null,
           location: str(args.location) ?? null,
           description: str(args.description) ?? null,
@@ -836,6 +905,11 @@ async function handleTool(
           visibility: visibility ?? 'couple',
           owner_vendor_id: vendor.id,
           created_by_user_id: userId,
+          duration_minutes: duration ?? null,
+          anchor_type: anchor?.anchor_type ?? null,
+          anchor_ref: anchor?.anchor_ref ?? null,
+          anchor_offset_minutes: anchor?.anchor_offset_minutes ?? 0,
+          pinned: pinned ?? 0,
         })
         itemId = created.id
         action = 'Added'
