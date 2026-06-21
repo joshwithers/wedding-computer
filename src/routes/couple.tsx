@@ -29,6 +29,7 @@ import {
   renderTimeline,
   renderEdit as renderTimelineEdit,
   addTimelineItem,
+  addSunTimes,
   updateTimelineItem,
   deleteTimelineItem,
   startTimelineItem,
@@ -946,6 +947,13 @@ couple.post('/wedding/:id/timeline', async (c) => {
   const ctx = await coupleDocMembership(c, weddingId)
   if (!ctx) return c.text('Forbidden', 403)
   return addTimelineItem(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`)
+})
+
+couple.post('/wedding/:id/timeline/sun', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return addSunTimes(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`)
 })
 
 couple.get('/wedding/:id/timeline/:itemId/edit', async (c) => {

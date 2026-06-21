@@ -11,6 +11,7 @@ import {
   renderTimeline,
   renderEdit,
   addTimelineItem,
+  addSunTimes,
   updateTimelineItem,
   deleteTimelineItem,
   startTimelineItem,
@@ -46,6 +47,13 @@ timeline.post('/app/weddings/:id/timeline', async (c) => {
   const x = await ctx(c)
   if (!x) return c.text('Not found', 404)
   return addTimelineItem(c, x.weddingId, x.membership, x.user, base(x.weddingId))
+})
+
+// Registered before /timeline/:itemId so the static "sun" segment wins.
+timeline.post('/app/weddings/:id/timeline/sun', async (c) => {
+  const x = await ctx(c)
+  if (!x) return c.text('Not found', 404)
+  return addSunTimes(c, x.weddingId, x.membership, x.user, base(x.weddingId))
 })
 
 timeline.get('/app/weddings/:id/timeline/:itemId/edit', async (c) => {

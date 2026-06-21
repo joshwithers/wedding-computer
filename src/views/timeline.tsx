@@ -388,6 +388,16 @@ export function TimelineBody(props: TimelineProps) {
         <button type="submit" class="bg-horizon-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700">{t('timeline.add')}</button>
       </form>
 
+      {sunAvailable && (
+        <div class="px-4 py-2 border-b border-gray-100 bg-gray-50/30">
+          <button type="button" hx-post={`${basePath}/timeline/sun`} hx-target="#timeline-body" hx-swap="outerHTML"
+            class="text-xs font-medium text-amber-700 hover:text-amber-900 inline-flex items-center gap-1"
+            title={t('timeline.sun.addHint')}>
+            <span aria-hidden="true">☀</span> {t('timeline.sun.add')}
+          </button>
+        </div>
+      )}
+
       {items.length === 0 ? (
         <p class="px-4 py-6 text-sm text-gray-400 text-center">{t('timeline.empty')}</p>
       ) : (

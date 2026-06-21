@@ -342,6 +342,71 @@ export async function addTimelineItem(c: Ctx, weddingId: string, member: Wedding
   return renderTimeline(c, weddingId, member, user, basePath, { flash: PROPOSED_FLASH(await leadLabel(c, weddingId, lead.leadUserIds)) })
 }
 
+// Drop "Sunrise" and "Sunset" onto the timeline as sun-anchored items (offset
+// 0), so they show the right local time and stay correct if the date/location
+// changes. Skips events already present; needs a date + location to compute.
+export async function addSunTimes(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string) {
+  const sun = await weddingSunMinutes(c.env.DB, weddingId)
+  const events: { ref: string; title: string }[] = []
+  if (sun.sunrise != null) events.push({ ref: 'sunrise', title: t('timeline.sun.sunrise') })
+  if (sun.sunset != null) events.push({ ref: 'sunset', title: t('timeline.sun.sunset') })
+  if (events.length === 0) {
+    return renderTimeline(c, weddingId, member, user, basePath, { flash: t('timeline.sun.unavailable') })
+  }
+
+  // Don't duplicate — skip if a marker with this title already exists. (We match
+  // on title, not the sun anchor, so a real event like "Portraits" anchored to
+  // sunset doesn't block adding the actual Sunset marker.)
+  const existing = await listTimeline(c.env.DB, weddingId)
+  const present = (title: string) => existing.some((it) => it.title.trim().toLowerCase() === title.toLowerCase())
+
+  const viewer = viewerOf(user, member)
+  // Sun events are facts everyone should see — the couple-visible ("shared") row.
+  const visibility: TimelineVisibility = 'couple'
+  const lead = await getTimelineLead(c.env.DB, weddingId)
+
+  let created = 0
+  let proposed = 0
+  for (const ev of events) {
+    if (present(ev.title)) continue
+    const fields: RowFields = {
+      title: ev.title,
+      start_time: null,
+      end_time: null,
+      location: null,
+      description: null,
+      category: 'other',
+      visibility,
+      duration_minutes: null,
+      anchor_type: 'sun',
+      anchor_ref: ev.ref,
+      anchor_offset_minutes: 0,
+      pinned: 0,
+    }
+    if (canCreateDirect(viewer, lead, visibility)) {
+      await createItem(c.env.DB, { wedding_id: weddingId, ...fields, owner_vendor_id: member.vendor_profile_id, created_by_user_id: user.id })
+      created++
+    } else {
+      await proposeChange(c.env.DB, {
+        weddingId, op: 'create', itemId: null,
+        payload: { after: fields, owner_vendor_id: member.vendor_profile_id, created_by_user_id: user.id },
+        requestedByUserId: user.id, requestedByLabel: user.name, vendorProfileId: member.vendor_profile_id,
+        leadUserIds: lead.leadUserIds, queue: c.env.EMAIL_QUEUE,
+      })
+      proposed++
+    }
+  }
+
+  if (created > 0) await afterWrite(c, weddingId)
+  if (proposed > 0) {
+    return renderTimeline(c, weddingId, member, user, basePath, { flash: PROPOSED_FLASH(await leadLabel(c, weddingId, lead.leadUserIds)) })
+  }
+  if (created === 0) {
+    return renderTimeline(c, weddingId, member, user, basePath, { flash: t('timeline.sun.alreadyAdded') })
+  }
+  return renderTimeline(c, weddingId, member, user, basePath)
+}
+
 export async function updateTimelineItem(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string, itemId: string) {
   const item = await getItem(c.env.DB, weddingId, itemId)
   if (!item) return renderTimeline(c, weddingId, member, user, basePath)

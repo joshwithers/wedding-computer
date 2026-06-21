@@ -9,6 +9,11 @@ export const timeline = {
   'timeline.sun.goldenHour': 'Golden hour',
   'timeline.sun.approx': '≈ approx',
   'timeline.sun.approxHint': 'Estimated from the region — set a precise venue address for exact times.',
+  // Quick-add sun events as timeline items.
+  'timeline.sun.add': 'Add sunrise & sunset',
+  'timeline.sun.addHint': 'Drop sunrise and sunset onto the timeline as items',
+  'timeline.sun.unavailable': 'Add the wedding date and a location to calculate sun times.',
+  'timeline.sun.alreadyAdded': 'Sunrise and sunset are already on the timeline.',
 
   // Expected-weather note (AI, from the region's climate).
   'climate.heading': 'Expected weather',
