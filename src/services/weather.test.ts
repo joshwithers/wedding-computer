@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { wmoCondition, displayTemp, normalizeOpenMeteo } from './weather'
+import { wmoCondition, displayTemp, resolveTempUnit, normalizeOpenMeteo } from './weather'
 import { shouldShowWeather } from '../views/weather'
 
 describe('wmoCondition', () => {
@@ -22,15 +22,30 @@ describe('wmoCondition', () => {
 
 describe('displayTemp', () => {
   it('returns null for a missing temperature', () => {
-    expect(displayTemp(null, 'en-AU')).toBeNull()
+    expect(displayTemp(null, 'c')).toBeNull()
   })
-  it('uses °C for metric locales', () => {
-    expect(displayTemp(20.4, 'en-AU')).toEqual({ value: 20, unit: '°C' })
-    expect(displayTemp(20.4, 'fr-FR')).toEqual({ value: 20, unit: '°C' })
+  it('renders °C when the unit is celsius', () => {
+    expect(displayTemp(20.4, 'c')).toEqual({ value: 20, unit: '°C' })
+    expect(displayTemp(-0.4, 'c')).toEqual({ value: 0, unit: '°C' })
   })
-  it('converts to °F for US locales', () => {
-    expect(displayTemp(20, 'en-US')).toEqual({ value: 68, unit: '°F' })
-    expect(displayTemp(0, 'EN-US')).toEqual({ value: 32, unit: '°F' })
+  it('converts to °F when the unit is fahrenheit', () => {
+    expect(displayTemp(20, 'f')).toEqual({ value: 68, unit: '°F' })
+    expect(displayTemp(0, 'f')).toEqual({ value: 32, unit: '°F' })
+  })
+})
+
+describe('resolveTempUnit', () => {
+  it('defaults to Celsius (null, undefined, or unknown values)', () => {
+    expect(resolveTempUnit(null)).toBe('c')
+    expect(resolveTempUnit(undefined)).toBe('c')
+    expect(resolveTempUnit({ temperature_unit: null })).toBe('c')
+    expect(resolveTempUnit({ temperature_unit: 'x' })).toBe('c')
+  })
+  it('honours an explicit fahrenheit preference', () => {
+    expect(resolveTempUnit({ temperature_unit: 'f' })).toBe('f')
+  })
+  it('honours an explicit celsius preference', () => {
+    expect(resolveTempUnit({ temperature_unit: 'c' })).toBe('c')
   })
 })
 

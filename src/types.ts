@@ -80,6 +80,8 @@ export type User = {
   locale: string | null
   /** IANA timezone preference; null = fall back to vendor timezone / default. */
   timezone: string | null
+  /** Weather forecast unit: 'c' | 'f'; null = default Celsius. */
+  temperature_unit: string | null
   /** JSON { [notificationKey]: boolean }; missing key = enabled. See services/notification-prefs.ts. */
   notification_prefs: string
   /** Set when soft-deleted; cleared on restore; hard-purged 30 days later. */

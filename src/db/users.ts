@@ -72,6 +72,7 @@ export type UserUpdates = {
   avatar_r2_key?: string | null
   locale?: string | null
   timezone?: string | null
+  temperature_unit?: string | null
   feed_token?: string | null
 }
 
@@ -80,7 +81,7 @@ const UPDATABLE_FIELDS = [
   'address_line_1', 'address_line_2', 'city', 'state', 'postcode', 'country',
   'instagram', 'facebook', 'tiktok', 'linkedin', 'website',
   'avatar_url', 'avatar_r2_key',
-  'locale', 'timezone', 'feed_token',
+  'locale', 'timezone', 'temperature_unit', 'feed_token',
 ] as const
 
 export async function updateUser(

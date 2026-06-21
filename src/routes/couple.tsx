@@ -15,9 +15,9 @@ import { isManagerVendor } from '../lib/categories'
 import { weddingDisplayTitle } from '../lib/wedding-display'
 import { createTimelineRequest, getTimelineControllers } from '../db/timeline-requests'
 import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes } from '../db/timeline'
-import { t, getI18n } from '../i18n'
-import { getVenueForecast } from '../services/weather'
-import { WeatherCard, WeatherUnavailable, shouldShowWeather } from '../views/weather'
+import { t } from '../i18n'
+import { shouldShowWeather } from '../views/weather'
+import { renderWeatherCard, setWeatherUnit } from './weather-handlers'
 import { WeddingDoc } from '../views/wedding-doc'
 import { loadDocTabs } from '../db/wedding-docs'
 import { isDocScope } from '../services/doc-permissions'
@@ -488,6 +488,7 @@ couple.get('/wedding/:id', async (c) => {
           <section>
             <h2 class="text-sm font-bold text-gray-500 mb-3">{t('weather.heading')}</h2>
             <div
+              id="wx-card"
               class="bg-white border border-papaya-300/30 rounded-2xl p-4"
               hx-get={`/wedding/${weddingId}/weather`}
               hx-trigger="load, every 3600s"
@@ -952,20 +953,13 @@ couple.post('/wedding/:id/links/:linkId/delete', async (c) => {
 
 // ─── Wedding timeline (couple side) ───
 
-couple.get('/wedding/:id/weather', async (c) => {
-  const user = c.get('user')
-  if (!user) return c.text('Forbidden', 403)
-  const weddingId = c.req.param('id')
-  const membership = await getMembership(c.env.DB, weddingId, user.id)
-  if (!membership) return c.text('Forbidden', 403)
-  const wedding = await getWedding(c.env.DB, weddingId)
-  if (!wedding) return c.text('Not found', 404)
-  const days = wedding.date ? daysUntil(wedding.date) : null
-  if (!shouldShowWeather(days, wedding.location_lat, wedding.location_lng)) return c.html(<WeatherUnavailable />)
-  const forecast = await getVenueForecast(c.env, { lat: wedding.location_lat!, lng: wedding.location_lng! })
-  if (!forecast) return c.html(<WeatherUnavailable />)
-  return c.html(<WeatherCard forecast={forecast} weddingDate={wedding.date!} daysUntil={days!} locale={getI18n().locale} />)
-})
+couple.get('/wedding/:id/weather', (c) =>
+  renderWeatherCard(c, c.req.param('id'), `/wedding/${c.req.param('id')}`)
+)
+
+couple.post('/wedding/:id/weather/unit', (c) =>
+  setWeatherUnit(c, c.req.param('id'), `/wedding/${c.req.param('id')}`)
+)
 
 couple.get('/wedding/:id/timeline', async (c) => {
   const weddingId = c.req.param('id')

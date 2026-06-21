@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS users (
   -- resolution falls back through Accept-Language / vendor timezone / defaults.
   locale TEXT,
   timezone TEXT,
+  -- Weather forecast unit: 'c' | 'f'; NULL = default Celsius (most of the world).
+  temperature_unit TEXT,
   -- JSON { [notificationKey]: boolean }; missing key = enabled (opt-out model).
   -- Keys defined in src/services/notification-prefs.ts.
   notification_prefs TEXT NOT NULL DEFAULT '{}',

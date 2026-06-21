@@ -161,11 +161,19 @@ export function wmoCondition(code: number, isDay = true): { icon: string; labelK
   return c('☁️', 'overcast')
 }
 
-// Convert a stored (°C) temperature to the viewer's unit. US locales → °F.
-export function displayTemp(celsius: number | null, locale: string): { value: number; unit: string } | null {
+export type TempUnit = 'c' | 'f'
+
+// The viewer's chosen unit, defaulting to Celsius (what most of the world uses)
+// regardless of locale. Stored on users.temperature_unit ('c' | 'f' | null).
+export function resolveTempUnit(user?: { temperature_unit?: string | null } | null): TempUnit {
+  return user?.temperature_unit === 'f' ? 'f' : 'c'
+}
+
+// Convert a stored (°C) temperature to the chosen unit. `|| 0` collapses a
+// rounded -0 (e.g. -0.4°C) to 0 so it never renders as "-0°".
+export function displayTemp(celsius: number | null, unit: TempUnit): { value: number; unit: string } | null {
   if (celsius == null) return null
-  const fahrenheit = /-US$/i.test(locale) || locale.toLowerCase() === 'en-us'
-  return fahrenheit
-    ? { value: Math.round((celsius * 9) / 5 + 32), unit: '°F' }
-    : { value: Math.round(celsius), unit: '°C' }
+  return unit === 'f'
+    ? { value: Math.round((celsius * 9) / 5 + 32) || 0, unit: '°F' }
+    : { value: Math.round(celsius) || 0, unit: '°C' }
 }

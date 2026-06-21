@@ -2,12 +2,12 @@
 // Renders a daily strip for the run-up (2 days before, 1 day before, the day)
 // and — once the wedding is close enough that hourly data is meaningful — an
 // hour-by-hour strip for the wedding day. Swapped into a pre-styled container
-// by htmx, so this renders the inner content only.
+// (id="wx-card") by htmx, so this renders the inner content only.
 
 import type { MessageKey } from '../i18n'
 import { t } from '../i18n'
 import { formatDayLabel } from '../lib/date'
-import { wmoCondition, displayTemp, type Forecast, type WeatherDaily, type WeatherHourly } from '../services/weather'
+import { wmoCondition, displayTemp, type TempUnit, type Forecast, type WeatherDaily, type WeatherHourly } from '../services/weather'
 
 // Shift a YYYY-MM-DD date by whole days (UTC math; dates are date-only).
 function shiftDate(dateStr: string, days: number): string {
@@ -22,8 +22,8 @@ function hourLabel(hour: number): string {
   return `${h12}${ampm}`
 }
 
-function Temp({ celsius, locale, class: cls }: { celsius: number | null; locale: string; class?: string }) {
-  const t2 = displayTemp(celsius, locale)
+function Temp({ celsius, unit, class: cls }: { celsius: number | null; unit: TempUnit; class?: string }) {
+  const t2 = displayTemp(celsius, unit)
   return <span class={cls}>{t2 ? `${t2.value}°` : '—'}</span>
 }
 
@@ -32,7 +32,7 @@ function Rain({ prob }: { prob: number | null }) {
   return <span class="text-[11px] text-horizon-600 whitespace-nowrap">💧{prob}%</span>
 }
 
-function DailyCell({ day, isWeddingDay, locale }: { day: WeatherDaily; isWeddingDay: boolean; locale: string }) {
+function DailyCell({ day, isWeddingDay, unit }: { day: WeatherDaily; isWeddingDay: boolean; unit: TempUnit }) {
   const cond = wmoCondition(day.code, true)
   return (
     <div class={`rounded-xl p-2.5 text-center ${isWeddingDay ? 'bg-papaya-100 ring-1 ring-grapefruit-300' : 'bg-gray-50'}`}>
@@ -41,23 +41,50 @@ function DailyCell({ day, isWeddingDay, locale }: { day: WeatherDaily; isWedding
       </p>
       <p class="text-2xl leading-tight my-0.5" title={t(cond.labelKey as MessageKey)}>{cond.icon}</p>
       <p class="text-xs text-gray-700">
-        <Temp celsius={day.tempMax} locale={locale} class="font-bold" />
+        <Temp celsius={day.tempMax} unit={unit} class="font-bold" />
         <span class="text-gray-400"> / </span>
-        <Temp celsius={day.tempMin} locale={locale} class="text-gray-400" />
+        <Temp celsius={day.tempMin} unit={unit} class="text-gray-400" />
       </p>
       <div class="mt-0.5"><Rain prob={day.precipProb} /></div>
     </div>
   )
 }
 
-function HourCell({ h, locale }: { h: WeatherHourly; locale: string }) {
+function HourCell({ h, unit }: { h: WeatherHourly; unit: TempUnit }) {
   const cond = wmoCondition(h.code, h.isDay)
   return (
     <div class="shrink-0 w-12 text-center">
       <p class="text-[10px] text-gray-400">{hourLabel(h.hour)}</p>
       <p class="text-lg leading-tight" title={t(cond.labelKey as MessageKey)}>{cond.icon}</p>
-      <p class="text-[11px] font-medium text-gray-700"><Temp celsius={h.temp} locale={locale} /></p>
+      <p class="text-[11px] font-medium text-gray-700"><Temp celsius={h.temp} unit={unit} /></p>
       <div class="leading-none"><Rain prob={h.precipProb} /></div>
+    </div>
+  )
+}
+
+// °C / °F segmented toggle. The inactive unit posts the new preference; the card
+// re-renders (htmx swaps #wx-card) in the chosen unit, and the choice is saved
+// to the user so every forecast they see uses it.
+function UnitToggle({ unit, weatherBase }: { unit: TempUnit; weatherBase: string }) {
+  const opt = (u: TempUnit, label: string, name: MessageKey) =>
+    u === unit ? (
+      <span class="px-2 py-0.5 rounded-md bg-white shadow-sm text-grapefruit-700 font-bold">{label}</span>
+    ) : (
+      <button
+        type="button"
+        hx-post={`${weatherBase}/unit?unit=${u}`}
+        hx-target="#wx-card"
+        hx-swap="innerHTML"
+        class="px-2 py-0.5 rounded-md text-gray-400 hover:text-gray-600"
+        aria-label={t(name)}
+      >
+        {label}
+      </button>
+    )
+  return (
+    <div class="flex items-center gap-0.5 text-[11px] bg-gray-100 rounded-lg p-0.5" role="group" aria-label={t('weather.unit.label')}>
+      {opt('c', '°C', 'weather.unit.celsius')}
+      {opt('f', '°F', 'weather.unit.fahrenheit')}
     </div>
   )
 }
@@ -70,12 +97,14 @@ export function WeatherCard({
   forecast,
   weddingDate,
   daysUntil,
-  locale,
+  unit,
+  weatherBase,
 }: {
   forecast: Forecast
   weddingDate: string
   daysUntil: number
-  locale: string
+  unit: TempUnit
+  weatherBase: string
 }) {
   // Run-up strip: 2 days before, 1 day before, the day — whichever the forecast
   // actually covers (earlier days drop off once the wedding is very close).
@@ -94,15 +123,19 @@ export function WeatherCard({
 
   return (
     <div>
+      <div class="flex justify-end mb-2">
+        <UnitToggle unit={unit} weatherBase={weatherBase} />
+      </div>
+
       <div class={`grid gap-2 ${cells.length === 1 ? 'grid-cols-1' : cells.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-        {cells.map((c) => <DailyCell day={c.day} isWeddingDay={c.isWeddingDay} locale={locale} />)}
+        {cells.map((c) => <DailyCell day={c.day} isWeddingDay={c.isWeddingDay} unit={unit} />)}
       </div>
 
       {hours.length > 0 && (
         <div class="mt-3 pt-3 border-t border-gray-100">
           <p class="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1.5">{t('weather.onTheDay')}</p>
           <div class="flex gap-1 overflow-x-auto pb-1">
-            {hours.map((h) => <HourCell h={h} locale={locale} />)}
+            {hours.map((h) => <HourCell h={h} unit={unit} />)}
           </div>
         </div>
       )}

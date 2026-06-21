@@ -52,9 +52,8 @@ import { weddingCapStatus } from '../../services/plan-limits'
 import { markTimelineDirty } from '../../services/timeline-notify'
 import { WeddingDoc } from '../../views/wedding-doc'
 import { loadDocTabs } from '../../db/wedding-docs'
-import { getVenueForecast } from '../../services/weather'
-import { WeatherCard, WeatherUnavailable, shouldShowWeather } from '../../views/weather'
-import { getI18n } from '../../i18n'
+import { shouldShowWeather } from '../../views/weather'
+import { renderWeatherCard, setWeatherUnit } from '../weather-handlers'
 import {
   listForms,
   getForm,
@@ -886,6 +885,7 @@ weddings.get('/app/weddings/:id', async (c) => {
           <div class="mb-6">
             <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weather.heading')}</h3>
             <div
+              id="wx-card"
               class="bg-white border border-papaya-300/30 rounded-2xl p-4"
               hx-get={`/app/weddings/${wedding.id}/weather`}
               hx-trigger="load, every 3600s"
@@ -1202,19 +1202,13 @@ weddings.get('/app/weddings/:id/climate', async (c) => {
   return c.html(<ClimateNote state="ready" note={result.note} />)
 })
 
-weddings.get('/app/weddings/:id/weather', async (c) => {
-  const user = c.get('user')
-  const weddingId = c.req.param('id')
-  const membership = await getMembership(c.env.DB, weddingId, user.id)
-  if (!membership) return c.text('Not found', 404)
-  const wedding = await getWedding(c.env.DB, weddingId)
-  if (!wedding) return c.text('Not found', 404)
-  const days = wedding.date ? daysUntil(wedding.date) : null
-  if (!shouldShowWeather(days, wedding.location_lat, wedding.location_lng)) return c.html(<WeatherUnavailable />)
-  const forecast = await getVenueForecast(c.env, { lat: wedding.location_lat!, lng: wedding.location_lng! })
-  if (!forecast) return c.html(<WeatherUnavailable />)
-  return c.html(<WeatherCard forecast={forecast} weddingDate={wedding.date!} daysUntil={days!} locale={getI18n().locale} />)
-})
+weddings.get('/app/weddings/:id/weather', (c) =>
+  renderWeatherCard(c, c.req.param('id'), `/app/weddings/${c.req.param('id')}`)
+)
+
+weddings.post('/app/weddings/:id/weather/unit', (c) =>
+  setWeatherUnit(c, c.req.param('id'), `/app/weddings/${c.req.param('id')}`)
+)
 
 // Wedding notes (shared / vendors / private) are served by the unified
 // collaborative-docs endpoints in routes/vendor/wedding-docs.tsx.
