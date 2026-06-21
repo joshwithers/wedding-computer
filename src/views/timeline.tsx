@@ -282,6 +282,7 @@ function Row({ item, basePath, roster, canEdit, canAssign, viewerUserId, refTitl
       </div>
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 flex-wrap">
+          <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style={`background:${CAT_COLOR[item.category]}`} title={catLabel(item.category)} aria-hidden="true"></span>
           <span class="text-sm font-bold text-gray-800">{item.title}</span>
           {item.slot && <span class="text-[9px] font-bold uppercase tracking-wide text-grapefruit-700 bg-papaya-100 rounded px-1 py-0.5">{t('timeline.keyMoment')}</span>}
           {started && <span class="text-[9px] text-horizon-700 bg-horizon-50 rounded px-1 py-0.5">✓ {t('timeline.started', { time: started })}</span>}
@@ -440,34 +441,21 @@ export function TimelineBody(props: TimelineProps) {
       {items.length === 0 ? (
         <p class="px-4 py-6 text-sm text-gray-400 text-center">{t('timeline.empty')}</p>
       ) : (
-        <div>
-          {(() => {
-            // Sun markers are facts placed inline by their time. Each one sorts
-            // into the lane it falls within (the last phase whose earliest item
-            // is at or before it); a marker earlier than every lane (e.g. an
-            // early sunrise) leads the list.
-            const markers = items.filter((i) => i.marker)
-            const lanes = TIMELINE_CATEGORIES
-              .map((cat) => ({ cat, rows: items.filter((i) => i.category === cat && !i.marker) }))
-              .filter((l) => l.rows.length > 0)
-              .map((l) => ({
-                ...l,
-                minMin: Math.min(...l.rows.map((r) => toMin(r.start_time)).filter((n): n is number => n != null), Infinity),
-              }))
-
-            const leading: TimelineItemView[] = []
-            const byLane = new Map<number, TimelineItemView[]>()
-            for (const m of markers) {
-              const mt = toMin(m.start_time) ?? Infinity
-              let idx = -1
-              for (let j = 0; j < lanes.length; j++) if (lanes[j].minMin <= mt) idx = j
-              if (idx < 0) leading.push(m)
-              else byLane.set(idx, [...(byLane.get(idx) ?? []), m])
-            }
-
-            const byTime = (a: TimelineItemView, b: TimelineItemView) =>
-              (toMin(a.start_time) ?? Infinity) - (toMin(b.start_time) ?? Infinity)
-            const renderRow = (item: TimelineItemView) =>
+        // A run sheet is chronological, full stop: ONE list ordered by start time
+        // (rows without a time sort last, with sort_order then id as stable
+        // tie-breakers). Category is shown as a per-row colour dot, not as
+        // separate sections — grouping by category used to push early items in a
+        // "late" category (e.g. an early bump-in under "other") to the bottom.
+        // Sun markers are facts that simply sort in by their own time.
+        <ul class="divide-y divide-gray-50">
+          {[...items]
+            .sort(
+              (a, b) =>
+                (toMin(a.start_time) ?? Infinity) - (toMin(b.start_time) ?? Infinity) ||
+                (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
+                a.id.localeCompare(b.id)
+            )
+            .map((item) =>
               item.marker ? (
                 <SunMarkerRow item={item} basePath={basePath} canRemove={canEditOrPropose(item, viewer, lead)} />
               ) : item.id === editId ? (
@@ -475,26 +463,8 @@ export function TimelineBody(props: TimelineProps) {
               ) : (
                 <Row item={item} basePath={basePath} roster={roster} canEdit={canEditOrPropose(item, viewer, lead)} canAssign={canManageAssignees(item, viewer, lead)} viewerUserId={viewer.userId} refTitle={item.anchor_ref ? titleById.get(item.anchor_ref) : undefined} conflicted={props.conflictIds?.has(item.id)} liveMode={!!props.live} projected={props.live?.projected.get(item.id)} slipped={props.live?.slipIds.has(item.id)} canStart={canEditDirect(item, viewer, lead)} />
               )
-
-            return (
-              <div>
-                {leading.length > 0 && <ul class="divide-y divide-gray-50">{leading.map(renderRow)}</ul>}
-                {lanes.map((lane, j) => {
-                  const merged = [...lane.rows, ...(byLane.get(j) ?? [])].sort(byTime)
-                  return (
-                    <div>
-                      <div class="flex items-center gap-2 px-4 pt-3 pb-1">
-                        <span class="w-2 h-2 rounded-full" style={`background:${CAT_COLOR[lane.cat]}`}></span>
-                        <span class="text-[10px] font-bold uppercase tracking-wide text-gray-400">{catLabel(lane.cat)}</span>
-                      </div>
-                      <ul class="divide-y divide-gray-50">{merged.map(renderRow)}</ul>
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })()}
-        </div>
+            )}
+        </ul>
       )}
     </div>
   )
