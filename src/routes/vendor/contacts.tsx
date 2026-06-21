@@ -7,6 +7,7 @@ import { csrf } from '../../middleware/csrf'
 import {
   listContacts,
   getContact,
+  getContactCached,
   createContact,
   updateContact,
   updateContactStatus,
@@ -490,14 +491,20 @@ contacts.get('/app/contacts/:id', async (c) => {
   try {
     let contact: Contact | null = null
 
-    // Try storage-backed contact first
-    const storage = await tryGetStorage(c.env, vendor)
-    if (storage) {
-      try {
-        const result = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
-        if (result) contact = result.contact
-      } catch (err) {
-        console.error('[contacts] getContact from storage failed:', err)
+    // Fast path: the D1 index holds the full contact — no storage round-trip.
+    const cached = await getContactCached(c.env.DB, vendor.id, c.req.param('id'))
+    if (cached) contact = cached.contact
+
+    // Storage-backed read (authoritative) only when the cache can't serve it.
+    if (!contact) {
+      const storage = await tryGetStorage(c.env, vendor)
+      if (storage) {
+        try {
+          const result = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
+          if (result) contact = result.contact
+        } catch (err) {
+          console.error('[contacts] getContact from storage failed:', err)
+        }
       }
     }
 
@@ -699,13 +706,19 @@ contacts.get('/app/contacts/:id/edit', async (c) => {
   try {
     let contact: Contact | null = null
 
-    const storage = await tryGetStorage(c.env, vendor)
-    if (storage) {
-      try {
-        const result = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
-        if (result) contact = result.contact
-      } catch (err) {
-        console.error('[contacts] getContact from storage failed for edit:', err)
+    // Fast path: serve the edit form from the D1 index (no storage round-trip).
+    const cached = await getContactCached(c.env.DB, vendor.id, c.req.param('id'))
+    if (cached) contact = cached.contact
+
+    if (!contact) {
+      const storage = await tryGetStorage(c.env, vendor)
+      if (storage) {
+        try {
+          const result = await getContact(storage, c.env.DB, vendor.id, c.req.param('id'))
+          if (result) contact = result.contact
+        } catch (err) {
+          console.error('[contacts] getContact from storage failed for edit:', err)
+        }
       }
     }
 

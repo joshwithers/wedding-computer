@@ -14,6 +14,7 @@
  */
 
 import type { StorageBackend, StorageFile, ListResult, FileMeta } from './types'
+import { StorageConflictError } from './conflicts'
 
 // Stamp app-authored commits so the GitHub push webhook can recognise and skip
 // resyncing changes we just made ourselves (avoids the write-amplification
@@ -164,6 +165,12 @@ export class GitHubStorageBackend implements StorageBackend {
     if (!res.ok) {
       const errBody = await res.text()
       console.error(`[github] write ${fullPath}: ${res.status} ${errBody}`)
+      // When we asserted a specific SHA (If-Match style), a 409/422 means the
+      // file changed under us (an external edit) — surface it as a conflict so
+      // the caller records it, rather than a generic 500.
+      if (knownSha !== undefined && (res.status === 409 || res.status === 422)) {
+        throw new StorageConflictError()
+      }
       throw new Error(`GitHub API error on write: ${res.status}`)
     }
 

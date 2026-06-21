@@ -4,6 +4,7 @@
  */
 
 import type { StorageBackend, StorageFile, ListResult, FileMeta } from '../types'
+import { StorageConflictError } from '../conflicts'
 import { createHash } from 'crypto'
 
 function etag(content: string): string {
@@ -31,9 +32,15 @@ export class MockStorageBackend implements StorageBackend {
     }
   }
 
-  async write(path: string, content: string): Promise<string> {
-    this.calls.push({ method: 'write', args: [path, content] })
+  async write(path: string, content: string, knownSha?: string): Promise<string> {
+    this.calls.push({ method: 'write', args: [path, content, knownSha] })
     if (this.throwOn.write) throw this.throwOn.write
+    // Conditional write (like R2 onlyIf / GitHub SHA): only overwrite if the
+    // current object still matches the asserted etag, else it's a conflict.
+    if (knownSha !== undefined) {
+      const existing = this.files.get(path)
+      if (existing ? existing.etag !== knownSha : true) throw new StorageConflictError()
+    }
     const e = etag(content)
     this.files.set(path, {
       content,

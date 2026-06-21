@@ -3,6 +3,8 @@ import {
   contactToMarkdown,
   markdownToContact,
   contactCachedData,
+  contactFromCache,
+  getContactCached,
   listContacts,
   getContact,
   createContact,
@@ -240,11 +242,30 @@ describe('contactCachedData', () => {
     expect(parsed.wedding_date).toBe('2026-12-15')
   })
 
-  it('does NOT include notes (too large for cache)', () => {
-    const contact = makeContact({ notes: 'Very long note...' })
+  it('includes notes/tags/form_data so detail+edit reads and merge-on-save can be served from the cache', () => {
+    const contact = makeContact({ notes: 'Very long note...', tags: '["vip"]' })
     const json = contactCachedData(contact)
     const parsed = JSON.parse(json)
-    expect(parsed.notes).toBeUndefined()
+    expect(parsed.notes).toBe('Very long note...')
+    expect(parsed.tags).toBe('["vip"]')
+    expect('form_data' in parsed).toBe(true)
+  })
+})
+
+describe('contactFromCache', () => {
+  it('round-trips a contact through cached_data losslessly', () => {
+    const original = makeContact({ notes: 'Hi there', tags: '["vip","local"]', phone: '0400123456' })
+    const cached = JSON.parse(contactCachedData(original))
+    const restored = contactFromCache(cached, original.id, original.vendor_id)
+    expect(restored.first_name).toBe(original.first_name)
+    expect(restored.last_name).toBe(original.last_name)
+    expect(restored.email).toBe(original.email)
+    expect(restored.phone).toBe(original.phone)
+    expect(restored.notes).toBe(original.notes)
+    expect(restored.tags).toBe(original.tags)
+    expect(restored.status).toBe(original.status)
+    expect(restored.id).toBe(original.id)
+    expect(restored.vendor_id).toBe(original.vendor_id)
   })
 })
 
@@ -687,6 +708,47 @@ describe('updateContact', () => {
     expect(conflicts[0].remote_content).toContain('external@example.com')
 
     const file = await storage.read('contacts/sarah-smith-james-wilson.md')
+    expect(file!.content).toContain('external@example.com')
+    expect(file!.content).not.toContain('local@example.com')
+  })
+
+  it('fast path (cached): in-place edit writes conditionally with NO storage read', async () => {
+    const s = new MockStorageBackend()
+    const d = new MockD1Database()
+    const seeded = makeContact()
+    const e = await s.write('contacts/c.md', serializeMarkdown(contactToMarkdown(seeded)))
+    d.seed('file_index', [{ vendor_id: VENDOR_ID, entity_type: 'contact', entity_id: 'c1', file_path: 'contacts/c.md', etag: e, cached_data: contactCachedData(seeded) }])
+    d.seed('contacts', [{ id: 'c1', vendor_id: VENDOR_ID }])
+    s.calls.length = 0
+
+    await updateContact(s, d as unknown as D1Database, VENDOR_ID, 'c1', { status: 'contacted', notes: 'Called today' })
+
+    // Merged from the cache — no storage GET on the save path.
+    expect(s.calls.some((c) => c.method === 'read')).toBe(false)
+    const file = await s.read('contacts/c.md')
+    expect(parseMarkdown(file!.content).frontmatter.status).toBe('contacted')
+    expect(file!.content).toContain('Called today')
+    // Index cache refreshed so the next read stays fast + correct.
+    const idx = (d.getTable('file_index') as Array<{ entity_id: string; cached_data: string }>).find((r) => r.entity_id === 'c1')!
+    expect(JSON.parse(idx.cached_data).status).toBe('contacted')
+  })
+
+  it('fast path (cached): a stale etag (external edit) records a conflict and keeps the external version', async () => {
+    const s = new MockStorageBackend()
+    const d = new MockD1Database()
+    const seeded = makeContact()
+    await s.write('contacts/c.md', serializeMarkdown(contactToMarkdown(seeded)))
+    d.seed('file_index', [{ vendor_id: VENDOR_ID, entity_type: 'contact', entity_id: 'c2', file_path: 'contacts/c.md', etag: 'stale-etag', cached_data: contactCachedData(seeded) }])
+    d.seed('contacts', [{ id: 'c2', vendor_id: VENDOR_ID }])
+    // Someone edits the file out from under us (new etag, index still 'stale-etag').
+    await s.write('contacts/c.md', serializeMarkdown(contactToMarkdown(makeContact({ email: 'external@example.com', notes: 'Edited in Git.' }))))
+
+    await expect(
+      updateContact(s, d as unknown as D1Database, VENDOR_ID, 'c2', { email: 'local@example.com' })
+    ).rejects.toBeInstanceOf(StorageConflictError)
+
+    expect((d.getTable('file_conflicts') as unknown[]).length).toBeGreaterThanOrEqual(1)
+    const file = await s.read('contacts/c.md')
     expect(file!.content).toContain('external@example.com')
     expect(file!.content).not.toContain('local@example.com')
   })

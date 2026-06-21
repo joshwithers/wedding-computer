@@ -12,6 +12,7 @@
  */
 
 import type { StorageBackend, StorageFile, ListResult, FileMeta } from './types'
+import { StorageConflictError } from './conflicts'
 
 export class R2StorageBackend implements StorageBackend {
   private bucket: R2Bucket
@@ -41,13 +42,15 @@ export class R2StorageBackend implements StorageBackend {
     }
   }
 
-  async write(path: string, content: string, _knownSha?: string): Promise<string> {
+  async write(path: string, content: string, knownSha?: string): Promise<string> {
+    // When the caller asserts the expected etag, write conditionally: R2 only
+    // overwrites if the object still matches, returning null on a mismatch (a
+    // concurrent change) — surface that as a conflict instead of clobbering.
     const obj = await this.bucket.put(this.fullPath(path), content, {
-      httpMetadata: {
-        contentType: 'text/markdown; charset=utf-8',
-      },
+      httpMetadata: { contentType: 'text/markdown; charset=utf-8' },
+      ...(knownSha !== undefined ? { onlyIf: { etagMatches: knownSha } } : {}),
     })
-    // R2 put returns the object with its etag (R2 has no concept of a prior sha)
+    if (!obj) throw new StorageConflictError()
     return obj.etag
   }
 

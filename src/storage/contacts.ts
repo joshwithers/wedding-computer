@@ -20,7 +20,7 @@ import type { StorageBackend, MarkdownDocument } from './types'
 import { parseMarkdown, serializeMarkdown } from './markdown'
 import { contactFilename, deduplicateFilename } from './slug'
 import { generateId } from '../lib/crypto'
-import { recordWriteConflict } from './conflicts'
+import { recordWriteConflict, StorageConflictError } from './conflicts'
 
 /** Frontmatter fields for a contact markdown file */
 type ContactFrontmatter = {
@@ -199,10 +199,74 @@ export function contactCachedData(contact: Contact): string {
     wedding_id: contact.wedding_id,
     wedding_date: contact.wedding_date,
     wedding_location: contact.wedding_location,
+    // notes/tags/form_data complete the cache so detail/edit pages and the
+    // merge-on-save can be served from D1 without a storage read. The presence
+    // of the `notes` key also marks a row as the complete (v2) cache format.
+    notes: contact.notes,
+    tags: contact.tags,
+    form_data: contact.form_data,
     last_contacted_at: contact.last_contacted_at,
     created_at: contact.created_at,
     updated_at: contact.updated_at,
   })
+}
+
+/** Reconstruct a Contact from a complete (v2) cached_data row — no storage read. */
+export function contactFromCache(cached: Record<string, unknown>, contactId: string, vendorId: string): Contact {
+  const s = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : v == null ? null : String(v))
+  return {
+    id: contactId,
+    vendor_id: vendorId,
+    first_name: s(cached.first_name) ?? '',
+    last_name: s(cached.last_name) ?? '',
+    email: s(cached.email),
+    phone: s(cached.phone),
+    partner_first_name: s(cached.partner_first_name),
+    partner_last_name: s(cached.partner_last_name),
+    partner_email: s(cached.partner_email),
+    partner_phone: s(cached.partner_phone),
+    address: s(cached.address),
+    instagram: s(cached.instagram),
+    facebook: s(cached.facebook),
+    tiktok: s(cached.tiktok),
+    website: s(cached.website),
+    source: s(cached.source),
+    status: (s(cached.status) as Contact['status']) ?? 'new',
+    wedding_id: s(cached.wedding_id),
+    wedding_date: s(cached.wedding_date),
+    wedding_location: s(cached.wedding_location),
+    notes: s(cached.notes),
+    tags: s(cached.tags),
+    form_data: s(cached.form_data),
+    last_contacted_at: s(cached.last_contacted_at),
+    created_at: s(cached.created_at) ?? new Date().toISOString(),
+    updated_at: s(cached.updated_at) ?? new Date().toISOString(),
+  }
+}
+
+/**
+ * Fast read of a contact straight from the D1 index (no storage round-trip).
+ * Returns null when the row is missing or still the old (pre-notes) cache
+ * format, so the caller can fall back to a storage read.
+ */
+export async function getContactCached(
+  db: D1Database,
+  vendorId: string,
+  contactId: string
+): Promise<{ contact: Contact; filePath: string; indexedEtag: string } | null> {
+  const row = await db
+    .prepare('SELECT file_path, etag, cached_data FROM file_index WHERE vendor_id = ? AND entity_type = ? AND entity_id = ?')
+    .bind(vendorId, 'contact', contactId)
+    .first<{ file_path: string; etag: string; cached_data: string | null }>()
+  if (!row || !row.cached_data) return null
+  let cached: Record<string, unknown>
+  try {
+    cached = JSON.parse(row.cached_data)
+  } catch {
+    return null
+  }
+  if (!('notes' in cached)) return null // old format — fall back to storage
+  return { contact: contactFromCache(cached, contactId, vendorId), filePath: row.file_path, indexedEtag: row.etag }
 }
 
 // ────────────────────────────────────────────
@@ -466,6 +530,49 @@ export async function updateContact(
     >
   >
 ): Promise<void> {
+  const renamesFile =
+    data.first_name !== undefined ||
+    data.last_name !== undefined ||
+    data.partner_first_name !== undefined ||
+    data.partner_last_name !== undefined
+
+  // Fast path: an in-place edit (no rename) of a contact already complete in the
+  // D1 index. Merge from the cache and write CONDITIONALLY on the indexed etag —
+  // no storage read. If the file changed under us the conditional write throws
+  // StorageConflictError, which we turn into a recorded conflict (both versions
+  // kept, nothing clobbered). Renames + un-cached rows fall through to the
+  // storage-read path below.
+  if (!renamesFile) {
+    const cached = await getContactCached(db, vendorId, contactId)
+    if (cached) {
+      const updated: Contact = { ...cached.contact }
+      for (const [key, val] of Object.entries(data)) {
+        if (val !== undefined) (updated as Record<string, unknown>)[key] = val
+      }
+      updated.updated_at = new Date().toISOString()
+      const content = serializeMarkdown(contactToMarkdown(updated))
+      try {
+        const etag = await storage.write(cached.filePath, content, cached.indexedEtag)
+        await upsertIndex(db, vendorId, updated, cached.filePath, etag)
+      } catch (e) {
+        if (e instanceof StorageConflictError) {
+          const cur = await storage.read(cached.filePath).catch(() => null)
+          await recordWriteConflict(
+            db, vendorId, 'contact', contactId, cached.filePath,
+            content, cur?.content ?? '', cached.indexedEtag, cur?.meta.etag ?? cached.indexedEtag
+          ) // throws StorageConflictError
+        }
+        throw e
+      }
+      try {
+        await syncToContactsTable(db, updated)
+      } catch (err) {
+        console.error(`[contacts] syncToContactsTable failed for ${updated.id}:`, err)
+      }
+      return
+    }
+  }
+
   const result = await getContact(storage, db, vendorId, contactId)
   if (!result) return
 
