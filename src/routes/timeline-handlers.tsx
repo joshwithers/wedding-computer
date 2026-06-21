@@ -26,6 +26,7 @@ import {
   projectTimelineToWedding,
   resolveAndMaterialize,
   weddingSunMinutes,
+  sunMinutesForWedding,
   setActualStart,
   clearAllActuals,
   type RosterEntry,
@@ -149,15 +150,27 @@ async function buildProps(
   member: WeddingMember,
   user: User,
   basePath: string,
-  opts?: { editId?: string; flash?: string }
+  opts?: {
+    editId?: string
+    flash?: string
+    // Reuse data the save handler already fetched to skip duplicate round-trips
+    // on the re-render. Both are invariant across timeline saves (no save mutates
+    // the lead membership or the wedding's date/location). Omitted on the
+    // read-only GET render path, which self-fetches.
+    lead?: Awaited<ReturnType<typeof getTimelineLead>>
+    wedding?: Awaited<ReturnType<typeof getWedding>>
+  }
 ): Promise<TimelineProps> {
   const viewer = viewerOf(user, member)
-  const [allItems, roster, lead, pendingRaw, wedding] = await Promise.all([
+  // Resolve the lead before the batch so leadLabel can run inside it (instead of
+  // a trailing serial round-trip). Reuse the handler's lead when provided.
+  const lead = opts?.lead ?? (await getTimelineLead(c.env.DB, weddingId))
+  const [allItems, roster, pendingRaw, wedding, leadLbl] = await Promise.all([
     listTimeline(c.env.DB, weddingId),
     resolveWeddingRoster(c.env.DB, weddingId),
-    getTimelineLead(c.env.DB, weddingId),
     listPendingTimelineRequests(c.env.DB, weddingId),
-    getWedding(c.env.DB, weddingId),
+    opts?.wedding ?? getWedding(c.env.DB, weddingId),
+    leadLabel(c, weddingId, lead.leadUserIds),
   ])
   const i18n = getI18n()
   const sun = wedding
@@ -257,7 +270,7 @@ async function buildProps(
     basePath,
     viewer,
     lead,
-    leadLabel: await leadLabel(c, weddingId, lead.leadUserIds),
+    leadLabel: leadLbl,
     creatable: creatableVisibilities(viewer),
     pending,
     canDecide,
@@ -277,7 +290,8 @@ function body(c: Ctx, props: TimelineProps) {
   return c.html(<TimelineBody {...props} />)
 }
 
-/** Side effects after any APPLIED timeline write. */
+/** Side effects after any APPLIED timeline write. Returns the wedding it loaded
+ *  so the re-render can reuse it instead of fetching it again. */
 async function afterWrite(c: Ctx, weddingId: string) {
   const env = c.env
   const vendor = c.get('vendor')
@@ -286,10 +300,13 @@ async function afterWrite(c: Ctx, weddingId: string) {
   await markTimelineDirty(env.KV, weddingId, c.get('user')?.id ?? '').catch(() => {})
   // Re-solve the liquid timeline and persist concrete start/end times BEFORE we
   // render + project, so display, the legacy slot columns, calendars and
-  // markdown all reflect the recomputed clock. (Sun anchors get their minutes
-  // wired in Phase B.)
+  // markdown all reflect the recomputed clock. The view renders the persisted
+  // start_time, so this MUST stay awaited before the re-render (a deferral here
+  // would show new/anchored rows as "—"). One getWedding feeds both this and
+  // the re-render.
+  const wedding = await getWedding(env.DB, weddingId)
   try {
-    await resolveAndMaterialize(env.DB, weddingId, await weddingSunMinutes(env.DB, weddingId))
+    await resolveAndMaterialize(env.DB, weddingId, wedding ? sunMinutesForWedding(wedding) : {})
   } catch (err) {
     console.error('[timeline] materialize failed', err)
   }
@@ -307,9 +324,22 @@ async function afterWrite(c: Ctx, weddingId: string) {
       }
     })()
   )
+  return wedding
 }
 
-export async function renderTimeline(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string, opts?: { editId?: string; flash?: string }) {
+export async function renderTimeline(
+  c: Ctx,
+  weddingId: string,
+  member: WeddingMember,
+  user: User,
+  basePath: string,
+  opts?: {
+    editId?: string
+    flash?: string
+    lead?: Awaited<ReturnType<typeof getTimelineLead>>
+    wedding?: Awaited<ReturnType<typeof getWedding>>
+  }
+) {
   return body(c, await buildProps(c, weddingId, member, user, basePath, opts))
 }
 
@@ -330,8 +360,8 @@ export async function addTimelineItem(c: Ctx, weddingId: string, member: Wedding
   const lead = await getTimelineLead(c.env.DB, weddingId)
   if (canCreateDirect(viewer, lead, fields.visibility)) {
     await createItem(c.env.DB, { wedding_id: weddingId, ...fields, owner_vendor_id: member.vendor_profile_id, created_by_user_id: user.id })
-    await afterWrite(c, weddingId)
-    return renderTimeline(c, weddingId, member, user, basePath)
+    const wedding = await afterWrite(c, weddingId)
+    return renderTimeline(c, weddingId, member, user, basePath, { lead, wedding })
   }
   await proposeChange(c.env.DB, {
     weddingId, op: 'create', itemId: null,
@@ -389,11 +419,11 @@ export async function addSunTimes(c: Ctx, weddingId: string, member: WeddingMemb
     created++
   }
 
-  if (created > 0) await afterWrite(c, weddingId)
   if (created === 0) {
     return renderTimeline(c, weddingId, member, user, basePath, { flash: t('timeline.sun.alreadyAdded') })
   }
-  return renderTimeline(c, weddingId, member, user, basePath)
+  const wedding = await afterWrite(c, weddingId)
+  return renderTimeline(c, weddingId, member, user, basePath, { wedding })
 }
 
 export async function updateTimelineItem(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string, itemId: string) {
@@ -407,8 +437,8 @@ export async function updateTimelineItem(c: Ctx, weddingId: string, member: Wedd
 
   if (canEditDirect(item, viewer, lead)) {
     await updateItem(c.env.DB, weddingId, itemId, after)
-    await afterWrite(c, weddingId)
-    return renderTimeline(c, weddingId, member, user, basePath)
+    const wedding = await afterWrite(c, weddingId)
+    return renderTimeline(c, weddingId, member, user, basePath, { lead, wedding })
   }
   if (canPropose(item, viewer, lead)) {
     const before: Partial<RowFields> = {
@@ -433,15 +463,15 @@ export async function deleteTimelineItem(c: Ctx, weddingId: string, member: Wedd
   // Sun markers are facts anyone may add — and remove — directly, no approval.
   if (item.marker) {
     await deleteItem(c.env.DB, weddingId, itemId)
-    await afterWrite(c, weddingId)
-    return renderTimeline(c, weddingId, member, user, basePath)
+    const wedding = await afterWrite(c, weddingId)
+    return renderTimeline(c, weddingId, member, user, basePath, { wedding })
   }
   const viewer = viewerOf(user, member)
   const lead = await getTimelineLead(c.env.DB, weddingId)
   if (canEditDirect(item, viewer, lead)) {
     await deleteItem(c.env.DB, weddingId, itemId)
-    await afterWrite(c, weddingId)
-    return renderTimeline(c, weddingId, member, user, basePath)
+    const wedding = await afterWrite(c, weddingId)
+    return renderTimeline(c, weddingId, member, user, basePath, { lead, wedding })
   }
   if (canPropose(item, viewer, lead)) {
     await proposeChange(c.env.DB, {
@@ -459,29 +489,31 @@ export async function startTimelineItem(c: Ctx, weddingId: string, member: Weddi
   const item = await getItem(c.env.DB, weddingId, itemId)
   if (!item) return renderTimeline(c, weddingId, member, user, basePath)
   const lead = await getTimelineLead(c.env.DB, weddingId)
-  if (!canEditDirect(item, viewerOf(user, member), lead)) return renderTimeline(c, weddingId, member, user, basePath)
+  if (!canEditDirect(item, viewerOf(user, member), lead)) return renderTimeline(c, weddingId, member, user, basePath, { lead })
   // Stamp the venue's local clock, not the (possibly remote) clicker's.
   let stamp: string | null = null
+  let w: Awaited<ReturnType<typeof getWedding>> | undefined
   if (start) {
-    const w = await getWedding(c.env.DB, weddingId)
+    w = await getWedding(c.env.DB, weddingId)
     const tz = resolveLocationTimezone(w?.location_country, w?.location_state, getI18n().timezone)
     stamp = nowTimeString(tz)
   }
   await setActualStart(c.env.DB, weddingId, itemId, stamp)
-  return renderTimeline(c, weddingId, member, user, basePath)
+  return renderTimeline(c, weddingId, member, user, basePath, { lead, wedding: w })
 }
 
 /** Live mode: the lead clears every actual start, ending the live view. */
 export async function endLiveTimeline(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string) {
   const lead = await getTimelineLead(c.env.DB, weddingId)
-  if (!isTimelineLead(lead, user.id)) return renderTimeline(c, weddingId, member, user, basePath)
+  if (!isTimelineLead(lead, user.id)) return renderTimeline(c, weddingId, member, user, basePath, { lead })
   await clearAllActuals(c.env.DB, weddingId)
-  return renderTimeline(c, weddingId, member, user, basePath)
+  return renderTimeline(c, weddingId, member, user, basePath, { lead })
 }
 
 export async function addTimelineAssignee(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string, itemId: string) {
   const item = await getItem(c.env.DB, weddingId, itemId)
   const lead = await getTimelineLead(c.env.DB, weddingId)
+  let wedding: Awaited<ReturnType<typeof afterWrite>> | undefined
   if (item && canManageAssignees(item, viewerOf(user, member), lead)) {
     const f = await c.req.parseBody()
     const who = str(f.who)
@@ -491,30 +523,32 @@ export async function addTimelineAssignee(c: Ctx, weddingId: string, member: Wed
       if (match?.kind === 'member') await addAssignee(c.env.DB, itemId, { wedding_member_id: match.id })
       else if (match?.kind === 'team') await addAssignee(c.env.DB, itemId, { team_member_id: match.id })
       else await addAssignee(c.env.DB, itemId, { label: who })
-      await afterWrite(c, weddingId)
+      wedding = await afterWrite(c, weddingId)
     }
   }
-  return renderTimeline(c, weddingId, member, user, basePath)
+  return renderTimeline(c, weddingId, member, user, basePath, { lead, wedding })
 }
 
 export async function removeTimelineAssignee(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string, itemId: string, assigneeId: string) {
   const item = await getItem(c.env.DB, weddingId, itemId)
   const lead = await getTimelineLead(c.env.DB, weddingId)
+  let wedding: Awaited<ReturnType<typeof afterWrite>> | undefined
   if (item && canManageAssignees(item, viewerOf(user, member), lead)) {
     await removeAssignee(c.env.DB, itemId, assigneeId)
-    await afterWrite(c, weddingId)
+    wedding = await afterWrite(c, weddingId)
   }
-  return renderTimeline(c, weddingId, member, user, basePath)
+  return renderTimeline(c, weddingId, member, user, basePath, { lead, wedding })
 }
 
 // ── Approvals (lead only) ──
 
 async function decide(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string, requestId: string, approve: boolean) {
   const lead = await getTimelineLead(c.env.DB, weddingId)
-  if (!isTimelineLead(lead, user.id)) return renderTimeline(c, weddingId, member, user, basePath)
+  if (!isTimelineLead(lead, user.id)) return renderTimeline(c, weddingId, member, user, basePath, { lead })
   const req = await getTimelineRequest(c.env.DB, weddingId, requestId)
-  if (!req || req.status !== 'pending') return renderTimeline(c, weddingId, member, user, basePath)
+  if (!req || req.status !== 'pending') return renderTimeline(c, weddingId, member, user, basePath, { lead })
 
+  let wedding: Awaited<ReturnType<typeof afterWrite>> | undefined
   if (approve) {
     // edit-then-approve: use any edited fields the lead submitted
     let edited: Partial<RowFields> | undefined
@@ -525,7 +559,7 @@ async function decide(c: Ctx, weddingId: string, member: WeddingMember, user: Us
       }
     }
     await applyRequest(c.env.DB, req, edited)
-    await afterWrite(c, weddingId)
+    wedding = await afterWrite(c, weddingId)
   }
   await decideTimelineRequest(c.env.DB, requestId, user.id, approve ? 'approved' : 'declined')
   await c.env.EMAIL_QUEUE
@@ -534,7 +568,7 @@ async function decide(c: Ctx, weddingId: string, member: WeddingMember, user: Us
       payload: JSON.stringify({ weddingId, requesterUserId: req.requested_by_user_id, deciderLabel: user.name, approved: approve, summary: req.summary }),
     })
     .catch(() => {})
-  return renderTimeline(c, weddingId, member, user, basePath)
+  return renderTimeline(c, weddingId, member, user, basePath, { lead, wedding })
 }
 
 /** A user opts their OWN assignment in/out of their personal calendar feed. */

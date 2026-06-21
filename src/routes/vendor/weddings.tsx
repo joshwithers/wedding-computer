@@ -1367,13 +1367,15 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       }
     }
 
-    // Sync calendar events for ALL vendors on this wedding
+    // Sync calendar events for ALL vendors on this wedding — a derived CalDAV/iCal
+    // mirror nothing in the redirect depends on (it's a per-vendor fan-out of
+    // serial event upserts), so run it after the response instead of blocking it.
     const vendor = c.get('vendor')!
-    try {
-      await resyncWeddingCalendars(c.env.DB, weddingId, vendor.id)
-    } catch (calErr) {
-      console.error('[weddings] Failed to sync calendar events:', calErr)
-    }
+    c.executionCtx.waitUntil(
+      resyncWeddingCalendars(c.env.DB, weddingId, vendor.id).catch((calErr) =>
+        console.error('[weddings] Failed to sync calendar events:', calErr)
+      )
+    )
 
     // Push all wedding files to storage (GitHub/R2) — waitUntil keeps the
     // push alive after the redirect is sent

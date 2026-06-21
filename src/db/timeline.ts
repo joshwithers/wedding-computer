@@ -3,7 +3,7 @@
 // services/timeline-permissions. Reuses updateWedding for the projection shim
 // that keeps the legacy weddings.* slot columns in step during phases 1-3.
 
-import type { TimelineItem, TimelineItemAssignee, TimelineCategory, TimelineVisibility, TimelineSlot, TimelineMarker, RunSheetItem } from '../types'
+import type { TimelineItem, TimelineItemAssignee, TimelineCategory, TimelineVisibility, TimelineSlot, TimelineMarker, RunSheetItem, Wedding } from '../types'
 import { updateWedding, getWedding } from './weddings'
 import { solveTimeline, minToHhmm, type SolverItem, type SunMinutes } from '../lib/timeline-solver'
 import { sunMinutesFor } from '../lib/sun'
@@ -238,9 +238,8 @@ function toSolverItem(it: TimelineItem): SolverItem {
  */
 /** Sun events (sunrise/sunset/golden_hour) in the wedding's local clock, as
  * solver anchor inputs. Empty when the wedding has no coordinates/date. */
-export async function weddingSunMinutes(db: D1Database, weddingId: string): Promise<SunMinutes> {
-  const w = await getWedding(db, weddingId)
-  if (!w) return {}
+/** Sun minutes for an already-loaded wedding row (avoids a duplicate getWedding). */
+export function sunMinutesForWedding(w: Wedding): SunMinutes {
   return (
     sunMinutesFor({
       lat: w.location_lat,
@@ -253,6 +252,11 @@ export async function weddingSunMinutes(db: D1Database, weddingId: string): Prom
       fallbackTimezone: DEFAULT_TIMEZONE,
     }) ?? {}
   )
+}
+
+export async function weddingSunMinutes(db: D1Database, weddingId: string): Promise<SunMinutes> {
+  const w = await getWedding(db, weddingId)
+  return w ? sunMinutesForWedding(w) : {}
 }
 
 export async function resolveAndMaterialize(db: D1Database, weddingId: string, sun: SunMinutes = {}): Promise<void> {
