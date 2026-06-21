@@ -52,6 +52,9 @@ import { weddingCapStatus } from '../../services/plan-limits'
 import { markTimelineDirty } from '../../services/timeline-notify'
 import { WeddingDoc } from '../../views/wedding-doc'
 import { loadDocTabs } from '../../db/wedding-docs'
+import { getVenueForecast } from '../../services/weather'
+import { WeatherCard, WeatherUnavailable, shouldShowWeather } from '../../views/weather'
+import { getI18n } from '../../i18n'
 import {
   listForms,
   getForm,
@@ -831,16 +834,6 @@ weddings.get('/app/weddings/:id', async (c) => {
           </div>
         )}
 
-        <VendorFormsCard
-          weddingId={weddingId}
-          vendorId={vendor.id}
-          appUrl={c.env.APP_URL}
-          csrfToken={c.get('csrfToken')}
-          sendableForms={sendableForms}
-          sends={formSends}
-          responses={formResponses}
-        />
-
         {/* Details — one dense card instead of a scatter of single-value boxes */}
         <div class="mb-6">
           <h3 class="text-sm font-bold text-gray-500 mb-3">Details</h3>
@@ -887,6 +880,34 @@ weddings.get('/app/weddings/:id', async (c) => {
             </dl>
           </div>
         </div>
+
+        {/* Weather — live forecast within a week, else the AI climate note. */}
+        {shouldShowWeather(days, wedding.location_lat, wedding.location_lng) && (
+          <div class="mb-6">
+            <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weather.heading')}</h3>
+            <div
+              class="bg-white border border-papaya-300/30 rounded-2xl p-4"
+              hx-get={`/app/weddings/${wedding.id}/weather`}
+              hx-trigger="load, every 3600s"
+              hx-swap="innerHTML"
+            >
+              <p class="text-xs text-gray-400">{t('weather.loading')}</p>
+            </div>
+          </div>
+        )}
+        {wedding.location && wedding.date && !shouldShowWeather(days, wedding.location_lat, wedding.location_lng) && (
+          <div class="mb-6">
+            <h3 class="text-sm font-bold text-gray-500 mb-3">{t('climate.heading')}</h3>
+            <div
+              class="bg-white border border-papaya-300/30 rounded-2xl p-4"
+              hx-get={`/app/weddings/${wedding.id}/climate`}
+              hx-trigger="load"
+              hx-swap="innerHTML"
+            >
+              <p class="text-xs text-gray-400">{t('climate.loading')}</p>
+            </div>
+          </div>
+        )}
 
         {/* People */}
         <div class="mb-6">
@@ -961,6 +982,17 @@ weddings.get('/app/weddings/:id', async (c) => {
 
         {/* Run sheet / unified wedding timeline */}
         {timelineSection}
+
+        {/* Forms — beneath the run sheet */}
+        <VendorFormsCard
+          weddingId={weddingId}
+          vendorId={vendor.id}
+          appUrl={c.env.APP_URL}
+          csrfToken={c.get('csrfToken')}
+          sendableForms={sendableForms}
+          sends={formSends}
+          responses={formResponses}
+        />
 
         {/* Files */}
         <WeddingFiles
@@ -1110,21 +1142,6 @@ weddings.get('/app/weddings/:id', async (c) => {
           </details>
         )}
 
-        {/* Expected weather — AI note from the region's climate, lazy-loaded */}
-        {wedding.location && wedding.date && (
-          <div class="mt-6">
-            <h3 class="text-sm font-bold text-gray-500 mb-3">{t('climate.heading')}</h3>
-            <div
-              class="bg-white border border-papaya-300/30 rounded-2xl p-4"
-              hx-get={`/app/weddings/${wedding.id}/climate`}
-              hx-trigger="load"
-              hx-swap="innerHTML"
-            >
-              <p class="text-xs text-gray-400">{t('climate.loading')}</p>
-            </div>
-          </div>
-        )}
-
         {/* Wedding Log */}
         {log.length > 0 && (
           <div class="mt-6">
@@ -1183,6 +1200,20 @@ weddings.get('/app/weddings/:id/climate', async (c) => {
   })
   if (!result) return c.html(<ClimateNote state="error" />)
   return c.html(<ClimateNote state="ready" note={result.note} />)
+})
+
+weddings.get('/app/weddings/:id/weather', async (c) => {
+  const user = c.get('user')
+  const weddingId = c.req.param('id')
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership) return c.text('Not found', 404)
+  const wedding = await getWedding(c.env.DB, weddingId)
+  if (!wedding) return c.text('Not found', 404)
+  const days = wedding.date ? daysUntil(wedding.date) : null
+  if (!shouldShowWeather(days, wedding.location_lat, wedding.location_lng)) return c.html(<WeatherUnavailable />)
+  const forecast = await getVenueForecast(c.env, { lat: wedding.location_lat!, lng: wedding.location_lng! })
+  if (!forecast) return c.html(<WeatherUnavailable />)
+  return c.html(<WeatherCard forecast={forecast} weddingDate={wedding.date!} daysUntil={days!} locale={getI18n().locale} />)
 })
 
 // Wedding notes (shared / vendors / private) are served by the unified

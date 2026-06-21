@@ -28,6 +28,12 @@ export type Bindings = {
   TURNSTILE_SECRET_KEY: string
   TURNSTILE_SITE_KEY: string
   GOOGLE_MAPS_API_KEY?: string
+  // Open-Meteo commercial API key. When set, forecasts use the paid
+  // customer-api.open-meteo.com endpoint (commercial licence, BoM ACCESS via
+  // best_match for AU); when unset, the free api.open-meteo.com endpoint is used
+  // (local dev only — the free tier is non-commercial). Set via:
+  // wrangler secret put WEATHER_API_KEY
+  WEATHER_API_KEY?: string
   // When set (non-empty), new self-signups via the public login form must supply
   // this invite code. Existing users and invite-link arrivals are unaffected.
   // Unset/empty = open signups. Set via: wrangler secret put SIGNUP_INVITE_CODE
