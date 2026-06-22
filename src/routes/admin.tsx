@@ -546,7 +546,7 @@ admin.get('/admin/coupons', async (c) => {
   const deactivated = c.req.query('deactivated') === '1'
   const error = c.req.query('error')
 
-  const list = await stripeApi(c.env.STRIPE_SECRET_KEY, 'GET', 'promotion_codes?limit=100&expand[]=data.coupon')
+  const list = await stripeApi(c.env.STRIPE_SECRET_KEY, 'GET', 'promotion_codes?limit=100&expand[]=data.promotion.coupon')
   const codes: any[] = list.ok && Array.isArray(list.data?.data) ? list.data.data : []
   const fmtDate = (ts?: number | null) => (ts ? new Date(ts * 1000).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : null)
 
@@ -635,7 +635,10 @@ admin.get('/admin/coupons', async (c) => {
             <p class="text-sm text-gray-400">No codes yet.</p>
           ) : (
             <div class="divide-y divide-gray-100">
-              {codes.map((p: any) => (
+              {codes.map((p: any) => {
+                // Coupon now lives at promotion.coupon (was top-level on older API versions).
+                const cpn = p.promotion?.coupon ?? p.coupon
+                return (
                 <div class="py-3 flex items-center justify-between gap-4 text-sm">
                   <div class="min-w-0">
                     <p class="font-bold text-gray-900 font-mono">
@@ -643,7 +646,7 @@ admin.get('/admin/coupons', async (c) => {
                       {!p.active && <span class="ml-2 text-[10px] font-bold uppercase tracking-wide text-gray-400 bg-gray-100 rounded px-1.5 py-0.5">inactive</span>}
                     </p>
                     <p class="text-xs text-gray-500">
-                      {couponDiscountLabel(p.coupon)} · {couponDurationLabel(p.coupon)}
+                      {couponDiscountLabel(cpn)} · {couponDurationLabel(cpn)}
                       {p.expires_at && ` · expires ${fmtDate(p.expires_at)}`}
                     </p>
                   </div>
@@ -660,7 +663,8 @@ admin.get('/admin/coupons', async (c) => {
                     )}
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -698,9 +702,16 @@ admin.post('/admin/coupons', async (c) => {
   }
   const coupon = await stripeApi(c.env.STRIPE_SECRET_KEY, 'POST', 'coupons', couponParams)
   if (!coupon.ok) return fail('Stripe rejected the discount: ' + (coupon.data?.error?.message ?? coupon.status))
+  if (!coupon.data?.id) return fail('Stripe created the discount but returned no id — please try again.')
 
-  // 2) Promotion code = the customer-facing code + expiry/usage limits.
-  const promoParams: Record<string, string> = { coupon: coupon.data.id, code }
+  // 2) Promotion code = the customer-facing code + expiry/usage limits. Stripe's
+  // promotion_codes API nests the coupon under `promotion[...]` — a top-level
+  // `coupon` param now errors with "Received unknown parameter: coupon".
+  const promoParams: Record<string, string> = {
+    'promotion[type]': 'coupon',
+    'promotion[coupon]': coupon.data.id,
+    code,
+  }
   if (Number.isFinite(maxRedemptions) && maxRedemptions > 0) promoParams.max_redemptions = String(maxRedemptions)
   if (expires) {
     const ts = Math.floor(new Date(expires + 'T23:59:59').getTime() / 1000)
@@ -708,7 +719,10 @@ admin.post('/admin/coupons', async (c) => {
     promoParams.expires_at = String(ts)
   }
   const promo = await stripeApi(c.env.STRIPE_SECRET_KEY, 'POST', 'promotion_codes', promoParams)
-  if (!promo.ok) return fail(`Couldn’t create code “${code}” (it may already exist): ` + (promo.data?.error?.message ?? promo.status))
+  if (!promo.ok) {
+    console.error('[coupons] promotion_code create failed', promo.status, JSON.stringify(promo.data?.error ?? promo.data))
+    return fail(`Couldn’t create code “${code}” (it may already exist): ` + (promo.data?.error?.message ?? promo.status))
+  }
 
   await auditLog(c, 'create_coupon', 'coupon', promo.data.id, { code, discountType, value, duration, expires, maxRedemptions }).catch(() => {})
   return c.redirect('/admin/coupons?created=' + encodeURIComponent(code))
