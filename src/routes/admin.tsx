@@ -311,6 +311,20 @@ admin.get('/admin', async (c) => {
             </button>
           </form>
         </section>
+
+        <section class="bg-white rounded-2xl p-5 border border-gray-200 mt-6">
+          <h2 class="text-lg font-bold mb-1">Backfill calendar feeds</h2>
+          <p class="text-sm text-gray-500 mb-4">
+            One-off: materialise calendar events for every vendor member of every dated wedding, so
+            vendors added before the calendar fix see those weddings in their iCal/CalDAV feed. Safe to re-run.
+          </p>
+          <form method="post" action="/admin/backfill-calendars">
+            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+            <button type="submit" class="bg-gray-900 text-white rounded-xl px-4 py-2 text-sm font-bold hover:bg-gray-800 transition-colors">
+              Backfill now
+            </button>
+          </form>
+        </section>
       </div>
     </AdminLayout>
   )
