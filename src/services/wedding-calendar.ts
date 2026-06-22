@@ -216,6 +216,24 @@ export async function resyncWeddingCalendars(
   if (!wedding?.date) return
 
   const data = weddingTimelineData(wedding)
+  // The wc:ceremony event derives its time from the structured headline column
+  // (weddings.time), which is only populated from a ceremony SLOT row. When the
+  // run-sheet has a Ceremony (or any) item with a time but no slot, that column
+  // is null — which used to make the main wedding event ALL-DAY even though the
+  // timeline clearly has a time. Fall back to the earliest timeline time
+  // (preferring a ceremony-category item) so the event is properly timed.
+  if (!data.ceremonyTime) {
+    const t = await db
+      .prepare(
+        `SELECT start_time FROM timeline_items
+         WHERE wedding_id = ? AND start_time IS NOT NULL AND marker IS NULL
+         ORDER BY (category <> 'ceremony'), start_time ASC
+         LIMIT 1`
+      )
+      .bind(weddingId)
+      .first<{ start_time: string }>()
+    if (t?.start_time) data.ceremonyTime = t.start_time
+  }
 
   const vendorMembers = await db
     .prepare(
