@@ -1050,6 +1050,7 @@ export const it: Dictionary = {
   "onboarding.error.pickCategory": "Scegli almeno una categoria",
   "onboarding.error.handleShort": "Il nome utente email deve contenere almeno 3 caratteri",
   "onboarding.error.handleTaken": "Questo nome utente email è già in uso",
+  "onboarding.error.handleReserved": "Questo nome utente email è riservato — scegline un altro",
   "onboarding.error.businessNameRequired": "Il nome dell'attività è obbligatorio",
 
   // Profile step

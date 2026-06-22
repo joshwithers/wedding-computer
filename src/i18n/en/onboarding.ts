@@ -48,6 +48,7 @@ export const onboarding = {
   'onboarding.error.pickCategory': 'Pick at least one category',
   'onboarding.error.handleShort': 'Email handle must be at least 3 characters',
   'onboarding.error.handleTaken': 'That email handle is already taken',
+  'onboarding.error.handleReserved': 'That email handle is reserved — please choose another',
   'onboarding.error.businessNameRequired': 'Business name is required',
 
   // Profile step

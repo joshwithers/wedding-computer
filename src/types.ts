@@ -43,6 +43,12 @@ export type Bindings = {
   // route 404s unless this is exactly 'true', so production and self-hosted
   // installs are safe by default regardless of proxy/header behaviour.
   ENABLE_DEV_LOGIN?: string
+  // Where inbound mail to a RESERVED @wedding.computer handle (admin, support,
+  // our brand words, generic terms — see lib/reserved-handles.ts) is forwarded.
+  // MUST be a VERIFIED Cloudflare Email Routing destination (e.g. the real inbox
+  // hello@wedding.computer already forwards to). Unset → reserved mail is
+  // rejected (no silent drop). Set via: wrangler secret put RESERVED_FORWARD_EMAIL
+  RESERVED_FORWARD_EMAIL?: string
   APP_URL: string
 }
 

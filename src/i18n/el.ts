@@ -1034,6 +1034,7 @@ export const el: Dictionary = {
   "onboarding.error.pickCategory": "Επιλέξτε τουλάχιστον μία κατηγορία",
   "onboarding.error.handleShort": "Το όνομα χρήστη email πρέπει να έχει τουλάχιστον 3 χαρακτήρες",
   "onboarding.error.handleTaken": "Αυτό το όνομα χρήστη email χρησιμοποιείται ήδη",
+  "onboarding.error.handleReserved": "Αυτό το όνομα χρήστη email είναι δεσμευμένο — επιλέξτε ένα άλλο",
   "onboarding.error.businessNameRequired": "Το όνομα επιχείρησης είναι υποχρεωτικό",
 
   // Βήμα προφίλ

@@ -1043,6 +1043,7 @@ export const de: Dictionary = {
   "onboarding.error.pickCategory": "Wählen Sie mindestens eine Kategorie",
   "onboarding.error.handleShort": "Der E-Mail-Name muss mindestens 3 Zeichen lang sein",
   "onboarding.error.handleTaken": "Dieser E-Mail-Name ist bereits vergeben",
+  "onboarding.error.handleReserved": "Dieser E-Mail-Name ist reserviert — bitte wählen Sie einen anderen",
   "onboarding.error.businessNameRequired": "Firmenname ist erforderlich",
 
   // Profilschritt

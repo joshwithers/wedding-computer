@@ -1057,6 +1057,7 @@ export const zh: Dictionary = {
   "onboarding.error.pickCategory": "至少选择一个类别",
   "onboarding.error.handleShort": "邮箱用户名至少需要 3 个字符",
   "onboarding.error.handleTaken": "该邮箱用户名已被占用",
+  "onboarding.error.handleReserved": "该邮箱用户名为系统保留——请另选一个",
   "onboarding.error.businessNameRequired": "业务名称为必填项",
 
   // 个人资料步骤

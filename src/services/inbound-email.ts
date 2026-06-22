@@ -2,6 +2,7 @@ import type { Bindings } from '../types'
 import { parseRawEmail } from '../lib/mime'
 import { createEmail, findVendorByEmailHandle, findContactByEmail, getEmailByMessageId } from '../db/emails'
 import { consumeRateLimit } from '../middleware/rate-limit'
+import { isReservedHandle } from '../lib/reserved-handles'
 
 const MAX_INBOUND_BYTES = 2_000_000 // 2MB — bound memory + D1 storage per message
 
@@ -19,6 +20,22 @@ export async function handleInboundEmail(
 
   const vendor = await findVendorByEmailHandle(env.DB, handle)
   if (!vendor) {
+    // Reserved handles (admin, support, our brands, generic terms) can't be
+    // claimed — forward their mail to the team's verified destination instead of
+    // bouncing. The destination must be an external verified Cloudflare Email
+    // Routing address (NOT @wedding.computer — that would loop), so we never
+    // forward when it's unset or points back at our own domain.
+    if (isReservedHandle(handle) && env.RESERVED_FORWARD_EMAIL && !env.RESERVED_FORWARD_EMAIL.toLowerCase().endsWith('@wedding.computer')) {
+      try {
+        await message.forward(env.RESERVED_FORWARD_EMAIL)
+        console.log('[EMAIL] reserved handle', handle, 'forwarded to', env.RESERVED_FORWARD_EMAIL)
+        return
+      } catch (e: any) {
+        console.error('[EMAIL] reserved forward failed for', handle, e?.message)
+        message.setReject('Unknown recipient')
+        return
+      }
+    }
     console.log('[EMAIL] no vendor for handle', handle)
     message.setReject('Unknown recipient')
     return

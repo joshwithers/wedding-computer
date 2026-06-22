@@ -1035,6 +1035,7 @@ export const ja: Dictionary = {
   "onboarding.error.pickCategory": "カテゴリーを1つ以上選択してください",
   "onboarding.error.handleShort": "メールハンドルは3文字以上で入力してください",
   "onboarding.error.handleTaken": "そのメールハンドルはすでに使われています",
+  "onboarding.error.handleReserved": "そのメールハンドルは予約されています。別のものを選択してください",
   "onboarding.error.businessNameRequired": "ビジネス名は必須です",
 
   "onboarding.profile.metaTitle": "あなたの詳細",

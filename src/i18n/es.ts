@@ -1257,4 +1257,5 @@ export const es: Dictionary = {
   'weddings.people.makeManager': '+ Hacer gestor',
   'weddings.people.removeManager': 'Quitar como gestor',
   'weddings.people.lastManager': 'Una boda necesita al menos un gestor — primero haz gestor a otra persona.',
+  'onboarding.error.handleReserved': 'Ese identificador de correo está reservado — elige otro',
 }

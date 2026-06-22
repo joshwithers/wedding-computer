@@ -14,6 +14,7 @@ import { FormEnhancements } from '../lib/form-enhance'
 import { VENDOR_CATEGORIES } from '../types'
 import { t, tp, type MessageKey } from '../i18n'
 import { categorySetup } from '../lib/onboarding'
+import { isReservedHandle } from '../lib/reserved-handles'
 
 const onboarding = new Hono<Env>()
 
@@ -281,6 +282,10 @@ onboarding.post('/onboarding/business', async (c) => {
 
     if (emailHandle && emailHandle.length < 3) {
       return c.redirect(preserve(t('onboarding.error.handleShort')))
+    }
+
+    if (emailHandle && isReservedHandle(emailHandle)) {
+      return c.redirect(preserve(t('onboarding.error.handleReserved')))
     }
 
     if (emailHandle) {

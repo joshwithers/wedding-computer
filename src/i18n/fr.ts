@@ -1059,6 +1059,7 @@ export const fr: Dictionary = {
   "onboarding.error.pickCategory": "Choisissez au moins une catégorie",
   "onboarding.error.handleShort": "L'identifiant e-mail doit comporter au moins 3 caractères",
   "onboarding.error.handleTaken": "Cet identifiant e-mail est déjà pris",
+  "onboarding.error.handleReserved": "Cet identifiant e-mail est réservé — veuillez en choisir un autre",
   "onboarding.error.businessNameRequired": "Le nom de l'entreprise est obligatoire",
 
   // Profile step

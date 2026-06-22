@@ -1059,6 +1059,7 @@ export const nl: Dictionary = {
   "onboarding.error.pickCategory": "Kies ten minste één categorie",
   "onboarding.error.handleShort": "De e-mailnaam moet ten minste 3 tekens bevatten",
   "onboarding.error.handleTaken": "Die e-mailnaam is al in gebruik",
+  "onboarding.error.handleReserved": "Die e-mailnaam is gereserveerd — kies een andere",
   "onboarding.error.businessNameRequired": "Bedrijfsnaam is verplicht",
 
   // Profielstap

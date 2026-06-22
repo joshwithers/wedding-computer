@@ -10,6 +10,7 @@ import { softDeleteAccount } from '../../services/account'
 import { VENDOR_CATEGORIES } from '../../types'
 import { trimOrNull, requireString } from '../../lib/validation'
 import { vendorCategories } from '../../lib/categories'
+import { isReservedHandle } from '../../lib/reserved-handles'
 import { t } from '../../i18n'
 import { auditLog } from '../../middleware/audit'
 import { listContacts } from '../../storage/contacts'
@@ -1164,12 +1165,6 @@ settings.post('/app/settings/ceremony-types', async (c) => {
 
 // Addresses we send platform/system mail from, or that would let someone
 // impersonate the platform — never claimable as a vendor handle.
-const RESERVED_HANDLES = new Set([
-  'hello', 'noreply', 'no-reply', 'admin', 'administrator', 'support', 'postmaster',
-  'abuse', 'info', 'billing', 'security', 'hostmaster', 'webmaster', 'mailer-daemon',
-  'help', 'team', 'contact', 'sales', 'notifications', 'accounts', 'root', 'system',
-])
-
 settings.post('/app/settings/email-handle', async (c) => {
   const vendor = c.get('vendor')!
   const body = await c.req.parseBody()
@@ -1185,7 +1180,7 @@ settings.post('/app/settings/email-handle', async (c) => {
     return fail('Handle must be at least 3 characters')
   }
 
-  if (handle && RESERVED_HANDLES.has(handle)) {
+  if (handle && isReservedHandle(handle)) {
     return fail('That handle is reserved — please choose another')
   }
 
