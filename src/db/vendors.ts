@@ -59,6 +59,57 @@ export async function searchVendorsForWedding(
   return res.results
 }
 
+export type AdminVendorRow = {
+  id: string
+  business_name: string
+  category: string | null
+  instagram: string | null
+  website: string | null
+  location_city: string | null
+  location_state: string | null
+  user_email: string
+}
+
+/**
+ * Admin-only: list/search every vendor business for the admin console. Unscoped
+ * by design (gated by requireAdmin). Prefix matches on the business name rank
+ * first; an empty query returns the most recently created.
+ */
+export async function listVendorsForAdmin(
+  db: D1Database,
+  q?: string,
+  limit = 50
+): Promise<AdminVendorRow[]> {
+  const term = (q ?? '').trim()
+  if (term) {
+    const res = await db
+      .prepare(
+        `SELECT vp.id, vp.business_name, vp.category, vp.instagram, vp.website,
+                vp.location_city, vp.location_state, u.email AS user_email
+         FROM vendor_profiles vp JOIN users u ON u.id = vp.user_id
+         WHERE u.deleted_at IS NULL
+           AND (vp.business_name LIKE ?1 COLLATE NOCASE OR u.email LIKE ?1 COLLATE NOCASE)
+         ORDER BY (vp.business_name LIKE ?2 COLLATE NOCASE) DESC, vp.business_name ASC
+         LIMIT ?3`
+      )
+      .bind(`%${term}%`, `${term}%`, limit)
+      .all<AdminVendorRow>()
+    return res.results
+  }
+  const res = await db
+    .prepare(
+      `SELECT vp.id, vp.business_name, vp.category, vp.instagram, vp.website,
+              vp.location_city, vp.location_state, u.email AS user_email
+       FROM vendor_profiles vp JOIN users u ON u.id = vp.user_id
+       WHERE u.deleted_at IS NULL
+       ORDER BY vp.created_at DESC
+       LIMIT ?1`
+    )
+    .bind(limit)
+    .all<AdminVendorRow>()
+  return res.results
+}
+
 export async function createVendor(
   db: D1Database,
   userId: string,

@@ -11,7 +11,7 @@ import { getActiveProCount, getMRR, getConversionRate } from '../db/subscription
 import { aggregateBusynessScores, aggregateDemandHistory } from '../db/busyness'
 import { geocodePendingLocations } from '../services/geocode'
 import { getUserByEmail } from '../db/users'
-import { getVendorByUserId } from '../db/vendors'
+import { getVendorByUserId, getVendorById, updateVendor, listVendorsForAdmin } from '../db/vendors'
 import { grantFreeMonths, listRecentGrants, FREE_MONTHS_CAP, type GrantRow } from '../db/referrals'
 import { redeemBankedMonthsToStripe } from '../services/free-months'
 import { getBroadcastRecipients, getBroadcastCountries, createBroadcast } from '../db/broadcast'
@@ -49,6 +49,7 @@ const AdminLayout: FC<PropsWithChildren<{ title?: string; user: User; csrfToken:
             <a href="/admin/gifts" class="text-sm text-gray-400 hover:text-white">Gifts</a>
             <a href="/admin/coupons" class="text-sm text-gray-400 hover:text-white">Coupons</a>
             <a href="/admin/vendor-types" class="text-sm text-gray-400 hover:text-white">Vendor types</a>
+            <a href="/admin/businesses" class="text-sm text-gray-400 hover:text-white">Businesses</a>
             <a href="/app" class="text-sm text-gray-400 hover:text-white">Back to app</a>
             <span class="text-sm text-gray-500">{user.email}</span>
           </div>
@@ -859,6 +860,190 @@ admin.post('/admin/vendor-types/:slug/toggle', async (c) => {
   await setVendorTypeActive(c.env.DB, slug, active)
   await auditLog(c, active ? 'restore_vendor_type' : 'remove_vendor_type', 'vendor_type', slug, {}).catch(() => {})
   return c.redirect('/admin/vendor-types')
+})
+
+// ─── Businesses: edit a vendor's brand/business profile (not their account) ───
+admin.get('/admin/businesses', async (c) => {
+  const user = c.get('user')
+  const q = (c.req.query('q') ?? '').trim()
+  const businesses = await listVendorsForAdmin(c.env.DB, q)
+  return c.html(
+    <AdminLayout title="Businesses" user={user} csrfToken={c.get('csrfToken')}>
+      <div class="space-y-6">
+        <div>
+          <h1 class="text-2xl font-bold">Businesses</h1>
+          <p class="text-sm text-gray-500 mt-1">Edit a vendor's public brand details — name, links, location, bio. Account settings stay with the vendor.</p>
+        </div>
+        <form method="get" action="/admin/businesses" class="flex gap-2">
+          <input
+            type="search"
+            name="q"
+            value={q}
+            placeholder="Search by business name or email…"
+            class="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+          />
+          <button type="submit" class="bg-gray-900 text-white rounded-xl px-4 py-2.5 text-sm font-bold hover:bg-gray-800 transition-colors">Search</button>
+        </form>
+        <div class="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100">
+          {businesses.length === 0 ? (
+            <p class="text-sm text-gray-400 p-5">No businesses found.</p>
+          ) : (
+            businesses.map((b) => {
+              const place = [b.location_city, b.location_state].filter(Boolean).join(', ')
+              return (
+                <a href={`/admin/businesses/${b.id}`} class="flex items-center justify-between gap-4 p-4 hover:bg-gray-50 transition-colors">
+                  <div class="min-w-0">
+                    <p class="font-bold text-gray-900 truncate">{b.business_name}</p>
+                    <p class="text-xs text-gray-500 truncate">
+                      {vendorTypeLabel({ slug: b.category ?? '', label: b.category ?? '—' })}
+                      {place ? ` · ${place}` : ''} · {b.user_email}
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-3 shrink-0 text-xs text-gray-400">
+                    {b.instagram && <span>@{b.instagram}</span>}
+                    {b.website && <span class="hidden sm:inline truncate max-w-[160px]">{b.website}</span>}
+                    <span class="text-gray-900 font-bold">Edit →</span>
+                  </div>
+                </a>
+              )
+            })
+          )}
+        </div>
+      </div>
+    </AdminLayout>
+  )
+})
+
+admin.get('/admin/businesses/:id', async (c) => {
+  const user = c.get('user')
+  const id = c.req.param('id')
+  const [vendor, types] = await Promise.all([getVendorById(c.env.DB, id), listVendorTypes(c.env.DB, { includeInactive: true })])
+  if (!vendor) return c.notFound()
+  const saved = c.req.query('saved') === '1'
+  let cats: string[] = []
+  try {
+    const arr = vendor.categories ? JSON.parse(vendor.categories) : []
+    if (Array.isArray(arr)) cats = arr.filter((s): s is string => typeof s === 'string')
+  } catch { /* ignore */ }
+  // Surface any current category/type that's no longer in the active catalog so it's still editable.
+  const typeSlugs = new Set(types.map((t) => t.slug))
+  const extra = [vendor.category, ...cats].filter((s): s is string => !!s && !typeSlugs.has(s))
+  const allTypes = [...types, ...Array.from(new Set(extra)).map((slug) => ({ slug, label: slug }))]
+  const field = 'w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900'
+  return c.html(
+    <AdminLayout title={vendor.business_name} user={user} csrfToken={c.get('csrfToken')}>
+      <div class="max-w-2xl space-y-6">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <a href="/admin/businesses" class="text-xs text-gray-400 hover:text-gray-600">← Businesses</a>
+            <h1 class="text-2xl font-bold mt-1">{vendor.business_name}</h1>
+          </div>
+          <a href={`/app/vendors/${vendor.id}`} class="text-xs text-gray-400 hover:text-gray-600 shrink-0">View profile →</a>
+        </div>
+        {saved && <p class="bg-green-50 text-green-700 text-sm rounded-xl px-4 py-2.5 border border-green-100">Saved.</p>}
+        <form method="post" action={`/admin/businesses/${vendor.id}`} class="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+          <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="business_name">Business name</label>
+            <input id="business_name" name="business_name" required value={vendor.business_name} class={field} />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="category">Primary type</label>
+            <select id="category" name="category" class={field}>
+              {allTypes.map((t) => (
+                <option value={t.slug} selected={vendor.category === t.slug}>{vendorTypeLabel(t)}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">All types (for credits + directory)</label>
+            <div class="flex flex-wrap gap-1.5">
+              {allTypes.map((t) => {
+                const on = cats.includes(t.slug)
+                return (
+                  <label class={`text-xs px-2.5 py-1 rounded-full border cursor-pointer transition-colors ${on ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    <input type="checkbox" name="categories" value={t.slug} checked={on} class="sr-only" />
+                    {vendorTypeLabel(t)}
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="website">Website</label>
+              <input id="website" name="website" value={vendor.website ?? ''} placeholder="https://…" class={field} />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="instagram">Instagram</label>
+              <input id="instagram" name="instagram" value={vendor.instagram ?? ''} placeholder="@handle or URL" class={field} />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="phone">Phone</label>
+              <input id="phone" name="phone" value={vendor.phone ?? ''} class={field} />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="location">Location (display)</label>
+              <input id="location" name="location" value={vendor.location ?? ''} placeholder="e.g. Byron Bay, NSW" class={field} />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="location_city">City</label>
+              <input id="location_city" name="location_city" value={vendor.location_city ?? ''} class={field} />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="location_state">State / region</label>
+              <input id="location_state" name="location_state" value={vendor.location_state ?? ''} class={field} />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="location_country">Country</label>
+              <input id="location_country" name="location_country" value={vendor.location_country ?? ''} class={field} />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="bio">Bio</label>
+            <textarea id="bio" name="bio" rows={4} class={field}>{vendor.bio ?? ''}</textarea>
+          </div>
+          <div class="flex justify-end">
+            <button type="submit" class="bg-gray-900 text-white rounded-xl px-5 py-2.5 text-sm font-bold hover:bg-gray-800 transition-colors">Save business</button>
+          </div>
+        </form>
+      </div>
+    </AdminLayout>
+  )
+})
+
+admin.post('/admin/businesses/:id', async (c) => {
+  const id = c.req.param('id')
+  const vendor = await getVendorById(c.env.DB, id)
+  if (!vendor) return c.notFound()
+  const body = await c.req.parseBody({ all: true })
+  const str = (v: unknown) => {
+    const s = String(Array.isArray(v) ? v[0] ?? '' : v ?? '').trim()
+    return s
+  }
+  const categories = (() => {
+    const raw = body.categories
+    const arr = (Array.isArray(raw) ? raw : raw != null ? [raw] : []).map((r) => String(r).trim()).filter(Boolean)
+    return Array.from(new Set(arr))
+  })()
+  const businessName = str(body.business_name)
+  if (!businessName) return c.redirect(`/admin/businesses/${id}?error=name`)
+
+  await updateVendor(c.env.DB, id, {
+    business_name: businessName,
+    category: str(body.category) || vendor.category,
+    categories: JSON.stringify(categories.length ? categories : [str(body.category) || vendor.category]),
+    website: str(body.website) || null,
+    instagram: str(body.instagram) || null, // updateVendor sanitizes this to a bare handle
+    phone: str(body.phone) || null,
+    location: str(body.location) || null,
+    location_city: str(body.location_city) || null,
+    location_state: str(body.location_state) || null,
+    location_country: str(body.location_country) || null,
+    bio: str(body.bio) || null,
+  })
+  await auditLog(c, 'admin_edit_business', 'vendor', id, { business_name: businessName }).catch(() => {})
+  return c.redirect(`/admin/businesses/${id}?saved=1`)
 })
 
 // One-off: materialise calendar events for EVERY active vendor member of every
