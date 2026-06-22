@@ -396,6 +396,13 @@ export type UserCalendarRow = {
   description: string | null
   created_at: string
   updated_at: string
+  // Couple identity + venue timezone, so the timeline feed shows full names,
+  // contact details and venue-local times (mirrors EnrichedCalendarEvent).
+  couple_names: string | null
+  couple_email: string | null
+  wedding_location: string | null
+  wedding_location_state: string | null
+  wedding_location_country: string | null
 }
 
 // Shared SELECT for calendar-bound timeline rows. The WHERE supplies the
@@ -404,7 +411,14 @@ export type UserCalendarRow = {
 // the scoping column so the rest of the query stays identical.
 const CALENDAR_ROW_SELECT = (scopeCol: string) =>
   `SELECT ti.id, ti.title, ti.start_time, ti.end_time, ti.location, ti.description,
-              ti.created_at, ti.updated_at, w.date AS wedding_date, w.title AS wedding_title
+              ti.created_at, ti.updated_at, w.date AS wedding_date, w.title AS wedding_title,
+              w.location AS wedding_location, w.location_state AS wedding_location_state,
+              w.location_country AS wedding_location_country,
+              (SELECT GROUP_CONCAT(cu.name, ' & ') FROM wedding_members cwm JOIN users cu ON cu.id = cwm.user_id
+                 WHERE cwm.wedding_id = ti.wedding_id AND cwm.role = 'couple' AND cwm.status = 'active') AS couple_names,
+              (SELECT cu.email FROM wedding_members cwm JOIN users cu ON cu.id = cwm.user_id
+                 WHERE cwm.wedding_id = ti.wedding_id AND cwm.role = 'couple' AND cwm.status = 'active'
+                 ORDER BY cwm.created_at LIMIT 1) AS couple_email
        FROM timeline_item_assignees a
        JOIN wedding_members wm ON wm.id = a.wedding_member_id
        JOIN timeline_items ti ON ti.id = a.timeline_item_id

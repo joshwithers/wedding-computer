@@ -31,9 +31,24 @@ const ENRICHED_SELECT = `
     co.partner_first_name,
     co.partner_last_name,
     co.partner_email,
-    co.partner_phone
+    co.partner_phone,
+    w.location_state as wedding_location_state,
+    w.location_country as wedding_location_country,
+    ti.title as timeline_item_title,
+    ti.description as timeline_item_description,
+    (SELECT GROUP_CONCAT(cu.name, ' & ') FROM wedding_members cwm JOIN users cu ON cu.id = cwm.user_id
+       WHERE cwm.wedding_id = ce.wedding_id AND cwm.role = 'couple' AND cwm.status = 'active') as couple_names,
+    (SELECT cu.email FROM wedding_members cwm JOIN users cu ON cu.id = cwm.user_id
+       WHERE cwm.wedding_id = ce.wedding_id AND cwm.role = 'couple' AND cwm.status = 'active'
+       ORDER BY cwm.created_at LIMIT 1) as couple_email
   FROM calendar_events ce
   LEFT JOIN weddings w ON ce.wedding_id = w.id
+  -- The real run-sheet item behind a wc:<slot> event, matched by slot. The
+  -- synthetic 'wc:ceremony_prep' has no slot row, so it stays NULL (keeps its
+  -- own label). timeline_items.slot is unique per (wedding_id, slot).
+  LEFT JOIN timeline_items ti ON ce.notes LIKE 'wc:%'
+    AND ti.wedding_id = ce.wedding_id
+    AND ti.slot = substr(ce.notes, 4)
   LEFT JOIN contacts co ON ce.wedding_id IS NOT NULL AND co.id = (
     SELECT id FROM contacts
     WHERE wedding_id = ce.wedding_id AND vendor_id = ce.vendor_id

@@ -446,6 +446,18 @@ export type EnrichedCalendarEvent = CalendarEvent & {
   partner_last_name: string | null
   partner_email: string | null
   partner_phone: string | null
+  // Couple identity from the shared wedding membership — available even when the
+  // viewing vendor owns no contact for this wedding (e.g. a vendor ADDED to
+  // someone else's wedding). Used for the event title + a contact fallback.
+  couple_names: string | null
+  couple_email: string | null
+  // The real run-sheet item behind a wc:* slot event (NULL for the synthetic
+  // ceremony-prep block + legacy rows) so the title/description match the timeline.
+  timeline_item_title: string | null
+  timeline_item_description: string | null
+  // Wedding venue location → its IANA timezone (so times show in venue-local time).
+  wedding_location_state: string | null
+  wedding_location_country: string | null
 }
 
 export type Document = {

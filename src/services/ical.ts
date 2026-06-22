@@ -1,6 +1,30 @@
 import type { EnrichedCalendarEvent } from '../types'
 import type { UserCalendarRow } from '../db/timeline'
 import { addHoursToTime } from '../lib/date'
+import { resolveLocationTimezone } from '../lib/sun'
+
+// Human label for a wc:<slot> booking event when no real run-sheet item is
+// matched (the synthetic ceremony-prep block + legacy rows).
+const WC_SLOT_LABEL: Record<string, string> = {
+  'wc:getting_ready_1': 'Getting ready',
+  'wc:getting_ready_2': 'Getting ready',
+  'wc:ceremony_prep': 'Ceremony prep',
+  'wc:ceremony': 'Ceremony',
+  'wc:portraits': 'Portraits',
+  'wc:reception': 'Reception',
+}
+
+/** The couple's full display name, e.g. "Olivia Smith & Ethan Jones".
+ *  Prefers the vendor's own contact (full first+last), then the shared couple
+ *  membership (works for added-to weddings), then the wedding title. */
+function coupleDisplayName(e: EnrichedCalendarEvent): string | null {
+  const name1 = [e.contact_first_name, e.contact_last_name].filter(Boolean).join(' ').trim()
+  const name2 = [e.partner_first_name, e.partner_last_name].filter(Boolean).join(' ').trim()
+  if (name1 && name2) return `${name1} & ${name2}`
+  if (name1) return name1
+  if (e.couple_names) return e.couple_names
+  return e.wedding_title || null
+}
 
 /**
  * A personal calendar feed built from a user's assigned + opted-in timeline
@@ -25,21 +49,32 @@ export function buildTimelineFeed(rows: UserCalendarRow[], calName: string, time
 
 /** Build a single timeline-section VEVENT block (no VCALENDAR wrapper). Exported for CalDAV. */
 export function buildTimelineVevent(r: UserCalendarRow, timezone: string): string[] {
+  // Show times in the WEDDING venue's local timezone, not the subscriber's.
+  const tz = resolveLocationTimezone(r.wedding_location_country, r.wedding_location_state, timezone)
+  const couple = r.couple_names || r.wedding_title
   const lines: string[] = ['BEGIN:VEVENT']
   lines.push(`UID:ts-${r.id}@weddingcomputer.com`)
-  lines.push(`SUMMARY:${escapeIcalText(r.wedding_title ? `${r.title} · ${r.wedding_title}` : r.title)}`)
+  // Couple full names first, the run-sheet item's own title as the suffix.
+  lines.push(`SUMMARY:${escapeIcalText(couple ? `${couple} — ${r.title}` : r.title)}`)
   lines.push(`DTSTAMP:${formatUtcTimestamp(r.created_at)}`)
   if (!r.start_time) {
     lines.push(`DTSTART;VALUE=DATE:${r.wedding_date.replace(/-/g, '')}`)
     lines.push(`DTEND;VALUE=DATE:${nextDay(r.wedding_date)}`)
   } else {
-    lines.push(`DTSTART;TZID=${timezone}:${formatLocalTimestamp(r.wedding_date, r.start_time)}`)
+    lines.push(`DTSTART;TZID=${tz}:${formatLocalTimestamp(r.wedding_date, r.start_time)}`)
     const end = r.end_time ?? addHoursToTime(r.start_time, 1)
-    lines.push(`DTEND;TZID=${timezone}:${formatLocalTimestamp(r.wedding_date, end)}`)
+    lines.push(`DTEND;TZID=${tz}:${formatLocalTimestamp(r.wedding_date, end)}`)
   }
-  if (r.location) lines.push(`LOCATION:${escapeIcalText(r.location)}`)
-  const desc = [r.description, r.wedding_title].filter(Boolean).join('\n')
-  if (desc) lines.push(`DESCRIPTION:${escapeIcalText(desc)}`)
+  const loc = r.location ?? r.wedding_location
+  if (loc) lines.push(`LOCATION:${escapeIcalText(loc)}`)
+  const descLines: string[] = []
+  if (r.description) descLines.push(r.description)
+  if (couple) {
+    if (descLines.length) descLines.push('')
+    descLines.push(`💒 ${couple}`)
+    if (r.couple_email) descLines.push(`📧 ${r.couple_email}`)
+  }
+  if (descLines.length) lines.push(`DESCRIPTION:${escapeIcalText(descLines.join('\n'))}`)
   lines.push('TRANSP:OPAQUE', 'CATEGORIES:Wedding')
   if (r.updated_at) lines.push(`LAST-MODIFIED:${formatUtcTimestamp(r.updated_at)}`)
   lines.push('END:VEVENT')
@@ -81,16 +116,31 @@ export function buildVevent(event: EnrichedCalendarEvent, timezone: string): str
   const lines: string[] = ['BEGIN:VEVENT']
 
   lines.push(`UID:${event.id}@weddingcomputer.com`)
-  lines.push(`SUMMARY:${escapeIcalText(event.title)}`)
+
+  // For a wc:<slot> booking event, title it "<couple full names> — <run-sheet
+  // item title>" (real timeline title, falling back to the slot label) so it
+  // matches the run sheet and never says "Ceremony" for a prep block. Manual
+  // events (no wc: tag) keep their own title.
+  const wcTag = event.notes && event.notes.startsWith('wc:') ? event.notes : null
+  if (wcTag) {
+    const itemTitle = event.timeline_item_title || WC_SLOT_LABEL[wcTag] || 'Wedding'
+    const couple = coupleDisplayName(event)
+    lines.push(`SUMMARY:${escapeIcalText(couple ? `${couple} — ${itemTitle}` : itemTitle)}`)
+  } else {
+    lines.push(`SUMMARY:${escapeIcalText(event.title)}`)
+  }
   lines.push(`DTSTAMP:${formatUtcTimestamp(event.created_at)}`)
 
+  // Times in the wedding VENUE's local timezone (derived from its location), not
+  // the subscriber's feed timezone.
+  const tz = resolveLocationTimezone(event.wedding_location_country, event.wedding_location_state, timezone)
   if (event.all_day === 1 || !event.start_time) {
     lines.push(`DTSTART;VALUE=DATE:${event.date.replace(/-/g, '')}`)
     lines.push(`DTEND;VALUE=DATE:${nextDay(event.date)}`)
   } else {
-    lines.push(`DTSTART;TZID=${timezone}:${formatLocalTimestamp(event.date, event.start_time)}`)
+    lines.push(`DTSTART;TZID=${tz}:${formatLocalTimestamp(event.date, event.start_time)}`)
     if (event.end_time) {
-      lines.push(`DTEND;TZID=${timezone}:${formatLocalTimestamp(event.date, event.end_time)}`)
+      lines.push(`DTEND;TZID=${tz}:${formatLocalTimestamp(event.date, event.end_time)}`)
     }
   }
 
@@ -128,17 +178,25 @@ export function buildVevent(event: EnrichedCalendarEvent, timezone: string): str
 function buildEventDescription(event: EnrichedCalendarEvent): string {
   const lines: string[] = []
 
-  const hasWeddingData = event.wedding_id && (event.contact_first_name || event.wedding_title)
+  // The run-sheet item's own note for THIS event leads the description.
+  if (event.timeline_item_description) {
+    lines.push(event.timeline_item_description)
+  }
+
+  const hasWeddingData = event.wedding_id && (event.contact_first_name || event.couple_names || event.wedding_title)
 
   if (hasWeddingData) {
     const name1 = [event.contact_first_name, event.contact_last_name].filter(Boolean).join(' ')
     const name2 = [event.partner_first_name, event.partner_last_name].filter(Boolean).join(' ')
 
+    if (lines.length) lines.push('')
     // Couple header
     if (name1 && name2) {
       lines.push(`💒 ${name1} & ${name2}`)
     } else if (name1) {
       lines.push(`💒 ${name1}`)
+    } else if (event.couple_names) {
+      lines.push(`💒 ${event.couple_names}`)
     } else if (event.wedding_title) {
       lines.push(`💒 ${event.wedding_title}`)
     }
@@ -231,11 +289,18 @@ function buildEventDescription(event: EnrichedCalendarEvent): string {
         if (event.partner_email) lines.push(`📧 ${event.partner_email}`)
         if (event.partner_phone) lines.push(`📱 ${event.partner_phone}`)
       }
+    } else if (event.couple_email || event.couple_names) {
+      // No contact of our own (a wedding we were added to) — still surface the
+      // couple from the shared membership so the vendor can reach them.
+      lines.push('')
+      lines.push('━━━━━━━━━━━━━━━━━━')
+      if (event.couple_names) lines.push(`👤 ${event.couple_names}`)
+      if (event.couple_email) lines.push(`📧 ${event.couple_email}`)
     }
   }
 
-  // Original event notes
-  if (event.notes) {
+  // Original event notes (skip the internal wc:<slot> sync tag — not for humans)
+  if (event.notes && !event.notes.startsWith('wc:')) {
     if (lines.length > 0) {
       lines.push('')
       lines.push('━━━━━━━━━━━━━━━━━━')
