@@ -20,7 +20,8 @@
 
 import { Hono } from 'hono'
 import type { Env, Bindings, VendorProfile } from '../types'
-import { getVendorByIcalToken } from '../db/vendors'
+import { getVendorByIcalToken, getVendorById } from '../db/vendors'
+import { isOAuthAccessToken, accessTokenKey, type AccessTokenRecord } from '../lib/oauth'
 import { isProVendor } from '../db/subscriptions'
 import { processJsonSubmission, createEnquiry } from '../services/enquiry'
 import { clientIp, isAuthThrottled, recordAuthFailure, consumeRateLimit } from '../middleware/rate-limit'
@@ -33,15 +34,28 @@ const mcp = new Hono<Env>()
 
 // ─── Auth helper ───
 
-async function authenticateMcp(db: D1Database, authHeader: string | undefined): Promise<VendorProfile | null> {
-  if (!authHeader) return null
-  // Accept "Bearer {token}"
-  if (authHeader.startsWith('Bearer ')) {
-    const token = authHeader.slice(7).trim()
-    if (!token || token.length < 32) return null
-    return getVendorByIcalToken(db, token)
+async function authenticateMcp(env: Bindings, authHeader: string | undefined): Promise<VendorProfile | null> {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null
+  const token = authHeader.slice(7).trim()
+  if (!token || token.length < 32) return null
+
+  // OAuth 2.1 access token (issued via /oauth/token) → resolves to one vendor,
+  // exactly like the sync token. Validated against KV (fast, short TTL).
+  if (isOAuthAccessToken(token)) {
+    const raw = await env.KV.get(await accessTokenKey(token))
+    if (!raw) return null
+    let rec: AccessTokenRecord
+    try {
+      rec = JSON.parse(raw)
+    } catch {
+      return null
+    }
+    if (!rec?.vendor_id) return null
+    return getVendorById(env.DB, rec.vendor_id)
   }
-  return null
+
+  // Legacy bearer sync token (CalDAV/vault/Obsidian/iOS share it).
+  return getVendorByIcalToken(env.DB, token)
 }
 
 /**
@@ -1165,16 +1179,31 @@ async function handleTool(
 
 // ─── MCP endpoint ───
 
+// CORS so browser-based MCP clients / inspectors can call the endpoint and read
+// the 401 WWW-Authenticate that kicks off OAuth discovery. Bearer-authed (no
+// cookies), so a wildcard origin is safe.
+mcp.use('/mcp', async (c, next) => {
+  c.header('Access-Control-Allow-Origin', '*')
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, MCP-Protocol-Version')
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  c.header('Access-Control-Expose-Headers', 'WWW-Authenticate')
+  await next()
+})
+mcp.options('/mcp', (c) => c.body(null, 204))
+
 mcp.post('/mcp', async (c) => {
   const ip = clientIp(c)
   if (await isAuthThrottled(c.env.KV, ip)) {
     return c.json(rpcError(null, -32000, 'Too many failed attempts. Try again later.'), 429)
   }
 
-  const vendor = await authenticateMcp(c.env.DB, c.req.header('Authorization'))
+  const vendor = await authenticateMcp(c.env, c.req.header('Authorization'))
   if (!vendor) {
     if (c.req.header('Authorization')) await recordAuthFailure(c.env.KV, ip)
-    return c.json(rpcError(null, -32000, 'Unauthorized — use Bearer token from Settings > Calendar & Sync'), 401)
+    // Point OAuth-capable clients at the protected-resource metadata so they can
+    // start the authorization flow (RFC 9728 §5.1).
+    c.header('WWW-Authenticate', `Bearer resource_metadata="${c.env.APP_URL}/.well-known/oauth-protected-resource"`)
+    return c.json(rpcError(null, -32000, 'Unauthorized — connect via OAuth (wedding.computer/mcp) or use a Bearer sync token from Settings > Calendar & Sync'), 401)
   }
 
   const pro = await isProVendor(c.env.DB, vendor.id)

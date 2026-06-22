@@ -1069,3 +1069,28 @@ CREATE TABLE IF NOT EXISTS climate_notes (
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_climate_notes_key ON climate_notes(location_key, month);
+
+-- ─── OAuth 2.1 Authorization Server (MCP) — migration 066 ───
+CREATE TABLE IF NOT EXISTS oauth_clients (
+  client_id TEXT PRIMARY KEY,
+  client_secret_hash TEXT,             -- NULL = public client (PKCE only)
+  redirect_uris TEXT NOT NULL,         -- JSON array of exact-match redirect URIs
+  client_name TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS oauth_grants (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
+  client_id TEXT NOT NULL,
+  client_name TEXT,
+  scope TEXT NOT NULL DEFAULT 'mcp',
+  refresh_token_hash TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_used_at TEXT,
+  revoked_at TEXT,
+  UNIQUE(vendor_id, client_id)
+);
+CREATE INDEX IF NOT EXISTS idx_oauth_grants_vendor ON oauth_grants(vendor_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_grants_refresh
+  ON oauth_grants(refresh_token_hash) WHERE refresh_token_hash IS NOT NULL;

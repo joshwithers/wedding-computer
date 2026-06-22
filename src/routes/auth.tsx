@@ -12,6 +12,7 @@ import { activateInvite } from '../services/invite-followups'
 import { getUserById, getUserByEmail, restoreUser } from '../db/users'
 import { hasPasskeys } from '../db/passkeys'
 import { rateLimit } from '../middleware/rate-limit'
+import { consumeOAuthReturn } from './oauth'
 import { auditLog } from '../middleware/audit'
 import {
   generateRegistrationOptions,
@@ -125,6 +126,10 @@ auth.get('/login/verify', async (c) => {
   // If they arrived via a vendor invite, mark it activated (records the
   // conversion against the inviter) and stop the follow-up reminders.
   await activateInvite(c.env, email).catch(() => {})
+
+  // If they came in mid-OAuth (connecting an AI), return to the consent page.
+  const oauthReturn = consumeOAuthReturn(c)
+  if (oauthReturn) return c.redirect(oauthReturn)
 
   const vendor = await getVendorByUserId(c.env.DB, user.id)
   if (vendor) {
@@ -255,6 +260,10 @@ auth.post('/auth/passkey/login/verify', rateLimit(10, 60), async (c) => {
   })
 
   await auditLog(c, 'login', 'user', user.id, { method: 'passkey' }).catch(() => {})
+
+  // Mid-OAuth (connecting an AI) → return to the consent page.
+  const oauthReturn = consumeOAuthReturn(c)
+  if (oauthReturn) return c.json({ redirect: oauthReturn })
 
   const vendor = await getVendorByUserId(c.env.DB, user.id)
   if (vendor) return c.json({ redirect: '/app' })

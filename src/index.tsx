@@ -40,6 +40,7 @@ import webhooks from './routes/webhooks'
 import vaultApi from './routes/vault-api'
 import nativeRoute from './routes/native'
 import mcpRoute from './routes/mcp'
+import oauthRoute from './routes/oauth'
 import apiRoute from './routes/api'
 import publicRoutes from './routes/public'
 import formsRoute from './routes/vendor/forms'
@@ -258,38 +259,37 @@ app.get('/.well-known/api-catalog', (c) => {
   })
 })
 
-// OAuth Protected Resource metadata (RFC 9470)
-app.get('/.well-known/oauth-protected-resource', (c) =>
-  c.json({
-    resource: 'https://wedding.computer',
-    authorization_servers: ['https://wedding.computer'],
+// OAuth 2.0 Protected Resource metadata (RFC 9728) — the MCP endpoint, and
+// which Authorization Server protects it.
+app.get('/.well-known/oauth-protected-resource', (c) => {
+  c.header('Access-Control-Allow-Origin', '*')
+  return c.json({
+    resource: `${c.env.APP_URL}/mcp`,
+    authorization_servers: [c.env.APP_URL],
     bearer_methods_supported: ['header'],
-    scopes_supported: ['read', 'enquiry:write'],
-    resource_documentation: 'https://wedding.computer/auth.md',
-    resource_signing_alg_values_supported: [],
+    scopes_supported: ['mcp'],
+    resource_documentation: `${c.env.APP_URL}/mcp`,
   })
-)
+})
 
-// OAuth Authorization Server metadata (with agent_auth extension)
-app.get('/.well-known/oauth-authorization-server', (c) =>
-  c.json({
-    issuer: 'https://wedding.computer',
-    token_endpoint: 'https://wedding.computer/login',
-    token_endpoint_auth_methods_supported: ['none'],
-    response_types_supported: ['token'],
-    grant_types_supported: ['magic_link'],
-    service_documentation: 'https://wedding.computer/auth.md',
-    agent_auth: {
-      register_uri: 'https://wedding.computer/login',
-      identity_types: ['bearer_token'],
-      credential_types: ['api_key'],
-      claim_url: 'https://wedding.computer/app/settings',
-      revocation_url: 'https://wedding.computer/app/settings',
-      documentation_url: 'https://wedding.computer/auth.md',
-      registration_instructions: 'Sign in at https://wedding.computer/login, then copy your sync token from Settings > Calendar & Sync.',
-    },
+// OAuth 2.1 Authorization Server metadata (RFC 8414) — Authorization Code +
+// PKCE + Dynamic Client Registration. Implemented in src/routes/oauth.tsx.
+app.get('/.well-known/oauth-authorization-server', (c) => {
+  c.header('Access-Control-Allow-Origin', '*')
+  return c.json({
+    issuer: c.env.APP_URL,
+    authorization_endpoint: `${c.env.APP_URL}/oauth/authorize`,
+    token_endpoint: `${c.env.APP_URL}/oauth/token`,
+    registration_endpoint: `${c.env.APP_URL}/oauth/register`,
+    revocation_endpoint: `${c.env.APP_URL}/oauth/revoke`,
+    scopes_supported: ['mcp'],
+    response_types_supported: ['code'],
+    grant_types_supported: ['authorization_code', 'refresh_token'],
+    code_challenge_methods_supported: ['S256'],
+    token_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
+    service_documentation: `${c.env.APP_URL}/mcp`,
   })
-)
+})
 
 // MCP Server Card (SEP-1649)
 app.get('/.well-known/mcp/server-card.json', (c) =>
@@ -447,6 +447,9 @@ function calDavDiscoveryXml(href: string, authHeader: string | undefined, db: D1
 // MCP server
 app.route('/', mcpRoute)
 app.route('/', apiRoute)
+
+// OAuth 2.1 Authorization Server for the MCP endpoint
+app.route('/', oauthRoute)
 
 // Agent discovery (DNS-AID / well-known)
 app.get('/.well-known/agent', (c) =>
