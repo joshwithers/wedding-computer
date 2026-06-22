@@ -37,7 +37,7 @@ export function buildCredits(
     credits.push({
       role,
       name,
-      instagram: m.vendor_instagram,
+      instagram: sanitizeInstagramHandle(m.vendor_instagram),
       website: m.vendor_website,
     })
   }
@@ -51,7 +51,7 @@ export function buildCredits(
     credits.push({
       role,
       name: cv.name,
-      instagram: cv.instagram,
+      instagram: sanitizeInstagramHandle(cv.instagram),
       website: cv.website,
     })
   }

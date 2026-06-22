@@ -318,13 +318,51 @@ admin.get('/admin', async (c) => {
           <p class="text-sm text-gray-500 mb-4">
             One-off: materialise calendar events for every vendor member of every dated wedding, so
             vendors added before the calendar fix see those weddings in their iCal/CalDAV feed. Safe to re-run.
+            Runs in small batches (the whole set in one request exceeds Cloudflare's per-request limit).
           </p>
-          <form method="post" action="/admin/backfill-calendars">
+          <form id="backfill-cal-form">
             <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-            <button type="submit" class="bg-gray-900 text-white rounded-xl px-4 py-2 text-sm font-bold hover:bg-gray-800 transition-colors">
+            <button id="backfill-cal-btn" type="submit" class="bg-gray-900 text-white rounded-xl px-4 py-2 text-sm font-bold hover:bg-gray-800 transition-colors">
               Backfill now
             </button>
           </form>
+          <p id="backfill-cal-status" class="text-sm text-gray-600 mt-3" role="status" aria-live="polite"></p>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `
+            (function () {
+              var form = document.getElementById('backfill-cal-form');
+              if (!form) return;
+              form.addEventListener('submit', async function (e) {
+                e.preventDefault();
+                var btn = document.getElementById('backfill-cal-btn');
+                var status = document.getElementById('backfill-cal-status');
+                var csrf = form.querySelector('input[name=_csrf]').value;
+                btn.disabled = true; btn.style.opacity = '0.6';
+                var after = '', ok = 0, fail = 0, done = false, lastError = '', batches = 0;
+                try {
+                  while (!done) {
+                    var fd = new FormData();
+                    fd.set('_csrf', csrf);
+                    fd.set('after', after);
+                    var res = await fetch('/admin/backfill-calendars', { method: 'POST', body: fd });
+                    if (!res.ok) { status.textContent = 'Request failed (' + res.status + '). Click to resume.'; break; }
+                    var j = await res.json();
+                    ok += j.ok; fail += j.fail; after = j.nextCursor || after; done = !!j.done; batches++;
+                    if (j.lastError) lastError = j.lastError;
+                    status.textContent = 'Synced ' + ok + ', failed ' + fail + ' (' + batches + ' batches)' + (done ? ' — done.' : '…') + (lastError ? ' Last error: ' + lastError : '');
+                    if (!j.batch) break;
+                  }
+                } catch (err) {
+                  status.textContent = 'Stopped: ' + (err && err.message ? err.message : err) + '. Click to resume.';
+                } finally {
+                  btn.disabled = false; btn.style.opacity = '1';
+                }
+              });
+            })();
+          `,
+            }}
+          />
         </section>
 
         <section class="bg-white rounded-2xl p-5 border border-gray-200 mt-6">
@@ -826,27 +864,42 @@ admin.post('/admin/vendor-types/:slug/toggle', async (c) => {
 // One-off: materialise calendar events for EVERY active vendor member of every
 // dated wedding, so vendors added before the add-vendor calendar fix see those
 // weddings in their iCal/CalDAV feed. Idempotent (syncWeddingCalendarEvents upserts).
+//
+// Each wedding's resync is ~8-15 D1 ops; the full set (hundreds of weddings)
+// blows Cloudflare's ~1000-subrequests-per-invocation cap, so we page by id
+// (BATCH per request) and let the admin button auto-chain until `done`.
 admin.post('/admin/backfill-calendars', async (c) => {
+  const BATCH = 40
+  const body = await c.req.parseBody().catch(() => ({} as Record<string, unknown>))
+  const after = typeof body.after === 'string' ? body.after : ''
   const weddings = await c.env.DB
     .prepare(
       `SELECT DISTINCT w.id FROM weddings w
        JOIN wedding_members wm ON wm.wedding_id = w.id
-       WHERE wm.vendor_profile_id IS NOT NULL AND w.date IS NOT NULL`
+       WHERE wm.vendor_profile_id IS NOT NULL AND w.date IS NOT NULL AND w.id > ?1
+       ORDER BY w.id ASC
+       LIMIT ?2`
     )
+    .bind(after, BATCH)
     .all<{ id: string }>()
     .then((r) => r.results)
   let ok = 0
   let fail = 0
+  let lastError = ''
   for (const w of weddings) {
     try {
       await resyncWeddingCalendars(c.env.DB, w.id)
       ok++
-    } catch {
+    } catch (err) {
       fail++
+      lastError = String((err as Error)?.message ?? err)
+      console.error('[backfill-calendars] resync failed', w.id, err)
     }
   }
-  await auditLog(c, 'backfill_calendars', 'system', undefined, { weddings: weddings.length, ok, fail }).catch(() => {})
-  return c.json({ weddings: weddings.length, ok, fail })
+  const done = weddings.length < BATCH
+  const nextCursor = weddings.length ? weddings[weddings.length - 1].id : after
+  await auditLog(c, 'backfill_calendars', 'system', undefined, { batch: weddings.length, ok, fail, done }).catch(() => {})
+  return c.json({ batch: weddings.length, ok, fail, done, nextCursor, lastError: lastError || undefined })
 })
 
 // One-off: normalise any Instagram values that were saved as a URL (or with @)
