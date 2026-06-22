@@ -1229,4 +1229,7 @@ export const el: Dictionary = {
   "weddings.people.saveTypes": "Αποθήκευση",
   "weddings.people.remove": "Αφαίρεση από τον γάμο",
   "weddings.people.removeConfirm": "Αφαίρεση του ατόμου {name} από αυτόν τον γάμο;",
+  "weddings.people.makeManager": "+ Ορισμός ως υπευθύνου",
+  "weddings.people.removeManager": "Αφαίρεση από υπεύθυνο",
+  "weddings.people.lastManager": "Κάθε γάμος χρειάζεται τουλάχιστον έναν υπεύθυνο — ορίστε πρώτα κάποιον άλλον ως υπεύθυνο.",
 }

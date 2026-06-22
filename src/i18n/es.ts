@@ -1254,4 +1254,7 @@ export const es: Dictionary = {
   'weddings.people.saveTypes': 'Guardar',
   'weddings.people.remove': 'Quitar de la boda',
   'weddings.people.removeConfirm': '¿Quitar a {name} de esta boda?',
+  'weddings.people.makeManager': '+ Hacer gestor',
+  'weddings.people.removeManager': 'Quitar como gestor',
+  'weddings.people.lastManager': 'Una boda necesita al menos un gestor — primero haz gestor a otra persona.',
 }

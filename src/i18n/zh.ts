@@ -1252,4 +1252,7 @@ export const zh: Dictionary = {
   "weddings.people.saveTypes": "保存",
   'weddings.people.remove': '移出婚礼',
   'weddings.people.removeConfirm': '确定要将 {name} 移出这场婚礼吗？',
+  'weddings.people.makeManager': '+ 设为管理者',
+  'weddings.people.removeManager': '取消管理者身份',
+  'weddings.people.lastManager': '每场婚礼至少需要一名管理者——请先将其他人设为管理者。',
 }

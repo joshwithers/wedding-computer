@@ -1251,4 +1251,7 @@ export const it: Dictionary = {
   'weddings.people.saveTypes': 'Salva',
   'weddings.people.remove': 'Rimuovi dal matrimonio',
   'weddings.people.removeConfirm': 'Rimuovere {name} da questo matrimonio?',
+  'weddings.people.makeManager': '+ Rendi responsabile',
+  'weddings.people.removeManager': 'Rimuovi come responsabile',
+  'weddings.people.lastManager': 'Un matrimonio necessita di almeno un responsabile — designa prima un altro responsabile.',
 }

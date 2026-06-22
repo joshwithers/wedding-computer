@@ -1252,4 +1252,7 @@ export const nl: Dictionary = {
   'weddings.people.saveTypes': 'Opslaan',
   'weddings.people.remove': 'Uit bruiloft verwijderen',
   'weddings.people.removeConfirm': '{name} uit deze bruiloft verwijderen?',
+  'weddings.people.makeManager': '+ Tot beheerder maken',
+  'weddings.people.removeManager': 'Als beheerder verwijderen',
+  'weddings.people.lastManager': 'Een bruiloft heeft minstens één beheerder nodig — maak eerst iemand anders beheerder.',
 }

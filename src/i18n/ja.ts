@@ -1225,4 +1225,7 @@ export const ja: Dictionary = {
   'weddings.people.saveTypes': '保存',
   'weddings.people.remove': '結婚式から削除',
   'weddings.people.removeConfirm': '{name} をこの結婚式から削除しますか？',
+  'weddings.people.makeManager': '+ マネージャーにする',
+  'weddings.people.removeManager': 'マネージャーから外す',
+  'weddings.people.lastManager': '結婚式には少なくとも 1 人のマネージャーが必要です — 先にほかの人をマネージャーにしてください。',
 }

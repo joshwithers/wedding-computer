@@ -1238,4 +1238,7 @@ export const de: Dictionary = {
   'weddings.people.saveTypes': 'Speichern',
   'weddings.people.remove': 'Aus der Hochzeit entfernen',
   'weddings.people.removeConfirm': '{name} aus dieser Hochzeit entfernen?',
+  'weddings.people.makeManager': '+ Zum Verwalter machen',
+  'weddings.people.removeManager': 'Als Verwalter entfernen',
+  'weddings.people.lastManager': 'Eine Hochzeit braucht mindestens einen Verwalter – machen Sie zuerst jemand anderen zum Verwalter.',
 }

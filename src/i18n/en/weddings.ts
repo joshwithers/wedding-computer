@@ -163,6 +163,9 @@ export const weddings = {
   'weddings.people.saveTypes': 'Save',
   'weddings.people.remove': 'Remove from wedding',
   'weddings.people.removeConfirm': 'Remove {name} from this wedding?',
+  'weddings.people.makeManager': '+ Make manager',
+  'weddings.people.removeManager': 'Remove as manager',
+  'weddings.people.lastManager': 'A wedding needs at least one manager — make someone else a manager first.',
 
   // Vendor profile
   'weddings.profile.breadcrumbVendor': 'Vendor',

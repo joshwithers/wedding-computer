@@ -855,6 +855,40 @@ weddings.post('/app/weddings/:id/members/:userId/remove', rateLimit(30, 60), asy
   return c.redirect(`/app/weddings/${weddingId}?removed=1`)
 })
 
+// ─── Grant/revoke wedding-manager (can_manage) for a member (manager-only) ───
+weddings.post('/app/weddings/:id/members/:userId/manage', rateLimit(60, 60), async (c) => {
+  const user = c.get('user')
+  const weddingId = c.req.param('id')
+  const targetUserId = c.req.param('userId')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership || !membership.can_manage) return c.text('Not found', 404)
+
+  const target = await getMembership(c.env.DB, weddingId, targetUserId)
+  if (!target) return c.text('Not found', 404)
+
+  const body = await c.req.parseBody()
+  const grant = body.manage === '1'
+
+  if (!grant) {
+    // Never leave a wedding with zero managers (lock-out). Grant someone else
+    // first, then demote.
+    const managers = await c.env.DB
+      .prepare("SELECT COUNT(*) AS n FROM wedding_members WHERE wedding_id = ? AND status = 'active' AND can_manage = 1")
+      .bind(weddingId)
+      .first<{ n: number }>()
+    if ((managers?.n ?? 0) <= 1) {
+      return c.redirect(`/app/weddings/${weddingId}?error=last_manager`)
+    }
+  }
+
+  await c.env.DB
+    .prepare("UPDATE wedding_members SET can_manage = ? WHERE wedding_id = ? AND user_id = ?")
+    .bind(grant ? 1 : 0, weddingId, targetUserId)
+    .run()
+  return c.redirect(`/app/weddings/${weddingId}`)
+})
+
 // ─── Wedding detail ───
 weddings.get('/app/weddings/:id', async (c) => {
   const user = c.get('user')
@@ -877,6 +911,7 @@ weddings.get('/app/weddings/:id', async (c) => {
   const days = wedding.date ? daysUntil(wedding.date) : null
   const hasCoupleOrGuest = allMembers.some((m) => m.role === 'couple' || m.role === 'guest')
   const invited = c.req.query('invited')
+  const flashError = c.req.query('error') === 'last_manager' ? t('weddings.people.lastManager') : null
 
   const canManage = !!membership.can_manage
   // When vendors are hidden from one another, a non-manager still sees the
@@ -952,6 +987,9 @@ weddings.get('/app/weddings/:id', async (c) => {
       csrfToken={c.get('csrfToken')}
     >
       <div class="max-w-3xl">
+        {flashError && (
+          <div class="mb-4 bg-grapefruit-50 border border-grapefruit-200 text-grapefruit-700 text-sm rounded-xl px-4 py-2.5">{flashError}</div>
+        )}
         <div class="flex items-start justify-between mb-6">
           <div>
             <p class="text-sm text-gray-500 mb-1">
@@ -1172,8 +1210,24 @@ weddings.get('/app/weddings/:id', async (c) => {
                       ) : (
                         <span class="text-xs text-gray-500">{roleLabel}</span>
                       )}
-                      {!!m.can_manage && (
-                        <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">{t('weddings.detail.managerBadge')}</span>
+                      {canManage && isVendor ? (
+                        m.can_manage ? (
+                          <form method="post" action={`${basePath}/members/${m.user_id}/manage`} class="flex">
+                            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                            <input type="hidden" name="manage" value="0" />
+                            <button type="submit" title={t('weddings.people.removeManager')} class="text-[10px] font-bold text-horizon-700 bg-horizon-50 hover:bg-grapefruit-50 hover:text-grapefruit-700 px-1.5 py-0.5 rounded transition-colors">{t('weddings.detail.managerBadge')}</button>
+                          </form>
+                        ) : (
+                          <form method="post" action={`${basePath}/members/${m.user_id}/manage`} class="flex">
+                            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                            <input type="hidden" name="manage" value="1" />
+                            <button type="submit" class="text-[10px] font-medium text-gray-400 hover:text-horizon-600 px-1.5 py-0.5 rounded transition-colors">{t('weddings.people.makeManager')}</button>
+                          </form>
+                        )
+                      ) : (
+                        !!m.can_manage && (
+                          <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">{t('weddings.detail.managerBadge')}</span>
+                        )
                       )}
                       {canManage && isVendor && m.user_id !== user.id && (
                         <form
