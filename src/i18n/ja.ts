@@ -71,6 +71,7 @@ export const ja: Dictionary = {
   'dashboard.noContactsYet': '連絡先はまだありません',
   'dashboard.welcome': 'ようこそ、{name} さん 👋',
   'dashboard.setup.title': '初期設定',
+  'weddings.vendorType.any': '種類（任意）',
   'dashboard.demo.addTitle': 'Wedding Computer にサンプルの結婚式を読み込む',
   'dashboard.demo.addBlurb': '1 週間分のサンプルを読み込みます — 結婚式 3 件と、その事業者チーム、当日のタイムラインやメモ、さらに新着の問い合わせがいくつか。いつでも削除できます。',
   'dashboard.demo.addCta': 'サンプルデータを読み込む',

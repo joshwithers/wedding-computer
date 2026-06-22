@@ -71,6 +71,7 @@ export const pt: Dictionary = {
   'dashboard.noContactsYet': 'Ainda não há contatos',
   'dashboard.welcome': 'Boas-vindas, {name} 👋',
   'dashboard.setup.title': 'Configure sua conta',
+  'weddings.vendorType.any': 'Tipo (opcional)',
   'dashboard.demo.addTitle': 'Carregue alguns casamentos de demonstração no seu Wedding Computer',
   'dashboard.demo.addBlurb': 'Carregue uma semana de exemplo — 3 casamentos, suas equipes de fornecedores, planilhas de execução e notas, além de algumas consultas novas. Remova quando quiser.',
   'dashboard.demo.addCta': 'Carregar dados de exemplo',

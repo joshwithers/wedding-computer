@@ -30,4 +30,5 @@ export const weddings = {
   'weddings.couple.text': 'Text',
   'weddings.couple.copy': 'Copy',
   'weddings.couple.editContact': 'Edit contact',
+  'weddings.vendorType.any': 'Type (optional)',
 } as const

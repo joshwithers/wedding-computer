@@ -71,6 +71,7 @@ export const el: Dictionary = {
   'dashboard.noContactsYet': 'Δεν υπάρχουν επαφές ακόμα',
   'dashboard.welcome': 'Καλώς ήρθατε, {name} 👋',
   'dashboard.setup.title': 'Ας το στήσουμε',
+  'weddings.vendorType.any': 'Τύπος (προαιρετικό)',
   'dashboard.demo.addTitle': 'Φορτώστε μερικούς δοκιμαστικούς γάμους στο Wedding Computer',
   'dashboard.demo.addBlurb': 'Φορτώστε μια δοκιμαστική εβδομάδα — 3 γάμους, τις ομάδες προμηθευτών τους, τα run sheets και τις σημειώσεις τους, μαζί με μερικά φρέσκα ερωτήματα. Αφαιρέστε τα όποτε θέλετε.',
   'dashboard.demo.addCta': 'Φόρτωση δοκιμαστικών δεδομένων',

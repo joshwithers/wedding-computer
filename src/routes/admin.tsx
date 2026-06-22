@@ -18,6 +18,7 @@ import { getBroadcastRecipients, getBroadcastCountries, createBroadcast } from '
 import { countWaitlist, getWaitlistStats, getWaitlistCountryBreakdown, listWaitlist, listWaitlistForExport } from '../db/waitlist'
 import { makeUnsubscribeToken, unsubscribeUrl } from '../services/notification-prefs'
 import { auditLog } from '../middleware/audit'
+import { listVendorTypes, addVendorType, setVendorTypeActive, vendorTypeLabel } from '../db/vendor-types'
 
 const admin = new Hono<Env>()
 
@@ -45,6 +46,7 @@ const AdminLayout: FC<PropsWithChildren<{ title?: string; user: User; csrfToken:
             <a href="/admin/broadcast" class="text-sm text-gray-400 hover:text-white">Broadcast</a>
             <a href="/admin/gifts" class="text-sm text-gray-400 hover:text-white">Gifts</a>
             <a href="/admin/coupons" class="text-sm text-gray-400 hover:text-white">Coupons</a>
+            <a href="/admin/vendor-types" class="text-sm text-gray-400 hover:text-white">Vendor types</a>
             <a href="/app" class="text-sm text-gray-400 hover:text-white">Back to app</a>
             <span class="text-sm text-gray-500">{user.email}</span>
           </div>
@@ -688,6 +690,93 @@ admin.post('/admin/coupons/:id/deactivate', async (c) => {
   await auditLog(c, 'deactivate_coupon', 'coupon', id, {}).catch(() => {})
   if (!res.ok) return c.redirect('/admin/coupons?error=' + encodeURIComponent('Couldn’t deactivate that code.'))
   return c.redirect('/admin/coupons?deactivated=1')
+})
+
+// ─── Vendor types (the "type of vendor" dropdown when adding a vendor) ───
+
+admin.get('/admin/vendor-types', async (c) => {
+  const user = c.get('user')
+  const csrfToken = c.get('csrfToken')
+  const added = c.req.query('added')
+  const error = c.req.query('error')
+  const types = await listVendorTypes(c.env.DB, { includeInactive: true })
+
+  return c.html(
+    <AdminLayout title="Vendor types" user={user} csrfToken={csrfToken}>
+      <div class="space-y-8 max-w-2xl">
+        <div>
+          <h1 class="text-2xl font-bold">Vendor types</h1>
+          <p class="text-sm text-gray-500 mt-1">
+            The approved “type of vendor” options shown when a vendor is added to a wedding.
+            Removing a type hides it from the dropdown; weddings already using it are unaffected.
+          </p>
+        </div>
+
+        {added && (
+          <div class="bg-green-50 border border-green-200 text-green-800 text-sm rounded-xl p-3">
+            Added <strong>{added}</strong>.
+          </div>
+        )}
+        {error && <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3">{error}</div>}
+
+        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-gray-200">
+          <form method="post" action="/admin/vendor-types" class="flex gap-3 items-end">
+            <input type="hidden" name="_csrf" value={csrfToken} />
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="label">Add a type</label>
+              <input type="text" id="label" name="label" required maxlength={60} placeholder="e.g. Drone operator" autocomplete="off"
+                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              <p class="text-xs text-gray-400 mt-1">Becomes a lowercase slug, e.g. “drone operator”.</p>
+            </div>
+            <button type="submit" class="bg-gray-900 text-white rounded-xl px-6 py-2.5 text-sm font-bold hover:bg-gray-800 transition-colors">Add</button>
+          </form>
+        </div>
+
+        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-gray-200">
+          <h2 class="text-lg font-bold mb-4">All types</h2>
+          <div class="divide-y divide-gray-100">
+            {types.map((vt) => (
+              <div class="py-3 flex items-center justify-between gap-4 text-sm">
+                <div class="min-w-0">
+                  <p class="font-bold text-gray-900">
+                    {vendorTypeLabel(vt)}
+                    {vt.active === 0 && <span class="ml-2 text-[10px] font-bold uppercase tracking-wide text-gray-400 bg-gray-100 rounded px-1.5 py-0.5">removed</span>}
+                    {vt.is_system === 1 && <span class="ml-2 text-[10px] font-bold uppercase tracking-wide text-horizon-700 bg-horizon-50 rounded px-1.5 py-0.5">default</span>}
+                  </p>
+                  <p class="text-xs text-gray-400 font-mono">{vt.slug}</p>
+                </div>
+                <form method="post" action={`/admin/vendor-types/${encodeURIComponent(vt.slug)}/toggle`} class="shrink-0">
+                  <input type="hidden" name="_csrf" value={csrfToken} />
+                  <input type="hidden" name="active" value={vt.active === 1 ? '0' : '1'} />
+                  <button type="submit" class={`text-xs border rounded-lg px-2.5 py-1.5 ${vt.active === 1 ? 'text-gray-400 hover:text-red-600 border-gray-200' : 'text-horizon-700 hover:text-horizon-800 border-horizon-200'}`}>
+                    {vt.active === 1 ? 'Remove' : 'Restore'}
+                  </button>
+                </form>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </AdminLayout>
+  )
+})
+
+admin.post('/admin/vendor-types', async (c) => {
+  const body = await c.req.parseBody()
+  const label = String(body.label || '').trim()
+  const res = await addVendorType(c.env.DB, label)
+  if (!res.ok) return c.redirect('/admin/vendor-types?error=' + encodeURIComponent(res.error || 'Could not add that type.'))
+  await auditLog(c, 'add_vendor_type', 'vendor_type', res.slug, { label }).catch(() => {})
+  return c.redirect('/admin/vendor-types?added=' + encodeURIComponent(label))
+})
+
+admin.post('/admin/vendor-types/:slug/toggle', async (c) => {
+  const slug = c.req.param('slug')
+  const body = await c.req.parseBody()
+  const active = String(body.active) === '1'
+  await setVendorTypeActive(c.env.DB, slug, active)
+  await auditLog(c, active ? 'restore_vendor_type' : 'remove_vendor_type', 'vendor_type', slug, {}).catch(() => {})
+  return c.redirect('/admin/vendor-types')
 })
 
 // ─── Waitlist ───

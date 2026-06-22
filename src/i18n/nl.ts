@@ -71,6 +71,7 @@ export const nl: Dictionary = {
   'dashboard.noContactsYet': 'Nog geen contacten',
   'dashboard.welcome': 'Welkom, {name} 👋',
   'dashboard.setup.title': 'Stel je account in',
+  'weddings.vendorType.any': 'Type (optioneel)',
   'dashboard.demo.addTitle': 'Laad een paar voorbeeldbruiloften in je Wedding Computer',
   'dashboard.demo.addBlurb': 'Laad een voorbeeldweek — 3 bruiloften, hun leveranciersteams, runsheets en notities, plus een paar verse aanvragen. Je kunt het altijd weer verwijderen.',
   'dashboard.demo.addCta': 'Voorbeeldgegevens laden',

@@ -28,6 +28,7 @@ import { formatDate, formatDateTime, formatTime, daysUntil, addHoursToTime } fro
 import { createEvent } from '../../db/calendar'
 import { resyncWeddingCalendars } from '../../services/wedding-calendar'
 import { track } from '../../services/analytics'
+import { listVendorTypes, vendorTypeLabel } from '../../db/vendor-types'
 import { geocodeWeddingLocation } from '../../services/geocode'
 import { getWeddingTodo, upsertWeddingTodo } from '../../db/todos'
 import { listTemplates, getDefaultTemplate } from '../../db/todos'
@@ -697,6 +698,8 @@ weddings.get('/app/weddings/:id', async (c) => {
 
   // Invoices for this wedding
   const weddingInvoices = await listInvoicesForWedding(c.env.DB, vendor.id, weddingId)
+  // Approved vendor types for the "type of vendor" dropdown (admin-managed).
+  const vendorTypes = canManage ? await listVendorTypes(c.env.DB) : []
   // Find the linked contact — drives the "new invoice" link and the couple panel
   const linkedContact = await c.env.DB
     .prepare(
@@ -1089,13 +1092,16 @@ weddings.get('/app/weddings/:id', async (c) => {
                     class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
                   />
                 </div>
-                <div class="min-w-[100px]">
-                  <input
-                    type="text"
+                <div class="min-w-[140px]">
+                  <select
                     name="vendor_role"
-                    placeholder="e.g. photographer"
                     class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
-                  />
+                  >
+                    <option value="">{t('weddings.vendorType.any')}</option>
+                    {vendorTypes.map((vt) => (
+                      <option value={vt.slug}>{vendorTypeLabel(vt)}</option>
+                    ))}
+                  </select>
                 </div>
                 <button
                   type="submit"
