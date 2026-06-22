@@ -871,8 +871,8 @@ admin.get('/admin/businesses', async (c) => {
     <AdminLayout title="Businesses" user={user} csrfToken={c.get('csrfToken')}>
       <div class="space-y-6">
         <div>
-          <h1 class="text-2xl font-bold">Businesses</h1>
-          <p class="text-sm text-gray-500 mt-1">Edit a vendor's public brand details — name, links, location, bio. Account settings stay with the vendor.</p>
+          <h1 class="text-2xl font-bold">Businesses <span class="text-gray-400 font-normal text-lg">({businesses.length}{q ? ' matching' : ''})</span></h1>
+          <p class="text-sm text-gray-500 mt-1">Edit a vendor's public brand details — name, links, location, directory listing, logo, bio. Account settings stay with the vendor.</p>
         </div>
         <form method="get" action="/admin/businesses" class="flex gap-2">
           <input
@@ -1003,10 +1003,45 @@ admin.get('/admin/businesses/:id', async (c) => {
             <label class="block text-sm font-medium text-gray-700 mb-1" for="bio">Bio</label>
             <textarea id="bio" name="bio" rows={4} class={field}>{vendor.bio ?? ''}</textarea>
           </div>
+          <div class="flex flex-wrap gap-x-6 gap-y-2 pt-1">
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" name="directory_listed" value="1" checked={!!vendor.directory_listed} class="rounded border-gray-300 text-gray-900 focus:ring-gray-900" />
+              Listed in the public directory
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" name="is_agency" value="1" checked={vendor.is_agency === 1} class="rounded border-gray-300 text-gray-900 focus:ring-gray-900" />
+              Agency (manages a team)
+            </label>
+          </div>
           <div class="flex justify-end">
             <button type="submit" class="bg-gray-900 text-white rounded-xl px-5 py-2.5 text-sm font-bold hover:bg-gray-800 transition-colors">Save business</button>
           </div>
         </form>
+
+        <div class="bg-white rounded-2xl border border-gray-200 p-5">
+          <h2 class="text-sm font-bold text-gray-900 mb-1">Logo</h2>
+          <p class="text-xs text-gray-500 mb-4">Square logo shown across the directory + public pages.</p>
+          <div class="flex items-center gap-4 flex-wrap">
+            <div class="w-16 h-16 rounded-2xl bg-gray-50 border border-gray-200 overflow-hidden flex items-center justify-center shrink-0">
+              {vendor.logo_r2_key ? (
+                <img src={`/vendor-logo/${vendor.id}`} alt="Logo" class="w-full h-full object-cover" />
+              ) : (
+                <span class="text-gray-400 text-xs">None</span>
+              )}
+            </div>
+            <form method="post" action={`/admin/businesses/${vendor.id}/logo`} enctype="multipart/form-data" class="flex items-center gap-2">
+              <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+              <input type="file" name="logo" accept="image/png,image/jpeg,image/webp" required class="text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm file:font-bold hover:file:bg-gray-200" />
+              <button type="submit" class="bg-gray-900 text-white rounded-xl px-3 py-2 text-sm font-bold hover:bg-gray-800 transition-colors shrink-0">Upload</button>
+            </form>
+            {vendor.logo_r2_key && (
+              <form method="post" action={`/admin/businesses/${vendor.id}/logo/remove`}>
+                <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                <button type="submit" class="text-xs text-gray-400 hover:text-red-600 transition-colors">Remove logo</button>
+              </form>
+            )}
+          </div>
+        </div>
       </div>
     </AdminLayout>
   )
@@ -1041,8 +1076,38 @@ admin.post('/admin/businesses/:id', async (c) => {
     location_state: str(body.location_state) || null,
     location_country: str(body.location_country) || null,
     bio: str(body.bio) || null,
+    directory_listed: body.directory_listed === '1' ? 1 : 0,
+    is_agency: body.is_agency === '1' ? 1 : 0,
   })
   await auditLog(c, 'admin_edit_business', 'vendor', id, { business_name: businessName }).catch(() => {})
+  return c.redirect(`/admin/businesses/${id}?saved=1`)
+})
+
+// Admin logo upload/remove for a business (mirrors the vendor's own settings).
+admin.post('/admin/businesses/:id/logo', async (c) => {
+  const id = c.req.param('id')
+  const vendor = await getVendorById(c.env.DB, id)
+  if (!vendor) return c.notFound()
+  const body = await c.req.parseBody()
+  const file = body.logo
+  if (!file || !(file instanceof File) || file.size === 0) return c.redirect(`/admin/businesses/${id}?error=logo`)
+  if (file.size > 5 * 1024 * 1024) return c.redirect(`/admin/businesses/${id}?error=logosize`)
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) return c.redirect(`/admin/businesses/${id}?error=logotype`)
+  if (!c.env.STORAGE) return c.redirect(`/admin/businesses/${id}?error=storage`)
+  const r2Key = `vendor-logos/${id}.png`
+  await c.env.STORAGE.put(r2Key, file.stream(), { httpMetadata: { contentType: file.type } })
+  await updateVendor(c.env.DB, id, { logo_r2_key: r2Key })
+  await auditLog(c, 'admin_update_logo', 'vendor', id, {}).catch(() => {})
+  return c.redirect(`/admin/businesses/${id}?saved=1`)
+})
+
+admin.post('/admin/businesses/:id/logo/remove', async (c) => {
+  const id = c.req.param('id')
+  const vendor = await getVendorById(c.env.DB, id)
+  if (!vendor) return c.notFound()
+  if (vendor.logo_r2_key && c.env.STORAGE) await c.env.STORAGE.delete(vendor.logo_r2_key).catch(() => {})
+  await updateVendor(c.env.DB, id, { logo_r2_key: null })
+  await auditLog(c, 'admin_remove_logo', 'vendor', id, {}).catch(() => {})
   return c.redirect(`/admin/businesses/${id}?saved=1`)
 })
 

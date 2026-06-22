@@ -78,7 +78,7 @@ export type AdminVendorRow = {
 export async function listVendorsForAdmin(
   db: D1Database,
   q?: string,
-  limit = 50
+  limit = 1000
 ): Promise<AdminVendorRow[]> {
   const term = (q ?? '').trim()
   if (term) {
@@ -96,13 +96,15 @@ export async function listVendorsForAdmin(
       .all<AdminVendorRow>()
     return res.results
   }
+  // No search: list every business alphabetically (admin-only; the old
+  // created_at DESC + small limit hid the earliest-created businesses).
   const res = await db
     .prepare(
       `SELECT vp.id, vp.business_name, vp.category, vp.instagram, vp.website,
               vp.location_city, vp.location_state, u.email AS user_email
        FROM vendor_profiles vp JOIN users u ON u.id = vp.user_id
        WHERE u.deleted_at IS NULL
-       ORDER BY vp.created_at DESC
+       ORDER BY vp.business_name COLLATE NOCASE ASC
        LIMIT ?1`
     )
     .bind(limit)
