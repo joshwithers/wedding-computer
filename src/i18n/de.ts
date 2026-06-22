@@ -266,6 +266,7 @@ export const de: Dictionary = {
   'marketing.agent.viewDataFormat.desc': 'Lesen Sie die Spezifikation für das offene Klartext-Datenformat, um zu erfahren, wie Kontakte und Hochzeiten als Markdown-Dateien gespeichert werden.',
   'marketing.agent.viewMcpServer.desc': 'Rufen Sie die MCP-Serverkonfiguration ab, um KI-Agenten mit Wedding Computer zu verbinden.',
   'marketing.agent.viewMcpServer.auth': 'Bearer-Token unter Einstellungen > Kalender & Synchronisierung.',
+  'marketing.mcp.connectGuide': 'So verbinden Sie Ihre KI →',
   'marketing.home.hero.badge': 'Kostenlos starten – Offene Daten',
   'marketing.home.hero.primaryCta': 'Starten Sie kostenlos durch',
   'marketing.home.hero.secondaryCta': 'Sehen Sie, wie es funktioniert',

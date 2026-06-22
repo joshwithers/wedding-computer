@@ -280,6 +280,7 @@ export const it: Dictionary = {
   "marketing.agent.viewDataFormat.desc": "Leggi le specifiche del formato dati di testo semplice aperto per informazioni su come i contatti e i matrimoni vengono archiviati come file markdown.",
   "marketing.agent.viewMcpServer.desc": "Ottieni la configurazione del server MCP per connettere gli agenti AI a Wedding Computer.",
   "marketing.agent.viewMcpServer.auth": "Gettone al portatore da Settings > Calendar & Sync",
+  "marketing.mcp.connectGuide": "Come collegare la tua AI →",
   "marketing.home.hero.badge": "Gratis per iniziare - Dati aperti",
   "marketing.home.hero.titleLine1": "Facciamo sedere tutti i fornitori di matrimonio allo stesso tavolo.",
   "marketing.home.hero.titleLine2": "Wedding Computer è uno spazio di lavoro condiviso e intelligente per l'intero matrimonio.",

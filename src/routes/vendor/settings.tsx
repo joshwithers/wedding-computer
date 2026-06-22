@@ -889,6 +889,10 @@ settings.get('/app/settings', async (c) => {
                     Your iCal feed URL:{' '}
                     <code class="break-all select-all">{`${c.env.APP_URL}/cal/${revealedToken}`}</code>
                   </p>
+                  <p class="text-xs text-gray-500 mt-2">
+                    Connect an AI assistant (Claude Code):{' '}
+                    <code class="break-all select-all">{`claude mcp add --transport http wedding-computer ${c.env.APP_URL}/mcp --header "Authorization: Bearer ${revealedToken}"`}</code>
+                  </p>
                 </div>
               )}
               {vendor.ical_token ? (
@@ -924,6 +928,22 @@ settings.get('/app/settings', async (c) => {
                       Browse → "Wedding Computer Sync") and paste your sync token. Your contacts,
                       weddings, and checklists become editable markdown files — changes sync both ways
                       on desktop and mobile.
+                    </p>
+                  </div>
+                  <div class="bg-gray-50 rounded-xl p-4">
+                    <p class="text-xs font-bold text-gray-700 mb-1">AI assistants (MCP)</p>
+                    <p class="text-xs text-gray-500 mb-2">
+                      Connect Claude, Cursor, or any MCP client to read and update your weddings, run
+                      sheets, contacts, and notes in plain language. In Claude Code:
+                    </p>
+                    <code class="block text-[11px] text-gray-700 bg-white rounded-lg p-2 break-all select-all">
+                      {`claude mcp add --transport http wedding-computer ${c.env.APP_URL}/mcp --header "Authorization: Bearer <your-sync-token>"`}
+                    </code>
+                    <p class="text-xs text-gray-500 mt-2">
+                      Full setup for Claude Desktop, Cursor and others:{' '}
+                      <a href="/mcp" target="_blank" rel="noopener" class="font-medium text-horizon-600 hover:underline">
+                        wedding.computer/mcp
+                      </a>
                     </p>
                   </div>
                   {!revealedToken && (

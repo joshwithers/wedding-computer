@@ -308,6 +308,7 @@ export const zh: Dictionary = {
   "marketing.home.ai.example4.q": "把仪式改到下午 3 点。",
   "marketing.home.ai.example4.a": "它遵循与您相同的规则：如果时间线由策划师管理，这项更改会发送给他们审批。",
   "marketing.home.ai.note": "在 iPhone、iPad 和 Mac 上为 Siri 和 Apple Intelligence 内建支持。更想用 Claude、ChatGPT、Cursor 或您自己的智能体？接入任何支持 MCP 的工具即可——可选，且已包含在 Pro 中。",
+  "marketing.mcp.connectGuide": "如何连接您的 AI →",
   "marketing.home.pillar.market.title": "了解您的市场",
   "marketing.home.pillar.market.desc": "匿名需求分数显示您所在地区任何日期的查询和预订的需求程度，这是酒店和航空公司一直拥有的情报。决定要追逐哪些日期，以及对它们收取什么费用。",
   "marketing.home.collab.title": "一场婚礼，一个地方，大家在一起",

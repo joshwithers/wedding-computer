@@ -422,7 +422,8 @@ function AboutPage() {
         <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.about.ai.title')}</h2>
         <p class="text-gray-500 text-sm mb-6">{t('marketing.about.ai.subtitle')}</p>
         <CopyParagraphs keys={ABOUT_AI_PARAGRAPHS} className="space-y-4 text-gray-600 leading-relaxed mb-6" />
-        <div class="space-y-3 mb-12">{ABOUT_AI_FEATURES.map((feature) => <AboutFeature title={t(feature.title)} desc={t(feature.desc)} />)}</div>
+        <div class="space-y-3 mb-6">{ABOUT_AI_FEATURES.map((feature) => <AboutFeature title={t(feature.title)} desc={t(feature.desc)} />)}</div>
+        <p class="text-gray-600 leading-relaxed mb-12"><a href="/mcp" class="text-horizon-700 font-bold hover:underline">{t('marketing.mcp.connectGuide')}</a></p>
         {ABOUT_MORE_SECTIONS.map((section) => <PageFeatureSection section={section} />)}
         <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.about.openData.title')}</h2>
         <CopyParagraphs keys={ABOUT_OPEN_DATA_PARAGRAPHS} className="space-y-4 text-gray-600 leading-relaxed mb-6" />

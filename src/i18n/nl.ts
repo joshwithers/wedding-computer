@@ -573,6 +573,7 @@ export const nl: Dictionary = {
   "marketing.about.openData.p2": "Openheid stopt waar uw veiligheid begint. Elke toegang wordt voor u geverifieerd en afgestemd: ondertekende sessies, synchronisatietokens per apparaat, in de tijd beperkte ondertekende URL's voor documenten en strikte tenant-isolatie bij elke query.",
   "marketing.about.openData.standardLink": "Lees de open-formaatspecificatie",
   "marketing.about.openData.pluginLink": "Download de plug-in Obsidian",
+  "marketing.mcp.connectGuide": "Je AI verbinden →",
   "marketing.about.cta.title": "Klaar om het te proberen?",
   "marketing.about.cta.body": "Koppels betalen nooit, en leveranciers beginnen gratis. Geen creditcard. Binnen een minuut opgezet.",
   "marketing.about.pricing": "De prijzen zijn al net zo eenvoudig: koppels betalen nooit, voor niets, nooit. Leveranciers beginnen gratis — inclusief tot 12 actieve bruiloften tegelijk, waarbij voltooide bruiloften automatisch een plek vrijmaken. Pro is $28 AUD per maand voor onbeperkte bruiloften plus analytics en AI.",

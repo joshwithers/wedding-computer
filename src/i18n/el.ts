@@ -266,6 +266,7 @@ export const el: Dictionary = {
   'marketing.agent.viewDataFormat.desc': 'Διαβάστε την προδιαγραφή για την ανοιχτή μορφή δεδομένων απλού κειμένου και δείτε πώς αποθηκεύονται οι επαφές και οι γάμοι ως αρχεία Markdown.',
   'marketing.agent.viewMcpServer.desc': 'Λάβετε τη διαμόρφωση MCP server για να συνδέσετε AI agents με το Wedding Computer.',
   'marketing.agent.viewMcpServer.auth': 'Bearer token από Ρυθμίσεις > Ημερολόγιο & Συγχρονισμός.',
+  'marketing.mcp.connectGuide': 'Πώς να συνδέσετε το AI σας →',
   'marketing.home.hero.badge': 'Δωρεάν για να ξεκινήσετε - Ανοιχτά δεδομένα',
   'marketing.home.hero.titleLine1': 'Βάζουμε όλους τους επαγγελματίες του γάμου στο ίδιο τραπέζι.',
   'marketing.home.hero.titleLine2': 'Το Wedding Computer είναι ένας έξυπνος, κοινός χώρος εργασίας για ολόκληρο τον γάμο.',

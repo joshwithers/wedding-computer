@@ -27,6 +27,7 @@ import { clientIp, isAuthThrottled, recordAuthFailure, consumeRateLimit } from '
 import { getMembership } from '../db/weddings'
 import { isDocScope, canReadDoc, canWriteDoc } from '../services/doc-permissions'
 import { getDoc, appendToDoc } from '../db/wedding-docs'
+import { McpDocsPage } from '../views/mcp-docs'
 
 const mcp = new Hono<Env>()
 
@@ -1266,13 +1267,18 @@ mcp.post('/mcp', async (c) => {
   }
 })
 
-// GET for MCP SSE endpoint (required by spec for session init)
+// GET /mcp — content-negotiated. Browsers (Accept: text/html) get the human
+// setup guide; MCP clients / curl get the JSON server descriptor the spec
+// expects for session init.
 mcp.get('/mcp', (c) => {
+  if ((c.req.header('Accept') ?? '').includes('text/html')) {
+    return c.html(<McpDocsPage />)
+  }
   return c.json({
     name: 'wedding-computer',
     version: '1.0.0',
     description: 'Read and update your Wedding Computer contacts, weddings, run sheets, checklists, private notes, and calendar via MCP.',
-    instructions: 'Authenticate with Bearer token from Settings > Calendar & Sync.',
+    instructions: 'Authenticate with Bearer token from Settings > Calendar & Sync. Setup guide: https://wedding.computer/mcp',
   })
 })
 

@@ -305,6 +305,7 @@ export const marketing = {
   'marketing.about.openData.p2': 'Openness stops where your security starts. Every way in is authenticated and scoped to you: signed sessions, per-device sync tokens, time-limited signed URLs for documents, and strict tenant isolation on every query.',
   'marketing.about.openData.standardLink': 'Read the open format spec',
   'marketing.about.openData.pluginLink': 'Get the Obsidian plugin',
+  'marketing.mcp.connectGuide': 'How to connect your AI →',
   'marketing.about.cta.title': 'Ready to try it?',
   'marketing.about.pricing': 'The pricing is just as simple: couples never pay, ever. Vendors are free to start — including up to 12 active weddings at a time, with finished weddings freeing up a slot automatically. Pro is $28 AUD/month for unlimited weddings plus analytics and AI.',
   'marketing.about.cta.body': 'Couples never pay, and vendors start free. No credit card. Set up in under a minute.',

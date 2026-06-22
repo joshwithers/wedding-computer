@@ -353,6 +353,7 @@ export const ja: Dictionary = {
   "marketing.home.feature.runsheet.desc": "結婚式の日ごとに詳細なタイムラインを作成します。 AI が結婚式の詳細からスタート ラン シートを生成し、時間、場所、割り当てをカスタマイズします。",
   "marketing.home.feature.mcp.title": "Siri、Apple Intelligence、AI アクセス",
   "marketing.home.feature.mcp.desc": "Siri や Apple Intelligence を使って、結婚式について尋ねたり、実行シート、チェックリスト、メモを音声で更新したりできます。お好みの AI を使いたい場合は、Claude、ChatGPT、Cursor、または Model Context Protocol に対応する任意のツールを接続できます。任意であり、常にアプリと同じ権限ルールのもとで動作します。 Pro 機能。",
+  "marketing.mcp.connectGuide": "AI の接続方法 →",
   "marketing.home.feature.standard.title": "サイロではなくオープンスタンダード",
   "marketing.home.feature.standard.desc": "ファイルは、どのツールでも実装できる CC0 パブリック ドメイン仕様である Wedding CRM Markdown Standard に従っています。 CalDAV、CardDAV、iCal 経由で同期したり、__​​WC5__ 経由で AI に接続したり、公式 Obsidian プラグインを使用して双方向で編集したりできます。",
   "marketing.home.feature.plainText.title": "プレーン テキスト ファイル、現在公開中",
