@@ -1,4 +1,5 @@
 import type { CoupleVendor } from '../types'
+import { sanitizeInstagramHandle } from '../lib/instagram'
 
 type CreditEntry = {
   role: string
@@ -62,9 +63,8 @@ export function buildCredits(
 export function formatInstagramCredits(credits: CreditEntry[]): string {
   return credits
     .map((c) => {
-      const handle = c.instagram
-        ? `@${c.instagram.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '')}`
-        : c.name
+      const ig = sanitizeInstagramHandle(c.instagram)
+      const handle = ig ? `@${ig}` : c.name
       return `${c.role}: ${c.name} ${handle !== c.name ? handle : ''}`
     })
     .map((l) => l.trim())

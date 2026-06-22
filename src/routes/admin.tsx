@@ -20,6 +20,7 @@ import { makeUnsubscribeToken, unsubscribeUrl } from '../services/notification-p
 import { auditLog } from '../middleware/audit'
 import { listVendorTypes, addVendorType, setVendorTypeActive, vendorTypeLabel } from '../db/vendor-types'
 import { resyncWeddingCalendars } from '../services/wedding-calendar'
+import { sanitizeInstagramHandle } from '../lib/instagram'
 
 const admin = new Hono<Env>()
 
@@ -322,6 +323,20 @@ admin.get('/admin', async (c) => {
             <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
             <button type="submit" class="bg-gray-900 text-white rounded-xl px-4 py-2 text-sm font-bold hover:bg-gray-800 transition-colors">
               Backfill now
+            </button>
+          </form>
+        </section>
+
+        <section class="bg-white rounded-2xl p-5 border border-gray-200 mt-6">
+          <h2 class="text-lg font-bold mb-1">Clean up Instagram handles</h2>
+          <p class="text-sm text-gray-500 mb-4">
+            One-off: normalise any vendor / couple-vendor Instagram values saved as a URL (or with @)
+            down to a bare handle, so @mentions and profile links work. Safe to re-run.
+          </p>
+          <form method="post" action="/admin/backfill-instagram">
+            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+            <button type="submit" class="bg-gray-900 text-white rounded-xl px-4 py-2 text-sm font-bold hover:bg-gray-800 transition-colors">
+              Clean up now
             </button>
           </form>
         </section>
@@ -818,6 +833,31 @@ admin.post('/admin/backfill-calendars', async (c) => {
   }
   await auditLog(c, 'backfill_calendars', 'system', undefined, { weddings: weddings.length, ok, fail }).catch(() => {})
   return c.json({ weddings: weddings.length, ok, fail })
+})
+
+// One-off: normalise any Instagram values that were saved as a URL (or with @)
+// down to a bare handle, so @mentions + profile links work. vendor_profiles and
+// couple_vendors are D1-only (the source of the credits/mentions). Idempotent.
+admin.post('/admin/backfill-instagram', async (c) => {
+  const fixTable = async (table: string) => {
+    const rows = await c.env.DB
+      .prepare(`SELECT id, instagram FROM ${table} WHERE instagram IS NOT NULL AND instagram <> ''`)
+      .all<{ id: string; instagram: string }>()
+      .then((r) => r.results)
+    let fixed = 0
+    for (const row of rows) {
+      const clean = sanitizeInstagramHandle(row.instagram)
+      if (clean !== row.instagram) {
+        await c.env.DB.prepare(`UPDATE ${table} SET instagram = ? WHERE id = ?`).bind(clean, row.id).run()
+        fixed++
+      }
+    }
+    return fixed
+  }
+  const vendors = await fixTable('vendor_profiles')
+  const coupleVendors = await fixTable('couple_vendors')
+  await auditLog(c, 'backfill_instagram', 'system', undefined, { vendors, coupleVendors }).catch(() => {})
+  return c.json({ vendors, coupleVendors })
 })
 
 // ─── Waitlist ───

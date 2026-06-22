@@ -1,5 +1,6 @@
 import type { VendorProfile } from '../types'
 import { generateToken } from '../lib/crypto'
+import { sanitizeInstagramHandle } from '../lib/instagram'
 
 export async function getVendorByUserId(
   db: D1Database,
@@ -233,7 +234,7 @@ export async function updateVendor(
   for (const [key, val] of Object.entries(updates)) {
     if (val !== undefined) {
       sets.push(`${key} = ?`)
-      values.push(val)
+      values.push(key === 'instagram' ? sanitizeInstagramHandle(val as string | null) : val)
     }
   }
   if (sets.length === 0) return

@@ -29,8 +29,9 @@ import { formatDate, formatDateTime, formatTime, daysUntil, addHoursToTime } fro
 import { createEvent } from '../../db/calendar'
 import { resyncWeddingCalendars } from '../../services/wedding-calendar'
 import { track } from '../../services/analytics'
-import { listVendorTypes, vendorTypeLabel } from '../../db/vendor-types'
+import { listVendorTypes, vendorTypeLabel, type VendorType } from '../../db/vendor-types'
 import { searchVendorsForWedding, getVendorWithEmail, getVendorByUserId } from '../../db/vendors'
+import { sanitizeInstagramHandle } from '../../lib/instagram'
 import { geocodeWeddingLocation } from '../../services/geocode'
 import { getWeddingTodo, upsertWeddingTodo } from '../../db/todos'
 import { listTemplates, getDefaultTemplate } from '../../db/todos'
@@ -1013,6 +1014,9 @@ weddings.get('/app/weddings/:id', async (c) => {
               </div>
             ))}
           </div>
+          {canManage && (
+            <AddPeoplePanel weddingId={wedding.id} csrfToken={c.get('csrfToken')} vendorTypes={vendorTypes} invited={invited} scope="people" />
+          )}
         </div>
 
         {/* Your team (agencies) */}
@@ -1093,158 +1097,9 @@ weddings.get('/app/weddings/:id', async (c) => {
           <WeddingCredits credits={credits} weddingTitle={wedding.title} />
         )}
 
-        {/* Invite / add people — tied to credits (referrals) — tucked at the bottom */}
+        {/* Add people — the same panel as under the People section above */}
         {canManage && (
-          <details class="group mt-2">
-            <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 transition-colors select-none flex items-center gap-1.5">
-              <svg class="w-3.5 h-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-              </svg>
-              Add people to this wedding
-            </summary>
-            <div class="mt-3 border border-gray-100 rounded-xl p-4 space-y-4 bg-gray-50/50">
-              {invited && (
-                <p class="text-sm text-horizon-700 font-medium">Invited successfully</p>
-              )}
-
-              {/* Invite one of the people getting married */}
-              <form
-                method="post"
-                action={`/app/weddings/${wedding.id}/invite`}
-                class="flex gap-2 items-end"
-              >
-                <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                <div class="flex-1">
-                  <label class="block text-xs font-medium text-gray-500 mb-1">
-                    Invite someone getting married
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    required
-                    placeholder="their@email.com"
-                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
-                  />
-                </div>
-                <div>
-                  <input
-                    type="text"
-                    name="name"
-                    required
-                    placeholder="Their name"
-                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
-                >
-                  Invite
-                </button>
-              </form>
-
-              {/* Autolookup: find an existing Wedding Computer vendor first */}
-              <div class="relative" data-vendor-search>
-                <label class="block text-xs font-medium text-gray-500 mb-1">{t('weddings.team.addVendor')}</label>
-                <input
-                  type="text"
-                  name="q"
-                  placeholder={t('weddings.team.searchVendors')}
-                  autocomplete="off"
-                  hx-get={`/app/weddings/${wedding.id}/vendor-search`}
-                  hx-trigger="input changed delay:200ms"
-                  hx-target="#vendor-suggestions"
-                  hx-swap="innerHTML"
-                  hx-include="this"
-                  hx-on:blur="setTimeout(()=>{var s=document.getElementById('vendor-suggestions');if(s)s.innerHTML=''},250)"
-                  class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
-                />
-                <div id="vendor-suggestions" class="relative" />
-              </div>
-
-              {/* Fallback: invite a vendor who isn't on Wedding Computer yet */}
-              <form
-                method="post"
-                action={`/app/weddings/${wedding.id}/add-vendor`}
-                class="flex gap-2 items-end flex-wrap"
-              >
-                <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                <div class="flex-1 min-w-[140px]">
-                  <label class="block text-xs font-medium text-gray-500 mb-1">{t('weddings.team.inviteByEmail')}</label>
-                  <input
-                    type="email"
-                    name="email"
-                    required
-                    placeholder="vendor@email.com"
-                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
-                  />
-                </div>
-                <div class="min-w-[120px]">
-                  <input
-                    type="text"
-                    name="name"
-                    required
-                    placeholder="Business name"
-                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
-                  />
-                </div>
-                <div class="min-w-[140px]">
-                  <select
-                    name="vendor_role"
-                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
-                  >
-                    <option value="">{t('weddings.vendorType.any')}</option>
-                    {vendorTypes.map((vt) => (
-                      <option value={vt.slug}>{vendorTypeLabel(vt)}</option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  type="submit"
-                  class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
-                >
-                  Add
-                </button>
-              </form>
-
-              {/* Add other person (family, coordinator, etc.) */}
-              <form
-                method="post"
-                action={`/app/weddings/${wedding.id}/add-guest`}
-                class="flex gap-2 items-end"
-              >
-                <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                <div class="flex-1">
-                  <label class="block text-xs font-medium text-gray-500 mb-1">
-                    Add someone else
-                    <span class="font-normal text-gray-400 ml-1">(family, coordinator, etc.)</span>
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    required
-                    placeholder="person@email.com"
-                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
-                  />
-                </div>
-                <div>
-                  <input
-                    type="text"
-                    name="name"
-                    required
-                    placeholder="Their name"
-                    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap"
-                >
-                  Add
-                </button>
-              </form>
-            </div>
-          </details>
+          <AddPeoplePanel weddingId={wedding.id} csrfToken={c.get('csrfToken')} vendorTypes={vendorTypes} invited={invited} scope="credits" />
         )}
 
         {/* Wedding Log */}
@@ -1723,7 +1578,7 @@ weddings.get('/app/vendors/:id', async (c) => {
               {target.bio && <p class="text-sm text-gray-600 mt-3 whitespace-pre-wrap">{target.bio}</p>}
               <div class="flex flex-wrap items-center gap-4 mt-3 text-sm">
                 {target.website && <a href={ensureHttp(target.website)} target="_blank" rel="noopener noreferrer" class="text-horizon-700 font-bold hover:underline">Website</a>}
-                {target.instagram && <a href={`https://instagram.com/${target.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" class="text-horizon-700 font-bold hover:underline">Instagram</a>}
+                {target.instagram && <a href={`https://instagram.com/${sanitizeInstagramHandle(target.instagram)}`} target="_blank" rel="noopener noreferrer" class="text-horizon-700 font-bold hover:underline">Instagram</a>}
               </div>
             </div>
           </div>
@@ -1958,6 +1813,108 @@ function WeddingStatusBadge({ status }: { status: string }) {
 }
 
 type CreditEntry = { role: string; name: string; instagram: string | null; website: string | null }
+
+// The "Add people to this wedding" panel — invite the couple, autolookup an
+// existing vendor, invite a new vendor by email, or add another person. Rendered
+// in more than one place (under People + under Credits), so the autocomplete's
+// suggestion container id is scoped to avoid htmx target collisions.
+function AddPeoplePanel({
+  weddingId,
+  csrfToken,
+  vendorTypes,
+  invited,
+  scope,
+}: {
+  weddingId: string
+  csrfToken: string
+  vendorTypes: VendorType[]
+  invited?: string
+  scope: string
+}) {
+  const sugId = `vendor-suggestions-${scope}`
+  return (
+    <details class="group mt-2">
+      <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 transition-colors select-none flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        </svg>
+        Add people to this wedding
+      </summary>
+      <div class="mt-3 border border-gray-100 rounded-xl p-4 space-y-4 bg-gray-50/50">
+        {invited && <p class="text-sm text-horizon-700 font-medium">Invited successfully</p>}
+
+        {/* Invite one of the people getting married */}
+        <form method="post" action={`/app/weddings/${weddingId}/invite`} class="flex gap-2 items-end">
+          <input type="hidden" name="_csrf" value={csrfToken} />
+          <div class="flex-1">
+            <label class="block text-xs font-medium text-gray-500 mb-1">Invite someone getting married</label>
+            <input type="email" name="email" required placeholder="their@email.com" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
+          </div>
+          <div>
+            <input type="text" name="name" required placeholder="Their name" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
+          </div>
+          <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">Invite</button>
+        </form>
+
+        {/* Autolookup: find an existing Wedding Computer vendor first */}
+        <div class="relative" data-vendor-search>
+          <label class="block text-xs font-medium text-gray-500 mb-1">{t('weddings.team.addVendor')}</label>
+          <input
+            type="text"
+            name="q"
+            placeholder={t('weddings.team.searchVendors')}
+            autocomplete="off"
+            hx-get={`/app/weddings/${weddingId}/vendor-search`}
+            hx-trigger="input changed delay:200ms"
+            hx-target={`#${sugId}`}
+            hx-swap="innerHTML"
+            hx-include="this"
+            hx-on:blur={`setTimeout(()=>{var s=document.getElementById('${sugId}');if(s)s.innerHTML=''},250)`}
+            class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
+          />
+          <div id={sugId} class="relative" />
+        </div>
+
+        {/* Fallback: invite a vendor who isn't on Wedding Computer yet */}
+        <form method="post" action={`/app/weddings/${weddingId}/add-vendor`} class="flex gap-2 items-end flex-wrap">
+          <input type="hidden" name="_csrf" value={csrfToken} />
+          <div class="flex-1 min-w-[140px]">
+            <label class="block text-xs font-medium text-gray-500 mb-1">{t('weddings.team.inviteByEmail')}</label>
+            <input type="email" name="email" required placeholder="vendor@email.com" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
+          </div>
+          <div class="min-w-[120px]">
+            <input type="text" name="name" required placeholder="Business name" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
+          </div>
+          <div class="min-w-[140px]">
+            <select name="vendor_role" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white">
+              <option value="">{t('weddings.vendorType.any')}</option>
+              {vendorTypes.map((vt) => (
+                <option value={vt.slug}>{vendorTypeLabel(vt)}</option>
+              ))}
+            </select>
+          </div>
+          <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">Add</button>
+        </form>
+
+        {/* Add another person (family, coordinator, etc.) */}
+        <form method="post" action={`/app/weddings/${weddingId}/add-guest`} class="flex gap-2 items-end">
+          <input type="hidden" name="_csrf" value={csrfToken} />
+          <div class="flex-1">
+            <label class="block text-xs font-medium text-gray-500 mb-1">
+              Add someone else
+              <span class="font-normal text-gray-400 ml-1">(family, coordinator, etc.)</span>
+            </label>
+            <input type="email" name="email" required placeholder="person@email.com" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
+          </div>
+          <div>
+            <input type="text" name="name" required placeholder="Their name" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
+          </div>
+          <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">Add</button>
+        </form>
+      </div>
+    </details>
+  )
+}
 
 function WeddingCredits({ credits, weddingTitle }: { credits: CreditEntry[]; weddingTitle: string }) {
   const igText = formatInstagramCredits(credits)

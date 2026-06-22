@@ -21,6 +21,7 @@ import { parseMarkdown, serializeMarkdown } from './markdown'
 import { contactFilename, deduplicateFilename } from './slug'
 import { generateId } from '../lib/crypto'
 import { recordWriteConflict, StorageConflictError } from './conflicts'
+import { sanitizeInstagramHandle } from '../lib/instagram'
 
 /** Frontmatter fields for a contact markdown file */
 type ContactFrontmatter = {
@@ -440,7 +441,7 @@ export async function createContact(
     partner_email: data.partner_email ?? null,
     partner_phone: data.partner_phone ?? null,
     address: data.address ?? null,
-    instagram: data.instagram ?? null,
+    instagram: sanitizeInstagramHandle(data.instagram),
     facebook: data.facebook ?? null,
     tiktok: data.tiktok ?? null,
     website: data.website ?? null,
@@ -530,6 +531,9 @@ export async function updateContact(
     >
   >
 ): Promise<void> {
+  // Normalise any Instagram value to a bare handle before it's stored or merged.
+  if (data.instagram !== undefined) data.instagram = sanitizeInstagramHandle(data.instagram)
+
   const renamesFile =
     data.first_name !== undefined ||
     data.last_name !== undefined ||

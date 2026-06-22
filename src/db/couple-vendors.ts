@@ -1,4 +1,5 @@
 import type { CoupleVendor } from '../types'
+import { sanitizeInstagramHandle } from '../lib/instagram'
 
 export async function listCoupleVendors(
   db: D1Database,
@@ -131,7 +132,7 @@ export async function createCoupleVendor(
       data.email ?? null,
       data.phone ?? null,
       data.website ?? null,
-      data.instagram ?? null,
+      sanitizeInstagramHandle(data.instagram),
       data.notes ?? null,
       data.expected_price_cents ?? null,
       data.vendor_profile_id ?? null,
@@ -155,7 +156,7 @@ export async function updateCoupleVendor(
   for (const [key, val] of Object.entries(data)) {
     if (val !== undefined) {
       sets.push(`${key} = ?`)
-      values.push(val)
+      values.push(key === 'instagram' ? sanitizeInstagramHandle(val as string | null) : val)
     }
   }
   if (sets.length === 0) return
