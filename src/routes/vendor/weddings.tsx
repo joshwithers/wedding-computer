@@ -1096,42 +1096,47 @@ weddings.get('/app/weddings/:id', async (c) => {
                       )}
                       <p class="text-xs text-gray-500">{m.user_email}</p>
                     </div>
-                    <div class="text-right flex items-center gap-1.5">
-                      <span class="text-xs text-gray-500">{roleLabel}</span>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                      {canEditTypes ? (
+                        <details class="group/edit relative">
+                          <summary
+                            class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none inline-flex items-center gap-1 text-xs text-gray-500 hover:text-horizon-700 transition-colors"
+                            title={t('weddings.people.editTypes')}
+                          >
+                            <span>{roleLabel}</span>
+                            <svg class="w-3 h-3 text-gray-300 group-hover/edit:text-horizon-500 group-open/edit:text-horizon-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </summary>
+                          <div class="absolute right-0 z-20 mt-1.5 w-56 bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-left">
+                            <form method="post" action={`/app/weddings/${wedding.id}/members/${m.user_id}/roles`}>
+                              <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                              <p class="text-[11px] font-medium text-gray-400 mb-2">{t('weddings.people.editTypesHint')}</p>
+                              <div class="flex flex-wrap gap-1.5 mb-3">
+                                {offerTypes.map((ty) => {
+                                  const on = currentRoles.includes(ty.slug)
+                                  return (
+                                    <label class={`text-xs px-2.5 py-1 rounded-full border cursor-pointer transition-colors ${on ? 'bg-horizon-50 border-horizon-300 text-horizon-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                                      <input type="checkbox" name="vendor_roles" value={ty.slug} checked={on} class="sr-only peer" />
+                                      <span class="peer-checked:font-bold">{vendorTypeLabel(ty)}</span>
+                                    </label>
+                                  )
+                                })}
+                              </div>
+                              <button type="submit" class="w-full bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors">
+                                {t('weddings.people.saveTypes')}
+                              </button>
+                            </form>
+                          </div>
+                        </details>
+                      ) : (
+                        <span class="text-xs text-gray-500">{roleLabel}</span>
+                      )}
                       {!!m.can_manage && (
                         <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">{t('weddings.detail.managerBadge')}</span>
                       )}
                     </div>
                   </div>
-                  {canEditTypes && (
-                    <details class="group/edit mt-1">
-                      <summary class="text-[11px] text-gray-400 hover:text-horizon-600 cursor-pointer select-none list-none text-right">
-                        {t('weddings.people.editTypes')}
-                      </summary>
-                      <form
-                        method="post"
-                        action={`/app/weddings/${wedding.id}/members/${m.user_id}/roles`}
-                        class="mt-2 border border-gray-100 rounded-xl p-3 bg-gray-50/60"
-                      >
-                        <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                        <p class="text-[11px] text-gray-500 mb-2">{t('weddings.people.editTypesHint')}</p>
-                        <div class="flex flex-wrap gap-1.5 mb-3">
-                          {offerTypes.map((ty) => {
-                            const on = currentRoles.includes(ty.slug)
-                            return (
-                              <label class={`text-xs px-2.5 py-1 rounded-full border cursor-pointer transition-colors ${on ? 'bg-horizon-50 border-horizon-300 text-horizon-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                                <input type="checkbox" name="vendor_roles" value={ty.slug} checked={on} class="sr-only peer" />
-                                <span class="peer-checked:font-bold">{vendorTypeLabel(ty)}</span>
-                              </label>
-                            )
-                          })}
-                        </div>
-                        <button type="submit" class="bg-horizon-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors">
-                          {t('weddings.people.saveTypes')}
-                        </button>
-                      </form>
-                    </details>
-                  )}
                 </div>
               )
             })}
