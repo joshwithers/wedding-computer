@@ -44,12 +44,12 @@ import {
 } from '../lib/oauth'
 import {
   createOAuthClient,
-  getOAuthClient,
   upsertOAuthGrant,
   getActiveGrantByRefreshHash,
   rotateRefreshHash,
   revokeOAuthGrant,
 } from '../db/oauth'
+import { resolveClient } from '../services/oauth-client'
 
 const oauth = new Hono<Env>()
 
@@ -253,7 +253,7 @@ oauth.get('/oauth/authorize', async (c) => {
   const p = readAuthorizeParams(c.req.query())
 
   // 1. Validate client + redirect_uri BEFORE trusting redirect_uri for error bounces.
-  const client = p.client_id ? await getOAuthClient(c.env.DB, p.client_id) : null
+  const client = p.client_id ? await resolveClient(c.env, p.client_id) : null
   if (!client) {
     return c.html(<ErrorPage title="Unknown application" message="This app isn’t registered. Try reconnecting from your AI client." />, 400)
   }
@@ -318,7 +318,7 @@ oauth.post('/oauth/authorize', async (c) => {
   const decision = src.decision ?? ''
 
   // Re-validate client + redirect (never trust the posted redirect blindly).
-  const client = p.client_id ? await getOAuthClient(c.env.DB, p.client_id) : null
+  const client = p.client_id ? await resolveClient(c.env, p.client_id) : null
   if (!client || !redirectUriAllowed(p.redirect_uri, client.redirect_uris)) {
     return c.html(<ErrorPage title="Invalid request" message="The authorization request is no longer valid. Please start again from your AI client." />, 400)
   }
@@ -426,7 +426,7 @@ async function handleAuthorizationCode(c: any, body: Record<string, any>) {
     return c.json({ error: 'invalid_grant' }, 400)
   }
 
-  const client = await getOAuthClient(c.env.DB, clientId)
+  const client = await resolveClient(c.env, clientId)
   if (!client) return c.json({ error: 'invalid_client' }, 401)
 
   // Confidential clients authenticate with their secret; public clients rely on PKCE.
@@ -457,7 +457,7 @@ async function handleRefreshToken(c: any, body: Record<string, any>) {
   if (!grant) return c.json({ error: 'invalid_grant' }, 400)
   if (clientId && grant.client_id !== clientId) return c.json({ error: 'invalid_grant' }, 400)
 
-  const client = await getOAuthClient(c.env.DB, grant.client_id)
+  const client = await resolveClient(c.env, grant.client_id)
   if (!client) return c.json({ error: 'invalid_client' }, 401)
   if (client.client_secret_hash) {
     if (!clientSecret || (await sha256Hex(clientSecret)) !== client.client_secret_hash) {

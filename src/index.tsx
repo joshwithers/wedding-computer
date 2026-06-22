@@ -287,6 +287,9 @@ app.get('/.well-known/oauth-authorization-server', (c) => {
     grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
+    // Client ID Metadata Documents (MCP 2025-11-25) — Claude's default. A client
+    // may use an https URL as its client_id and we fetch the metadata document.
+    client_id_metadata_document_supported: true,
     service_documentation: `${c.env.APP_URL}/mcp`,
   })
 })
