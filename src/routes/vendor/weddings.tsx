@@ -993,7 +993,13 @@ weddings.get('/app/weddings/:id', async (c) => {
             {members.map((m) => (
               <div class="flex items-center justify-between text-sm">
                 <div>
-                  <p class="font-medium text-gray-900">{m.business_name ?? m.user_name}</p>
+                  {m.vendor_profile_id ? (
+                    <a href={`/app/vendors/${m.vendor_profile_id}`} class="font-medium text-gray-900 hover:text-horizon-700 hover:underline">
+                      {m.business_name ?? m.user_name}
+                    </a>
+                  ) : (
+                    <p class="font-medium text-gray-900">{m.business_name ?? m.user_name}</p>
+                  )}
                   <p class="text-xs text-gray-500">{m.user_email}</p>
                 </div>
                 <div class="text-right flex items-center gap-1.5">
@@ -1652,6 +1658,104 @@ weddings.post('/app/weddings/:id/forms/submissions/:subId/visibility', async (c)
   const body = await c.req.parseBody()
   await setSubmissionTeamVisibility(c.env.DB, vendor.id, c.req.param('subId'), body.shared === '1')
   return c.redirect(`/app/weddings/${weddingId}#forms`)
+})
+
+// ─── Vendor profile — the "vendor social network" view ───
+// Any vendor can view another vendor's profile (the platform assumes vendors are
+// on it and collaborate). Public-ish details are always shown; direct contact
+// (email/phone) appears when you're working together (share a wedding).
+function vendorInitials(name: string): string {
+  return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?'
+}
+function ensureHttp(url: string): string {
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`
+}
+
+weddings.get('/app/vendors/:id', async (c) => {
+  const user = c.get('user')
+  const vendor = c.get('vendor')!
+  const csrfToken = c.get('csrfToken')
+  const targetId = c.req.param('id')
+
+  const target = await getVendorWithEmail(c.env.DB, targetId)
+  if (!target) {
+    return c.html(
+      <AppLayout title="Vendor" user={user} vendor={vendor} csrfToken={csrfToken}>
+        <div class="max-w-2xl"><p class="text-sm text-gray-500">Vendor not found.</p></div>
+      </AppLayout>,
+      404,
+    )
+  }
+
+  // Mutual weddings — where BOTH the viewer's vendor and this vendor are active members.
+  const mutual = await c.env.DB
+    .prepare(
+      `SELECT DISTINCT w.id, w.title, w.emoji, w.date
+       FROM weddings w
+       JOIN wedding_members a ON a.wedding_id = w.id AND a.vendor_profile_id = ? AND a.status = 'active'
+       JOIN wedding_members b ON b.wedding_id = w.id AND b.vendor_profile_id = ? AND b.status = 'active'
+       ORDER BY (w.date IS NULL), w.date DESC`,
+    )
+    .bind(vendor.id, targetId)
+    .all<{ id: string; title: string; emoji: string | null; date: string | null }>()
+    .then((r) => r.results)
+
+  const isSelf = vendor.id === targetId
+  const collaborating = isSelf || mutual.length > 0
+  const place = [target.location_city, target.location_state, target.location_country].filter(Boolean).join(', ') || target.location
+  const cat = categoriesLabel(target)
+
+  return c.html(
+    <AppLayout title={target.business_name} user={user} vendor={vendor} csrfToken={csrfToken}>
+      <div class="max-w-2xl">
+        <p class="text-sm text-gray-500 mb-4">
+          <a href="/app/weddings" class="hover:text-gray-900">Weddings</a> / Vendor
+        </p>
+
+        <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 sm:p-6 mb-6">
+          <div class="flex items-start gap-4">
+            <div class="w-14 h-14 rounded-2xl bg-papaya-200 text-grapefruit-700 flex items-center justify-center text-lg font-bold flex-shrink-0">
+              {vendorInitials(target.business_name)}
+            </div>
+            <div class="min-w-0 flex-1">
+              <h2 class="text-xl font-bold text-gray-900">{target.business_name}{isSelf && <span class="ml-2 text-xs font-normal text-gray-400">(you)</span>}</h2>
+              <p class="text-sm text-gray-500 mt-0.5">{cat}{place ? ` · ${place}` : ''}</p>
+              {target.bio && <p class="text-sm text-gray-600 mt-3 whitespace-pre-wrap">{target.bio}</p>}
+              <div class="flex flex-wrap items-center gap-4 mt-3 text-sm">
+                {target.website && <a href={ensureHttp(target.website)} target="_blank" rel="noopener noreferrer" class="text-horizon-700 font-bold hover:underline">Website</a>}
+                {target.instagram && <a href={`https://instagram.com/${target.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" class="text-horizon-700 font-bold hover:underline">Instagram</a>}
+              </div>
+            </div>
+          </div>
+
+          {collaborating && !isSelf && (target.user_email || target.phone) && (
+            <div class="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center gap-2 text-sm">
+              {target.user_email && <a href={`mailto:${target.user_email}`} class="bg-horizon-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-horizon-700 transition-colors">Email</a>}
+              {target.phone && <a href={`tel:${target.phone}`} class="border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-papaya-50 transition-colors">Call {target.phone}</a>}
+            </div>
+          )}
+        </div>
+
+        {!isSelf && (
+          <div class="mb-6">
+            <h3 class="text-sm font-bold text-gray-500 mb-3">
+              {mutual.length > 0 ? `${mutual.length} wedding${mutual.length === 1 ? '' : 's'} together` : 'No weddings together yet'}
+            </h3>
+            {mutual.length > 0 && (
+              <div class="bg-white border border-papaya-300/30 rounded-2xl divide-y divide-gray-50">
+                {mutual.map((w) => (
+                  <a href={`/app/weddings/${w.id}`} class="flex items-center justify-between px-4 py-3 hover:bg-papaya-50 transition-colors">
+                    <span class="text-sm font-medium text-gray-900">{w.emoji ? `${w.emoji} ` : ''}{w.title}</span>
+                    <span class="text-xs text-gray-400">{w.date ? formatDate(w.date) : 'Date TBD'}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </AppLayout>
+  )
 })
 
 export default weddings
