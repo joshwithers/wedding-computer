@@ -98,11 +98,15 @@ export function buildIcalFeed(
   ]
 
   for (const event of events) {
+    // Legacy wc:<slot> booking events are retired — the run sheet (timeline rows
+    // below) drives the calendar. Skip defensively in case an upstream filter
+    // is ever removed.
+    if ((event.notes ?? '').startsWith('wc:')) continue
     lines.push(...buildVevent(event, timezone))
   }
 
-  // The vendor's assigned + opted-in timeline sections (e.g. bump in/out) ride
-  // alongside their bookings. Distinct `ts-` UIDs — never collide with bookings.
+  // The vendor's assigned timeline sections (run-sheet items) ride alongside
+  // their manual events. Distinct `ts-` UIDs — never collide with bookings.
   for (const r of timelineRows) {
     lines.push(...buildTimelineVevent(r, timezone))
   }

@@ -142,4 +142,23 @@ describe('buildIcalFeed timeline union', () => {
     expect(withEmpty).toBe(without)
     expect(without).not.toContain('ts-')
   })
+
+  it('excludes legacy wc:* booking events but keeps manual events + timeline rows', () => {
+    const ical = buildIcalFeed(
+      [booking({ id: 'wc1', notes: 'wc:ceremony', title: 'Smith — Ceremony' }), booking({ id: 'manual1', notes: 'Bring spare lens', title: 'Personal block', type: 'personal' })],
+      'Acme',
+      'Australia/Sydney',
+      [row({ title: 'Bump in' })]
+    )
+    expect(ical).not.toContain('UID:wc1@')          // legacy slot event dropped
+    expect(ical).toContain('UID:manual1@')          // manual event kept
+    expect(ical).toContain('SUMMARY:Smith Wedding — Bump in') // assigned run-sheet item rendered
+  })
+
+  it('produces a valid (empty) calendar when only wc:* events exist and nothing is assigned', () => {
+    const ical = buildIcalFeed([booking({ notes: 'wc:ceremony' })], 'Acme', 'Australia/Sydney', [])
+    expect(ical.match(/BEGIN:VCALENDAR/g)).toHaveLength(1)
+    expect(ical.match(/END:VCALENDAR/g)).toHaveLength(1)
+    expect(ical).not.toContain('BEGIN:VEVENT')
+  })
 })

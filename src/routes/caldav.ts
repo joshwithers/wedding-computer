@@ -99,7 +99,7 @@ async function windowedTimelineRows(db: D1Database, vendorId: string): Promise<U
  */
 async function combinedCTag(db: D1Database, vendorId: string): Promise<string> {
   const ev = await db
-    .prepare(`SELECT COUNT(*) as cnt, MAX(updated_at) as ts FROM calendar_events WHERE vendor_id = ? AND ${CALENDAR_WINDOW}`)
+    .prepare(`SELECT COUNT(*) as cnt, MAX(updated_at) as ts FROM calendar_events WHERE vendor_id = ? AND ${CALENDAR_WINDOW} AND (notes IS NULL OR notes NOT LIKE 'wc:%')`)
     .bind(vendorId)
     .first<{ cnt: number; ts: string | null }>()
   const tl = await db
@@ -110,7 +110,8 @@ async function combinedCTag(db: D1Database, vendorId: string): Promise<string> {
          JOIN wedding_members wm ON wm.id = a.wedding_member_id
          JOIN timeline_items ti ON ti.id = a.timeline_item_id
          JOIN weddings w ON w.id = ti.wedding_id
-         WHERE wm.vendor_profile_id = ? AND a.added_to_calendar = 1 AND wm.status = 'active' AND w.date IS NOT NULL
+         WHERE wm.vendor_profile_id = ? AND wm.status = 'active' AND w.date IS NOT NULL
+           AND ti.marker IS NULL AND (ti.visibility IN ('couple','vendors') OR ti.owner_vendor_id = wm.vendor_profile_id)
          ORDER BY ti.id
        )`
     )
@@ -280,7 +281,7 @@ caldav.on('PROPFIND', '/calendars/:token/bookings/', async (c) => {
 
   // Depth 1: list events (only need etags, no enrichment needed)
   const rows = await c.env.DB
-    .prepare(`SELECT * FROM calendar_events WHERE vendor_id = ? AND ${CALENDAR_WINDOW}`)
+    .prepare(`SELECT * FROM calendar_events WHERE vendor_id = ? AND ${CALENDAR_WINDOW} AND (notes IS NULL OR notes NOT LIKE 'wc:%')`)
     .bind(vendor.id)
     .all<CalendarEvent>()
     .then(r => r.results)
@@ -343,7 +344,9 @@ caldav.on('REPORT', '/calendars/:token/bookings/', async (c) => {
     const tsIds = ids.filter(id => id.startsWith(TS_PREFIX)).map(id => id.slice(TS_PREFIX.length))
     const eventIds = ids.filter(id => !id.startsWith(TS_PREFIX))
 
-    const rows = eventIds.length ? await listEnrichedEventsByIds(c.env.DB, vendor.id, eventIds) : []
+    const rows = eventIds.length
+      ? (await listEnrichedEventsByIds(c.env.DB, vendor.id, eventIds)).filter((r) => !(r.notes ?? '').startsWith('wc:'))
+      : []
 
     const responses = rows.map(row => {
       const ical = wrapVCalendar(buildVevent(row, tz), tz)
@@ -369,8 +372,11 @@ caldav.on('REPORT', '/calendars/:token/bookings/', async (c) => {
 </D:multistatus>`, 207, CALDAV_HEADERS)
   }
 
-  // Full query
-  const rows = await listAllEnrichedEvents(c.env.DB, vendor.id, CALENDAR_WINDOW_CE)
+  // Full query. Legacy wc:<slot> booking events are excluded — the run sheet
+  // (timeline_items) drives the calendar now.
+  const rows = (await listAllEnrichedEvents(c.env.DB, vendor.id, CALENDAR_WINDOW_CE)).filter(
+    (r) => !(r.notes ?? '').startsWith('wc:')
+  )
 
   const responses = rows.map(row => {
     const ical = wrapVCalendar(buildVevent(row, tz), tz)
@@ -420,7 +426,8 @@ caldav.get('/calendars/:token/bookings/:uid', async (c) => {
   }
 
   const row = await getEnrichedEvent(c.env.DB, vendor.id, uid)
-  if (!row) return c.text('Not found', 404)
+  // Legacy wc:<slot> bookings aren't served — the run sheet drives the calendar.
+  if (!row || (row.notes ?? '').startsWith('wc:')) return c.text('Not found', 404)
 
   const ical = wrapVCalendar(buildVevent(row, tz), tz)
   const etag = makeETag(row.id, row.updated_at)

@@ -409,7 +409,7 @@ export type UserCalendarRow = {
 // scoping predicate (per-user, or per-vendor-profile) plus the opted-in/active
 // filters; callers append id filters + ORDER BY. `{SCOPE}` is substituted with
 // the scoping column so the rest of the query stays identical.
-const CALENDAR_ROW_SELECT = (scopeCol: string) =>
+const CALENDAR_ROW_SELECT = (scopeCol: string, visClause: string) =>
   `SELECT ti.id, ti.title, ti.start_time, ti.end_time, ti.location, ti.description,
               ti.created_at, ti.updated_at, w.date AS wedding_date, w.title AS wedding_title,
               w.location AS wedding_location, w.location_state AS wedding_location_state,
@@ -423,10 +423,18 @@ const CALENDAR_ROW_SELECT = (scopeCol: string) =>
        JOIN wedding_members wm ON wm.id = a.wedding_member_id
        JOIN timeline_items ti ON ti.id = a.timeline_item_id
        JOIN weddings w ON w.id = ti.wedding_id
-       WHERE wm.${scopeCol} = ? AND a.added_to_calendar = 1 AND wm.status = 'active' AND w.date IS NOT NULL`
+       WHERE wm.${scopeCol} = ? AND wm.status = 'active' AND w.date IS NOT NULL
+         -- markers (sun rows) aren't events; respect timeline visibility so a
+         -- private/vendors-only item never leaks onto the wrong calendar.
+         AND ti.marker IS NULL AND (${visClause})`
 
-const USER_CALENDAR_SELECT = CALENDAR_ROW_SELECT('user_id')
-const VENDOR_CALENDAR_SELECT = CALENDAR_ROW_SELECT('vendor_profile_id')
+// A couple/guest only sees 'couple' items; a vendor sees couple + vendors-only +
+// their own private items (mirrors canSeeItem in services/timeline-permissions).
+const USER_CALENDAR_SELECT = CALENDAR_ROW_SELECT('user_id', "ti.visibility = 'couple'")
+const VENDOR_CALENDAR_SELECT = CALENDAR_ROW_SELECT(
+  'vendor_profile_id',
+  "ti.visibility IN ('couple','vendors') OR ti.owner_vendor_id = wm.vendor_profile_id",
+)
 
 /** Timeline sections this user is assigned to and has opted into, across weddings. */
 export async function listUserCalendarRows(db: D1Database, userId: string): Promise<UserCalendarRow[]> {

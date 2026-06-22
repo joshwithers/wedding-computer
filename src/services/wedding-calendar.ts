@@ -84,22 +84,28 @@ export async function syncWeddingCalendarEvents(
   // Emoji prefix for all event titles
   const pfx = data.emoji ? `${data.emoji} ` : ''
 
+  // The modern run sheet (timeline_items) is the source of truth for the
+  // schedule. The calendar feed renders those items directly; here we keep just
+  // ONE wc:ceremony anchor per vendor so the wedding still shows on the in-app
+  // calendar. The other 5 legacy slot events are retired — shouldExist:false
+  // makes resync DELETE any that linger from the old model. (Phase B removes the
+  // structured weddings.* columns + this generation entirely.)
   const events: PlannedEvent[] = [
     {
       tag: 'wc:getting_ready_1',
-      title: `${pfx}${weddingTitle} — Getting ready${data.gettingReady1Label ? ` (${data.gettingReady1Label})` : ''}`,
+      title: `${pfx}${weddingTitle} — Getting ready`,
       startTime: data.gettingReadyTime,
-      endTime: data.gettingReadyTime ? addHoursToTime(data.gettingReadyTime, 1) : null,
+      endTime: null,
       location: data.gettingReadyLocation,
-      shouldExist: !!(data.gettingReadyTime && data.gettingReadyLocation),
+      shouldExist: false,
     },
     {
       tag: 'wc:getting_ready_2',
-      title: `${pfx}${weddingTitle} — Getting ready${data.gettingReady2Label ? ` (${data.gettingReady2Label})` : ''}`,
+      title: `${pfx}${weddingTitle} — Getting ready`,
       startTime: data.gettingReady2Time,
-      endTime: data.gettingReady2Time ? addHoursToTime(data.gettingReady2Time, 1) : null,
+      endTime: null,
       location: data.gettingReady2Location,
-      shouldExist: !!(data.gettingReady2Time && data.gettingReady2Location),
+      shouldExist: false,
     },
     {
       tag: 'wc:ceremony_prep',
@@ -107,7 +113,7 @@ export async function syncWeddingCalendarEvents(
       startTime: data.ceremonyTime ? subtractHoursFromTime(data.ceremonyTime, 1) : null,
       endTime: data.ceremonyTime,
       location: data.ceremonyLocation,
-      shouldExist: !!data.ceremonyTime,
+      shouldExist: false,
     },
     {
       tag: 'wc:ceremony',
@@ -115,23 +121,23 @@ export async function syncWeddingCalendarEvents(
       startTime: data.ceremonyTime,
       endTime: data.ceremonyTime ? addHoursToTime(data.ceremonyTime, data.ceremonyDuration) : null,
       location: data.ceremonyLocation,
-      shouldExist: true, // always keep the main event
+      shouldExist: !!data.ceremonyTime, // wedding-day anchor (in-app calendar) when a time is known
     },
     {
       tag: 'wc:portraits',
       title: `${pfx}${weddingTitle} — Portraits`,
       startTime: data.portraitTime,
-      endTime: data.portraitTime ? addHoursToTime(data.portraitTime, 1) : null,
+      endTime: null,
       location: data.portraitLocation,
-      shouldExist: !!(data.portraitTime && data.portraitLocation),
+      shouldExist: false,
     },
     {
       tag: 'wc:reception',
       title: `${pfx}${weddingTitle} — Reception`,
       startTime: data.receptionTime,
-      endTime: data.receptionTime ? addHoursToTime(data.receptionTime, data.receptionDuration) : null,
+      endTime: null,
       location: data.receptionLocation,
-      shouldExist: !!(data.receptionTime && data.receptionLocation),
+      shouldExist: false,
     },
   ]
 

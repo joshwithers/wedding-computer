@@ -471,7 +471,7 @@ describe('calendar resync after wedding.md ingestion', () => {
     expect(photog?.start_time).toBe('15:00')
   })
 
-  it('applies file-set emoji and reception duration to reception events', async () => {
+  it('retires the legacy wc:reception event on ingestion (the run sheet drives the calendar now)', async () => {
     db.seed('weddings', [
       makeWedding({ reception_time: '18:00', reception_location: 'Hall' }) as unknown as Record<string, unknown>,
     ])
@@ -495,9 +495,10 @@ describe('calendar resync after wedding.md ingestion', () => {
       db as unknown as D1Database, VENDOR_ID, FOLDER + 'wedding.md', content, 'etag-c5'
     )
 
+    // wc:reception is one of the 5 retired legacy slot events — resync deletes it
+    // (only the wc:ceremony anchor remains; the run sheet drives the calendar).
     const reception = db.getTable('calendar_events').find((e) => e.id === 'ce-reception')
-    expect(reception?.end_time).toBe('23:00')
-    expect(reception?.title).toBe('🌸 Sarah & James — Reception')
+    expect(reception).toBeUndefined()
   })
 
   it('removes events for a timeline slot the file cleared', async () => {

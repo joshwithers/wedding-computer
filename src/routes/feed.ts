@@ -63,11 +63,14 @@ feed.get('/cal/:token', async (c) => {
   const futureYear = now.getFullYear() + 2
   const endDate = `${futureYear}-12-31`
 
-  const events = await listEnrichedEventsByRange(c.env.DB, vendor.id, startDate, endDate)
+  // The subscribed calendar is driven by the modern run sheet (timeline_items),
+  // not the legacy wc:<slot> booking events — so drop those here. The vendor's
+  // own manual events (blocked/personal/other) still ride along.
+  const events = (await listEnrichedEventsByRange(c.env.DB, vendor.id, startDate, endDate)).filter(
+    (e) => !(e.notes ?? '').startsWith('wc:')
+  )
 
-  // The vendor's assigned + opted-in timeline sections (bump in/out, call times)
-  // ride alongside their bookings in the same feed, within the same window
-  // (both bounds — same as the bookings query above).
+  // The wedding's run-sheet items this vendor is assigned to, within the window.
   const timelineRows = (await listVendorCalendarRows(c.env.DB, vendor.id)).filter(
     (r) => r.wedding_date >= startDate && r.wedding_date <= endDate
   )
