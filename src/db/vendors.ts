@@ -21,6 +21,43 @@ export async function getVendorById(
     .first<VendorProfile>()
 }
 
+export type VendorSearchHit = {
+  id: string
+  business_name: string
+  category: string
+  location_city: string | null
+  location_state: string | null
+}
+
+/** Typeahead for the add-vendor-to-a-wedding autolookup. Matches existing
+ *  vendors by business name, EXCLUDING anyone already on the wedding and
+ *  soft-deleted accounts. Returns name/category/city only — never the email
+ *  (the invite resolves that server-side), so this can't be used to harvest
+ *  contact details. Prefix matches rank first. */
+export async function searchVendorsForWedding(
+  db: D1Database,
+  weddingId: string,
+  q: string,
+  limit = 8
+): Promise<VendorSearchHit[]> {
+  const term = q.trim()
+  if (term.length < 2) return []
+  const res = await db
+    .prepare(
+      `SELECT vp.id, vp.business_name, vp.category, vp.location_city, vp.location_state
+       FROM vendor_profiles vp
+       JOIN users u ON u.id = vp.user_id
+       WHERE u.deleted_at IS NULL
+         AND vp.business_name LIKE ?1 COLLATE NOCASE
+         AND vp.user_id NOT IN (SELECT user_id FROM wedding_members WHERE wedding_id = ?2)
+       ORDER BY (vp.business_name LIKE ?3 COLLATE NOCASE) DESC, vp.business_name ASC
+       LIMIT ?4`
+    )
+    .bind(`%${term}%`, weddingId, `${term}%`, limit)
+    .all<VendorSearchHit>()
+  return res.results
+}
+
 export async function createVendor(
   db: D1Database,
   userId: string,

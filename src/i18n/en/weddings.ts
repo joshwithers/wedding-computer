@@ -31,4 +31,7 @@ export const weddings = {
   'weddings.couple.copy': 'Copy',
   'weddings.couple.editContact': 'Edit contact',
   'weddings.vendorType.any': 'Type (optional)',
+  'weddings.team.addVendor': 'Add a vendor',
+  'weddings.team.searchVendors': 'Search Wedding Computer vendors…',
+  'weddings.team.inviteByEmail': 'Or invite by email',
 } as const

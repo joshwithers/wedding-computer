@@ -4,7 +4,7 @@ import { AppLayout } from '../../views/layouts/app'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
-import { rateLimit } from '../../middleware/rate-limit'
+import { rateLimit, consumeRateLimit } from '../../middleware/rate-limit'
 import {
   listWeddingsForVendor,
   getWedding,
@@ -13,6 +13,7 @@ import {
   addWeddingMember,
   getWeddingMembers,
   getMembership,
+  getAnyMembership,
 } from '../../db/weddings'
 import { listDocumentsForWedding } from '../../db/documents'
 import { listInvoicesForWedding, type InvoiceWithPaymentSummary } from '../../db/invoices'
@@ -29,6 +30,7 @@ import { createEvent } from '../../db/calendar'
 import { resyncWeddingCalendars } from '../../services/wedding-calendar'
 import { track } from '../../services/analytics'
 import { listVendorTypes, vendorTypeLabel } from '../../db/vendor-types'
+import { searchVendorsForWedding, getVendorWithEmail } from '../../db/vendors'
 import { geocodeWeddingLocation } from '../../services/geocode'
 import { getWeddingTodo, upsertWeddingTodo } from '../../db/todos'
 import { listTemplates, getDefaultTemplate } from '../../db/todos'
@@ -589,6 +591,47 @@ weddings.post('/app/weddings/:id/add-guest', rateLimit(60, 60), async (c) => {
   return c.redirect(`/app/weddings/${weddingId}?invited=1`)
 })
 
+// ─── Autolookup: typeahead of existing Wedding Computer vendors ───
+// Lazy (only fires when the manager types), so it adds nothing to the wedding
+// page load. Returns name/category/city only — never the email.
+weddings.get('/app/weddings/:id/vendor-search', rateLimit(60, 60), async (c) => {
+  const user = c.get('user')
+  const vendor = c.get('vendor')!
+  const weddingId = c.req.param('id')
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership || !membership.can_manage) return c.html('')
+  // Per-account cap (the IP+path limit resets per wedding id) so the global
+  // vendor directory can't be bulk-enumerated by rotating wedding ids.
+  if (!(await consumeRateLimit(c.env.KV, `vsearch:${vendor.id}`, 120, 60))) return c.html('')
+
+  const q = (c.req.query('q') ?? '').trim()
+  if (q.length < 2) return c.html('')
+  const matches = await searchVendorsForWedding(c.env.DB, weddingId, q)
+  if (matches.length === 0) return c.html('')
+
+  const csrfToken = c.get('csrfToken')
+  return c.html(
+    <div class="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+      {matches.map((m) => {
+        const place = [m.location_city, m.location_state].filter(Boolean).join(', ')
+        return (
+          <form method="post" action={`/app/weddings/${weddingId}/add-vendor`}>
+            <input type="hidden" name="_csrf" value={csrfToken} />
+            <input type="hidden" name="vendor_profile_id" value={m.id} />
+            <button type="submit" class="block w-full text-left px-4 py-2.5 hover:bg-papaya-50 transition-colors border-b border-gray-100 last:border-0">
+              <span class="text-sm font-medium text-gray-900">{m.business_name}</span>
+              <span class="text-xs text-gray-500 block">
+                {vendorTypeLabel({ slug: m.category, label: m.category })}
+                {place ? ` · ${place}` : ''}
+              </span>
+            </button>
+          </form>
+        )
+      })}
+    </div>
+  )
+})
+
 // ─── Add vendor to wedding ───
 weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
   const user = c.get('user')
@@ -599,6 +642,38 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
   if (!membership || !membership.can_manage) return c.text('Not found', 404)
 
   const body = await c.req.parseBody()
+
+  // Autolookup path: an existing Wedding Computer vendor was picked. Resolve the
+  // email server-side (never exposed to the searcher) and add them by id, with
+  // their own profile category as the role.
+  const pickedId = String(body.vendor_profile_id ?? '').trim()
+  if (pickedId) {
+    const vp = await getVendorWithEmail(c.env.DB, pickedId)
+    if (!vp?.user_email) return c.redirect(`/app/weddings/${weddingId}?error=${encodeURIComponent('That vendor could not be found.')}`)
+    // getAnyMembership (not active-only) so a crafted POST can't silently
+    // resurrect a previously-removed member via the upsert.
+    if (await getAnyMembership(c.env.DB, weddingId, vp.user_id)) {
+      return c.redirect(`/app/weddings/${weddingId}`) // already on / previously on the wedding
+    }
+    await addWeddingMember(c.env.DB, {
+      wedding_id: weddingId,
+      user_id: vp.user_id,
+      role: 'vendor',
+      vendor_profile_id: vp.id,
+      vendor_role: vp.category,
+      can_manage: isManagerVendor(vp),
+      is_financial_party: false,
+    })
+    try {
+      await c.env.EMAIL_QUEUE.send({
+        type: 'notify_vendor_added_to_wedding',
+        payload: JSON.stringify({ weddingId, vendorEmail: vp.user_email, vendorName: vp.business_name, addedBy: vendor.business_name }),
+      })
+    } catch { /* best-effort */ }
+    track(c.env.DB, vendor.id, 'vendor_added', { weddingId, metadata: { vendorId: vp.id } })
+    return c.redirect(`/app/weddings/${weddingId}?invited=1`)
+  }
+
   const email = String(body.email).trim().toLowerCase()
   const name = String(body.name).trim()
   const vendorRole = String(body.vendor_role || '').trim() || null
@@ -1066,7 +1141,26 @@ weddings.get('/app/weddings/:id', async (c) => {
                 </button>
               </form>
 
-              {/* Add vendor */}
+              {/* Autolookup: find an existing Wedding Computer vendor first */}
+              <div class="relative" data-vendor-search>
+                <label class="block text-xs font-medium text-gray-500 mb-1">{t('weddings.team.addVendor')}</label>
+                <input
+                  type="text"
+                  name="q"
+                  placeholder={t('weddings.team.searchVendors')}
+                  autocomplete="off"
+                  hx-get={`/app/weddings/${wedding.id}/vendor-search`}
+                  hx-trigger="input changed delay:200ms"
+                  hx-target="#vendor-suggestions"
+                  hx-swap="innerHTML"
+                  hx-include="this"
+                  hx-on:blur="setTimeout(()=>{var s=document.getElementById('vendor-suggestions');if(s)s.innerHTML=''},250)"
+                  class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white"
+                />
+                <div id="vendor-suggestions" class="relative" />
+              </div>
+
+              {/* Fallback: invite a vendor who isn't on Wedding Computer yet */}
               <form
                 method="post"
                 action={`/app/weddings/${wedding.id}/add-vendor`}
@@ -1074,7 +1168,7 @@ weddings.get('/app/weddings/:id', async (c) => {
               >
                 <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
                 <div class="flex-1 min-w-[140px]">
-                  <label class="block text-xs font-medium text-gray-500 mb-1">Add a vendor</label>
+                  <label class="block text-xs font-medium text-gray-500 mb-1">{t('weddings.team.inviteByEmail')}</label>
                   <input
                     type="email"
                     name="email"
