@@ -1223,4 +1223,6 @@ export const ja: Dictionary = {
   'weddings.people.editTypes': '種別を編集',
   'weddings.people.editTypesHint': 'このベンダーはこの結婚式でどの種別としてクレジットされますか？',
   'weddings.people.saveTypes': '保存',
+  'weddings.people.remove': '結婚式から削除',
+  'weddings.people.removeConfirm': '{name} をこの結婚式から削除しますか？',
 }

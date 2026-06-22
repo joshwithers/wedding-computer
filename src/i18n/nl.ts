@@ -1250,4 +1250,6 @@ export const nl: Dictionary = {
   'weddings.people.editTypes': 'Type bewerken',
   'weddings.people.editTypesHint': 'Voor welk type(s) wordt deze leverancier bij deze bruiloft vermeld?',
   'weddings.people.saveTypes': 'Opslaan',
+  'weddings.people.remove': 'Uit bruiloft verwijderen',
+  'weddings.people.removeConfirm': '{name} uit deze bruiloft verwijderen?',
 }

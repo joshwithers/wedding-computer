@@ -161,6 +161,8 @@ export const weddings = {
   'weddings.people.editTypes': 'Edit type',
   'weddings.people.editTypesHint': 'Which type(s) is this vendor credited as on this wedding?',
   'weddings.people.saveTypes': 'Save',
+  'weddings.people.remove': 'Remove from wedding',
+  'weddings.people.removeConfirm': 'Remove {name} from this wedding?',
 
   // Vendor profile
   'weddings.profile.breadcrumbVendor': 'Vendor',

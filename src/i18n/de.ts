@@ -1236,4 +1236,6 @@ export const de: Dictionary = {
   'weddings.people.editTypes': 'Typ bearbeiten',
   'weddings.people.editTypesHint': 'Als welche(r) Typ(en) wird dieser Anbieter bei dieser Hochzeit aufgeführt?',
   'weddings.people.saveTypes': 'Speichern',
+  'weddings.people.remove': 'Aus der Hochzeit entfernen',
+  'weddings.people.removeConfirm': '{name} aus dieser Hochzeit entfernen?',
 }

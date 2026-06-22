@@ -1250,4 +1250,6 @@ export const zh: Dictionary = {
   "weddings.people.editTypes": "编辑类型",
   "weddings.people.editTypesHint": "在这场婚礼中，将该商家署名为哪种（哪些）类型？",
   "weddings.people.saveTypes": "保存",
+  'weddings.people.remove': '移出婚礼',
+  'weddings.people.removeConfirm': '确定要将 {name} 移出这场婚礼吗？',
 }

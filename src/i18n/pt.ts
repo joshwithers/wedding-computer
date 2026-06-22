@@ -1255,4 +1255,6 @@ export const pt: Dictionary = {
   'weddings.people.editTypes': 'Editar tipo',
   'weddings.people.editTypesHint': 'Em qual(is) tipo(s) este fornecedor é creditado neste casamento?',
   'weddings.people.saveTypes': 'Salvar',
+  'weddings.people.remove': 'Remover do casamento',
+  'weddings.people.removeConfirm': 'Remover {name} deste casamento?',
 }

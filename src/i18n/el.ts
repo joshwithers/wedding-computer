@@ -1227,4 +1227,6 @@ export const el: Dictionary = {
   "weddings.people.editTypes": "Επεξεργασία τύπου",
   "weddings.people.editTypesHint": "Σε ποιον τύπο/τύπους πιστώνεται αυτός ο προμηθευτής σε αυτόν τον γάμο;",
   "weddings.people.saveTypes": "Αποθήκευση",
+  "weddings.people.remove": "Αφαίρεση από τον γάμο",
+  "weddings.people.removeConfirm": "Αφαίρεση του ατόμου {name} από αυτόν τον γάμο;",
 }

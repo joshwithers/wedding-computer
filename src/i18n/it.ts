@@ -1249,4 +1249,6 @@ export const it: Dictionary = {
   'weddings.people.editTypes': 'Modifica tipo',
   'weddings.people.editTypesHint': 'Con quale tipo (o tipi) è accreditato questo fornitore per questo matrimonio?',
   'weddings.people.saveTypes': 'Salva',
+  'weddings.people.remove': 'Rimuovi dal matrimonio',
+  'weddings.people.removeConfirm': 'Rimuovere {name} da questo matrimonio?',
 }

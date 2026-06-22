@@ -815,6 +815,46 @@ weddings.post('/app/weddings/:id/members/:userId/roles', rateLimit(60, 60), asyn
   return c.redirect(`/app/weddings/${weddingId}`)
 })
 
+// ─── Remove a vendor from this wedding (manager-only, soft remove) ───
+weddings.post('/app/weddings/:id/members/:userId/remove', rateLimit(30, 60), async (c) => {
+  const user = c.get('user')
+  const weddingId = c.req.param('id')
+  const targetUserId = c.req.param('userId')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership || !membership.can_manage) return c.text('Not found', 404)
+  // A manager can't remove themselves here (avoid orphaning the wedding).
+  if (targetUserId === user.id) return c.redirect(`/app/weddings/${weddingId}`)
+
+  const target = await getMembership(c.env.DB, weddingId, targetUserId)
+  if (!target || target.role !== 'vendor') return c.text('Not found', 404)
+
+  await c.env.DB
+    .prepare("UPDATE wedding_members SET status = 'removed' WHERE wedding_id = ? AND user_id = ? AND role = 'vendor'")
+    .bind(weddingId, targetUserId)
+    .run()
+
+  if (target.vendor_profile_id) {
+    // Mirror the removal into the couple's tracked vendors + drop the vendor's
+    // tagged calendar events for this wedding so it leaves their feed.
+    await c.env.DB
+      .prepare("UPDATE couple_vendors SET status = 'removed' WHERE wedding_id = ? AND vendor_profile_id = ?")
+      .bind(weddingId, target.vendor_profile_id)
+      .run()
+    c.executionCtx.waitUntil(
+      c.env.DB
+        .prepare("DELETE FROM calendar_events WHERE wedding_id = ? AND vendor_id = ? AND notes LIKE 'wc:%'")
+        .bind(weddingId, target.vendor_profile_id)
+        .run()
+        .then(() => {})
+        .catch((e) => console.error('[weddings] remove vendor: calendar cleanup failed', e)),
+    )
+  }
+  // Refresh the remaining members' calendars off the response path.
+  c.executionCtx.waitUntil(resyncWeddingCalendars(c.env.DB, weddingId).catch((e) => console.error('[weddings] resync after remove failed', e)))
+  return c.redirect(`/app/weddings/${weddingId}?removed=1`)
+})
+
 // ─── Wedding detail ───
 weddings.get('/app/weddings/:id', async (c) => {
   const user = c.get('user')
@@ -1108,7 +1148,7 @@ weddings.get('/app/weddings/:id', async (c) => {
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                           </summary>
-                          <div class="absolute right-0 z-20 mt-1.5 w-56 bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-left">
+                          <div class="absolute right-0 z-30 mt-1.5 w-56 bg-white ring-1 ring-gray-900/10 shadow-xl rounded-xl p-3 text-left">
                             <form method="post" action={`/app/weddings/${wedding.id}/members/${m.user_id}/roles`}>
                               <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
                               <p class="text-[11px] font-medium text-gray-400 mb-2">{t('weddings.people.editTypesHint')}</p>
@@ -1134,6 +1174,21 @@ weddings.get('/app/weddings/:id', async (c) => {
                       )}
                       {!!m.can_manage && (
                         <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">{t('weddings.detail.managerBadge')}</span>
+                      )}
+                      {canManage && isVendor && m.user_id !== user.id && (
+                        <form
+                          method="post"
+                          action={`/app/weddings/${wedding.id}/members/${m.user_id}/remove`}
+                          onsubmit={`return confirm(${JSON.stringify(t('weddings.people.removeConfirm', { name: m.business_name ?? m.user_name }))})`}
+                          class="flex"
+                        >
+                          <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                          <button type="submit" title={t('weddings.people.remove')} aria-label={t('weddings.people.remove')} class="text-gray-300 hover:text-grapefruit-600 transition-colors">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </form>
                       )}
                     </div>
                   </div>
