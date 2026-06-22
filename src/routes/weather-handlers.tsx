@@ -25,7 +25,7 @@ export async function renderWeatherCard(c: Ctx, weddingId: string, basePath: str
 
   const days = wedding.date ? daysUntil(wedding.date) : null
   if (!shouldShowWeather(days, wedding.location_lat, wedding.location_lng)) return c.html(<WeatherUnavailable />)
-  const forecast = await getVenueForecast(c.env, { lat: wedding.location_lat!, lng: wedding.location_lng! })
+  const forecast = await getVenueForecast(c.env, { lat: wedding.location_lat!, lng: wedding.location_lng! }, c.executionCtx)
   if (!forecast) return c.html(<WeatherUnavailable />)
 
   return c.html(

@@ -30,7 +30,7 @@ import { createEvent } from '../../db/calendar'
 import { resyncWeddingCalendars } from '../../services/wedding-calendar'
 import { track } from '../../services/analytics'
 import { listVendorTypes, vendorTypeLabel } from '../../db/vendor-types'
-import { searchVendorsForWedding, getVendorWithEmail } from '../../db/vendors'
+import { searchVendorsForWedding, getVendorWithEmail, getVendorByUserId } from '../../db/vendors'
 import { geocodeWeddingLocation } from '../../services/geocode'
 import { getWeddingTodo, upsertWeddingTodo } from '../../db/todos'
 import { listTemplates, getDefaultTemplate } from '../../db/todos'
@@ -664,12 +664,15 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
       can_manage: isManagerVendor(vp),
       is_financial_party: false,
     })
-    try {
-      await c.env.EMAIL_QUEUE.send({
+    // Background: calendar fan-out (so the wedding appears in their iCal/CalDAV
+    // feed) + a heads-up email. Neither blocks the redirect.
+    c.executionCtx.waitUntil(resyncWeddingCalendars(c.env.DB, weddingId).catch((e) => console.error('[weddings] calendar resync failed', e)))
+    c.executionCtx.waitUntil(
+      c.env.EMAIL_QUEUE.send({
         type: 'notify_vendor_added_to_wedding',
         payload: JSON.stringify({ weddingId, vendorEmail: vp.user_email, vendorName: vp.business_name, addedBy: vendor.business_name }),
-      })
-    } catch { /* best-effort */ }
+      }).catch(() => {})
+    )
     track(c.env.DB, vendor.id, 'vendor_added', { weddingId, metadata: { vendorId: vp.id } })
     return c.redirect(`/app/weddings/${weddingId}?invited=1`)
   }
@@ -688,7 +691,6 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
   const vendorUser = await findOrCreateUser(c.env.DB, email, name)
 
   // Check if they have a vendor profile
-  const { getVendorByUserId } = await import('../../db/vendors')
   const vendorProfile = await getVendorByUserId(c.env.DB, vendorUser.id)
 
   // Planners and venues administer the weddings they're on.
@@ -707,34 +709,37 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
     is_financial_party: isFinancialParty,
   })
 
+  // Everything past the membership write is BACKGROUND (waitUntil) — the redirect
+  // returns immediately; none of this blocks it. The welcome path in particular
+  // makes a live Resend HTTP call that used to gate the whole submit.
   if (vendorProfile) {
-    // Already on the platform — a short heads-up is enough.
-    try {
-      await c.env.EMAIL_QUEUE.send({
+    // Fan out calendar events to the new member (so the wedding appears in their
+    // iCal/CalDAV feed) + a short "you've been added" heads-up.
+    c.executionCtx.waitUntil(resyncWeddingCalendars(c.env.DB, weddingId).catch((e) => console.error('[weddings] calendar resync failed', e)))
+    c.executionCtx.waitUntil(
+      c.env.EMAIL_QUEUE.send({
         type: 'notify_vendor_added_to_wedding',
-        payload: JSON.stringify({
-          weddingId,
-          vendorEmail: email,
-          vendorName: name,
-          addedBy: vendor.business_name,
-        }),
-      })
-    } catch { /* best-effort */ }
+        payload: JSON.stringify({ weddingId, vendorEmail: email, vendorName: name, addedBy: vendor.business_name }),
+      }).catch(() => {})
+    )
   } else {
-    // New to Wedding Computer — introduce the platform, not just the wedding.
-    const wedding = await getWedding(c.env.DB, weddingId)
-    if (wedding) {
-      await sendVendorWelcomeInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
-        email,
-        inviterName: vendor.business_name,
-        inviterRole: vendor.category,
-        inviterVendorId: vendor.id,
-        weddingId,
-        weddingTitle: wedding.title,
-        weddingDate: wedding.date ? formatDate(wedding.date) : null,
-        vendorRole: assignedRole,
-      }).catch((e: any) => console.error('[weddings] vendor welcome invite failed', e.message))
-    }
+    // New to Wedding Computer — introduce the platform (welcome email + magic link).
+    c.executionCtx.waitUntil(
+      (async () => {
+        const wedding = await getWedding(c.env.DB, weddingId)
+        if (!wedding) return
+        await sendVendorWelcomeInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
+          email,
+          inviterName: vendor.business_name,
+          inviterRole: vendor.category,
+          inviterVendorId: vendor.id,
+          weddingId,
+          weddingTitle: wedding.title,
+          weddingDate: wedding.date ? formatDate(wedding.date) : null,
+          vendorRole: assignedRole,
+        })
+      })().catch((e: any) => console.error('[weddings] vendor welcome invite failed', e?.message))
+    )
   }
 
   track(c.env.DB, vendor.id, 'vendor_added', { weddingId, metadata: { vendorEmail: email } })
@@ -767,71 +772,62 @@ weddings.get('/app/weddings/:id', async (c) => {
     ? allMembers
     : allMembers.filter((m) => m.user_id === user.id || m.role === 'couple' || m.role === 'guest' || !!m.can_manage)
 
-  const documents = await listDocumentsForWedding(c.env.DB, weddingId, user.id)
   const uploaded = c.req.query('uploaded')
   const deleted = c.req.query('deleted')
 
-  // Invoices for this wedding
-  const weddingInvoices = await listInvoicesForWedding(c.env.DB, vendor.id, weddingId)
-  // Approved vendor types for the "type of vendor" dropdown (admin-managed).
-  const vendorTypes = canManage ? await listVendorTypes(c.env.DB) : []
-  // Find the linked contact — drives the "new invoice" link and the couple panel
-  const linkedContact = await c.env.DB
-    .prepare(
-      `SELECT id, first_name, last_name, partner_first_name, partner_last_name,
-              email, partner_email, phone, partner_phone,
-              address, instagram, facebook, tiktok, website
-       FROM contacts WHERE vendor_id = ? AND wedding_id = ? LIMIT 1`,
-    )
-    .bind(vendor.id, weddingId)
-    .first<CoupleContact>()
+  // Everything below is independent of everything else (it only needs
+  // membership/wedding/members/canManage, already resolved) — fire it all at
+  // once instead of ~16 serial D1 round-trips. Per-call .catch fallbacks keep a
+  // missing optional table from rejecting the whole batch.
+  const basePath = `/app/weddings/${weddingId}`
+  const [
+    documents,
+    weddingInvoices,
+    vendorTypes,
+    linkedContact,
+    weddingTodo,
+    todoTemplates,
+    docTabs,
+    webLinks,
+    sendableFormsAll,
+    formSends,
+    formResponses,
+    timelineSection,
+    coupleVendors,
+    log,
+    pendingTimelineRequests,
+    controllers,
+  ] = await Promise.all([
+    listDocumentsForWedding(c.env.DB, weddingId, user.id),
+    listInvoicesForWedding(c.env.DB, vendor.id, weddingId),
+    canManage ? listVendorTypes(c.env.DB) : Promise.resolve([]),
+    c.env.DB
+      .prepare(
+        `SELECT id, first_name, last_name, partner_first_name, partner_last_name,
+                email, partner_email, phone, partner_phone,
+                address, instagram, facebook, tiktok, website
+         FROM contacts WHERE vendor_id = ? AND wedding_id = ? LIMIT 1`,
+      )
+      .bind(vendor.id, weddingId)
+      .first<CoupleContact>(),
+    getWeddingTodo(c.env.DB, vendor.id, weddingId),
+    listTemplates(c.env.DB, vendor.id),
+    loadDocTabs(c.env.DB, weddingId, membership, user.id),
+    listWebLinks(c.env.DB, weddingId),
+    listForms(c.env.DB, vendor.id),
+    listFormSendsForWedding(c.env.DB, weddingId, vendor.id),
+    listWeddingSubmissions(c.env.DB, weddingId, { role: 'vendor', vendorId: vendor.id }),
+    // Reuse the already-loaded wedding so buildProps doesn't re-fetch it.
+    renderTimelineSection(c, weddingId, membership, user, basePath, { wedding }),
+    listCoupleVendors(c.env.DB, weddingId).catch(() => [] as Awaited<ReturnType<typeof listCoupleVendors>>),
+    listWeddingLog(c.env.DB, weddingId, 20).catch(() => [] as Awaited<ReturnType<typeof listWeddingLog>>),
+    listPendingTimelineRequests(c.env.DB, weddingId).catch(() => [] as Awaited<ReturnType<typeof listPendingTimelineRequests>>),
+    getTimelineControllers(c.env.DB, weddingId).catch(() => [] as Awaited<ReturnType<typeof getTimelineControllers>>),
+  ])
 
-  // Todo checklist
-  const weddingTodo = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
-  const todoTemplates = await listTemplates(c.env.DB, vendor.id)
-
-  // Collaborative scoped docs — Everyone + Vendors only + Private tabs
-  const docTabs = await loadDocTabs(c.env.DB, weddingId, membership, user.id)
-
-  // Web links (galleries, Pinterest, playlists…)
-  const webLinks = await listWebLinks(c.env.DB, weddingId)
-
-  // Forms this vendor can send to the couple + responses they can see
-  const sendableForms = (await listForms(c.env.DB, vendor.id)).filter((f) => f.type === 'custom' && f.is_active)
-  const formSends = await listFormSendsForWedding(c.env.DB, weddingId, vendor.id)
-  const formResponses = await listWeddingSubmissions(c.env.DB, weddingId, { role: 'vendor', vendorId: vendor.id })
-
-  // Unified wedding timeline / run sheet
-  const timelineSection = await renderTimelineSection(c, weddingId, membership, user, `/app/weddings/${weddingId}`)
-
-  // Credits — couple_vendors may not exist yet, so handle gracefully
-  let credits: ReturnType<typeof buildCredits> = []
-  try {
-    const coupleVendors = await listCoupleVendors(c.env.DB, weddingId)
-    credits = buildCredits(members, coupleVendors)
-  } catch {
-    // Table might not exist; fall back to platform vendors only
-    credits = buildCredits(members, [])
-  }
-
-  // Wedding log
-  let log: Awaited<ReturnType<typeof listWeddingLog>> = []
-  try {
-    log = await listWeddingLog(c.env.DB, weddingId, 20)
-  } catch {
-    // Table might not exist yet
-  }
-
-  // Timeline approvals — pending requests + whether the viewer can decide them
-  let pendingTimelineRequests: Awaited<ReturnType<typeof listPendingTimelineRequests>> = []
-  let isTimelineController = false
-  try {
-    pendingTimelineRequests = await listPendingTimelineRequests(c.env.DB, weddingId)
-    const controllers = await getTimelineControllers(c.env.DB, weddingId)
-    isTimelineController = controllers.some((tc) => tc.user_id === user.id)
-  } catch {
-    // Table might not exist yet
-  }
+  const sendableForms = sendableFormsAll.filter((f) => f.type === 'custom' && f.is_active)
+  const credits = buildCredits(members, coupleVendors)
+  const isTimelineController = controllers.some((tc) => tc.user_id === user.id)
   const timelinePending = c.req.query('timeline_pending')
 
   return c.html(

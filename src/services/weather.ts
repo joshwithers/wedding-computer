@@ -40,7 +40,8 @@ export interface WeatherProvider {
 }
 
 const FORECAST_DAYS = 10 // covers any wedding within 7 days + its run-up
-const CACHE_TTL_SECONDS = 60 * 60 // 1 hour
+const FRESH_MS = 60 * 60 * 1000 // refresh hourly
+const STALE_TTL_SECONDS = 24 * 60 * 60 // keep a servable copy for a day past the last refresh
 
 // ─── Open-Meteo provider ───
 
@@ -116,29 +117,49 @@ function provider(env: Bindings): WeatherProvider {
   return new OpenMeteoProvider(env.WEATHER_API_KEY)
 }
 
-// Forecast for a venue, cached in KV per rounded location (~1km grid) for an
-// hour. Round to 2dp so nearby weddings share a cache entry and to keep the key
-// stable across tiny geocode jitter. Returns null when unavailable.
+async function fetchAndCache(env: Bindings, key: string, lat: number, lng: number): Promise<Forecast | null> {
+  const forecast = await provider(env).fetch({ lat, lng })
+  if (forecast) {
+    await env.KV.put(key, JSON.stringify(forecast), { expirationTtl: STALE_TTL_SECONDS }).catch(() => {})
+  }
+  return forecast
+}
+
+// Forecast for a venue, cached in KV per rounded location (~1km grid). Round to
+// 2dp so nearby weddings share a cache entry and to keep the key stable across
+// tiny geocode jitter. STALE-WHILE-REVALIDATE: a cached copy is served instantly
+// (so a page view NEVER blocks on the upstream call), and when it's older than an
+// hour the refresh runs in the background. Only the very first view for a venue
+// (cold cache) pays the upstream latency. Returns null when unavailable.
 export async function getVenueForecast(
   env: Bindings,
-  opts: { lat: number; lng: number }
+  opts: { lat: number; lng: number },
+  ctx?: { waitUntil(p: Promise<unknown>): void }
 ): Promise<Forecast | null> {
   const lat = Math.round(opts.lat * 100) / 100
   const lng = Math.round(opts.lng * 100) / 100
   const key = `wx:om:${lat.toFixed(2)},${lng.toFixed(2)}`
 
+  let cached: Forecast | null = null
   try {
-    const cached = await env.KV.get(key)
-    if (cached) return JSON.parse(cached) as Forecast
+    const raw = await env.KV.get(key)
+    if (raw) cached = JSON.parse(raw) as Forecast
   } catch {
     /* cache is best-effort */
   }
 
-  const forecast = await provider(env).fetch({ lat, lng })
-  if (forecast) {
-    await env.KV.put(key, JSON.stringify(forecast), { expirationTtl: CACHE_TTL_SECONDS }).catch(() => {})
+  if (cached) {
+    const fresh = Date.now() - Date.parse(cached.fetchedAt) < FRESH_MS
+    if (!fresh) {
+      // Serve the cached copy now; refresh hourly in the background.
+      const refresh = fetchAndCache(env, key, lat, lng).catch(() => null)
+      if (ctx) ctx.waitUntil(refresh)
+    }
+    return cached
   }
-  return forecast
+
+  // Cold cache: this view pays the one-off upstream latency.
+  return fetchAndCache(env, key, lat, lng)
 }
 
 // ─── WMO weather code → emoji + i18n label ───

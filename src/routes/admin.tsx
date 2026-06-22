@@ -19,6 +19,7 @@ import { countWaitlist, getWaitlistStats, getWaitlistCountryBreakdown, listWaitl
 import { makeUnsubscribeToken, unsubscribeUrl } from '../services/notification-prefs'
 import { auditLog } from '../middleware/audit'
 import { listVendorTypes, addVendorType, setVendorTypeActive, vendorTypeLabel } from '../db/vendor-types'
+import { resyncWeddingCalendars } from '../services/wedding-calendar'
 
 const admin = new Hono<Env>()
 
@@ -777,6 +778,32 @@ admin.post('/admin/vendor-types/:slug/toggle', async (c) => {
   await setVendorTypeActive(c.env.DB, slug, active)
   await auditLog(c, active ? 'restore_vendor_type' : 'remove_vendor_type', 'vendor_type', slug, {}).catch(() => {})
   return c.redirect('/admin/vendor-types')
+})
+
+// One-off: materialise calendar events for EVERY active vendor member of every
+// dated wedding, so vendors added before the add-vendor calendar fix see those
+// weddings in their iCal/CalDAV feed. Idempotent (syncWeddingCalendarEvents upserts).
+admin.post('/admin/backfill-calendars', async (c) => {
+  const weddings = await c.env.DB
+    .prepare(
+      `SELECT DISTINCT w.id FROM weddings w
+       JOIN wedding_members wm ON wm.wedding_id = w.id
+       WHERE wm.vendor_profile_id IS NOT NULL AND w.date IS NOT NULL`
+    )
+    .all<{ id: string }>()
+    .then((r) => r.results)
+  let ok = 0
+  let fail = 0
+  for (const w of weddings) {
+    try {
+      await resyncWeddingCalendars(c.env.DB, w.id)
+      ok++
+    } catch {
+      fail++
+    }
+  }
+  await auditLog(c, 'backfill_calendars', 'system', undefined, { weddings: weddings.length, ok, fail }).catch(() => {})
+  return c.json({ weddings: weddings.length, ok, fail })
 })
 
 // ─── Waitlist ───

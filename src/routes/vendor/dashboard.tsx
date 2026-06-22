@@ -41,9 +41,14 @@ dashboard.get('/app', async (c) => {
   let enquiries30 = 0
   let bookings30 = 0
   let isPro = false
+  let demoExists = false
+  let demoIsNew = false
+  // 30-day window for the analytics teaser strip (computed before the batch).
+  const tomorrow = new Date(Date.parse(today + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
+  const thirtyAgo = new Date(Date.parse(today + 'T00:00:00Z') - 30 * 86400000).toISOString().slice(0, 10)
 
   try {
-    const [weddings, contacts, overdue, revenueRow, contactCounts, events, todos, eventsCountRow] =
+    const [weddings, contacts, overdue, revenueRow, contactCounts, events, todos, eventsCountRow, enq30, book30, pro, demoLoaded, newVendor] =
       await Promise.all([
         db
           .prepare(
@@ -116,6 +121,13 @@ dashboard.get('/app', async (c) => {
           .prepare('SELECT COUNT(*) AS total FROM calendar_events WHERE vendor_id = ?')
           .bind(vendor.id)
           .first<{ total: number }>(),
+
+        // Folded in from former second/third query waves — all independent.
+        countEvents(db, vendor.id, 'enquiry_received', thirtyAgo, tomorrow),
+        countEvents(db, vendor.id, 'booking_confirmed', thirtyAgo, tomorrow),
+        isProVendor(db, vendor.id),
+        hasDemoData(db, vendor.id, user.id),
+        isNewVendor(db, vendor.id, user.id),
       ])
 
     upcomingWeddings = weddings
@@ -126,28 +138,25 @@ dashboard.get('/app', async (c) => {
     upcomingEvents = events
     todoProgress = todos
     eventsCount = eventsCountRow?.total ?? 0
-
-    // 30-day enquiry/booking pulse for the analytics teaser strip.
-    const tomorrow = new Date(Date.parse(today + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
-    const thirtyAgo = new Date(Date.parse(today + 'T00:00:00Z') - 30 * 86400000).toISOString().slice(0, 10)
-    ;[enquiries30, bookings30, isPro] = await Promise.all([
-      countEvents(db, vendor.id, 'enquiry_received', thirtyAgo, tomorrow),
-      countEvents(db, vendor.id, 'booking_confirmed', thirtyAgo, tomorrow),
-      isProVendor(db, vendor.id),
-    ])
+    enquiries30 = enq30
+    bookings30 = book30
+    isPro = pro
+    demoExists = demoLoaded
+    demoIsNew = newVendor
   } catch (err) {
     console.error('[dashboard] Failed to load dashboard data:', err)
   }
 
   const bookingRate30 = enquiries30 > 0 ? Math.round((bookings30 / enquiries30) * 100) : 0
 
-  // Demo-data card: show "Remove" whenever demo data is loaded; otherwise show
-  // the first-run "Load" invite only to a new/empty vendor who hasn't dismissed it.
-  let demoCard: 'loaded' | 'invite' | null = null
-  try {
-    if (await hasDemoData(db, vendor.id, user.id)) demoCard = 'loaded'
-    else if (vendor.demo_dismissed !== 1 && (await isNewVendor(db, vendor.id, user.id))) demoCard = 'invite'
-  } catch (err) { console.error('[dashboard] demo card state failed:', err) }
+  // Demo-data card state comes from the single batch above: "Remove" when demo
+  // data is loaded; otherwise the first-run "Load" invite to a new/empty vendor
+  // who hasn't dismissed it.
+  const demoCard: 'loaded' | 'invite' | null = demoExists
+    ? 'loaded'
+    : vendor.demo_dismissed !== 1 && demoIsNew
+      ? 'invite'
+      : null
 
   const hasData = counts.total > 0 || upcomingWeddings.length > 0
   const checklist = buildSetupChecklist(vendor, { contacts: counts.total, events: eventsCount })

@@ -294,8 +294,15 @@ async function buildProps(
   }
 }
 
-export async function renderTimelineSection(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string) {
-  return <WeddingTimeline {...(await buildProps(c, weddingId, member, user, basePath))} />
+export async function renderTimelineSection(
+  c: Ctx,
+  weddingId: string,
+  member: WeddingMember,
+  user: User,
+  basePath: string,
+  opts?: { wedding?: Awaited<ReturnType<typeof getWedding>> }
+) {
+  return <WeddingTimeline {...(await buildProps(c, weddingId, member, user, basePath, opts))} />
 }
 
 function body(c: Ctx, props: TimelineProps) {

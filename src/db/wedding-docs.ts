@@ -151,12 +151,13 @@ export async function loadDocTabs(
   member: DocMembership,
   userId: string
 ): Promise<DocTabState[]> {
-  const tabs: DocTabState[] = []
-  for (const scope of readableScopes(member)) {
-    const { content, token } = await getDoc(db, weddingId, scope, userId)
-    tabs.push({ scope, content, token, canWrite: canWriteDoc(member, scope), solo: isSoloScope(scope) })
-  }
-  return tabs
+  // Read the scopes in parallel (independent backing stores), preserving order.
+  return Promise.all(
+    readableScopes(member).map(async (scope) => {
+      const { content, token } = await getDoc(db, weddingId, scope, userId)
+      return { scope, content, token, canWrite: canWriteDoc(member, scope), solo: isSoloScope(scope) }
+    })
+  )
 }
 
 /** Load a doc's current content + concurrency token. */
