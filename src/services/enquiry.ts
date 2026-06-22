@@ -187,6 +187,13 @@ export async function createEnquiry(
 
   await createActivity(env.DB, contact.id, 'lead', SOURCE_LABEL[source])
 
+  // NOTE: an enquiry intentionally does NOT auto-add the vendor to the couple's
+  // wedding. The enquiry email is unverified public input, so matching it to an
+  // existing wedding and granting membership would let a vendor self-add to any
+  // couple's wedding by typing their email. The couple becoming a CRM contact
+  // (above) is the enquiry's outcome; membership is established by a BOOKING
+  // (couple-confirmed via the invoice token) — see services/booking-wedding.ts.
+
   track(env.DB, vendor.id, 'enquiry_received', {
     contactId: contact.id,
     metadata: { source },

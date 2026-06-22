@@ -5,8 +5,9 @@ import { SharedHead } from '../views/head'
 import type { HeadMeta } from '../views/head'
 import { getInvoiceByToken } from '../db/invoices'
 import { listPayments, claimBookingSubmission } from '../db/invoices'
-import { updateContact } from '../storage/contacts'
+import { updateContact, getContact } from '../storage/contacts'
 import { getStorageWithSecrets } from '../storage'
+import { attachVendorToCoupleWedding } from '../services/booking-wedding'
 import { createActivity } from '../db/activities'
 import { getVendorById } from '../db/vendors'
 import { getContractByInvoice, signContract, getContractById } from '../db/contracts'
@@ -343,6 +344,21 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
     }
     await createActivity(c.env.DB, invoice.contact_id, 'note',
       contract ? 'Booking form submitted and contract signed' : 'Booking form submitted'
+    )
+  }
+
+  // Booking IS the collaboration: make this vendor a member of the couple's
+  // wedding (match the couple's existing wedding by email, else create one from
+  // the contact) and link their existing contact. Background — never blocks the
+  // booking/payment response.
+  if (invoice.contact_id) {
+    const contactId = invoice.contact_id
+    c.executionCtx.waitUntil(
+      (async () => {
+        const storage = await getStorageWithSecrets(c.env, vendor)
+        const res = await getContact(storage, c.env.DB, invoice.vendor_id, contactId)
+        if (res) await attachVendorToCoupleWedding(c.env, vendor, res.contact, { createIfMissing: true })
+      })().catch((e: any) => console.error('[book] attach vendor to wedding failed', e?.message)),
     )
   }
 
