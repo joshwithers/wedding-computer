@@ -51,7 +51,7 @@ import { weddingDisplayTitle } from '../../lib/wedding-display'
 import { sendVendorWelcomeInvite } from '../../services/auth'
 import { TIMELINE_FIELDS } from '../../services/timeline-edit'
 import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes } from '../../db/timeline'
-import { t } from '../../i18n'
+import { t, tp } from '../../i18n'
 import { weddingCapStatus } from '../../services/plan-limits'
 import { markTimelineDirty } from '../../services/timeline-notify'
 import { WeddingDoc } from '../../views/wedding-doc'
@@ -157,7 +157,7 @@ function CouplePanel({ contact, canManage }: { contact: CoupleContact; canManage
     { net: 'instagram', label: 'Instagram' },
     { net: 'facebook', label: 'Facebook' },
     { net: 'tiktok', label: 'TikTok' },
-    { net: 'website', label: 'Website' },
+    { net: 'website', label: t('weddings.couple.website') },
   ]
   const socialLinks = socials
     .map((s) => ({ ...s, raw: contact[s.net], href: socialUrl(s.net, contact[s.net]) }))
@@ -250,6 +250,17 @@ const WEDDING_STATUSES = [
   { value: 'cancelled', label: 'Cancelled' },
 ]
 
+/** Viewer-localised label for a wedding status value. */
+function weddingStatusLabel(value: string): string {
+  switch (value) {
+    case 'planning': return t('weddings.status.planning')
+    case 'confirmed': return t('weddings.status.confirmed')
+    case 'completed': return t('weddings.status.completed')
+    case 'cancelled': return t('weddings.status.cancelled')
+    default: return value.charAt(0).toUpperCase() + value.slice(1)
+  }
+}
+
 const weddings = new Hono<Env>()
 
 weddings.use('/app/*', requireAuth, csrf, requireVendor)
@@ -266,12 +277,12 @@ weddings.get('/app/weddings', async (c) => {
   const past = items.filter((w) => w.status === 'completed' || w.status === 'cancelled')
 
   return c.html(
-    <AppLayout title="Weddings" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
+    <AppLayout title={t('weddings.title.weddings')} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-4xl">
         <div class="flex items-center justify-between gap-4 mb-6">
           <div>
             <p class="text-sm text-gray-500">
-              {items.length} wedding{items.length !== 1 ? 's' : ''}
+              {tp('weddings.list.count', items.length)}
             </p>
             {!cap.isPro && (
               <p class="text-xs text-gray-400 mt-0.5">
@@ -291,29 +302,29 @@ weddings.get('/app/weddings', async (c) => {
               href="/app/weddings/new"
               class="bg-horizon-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
             >
-              New wedding
+              {t('weddings.list.newWedding')}
             </a>
           )}
         </div>
 
         {items.length === 0 ? (
           <div class="text-center py-12 bg-white border border-papaya-300/30 rounded-2xl">
-            <p class="text-gray-500 text-sm mb-2">No weddings yet</p>
+            <p class="text-gray-500 text-sm mb-2">{t('weddings.list.emptyTitle')}</p>
             <p class="text-xs text-gray-400">
-              Create one directly, or promote a contact to booked status.
+              {t('weddings.list.emptyBody')}
             </p>
           </div>
         ) : (
           <div class="space-y-8">
             {upcoming.length > 0 && (
               <div>
-                <h2 class="text-sm font-bold text-gray-500 mb-3">Upcoming</h2>
+                <h2 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.list.upcoming')}</h2>
                 <WeddingGrid weddings={upcoming} />
               </div>
             )}
             {past.length > 0 && (
               <div>
-                <h2 class="text-sm font-bold text-gray-500 mb-3">Past</h2>
+                <h2 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.list.past')}</h2>
                 <WeddingGrid weddings={past} />
               </div>
             )}
@@ -331,7 +342,7 @@ weddings.get('/app/weddings/new', async (c) => {
   const cap = await weddingCapStatus(c.env.DB, vendor, user.id)
   if (cap.atCap) {
     return c.html(
-      <AppLayout title="New wedding" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
+      <AppLayout title={t('weddings.title.new')} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
         <WeddingCapPrompt limit={cap.limit} />
       </AppLayout>
     )
@@ -340,7 +351,7 @@ weddings.get('/app/weddings/new', async (c) => {
   const types: string[] = vendor.ceremony_types ? JSON.parse(vendor.ceremony_types) : []
 
   return c.html(
-    <AppLayout title="New wedding" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
+    <AppLayout title={t('weddings.title.new')} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-xl">
         <WeddingForm
           action="/app/weddings/new"
@@ -362,7 +373,7 @@ weddings.post('/app/weddings/new', async (c) => {
   const cap = await weddingCapStatus(c.env.DB, vendor, user.id)
   if (cap.atCap) {
     return c.html(
-      <AppLayout title="New wedding" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
+      <AppLayout title={t('weddings.title.new')} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
         <WeddingCapPrompt limit={cap.limit} />
       </AppLayout>
     )
@@ -849,7 +860,7 @@ weddings.get('/app/weddings/:id', async (c) => {
         <div class="flex items-start justify-between mb-6">
           <div>
             <p class="text-sm text-gray-500 mb-1">
-              <a href="/app/weddings" class="hover:text-gray-900">Weddings</a> /
+              <a href="/app/weddings" class="hover:text-gray-900">{t('weddings.list.breadcrumb')}</a> /
             </p>
             <h2 class="text-xl font-bold">{weddingDisplayTitle(wedding)}</h2>
             {wedding.ceremony_type && wedding.ceremony_type !== 'wedding' && (
@@ -861,7 +872,7 @@ weddings.get('/app/weddings/:id', async (c) => {
               <p class="text-sm text-gray-600 mt-1">
                 {formatDate(wedding.date)}
                 {days !== null && days > 0 && (
-                  <span class="text-gray-400"> — {days} days away</span>
+                  <span class="text-gray-400"> {t('weddings.detail.daysAway', { days })}</span>
                 )}
               </p>
             )}
@@ -871,7 +882,7 @@ weddings.get('/app/weddings/:id', async (c) => {
               href={`/app/weddings/${wedding.id}/edit`}
               class="border border-gray-200 px-3 py-1.5 rounded-xl text-sm hover:bg-papaya-50"
             >
-              Edit
+              {t('weddings.detail.edit')}
             </a>
           )}
         </div>
@@ -920,22 +931,22 @@ weddings.get('/app/weddings/:id', async (c) => {
 
         {/* Details — one dense card instead of a scatter of single-value boxes */}
         <div class="mb-6">
-          <h3 class="text-sm font-bold text-gray-500 mb-3">Details</h3>
+          <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.detail.details')}</h3>
           <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
             <dl class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-4">
               <div>
-                <dt class="text-xs text-gray-500 mb-1">Status</dt>
+                <dt class="text-xs text-gray-500 mb-1">{t('weddings.detail.status')}</dt>
                 <dd><WeddingStatusBadge status={wedding.status} /></dd>
               </div>
               {wedding.date && (
                 <div>
-                  <dt class="text-xs text-gray-500 mb-1">Date</dt>
+                  <dt class="text-xs text-gray-500 mb-1">{t('weddings.detail.date')}</dt>
                   <dd class="text-sm font-medium text-gray-900">{formatDate(wedding.date)}</dd>
                 </div>
               )}
               {wedding.time && (
                 <div>
-                  <dt class="text-xs text-gray-500 mb-1">Time</dt>
+                  <dt class="text-xs text-gray-500 mb-1">{t('weddings.detail.time')}</dt>
                   <dd class="text-sm font-medium text-gray-900">
                     {formatTime(wedding.time) +
                       (wedding.duration_hours
@@ -946,19 +957,19 @@ weddings.get('/app/weddings/:id', async (c) => {
               )}
               {wedding.location && (
                 <div>
-                  <dt class="text-xs text-gray-500 mb-1">City / Region</dt>
+                  <dt class="text-xs text-gray-500 mb-1">{t('weddings.detail.cityRegion')}</dt>
                   <dd class="text-sm font-medium text-gray-900">{wedding.location}</dd>
                 </div>
               )}
               <div>
-                <dt class="text-xs text-gray-500 mb-1">Your role</dt>
+                <dt class="text-xs text-gray-500 mb-1">{t('weddings.detail.yourRole')}</dt>
                 <dd class="text-sm font-medium text-gray-900">
                   {membership.vendor_role ? membership.vendor_role.charAt(0).toUpperCase() + membership.vendor_role.slice(1) : categoriesLabel(vendor)}
-                  {membership.can_manage ? ' (manager)' : ''}
+                  {membership.can_manage ? t('weddings.detail.managerSuffix') : ''}
                 </dd>
               </div>
               <div>
-                <dt class="text-xs text-gray-500 mb-1">Created</dt>
+                <dt class="text-xs text-gray-500 mb-1">{t('weddings.detail.created')}</dt>
                 <dd class="text-sm font-medium text-gray-900">{formatDate(wedding.created_at)}</dd>
               </div>
             </dl>
@@ -996,7 +1007,7 @@ weddings.get('/app/weddings/:id', async (c) => {
 
         {/* People */}
         <div class="mb-6">
-          <h3 class="text-sm font-bold text-gray-500 mb-3">People</h3>
+          <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.detail.people')}</h3>
           <div class="bg-white border border-papaya-300/30 rounded-2xl p-4 space-y-3">
             {members.map((m) => (
               <div class="flex items-center justify-between text-sm">
@@ -1015,7 +1026,7 @@ weddings.get('/app/weddings/:id', async (c) => {
                     {m.vendor_role ? m.vendor_role.charAt(0).toUpperCase() + m.vendor_role.slice(1) : m.role.charAt(0).toUpperCase() + m.role.slice(1)}
                   </span>
                   {!!m.can_manage && (
-                    <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">Manager</span>
+                    <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">{t('weddings.detail.managerBadge')}</span>
                   )}
                 </div>
               </div>
@@ -1029,14 +1040,14 @@ weddings.get('/app/weddings/:id', async (c) => {
         {/* Your team (agencies) */}
         {vendor.is_agency === 1 && (
           <div class="mb-6">
-            <h3 class="text-sm font-bold text-gray-500 mb-3">Your team</h3>
+            <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.detail.yourTeam')}</h3>
             <div
               class="bg-white border border-papaya-300/30 rounded-2xl p-4"
               hx-get={`/app/weddings/${wedding.id}/team-assignments`}
               hx-trigger="load"
               hx-swap="innerHTML"
             >
-              <p class="text-xs text-gray-400">Loading team assignments...</p>
+              <p class="text-xs text-gray-400">{t('weddings.detail.loadingTeam')}</p>
             </div>
           </div>
         )}
@@ -1112,7 +1123,7 @@ weddings.get('/app/weddings/:id', async (c) => {
         {/* Wedding Log */}
         {log.length > 0 && (
           <div class="mt-6">
-            <h3 class="text-sm font-bold text-gray-500 mb-3">Activity Log</h3>
+            <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.detail.activityLog')}</h3>
             <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
               <div class="space-y-2">
                 {log.map((entry) => (
@@ -1121,7 +1132,7 @@ weddings.get('/app/weddings/:id', async (c) => {
                       {formatDateTime(entry.created_at)}
                     </span>
                     <span class="text-gray-500">
-                      <strong class="text-gray-700">{entry.user_name ?? 'System'}</strong>
+                      <strong class="text-gray-700">{entry.user_name ?? t('weddings.detail.system')}</strong>
                       {': '}
                       {entry.action}
                       {entry.detail && (
@@ -1202,10 +1213,10 @@ weddings.get('/app/weddings/:id/edit', async (c) => {
   const error = c.req.query('error')
 
   return c.html(
-    <AppLayout title={`Edit ${wedding.title}`} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
+    <AppLayout title={t('weddings.title.editPrefix', { title: wedding.title })} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-xl">
         <p class="text-sm text-gray-500 mb-4">
-          <a href={`/app/weddings/${wedding.id}`} class="hover:text-gray-900">{wedding.title}</a> / Edit
+          <a href={`/app/weddings/${wedding.id}`} class="hover:text-gray-900">{wedding.title}</a> / {t('weddings.edit.breadcrumbSuffix')}
         </p>
         {error && (
           <div class="bg-grapefruit-50 border border-grapefruit-200 text-grapefruit-700 text-sm rounded-xl p-3 mb-4">
@@ -1446,7 +1457,7 @@ weddings.get('/app/contacts/:id/promote', async (c) => {
   const cap = await weddingCapStatus(c.env.DB, vendor, user.id)
   if (cap.atCap) {
     return c.html(
-      <AppLayout title="Create wedding" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
+      <AppLayout title={t('weddings.title.createWedding')} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
         <WeddingCapPrompt limit={cap.limit} />
       </AppLayout>
     )
@@ -1463,10 +1474,10 @@ weddings.get('/app/contacts/:id/promote', async (c) => {
   const types: string[] = vendor.ceremony_types ? JSON.parse(vendor.ceremony_types) : []
 
   return c.html(
-    <AppLayout title="Create wedding" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
+    <AppLayout title={t('weddings.title.createWedding')} user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-xl">
         <p class="text-sm text-gray-500 mb-4">
-          Creating wedding from contact:{' '}
+          {t('weddings.promote.fromContact')}{' '}
           <a href={`/app/contacts/${contact.id}`} class="font-medium text-gray-900 hover:underline">
             {contact.first_name} {contact.last_name}
           </a>
@@ -1542,8 +1553,8 @@ weddings.get('/app/vendors/:id', async (c) => {
   const target = await getVendorWithEmail(c.env.DB, targetId)
   if (!target) {
     return c.html(
-      <AppLayout title="Vendor" user={user} vendor={vendor} csrfToken={csrfToken}>
-        <div class="max-w-2xl"><p class="text-sm text-gray-500">Vendor not found.</p></div>
+      <AppLayout title={t('weddings.title.vendor')} user={user} vendor={vendor} csrfToken={csrfToken}>
+        <div class="max-w-2xl"><p class="text-sm text-gray-500">{t('weddings.profile.notFound')}</p></div>
       </AppLayout>,
       404,
     )
@@ -1571,7 +1582,7 @@ weddings.get('/app/vendors/:id', async (c) => {
     <AppLayout title={target.business_name} user={user} vendor={vendor} csrfToken={csrfToken}>
       <div class="max-w-2xl">
         <p class="text-sm text-gray-500 mb-4">
-          <a href="/app/weddings" class="hover:text-gray-900">Weddings</a> / Vendor
+          <a href="/app/weddings" class="hover:text-gray-900">{t('weddings.list.breadcrumb')}</a> / {t('weddings.profile.breadcrumbVendor')}
         </p>
 
         <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 sm:p-6 mb-6">
@@ -1580,20 +1591,20 @@ weddings.get('/app/vendors/:id', async (c) => {
               {vendorInitials(target.business_name)}
             </div>
             <div class="min-w-0 flex-1">
-              <h2 class="text-xl font-bold text-gray-900">{target.business_name}{isSelf && <span class="ml-2 text-xs font-normal text-gray-400">(you)</span>}</h2>
+              <h2 class="text-xl font-bold text-gray-900">{target.business_name}{isSelf && <span class="ml-2 text-xs font-normal text-gray-400">{t('weddings.profile.you')}</span>}</h2>
               <p class="text-sm text-gray-500 mt-0.5">{cat}{place ? ` · ${place}` : ''}</p>
               {target.bio && <p class="text-sm text-gray-600 mt-3 whitespace-pre-wrap">{target.bio}</p>}
               <div class="flex flex-wrap items-center gap-4 mt-3 text-sm">
-                {target.website && <a href={ensureHttp(target.website)} target="_blank" rel="noopener noreferrer" class="text-horizon-700 font-bold hover:underline">Website</a>}
-                {target.instagram && <a href={`https://instagram.com/${sanitizeInstagramHandle(target.instagram)}`} target="_blank" rel="noopener noreferrer" class="text-horizon-700 font-bold hover:underline">Instagram</a>}
+                {target.website && <a href={ensureHttp(target.website)} target="_blank" rel="noopener noreferrer" class="text-horizon-700 font-bold hover:underline">{t('weddings.profile.website')}</a>}
+                {target.instagram && <a href={`https://instagram.com/${sanitizeInstagramHandle(target.instagram)}`} target="_blank" rel="noopener noreferrer" class="text-horizon-700 font-bold hover:underline">{t('weddings.profile.instagram')}</a>}
               </div>
             </div>
           </div>
 
           {collaborating && !isSelf && (target.user_email || target.phone) && (
             <div class="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center gap-2 text-sm">
-              {target.user_email && <a href={`mailto:${target.user_email}`} class="bg-horizon-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-horizon-700 transition-colors">Email</a>}
-              {target.phone && <a href={`tel:${target.phone}`} class="border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-papaya-50 transition-colors">Call {target.phone}</a>}
+              {target.user_email && <a href={`mailto:${target.user_email}`} class="bg-horizon-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-horizon-700 transition-colors">{t('weddings.profile.email')}</a>}
+              {target.phone && <a href={`tel:${target.phone}`} class="border border-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-papaya-50 transition-colors">{t('weddings.profile.call', { phone: target.phone })}</a>}
             </div>
           )}
         </div>
@@ -1601,14 +1612,14 @@ weddings.get('/app/vendors/:id', async (c) => {
         {!isSelf && (
           <div class="mb-6">
             <h3 class="text-sm font-bold text-gray-500 mb-3">
-              {mutual.length > 0 ? `${mutual.length} wedding${mutual.length === 1 ? '' : 's'} together` : 'No weddings together yet'}
+              {mutual.length > 0 ? tp('weddings.profile.weddingsTogether', mutual.length) : t('weddings.profile.noneTogether')}
             </h3>
             {mutual.length > 0 && (
               <div class="bg-white border border-papaya-300/30 rounded-2xl divide-y divide-gray-50">
                 {mutual.map((w) => (
                   <a href={`/app/weddings/${w.id}`} class="flex items-center justify-between px-4 py-3 hover:bg-papaya-50 transition-colors">
                     <span class="text-sm font-medium text-gray-900">{w.emoji ? `${w.emoji} ` : ''}{w.title}</span>
-                    <span class="text-xs text-gray-400">{w.date ? formatDate(w.date) : 'Date TBD'}</span>
+                    <span class="text-xs text-gray-400">{w.date ? formatDate(w.date) : t('weddings.profile.dateTbd')}</span>
                   </a>
                 ))}
               </div>
@@ -1644,22 +1655,22 @@ function VendorFormsCard({
 }) {
   return (
     <div class="mb-6" id="forms">
-      <h3 class="text-sm font-bold text-gray-500 mb-3">Forms</h3>
+      <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.forms.title')}</h3>
       <div class="bg-white border border-papaya-300/30 rounded-2xl p-4 space-y-4">
         {sendableForms.length > 0 ? (
           <form method="post" action={`/app/weddings/${weddingId}/forms/send`} class="flex items-end gap-2">
             <input type="hidden" name="_csrf" value={csrfToken} />
             <div class="flex-1 min-w-0">
-              <label class="block text-xs text-gray-500 mb-1" for="form_id">Send a form to this couple</label>
+              <label class="block text-xs text-gray-500 mb-1" for="form_id">{t('weddings.forms.sendToCouple')}</label>
               <select id="form_id" name="form_id" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent">
                 {sendableForms.map((f) => <option value={f.id}>{f.title}</option>)}
               </select>
             </div>
-            <button type="submit" class="bg-horizon-600 text-white py-2 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors shrink-0">Send</button>
+            <button type="submit" class="bg-horizon-600 text-white py-2 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors shrink-0">{t('weddings.forms.send')}</button>
           </form>
         ) : (
           <p class="text-sm text-gray-500">
-            Create a <a href="/app/forms" class="text-horizon-600 hover:underline font-medium">custom form</a> (a questionnaire, song requests, dietary needs…) and you'll be able to send it to this couple here.
+            {t('weddings.forms.emptyPrefix')} <a href="/app/forms" class="text-horizon-600 hover:underline font-medium">{t('weddings.forms.emptyLink')}</a> {t('weddings.forms.emptySuffix')}
           </p>
         )}
 
@@ -1669,11 +1680,11 @@ function VendorFormsCard({
               <div class="flex items-center justify-between gap-2 text-sm border-t border-gray-100 pt-2">
                 <div class="min-w-0">
                   <p class="font-medium text-gray-900 truncate">{s.form_title}</p>
-                  <p class="text-xs text-gray-400">{s.response_count} response{s.response_count === 1 ? '' : 's'}</p>
+                  <p class="text-xs text-gray-400">{tp('weddings.forms.responseCount', s.response_count)}</p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
-                  <a href={`/form/${s.token}`} target="_blank" rel="noopener" class="text-xs text-horizon-600 hover:underline">Open</a>
-                  <CopyButton value={`${appUrl}/form/${s.token}`} title="Copy form link" class="w-7 h-7 rounded-full bg-papaya-50 border border-papaya-200 text-gray-500 hover:bg-papaya-100" />
+                  <a href={`/form/${s.token}`} target="_blank" rel="noopener" class="text-xs text-horizon-600 hover:underline">{t('weddings.forms.open')}</a>
+                  <CopyButton value={`${appUrl}/form/${s.token}`} title={t('weddings.forms.copyLink')} class="w-7 h-7 rounded-full bg-papaya-50 border border-papaya-200 text-gray-500 hover:bg-papaya-100" />
                 </div>
               </div>
             ))}
@@ -1682,7 +1693,7 @@ function VendorFormsCard({
 
         {responses.length > 0 && (
           <div class="space-y-2 pt-1">
-            <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">Responses</p>
+            <p class="text-xs font-bold text-gray-400 uppercase tracking-wide">{t('weddings.forms.responses')}</p>
             {responses.map((sub) => {
               const fields = formSubmissionFields(sub.form_config, sub.data)
               const own = sub.vendor_id === vendorId
@@ -1694,7 +1705,7 @@ function VendorFormsCard({
                     <span class="text-xs text-gray-400 shrink-0">{formatDateTime(sub.created_at)}</span>
                   </summary>
                   <div class="px-3 pb-3 pt-1 border-t border-gray-100">
-                    {!own && <p class="text-xs text-gray-400 mb-2">Shared by {sub.vendor_name}</p>}
+                    {!own && <p class="text-xs text-gray-400 mb-2">{t('weddings.forms.sharedBy', { name: sub.vendor_name ?? '' })}</p>}
                     <dl class="space-y-2">
                       {fields.map((f) => (
                         <div>
@@ -1712,9 +1723,9 @@ function VendorFormsCard({
                         <input type="hidden" name="_csrf" value={csrfToken} />
                         <input type="hidden" name="shared" value={shared ? '0' : '1'} />
                         <button type="submit" class="text-xs font-bold text-horizon-600 hover:underline">
-                          {shared ? 'Shared with the team — make private' : 'Share with all vendors'}
+                          {shared ? t('weddings.forms.makePrivate') : t('weddings.forms.shareAll')}
                         </button>
-                        <p class="text-xs text-gray-400 mt-0.5">{shared ? 'Every vendor on this wedding can see this response.' : 'Only you and the couple can see this response.'}</p>
+                        <p class="text-xs text-gray-400 mt-0.5">{shared ? t('weddings.forms.sharedHint') : t('weddings.forms.privateHint')}</p>
                       </form>
                     )}
                   </div>
@@ -1796,7 +1807,7 @@ function WeddingGrid({ weddings }: { weddings: WeddingWithRole[] }) {
               <p class="text-sm text-gray-500">{w.location}</p>
             )}
             {days !== null && days > 0 && (
-              <p class="text-xs text-gray-400 mt-2">{days} days away</p>
+              <p class="text-xs text-gray-400 mt-2">{t('weddings.list.daysAway', { days })}</p>
             )}
           </a>
         )
@@ -1814,7 +1825,7 @@ function WeddingStatusBadge({ status }: { status: string }) {
   }
   return (
     <span class={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] ?? 'bg-gray-100 text-gray-600'}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {weddingStatusLabel(status)}
     </span>
   )
 }
@@ -1845,22 +1856,22 @@ function AddPeoplePanel({
         <svg class="w-3.5 h-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
-        Add people to this wedding
+        {t('weddings.people.addPeople')}
       </summary>
       <div class="mt-3 border border-gray-100 rounded-xl p-4 space-y-4 bg-gray-50/50">
-        {invited && <p class="text-sm text-horizon-700 font-medium">Invited successfully</p>}
+        {invited && <p class="text-sm text-horizon-700 font-medium">{t('weddings.people.invitedSuccess')}</p>}
 
         {/* Invite one of the people getting married */}
         <form method="post" action={`/app/weddings/${weddingId}/invite`} class="flex gap-2 items-end">
           <input type="hidden" name="_csrf" value={csrfToken} />
           <div class="flex-1">
-            <label class="block text-xs font-medium text-gray-500 mb-1">Invite someone getting married</label>
+            <label class="block text-xs font-medium text-gray-500 mb-1">{t('weddings.people.inviteGettingMarried')}</label>
             <input type="email" name="email" required placeholder="their@email.com" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
           </div>
           <div>
-            <input type="text" name="name" required placeholder="Their name" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
+            <input type="text" name="name" required placeholder={t('weddings.people.theirName')} class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
           </div>
-          <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">Invite</button>
+          <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">{t('weddings.people.invite')}</button>
         </form>
 
         {/* Autolookup: find an existing Wedding Computer vendor first */}
@@ -1890,7 +1901,7 @@ function AddPeoplePanel({
             <input type="email" name="email" required placeholder="vendor@email.com" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
           </div>
           <div class="min-w-[120px]">
-            <input type="text" name="name" required placeholder="Business name" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
+            <input type="text" name="name" required placeholder={t('weddings.people.businessName')} class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
           </div>
           <div class="min-w-[140px]">
             <select name="vendor_role" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white">
@@ -1900,7 +1911,7 @@ function AddPeoplePanel({
               ))}
             </select>
           </div>
-          <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">Add</button>
+          <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">{t('weddings.people.add')}</button>
         </form>
 
         {/* Add another person (family, coordinator, etc.) */}
@@ -1908,15 +1919,15 @@ function AddPeoplePanel({
           <input type="hidden" name="_csrf" value={csrfToken} />
           <div class="flex-1">
             <label class="block text-xs font-medium text-gray-500 mb-1">
-              Add someone else
-              <span class="font-normal text-gray-400 ml-1">(family, coordinator, etc.)</span>
+              {t('weddings.people.addSomeoneElse')}
+              <span class="font-normal text-gray-400 ml-1">{t('weddings.people.addSomeoneElseHint')}</span>
             </label>
             <input type="email" name="email" required placeholder="person@email.com" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
           </div>
           <div>
-            <input type="text" name="name" required placeholder="Their name" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
+            <input type="text" name="name" required placeholder={t('weddings.people.theirName')} class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
           </div>
-          <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">Add</button>
+          <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">{t('weddings.people.add')}</button>
         </form>
       </div>
     </details>
@@ -1930,7 +1941,7 @@ function WeddingCredits({ credits, weddingTitle }: { credits: CreditEntry[]; wed
 
   return (
     <div class="mt-6">
-      <h3 class="text-sm font-bold text-gray-500 mb-3">Vendor Credits</h3>
+      <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.credits.title')}</h3>
       <div class="bg-white border border-papaya-300/30 rounded-2xl p-4">
         {/* Preview */}
         <div class="space-y-1 mb-4">
@@ -1956,24 +1967,24 @@ function WeddingCredits({ credits, weddingTitle }: { credits: CreditEntry[]; wed
         <div class="flex flex-wrap gap-2 border-t border-gray-100 pt-3">
           <button
             type="button"
-            onclick={`navigator.clipboard.writeText(${JSON.stringify(igText)});this.textContent='Copied!'`}
+            onclick={`navigator.clipboard.writeText(${JSON.stringify(igText)});this.textContent=${JSON.stringify(t('weddings.credits.copied'))}`}
             class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg font-medium transition-colors"
           >
-            Copy for Instagram
+            {t('weddings.credits.copyInstagram')}
           </button>
           <button
             type="button"
-            onclick={`navigator.clipboard.writeText(${JSON.stringify(mdText)});this.textContent='Copied!'`}
+            onclick={`navigator.clipboard.writeText(${JSON.stringify(mdText)});this.textContent=${JSON.stringify(t('weddings.credits.copied'))}`}
             class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg font-medium transition-colors"
           >
-            Copy Markdown
+            {t('weddings.credits.copyMarkdown')}
           </button>
           <button
             type="button"
-            onclick={`navigator.clipboard.writeText(${JSON.stringify(htmlText)});this.textContent='Copied!'`}
+            onclick={`navigator.clipboard.writeText(${JSON.stringify(htmlText)});this.textContent=${JSON.stringify(t('weddings.credits.copied'))}`}
             class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg font-medium transition-colors"
           >
-            Copy HTML
+            {t('weddings.credits.copyHtml')}
           </button>
         </div>
       </div>
@@ -1986,32 +1997,32 @@ function WeddingPlaces({ wedding }: { wedding: Wedding }) {
 
   if (wedding.getting_ready_location) {
     const label = wedding.getting_ready_1_label
-      ? `Getting ready — ${wedding.getting_ready_1_label}`
-      : 'Getting ready (1)'
+      ? t('weddings.places.gettingReadyLabelled', { label: wedding.getting_ready_1_label })
+      : t('weddings.places.gettingReady1')
     places.push({ label, value: wedding.getting_ready_location, time: wedding.getting_ready_time })
   }
 
   if (wedding.getting_ready_2_location) {
     const label = wedding.getting_ready_2_label
-      ? `Getting ready — ${wedding.getting_ready_2_label}`
-      : 'Getting ready (2)'
+      ? t('weddings.places.gettingReadyLabelled', { label: wedding.getting_ready_2_label })
+      : t('weddings.places.gettingReady2')
     places.push({ label, value: wedding.getting_ready_2_location, time: wedding.getting_ready_2_time })
   }
 
   if (wedding.ceremony_location)
-    places.push({ label: 'Ceremony', value: wedding.ceremony_location, time: wedding.time })
+    places.push({ label: t('weddings.places.ceremony'), value: wedding.ceremony_location, time: wedding.time })
 
   if (wedding.portrait_location)
-    places.push({ label: 'Portraits', value: wedding.portrait_location, time: wedding.portrait_time })
+    places.push({ label: t('weddings.places.portraits'), value: wedding.portrait_location, time: wedding.portrait_time })
 
   if (wedding.reception_location)
-    places.push({ label: 'Reception', value: wedding.reception_location, time: wedding.reception_time })
+    places.push({ label: t('weddings.places.reception'), value: wedding.reception_location, time: wedding.reception_time })
 
   if (places.length === 0) return <></>
 
   return (
     <div class="mt-6">
-      <h3 class="text-sm font-bold text-gray-500 mb-3">Places</h3>
+      <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.places.title')}</h3>
       <div class="bg-white border border-papaya-300/30 rounded-2xl divide-y divide-gray-100">
         {places.map((p) => (
           <div class="px-4 py-3 flex items-start justify-between gap-3">
@@ -2028,7 +2039,7 @@ function WeddingPlaces({ wedding }: { wedding: Wedding }) {
               rel="noopener"
               class="text-xs text-horizon-600 hover:text-horizon-700 font-medium whitespace-nowrap mt-1"
             >
-              Map
+              {t('weddings.places.map')}
             </a>
           </div>
         ))}
@@ -2072,23 +2083,23 @@ function WeddingInvoices({
   return (
     <div class="mt-6">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="text-sm font-bold text-gray-500">Invoices</h3>
+        <h3 class="text-sm font-bold text-gray-500">{t('weddings.invoices.title')}</h3>
         <a
           href={newInvoiceUrl}
           class="text-xs font-bold text-horizon-600 hover:text-horizon-700"
         >
-          + New invoice
+          {t('weddings.invoices.newInvoice')}
         </a>
       </div>
 
       {invoices.length === 0 ? (
         <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 text-center">
-          <p class="text-sm text-gray-400">No invoices yet</p>
+          <p class="text-sm text-gray-400">{t('weddings.invoices.empty')}</p>
           <a
             href={newInvoiceUrl}
             class="text-sm font-bold text-horizon-600 hover:text-horizon-700 mt-1 inline-block"
           >
-            Create your first invoice
+            {t('weddings.invoices.createFirst')}
           </a>
         </div>
       ) : (
@@ -2096,15 +2107,15 @@ function WeddingInvoices({
           {/* Payment summary */}
           <div class="grid grid-cols-3 gap-3 mb-3">
             <div class="bg-white border border-papaya-300/30 rounded-xl p-3 text-center">
-              <p class="text-xs text-gray-500">Invoiced</p>
+              <p class="text-xs text-gray-500">{t('weddings.invoices.invoiced')}</p>
               <p class="text-sm font-bold">${(totalInvoiced / 100).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</p>
             </div>
             <div class="bg-white border border-papaya-300/30 rounded-xl p-3 text-center">
-              <p class="text-xs text-gray-500">Paid</p>
+              <p class="text-xs text-gray-500">{t('weddings.invoices.paid')}</p>
               <p class="text-sm font-bold text-horizon-700">${(totalPaid / 100).toLocaleString('en-AU', { minimumFractionDigits: 2 })}</p>
             </div>
             <div class="bg-white border border-papaya-300/30 rounded-xl p-3 text-center">
-              <p class="text-xs text-gray-500">Outstanding</p>
+              <p class="text-xs text-gray-500">{t('weddings.invoices.outstanding')}</p>
               <p class={`text-sm font-bold ${outstanding > 0 ? 'text-grapefruit-700' : 'text-gray-400'}`}>
                 ${(outstanding / 100).toLocaleString('en-AU', { minimumFractionDigits: 2 })}
               </p>
@@ -2125,9 +2136,9 @@ function WeddingInvoices({
                   </p>
                   <div class="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
                     {inv.contact_name && <span>{inv.contact_name}</span>}
-                    {inv.due_date && <span>Due {formatDate(inv.due_date)}</span>}
+                    {inv.due_date && <span>{t('weddings.invoices.due', { date: formatDate(inv.due_date) })}</span>}
                     {inv.payment_count > 0 && (
-                      <span>{inv.paid_count}/{inv.payment_count} payments</span>
+                      <span>{t('weddings.invoices.payments', { paid: inv.paid_count, total: inv.payment_count })}</span>
                     )}
                   </div>
                 </div>
@@ -2180,15 +2191,15 @@ function WeddingFiles({
   return (
     <div class="mt-6">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="text-sm font-bold text-gray-500">Files</h3>
-        <span class="text-xs text-gray-400">{documents.length} file{documents.length !== 1 ? 's' : ''}</span>
+        <h3 class="text-sm font-bold text-gray-500">{t('weddings.files.title')}</h3>
+        <span class="text-xs text-gray-400">{tp('weddings.files.fileCount', documents.length)}</span>
       </div>
 
       {uploaded && (
-        <p class="text-sm text-horizon-700 font-medium mb-3">File uploaded successfully</p>
+        <p class="text-sm text-horizon-700 font-medium mb-3">{t('weddings.files.uploaded')}</p>
       )}
       {deleted && (
-        <p class="text-sm text-horizon-700 font-medium mb-3">File deleted</p>
+        <p class="text-sm text-horizon-700 font-medium mb-3">{t('weddings.files.deleted')}</p>
       )}
 
       {/* File list */}
@@ -2222,15 +2233,15 @@ function WeddingFiles({
                   </a>
                   <div class="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
                     <span>{formatFileSize(doc.size_bytes)}</span>
-                    <span>by {doc.uploader_name}</span>
+                    <span>{t('weddings.files.by', { name: doc.uploader_name ?? '' })}</span>
                     {doc.visibility === 'wedding' ? (
-                      <span class="text-horizon-600">Everyone</span>
+                      <span class="text-horizon-600">{t('weddings.files.everyone')}</span>
                     ) : sharedNames.length > 0 ? (
                       <span class="text-amber-600" title={sharedNames.join(', ')}>
-                        Shared with {sharedNames.length}
+                        {t('weddings.files.sharedWith', { count: sharedNames.length })}
                       </span>
                     ) : (
-                      <span>Private</span>
+                      <span>{t('weddings.files.private')}</span>
                     )}
                     {doc.description && (
                       <span class="truncate max-w-[120px]" title={doc.description}>{doc.description}</span>
@@ -2241,7 +2252,7 @@ function WeddingFiles({
                   <a
                     href={`/files/${doc.id}/download`}
                     class="text-gray-400 hover:text-gray-600 transition-colors"
-                    title="Download"
+                    title={t('weddings.files.download')}
                   >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -2253,8 +2264,8 @@ function WeddingFiles({
                       <button
                         type="submit"
                         class="text-gray-400 hover:text-grapefruit-600 transition-colors"
-                        title="Delete"
-                        onclick="return confirm('Delete this file?')"
+                        title={t('weddings.files.delete')}
+                        onclick={`return confirm(${JSON.stringify(t('weddings.files.confirmDelete'))})`}
                       >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -2275,7 +2286,7 @@ function WeddingFiles({
           <svg class="w-3.5 h-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
           </svg>
-          Upload a file
+          {t('weddings.files.upload')}
         </summary>
         <form
           method="post"
@@ -2292,20 +2303,20 @@ function WeddingFiles({
               required
               class="block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-horizon-600 file:text-white hover:file:bg-horizon-700 file:cursor-pointer"
             />
-            <p class="text-xs text-gray-400 mt-1">PDF, images, documents, spreadsheets. Max 10 MB.</p>
+            <p class="text-xs text-gray-400 mt-1">{t('weddings.files.uploadHint')}</p>
           </div>
 
           <div>
             <input
               type="text"
               name="description"
-              placeholder="Optional description"
+              placeholder={t('weddings.files.optionalDescription')}
               class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1.5">Who can see this?</label>
+            <label class="block text-xs font-medium text-gray-500 mb-1.5">{t('weddings.files.whoCanSee')}</label>
             <div class="space-y-1.5" id={`vis-${weddingId}`}>
               <label class="flex items-center gap-2 text-sm text-gray-700">
                 <input
@@ -2316,7 +2327,7 @@ function WeddingFiles({
                   class="text-horizon-600"
                   onchange={`document.getElementById('share-checkboxes-${weddingId}').classList.add('hidden')`}
                 />
-                Everyone on this wedding
+                {t('weddings.files.everyoneOnWedding')}
               </label>
               {otherMembers.length > 0 && (
                 <label class="flex items-center gap-2 text-sm text-gray-700">
@@ -2327,7 +2338,7 @@ function WeddingFiles({
                     class="text-horizon-600"
                     onchange={`document.getElementById('share-checkboxes-${weddingId}').classList.remove('hidden')`}
                   />
-                  Only specific people
+                  {t('weddings.files.onlySpecific')}
                 </label>
               )}
             </div>
@@ -2356,7 +2367,7 @@ function WeddingFiles({
             type="submit"
             class="bg-horizon-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors"
           >
-            Upload
+            {t('weddings.files.uploadButton')}
           </button>
         </form>
       </details>
@@ -2386,20 +2397,20 @@ function WeddingForm({
       {contactId && <input type="hidden" name="contact_id" value={contactId} />}
 
       <div>
-        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="title">Title</label>
+        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="title">{t('weddings.form.title')}</label>
         <input
           type="text"
           id="title"
           name="title"
           required
           value={wedding?.title ?? defaults?.title ?? ''}
-          placeholder="e.g. Sarah & James"
+          placeholder={t('weddings.form.titlePlaceholder')}
           class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
         />
       </div>
 
       <div>
-        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="ceremony_type">Type</label>
+        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="ceremony_type">{t('weddings.form.type')}</label>
         <select
           id="ceremony_type"
           name="ceremony_type"
@@ -2414,7 +2425,7 @@ function WeddingForm({
       </div>
 
       <div>
-        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="date">Date</label>
+        <label class="block text-sm font-bold text-gray-700 mb-1.5" for="date">{t('weddings.form.date')}</label>
         <input
           type="date"
           id="date"
@@ -2427,12 +2438,12 @@ function WeddingForm({
       <div>
         <PlacesField
           name="location"
-          label="City / Region"
+          label={t('weddings.form.cityRegion')}
           value={wedding?.location ?? defaults?.location ?? ''}
-          placeholder="e.g. Melbourne, Byron Bay"
+          placeholder={t('weddings.form.cityRegionPlaceholder')}
           mode="region"
         />
-        <p class="text-xs text-gray-400 mt-1">For reporting and analytics</p>
+        <p class="text-xs text-gray-400 mt-1">{t('weddings.form.cityRegionHint')}</p>
       </div>
 
       {/* Wedding emoji — ceremony, reception and run-sheet times now live in the timeline */}
@@ -2540,14 +2551,14 @@ function WeddingForm({
 
       {wedding && (
         <div>
-          <label class="block text-sm font-bold text-gray-700 mb-1.5" for="status">Status</label>
+          <label class="block text-sm font-bold text-gray-700 mb-1.5" for="status">{t('weddings.form.status')}</label>
           <select
             id="status"
             name="status"
             class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
           >
             {WEDDING_STATUSES.map((s) => (
-              <option value={s.value} selected={s.value === wedding.status}>{s.label}</option>
+              <option value={s.value} selected={s.value === wedding.status}>{weddingStatusLabel(s.value)}</option>
             ))}
           </select>
         </div>
@@ -2557,7 +2568,7 @@ function WeddingForm({
         type="submit"
         class="bg-horizon-600 text-white py-3 px-6 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors"
       >
-        {wedding ? 'Save changes' : 'Create wedding'}
+        {wedding ? t('weddings.form.saveChanges') : t('weddings.form.createWedding')}
       </button>
     </form>
   )
