@@ -9,7 +9,8 @@ import { isProVendor } from '../../db/subscriptions'
 import { softDeleteAccount } from '../../services/account'
 import { VENDOR_CATEGORIES } from '../../types'
 import { trimOrNull, requireString } from '../../lib/validation'
-import { vendorCategories } from '../../lib/categories'
+import { vendorCategories, hasCategory } from '../../lib/categories'
+import { normalizeCelebrantTerm, celebrantTermOf, CELEBRANT_SLUG, OFFICIANT_TERM, celebrantTermsDiffer } from '../../lib/celebrant-term'
 import { isReservedHandle } from '../../lib/reserved-handles'
 import { t } from '../../i18n'
 import { auditLog } from '../../middleware/audit'
@@ -118,6 +119,33 @@ settings.get('/app/settings', async (c) => {
                   ))}
                 </div>
               </div>
+              {hasCategory(vendor, CELEBRANT_SLUG) && celebrantTermsDiffer() && (
+                <div>
+                  <span class="block text-sm font-bold text-gray-700 mb-1.5">{t('settings.celebrantTerm.label')}</span>
+                  <div class="flex gap-2">
+                    <label class="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 text-sm cursor-pointer hover:border-horizon-600/40 has-[:checked]:border-horizon-600 has-[:checked]:bg-horizon-50">
+                      <input
+                        type="radio"
+                        name="celebrant_term"
+                        value=""
+                        checked={celebrantTermOf(vendor) !== OFFICIANT_TERM}
+                        class="border-gray-300 text-horizon-600 focus:ring-horizon-600"
+                      />
+                      <span>{t('settings.celebrantTerm.celebrant')}</span>
+                    </label>
+                    <label class="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 text-sm cursor-pointer hover:border-horizon-600/40 has-[:checked]:border-horizon-600 has-[:checked]:bg-horizon-50">
+                      <input
+                        type="radio"
+                        name="celebrant_term"
+                        value={OFFICIANT_TERM}
+                        checked={celebrantTermOf(vendor) === OFFICIANT_TERM}
+                        class="border-gray-300 text-horizon-600 focus:ring-horizon-600"
+                      />
+                      <span>{t('settings.celebrantTerm.officiant')}</span>
+                    </label>
+                  </div>
+                </div>
+              )}
               <Field label="Phone" name="phone" value={vendor.phone ?? ''} type="tel" />
               <Field label="Website" name="website" value={vendor.website ?? ''} type="url" />
               <Field label="Instagram" name="instagram" value={vendor.instagram ?? ''} placeholder="@handle" />
@@ -1025,6 +1053,10 @@ settings.post('/app/settings', async (c) => {
       instagram: trimOrNull(body.instagram),
       bio: trimOrNull(body.bio),
       location,
+      // Only meaningful for celebrants; clears to default if the role is dropped.
+      celebrant_term: categories.includes(CELEBRANT_SLUG as any)
+        ? normalizeCelebrantTerm(body.celebrant_term)
+        : null,
     }
 
     if (location && location !== vendor.location) {

@@ -850,6 +850,9 @@ export const nl: Dictionary = {
   "marketing.link.plainTextDocs": "Gegevensdocumentatie in platte tekst",
 
   "settings.categories.help": "Kies alles wat je doet — veel leveranciers hebben meer dan één rol.",
+  "settings.celebrantTerm.label": "Hoe wordt je rol weergegeven?",
+  "settings.celebrantTerm.celebrant": "Trouwambtenaar",
+  "settings.celebrantTerm.officiant": "Trouwambtenaar",
   "weddings.timeline.pendingTitle": "Tijdlijnwijzigingen in afwachting",
   "weddings.timeline.requestedBy": "Aangevraagd door {name}",
   "weddings.timeline.approve": "Goedkeuren",
@@ -1040,6 +1043,7 @@ export const nl: Dictionary = {
 
   // Categorielabels (welk soort leverancier)
   "onboarding.category.celebrant": "Trouwambtenaar",
+  "onboarding.category.officiant": "Trouwambtenaar",
   "onboarding.category.photographer": "Fotograaf",
   "onboarding.category.videographer": "Videograaf",
   "onboarding.category.florist": "Bloemist",

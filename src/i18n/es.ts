@@ -850,6 +850,9 @@ export const es: Dictionary = {
   "marketing.link.plainTextDocs": "Documentación de datos de texto sin formato",
 
   "settings.categories.help": "Elige todo lo que haces — muchos proveedores tienen más de un rol.",
+  "settings.celebrantTerm.label": "¿Cómo se muestra tu rol?",
+  "settings.celebrantTerm.celebrant": "Oficiante",
+  "settings.celebrantTerm.officiant": "Oficiante",
   "weddings.timeline.pendingTitle": "Cambios de cronograma pendientes",
   "weddings.timeline.requestedBy": "Solicitado por {name}",
   "weddings.timeline.approve": "Aprobar",
@@ -1040,6 +1043,7 @@ export const es: Dictionary = {
 
   // Etiquetas de categoría (tipo de proveedor)
   "onboarding.category.celebrant": "Oficiante",
+  "onboarding.category.officiant": "Oficiante",
   "onboarding.category.photographer": "Fotógrafo",
   "onboarding.category.videographer": "Videógrafo",
   "onboarding.category.florist": "Florista",

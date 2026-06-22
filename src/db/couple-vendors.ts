@@ -1,20 +1,27 @@
 import type { CoupleVendor } from '../types'
 import { sanitizeInstagramHandle } from '../lib/instagram'
 
+/** A couple_vendors row joined with the linked vendor profile's celebrant term
+ *  (null for couple-entered vendors with no platform profile). Lets the
+ *  category label honour a celebrant's Celebrant/Officiant preference. */
+export type CoupleVendorWithTerm = CoupleVendor & { celebrant_term: string | null }
+
 export async function listCoupleVendors(
   db: D1Database,
   weddingId: string
-): Promise<CoupleVendor[]> {
+): Promise<CoupleVendorWithTerm[]> {
   return db
     .prepare(
-      `SELECT * FROM couple_vendors
-       WHERE wedding_id = ? AND status != 'removed'
+      `SELECT cv.*, vp.celebrant_term
+       FROM couple_vendors cv
+       LEFT JOIN vendor_profiles vp ON vp.id = cv.vendor_profile_id
+       WHERE cv.wedding_id = ? AND cv.status != 'removed'
        ORDER BY
-         CASE status WHEN 'booked' THEN 0 WHEN 'contacted' THEN 1 WHEN 'considering' THEN 2 END,
-         name ASC`
+         CASE cv.status WHEN 'booked' THEN 0 WHEN 'contacted' THEN 1 WHEN 'considering' THEN 2 END,
+         cv.name ASC`
     )
     .bind(weddingId)
-    .all<CoupleVendor>()
+    .all<CoupleVendorWithTerm>()
     .then((r) => r.results)
 }
 

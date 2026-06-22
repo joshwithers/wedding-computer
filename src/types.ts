@@ -105,6 +105,8 @@ export type VendorProfile = {
   category: string
   /** JSON array of all vendor types; `category` is the primary. */
   categories: string | null
+  /** Display preference for the 'celebrant' role: null = "Celebrant", 'officiant' = "Officiant". */
+  celebrant_term: string | null
   phone: string | null
   website: string | null
   instagram: string | null

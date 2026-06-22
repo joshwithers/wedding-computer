@@ -21,6 +21,7 @@ import { auditLog } from '../middleware/audit'
 import { listVendorTypes, addVendorType, setVendorTypeActive, vendorTypeLabel } from '../db/vendor-types'
 import { resyncWeddingCalendars } from '../services/wedding-calendar'
 import { sanitizeInstagramHandle } from '../lib/instagram'
+import { normalizeCelebrantTerm, celebrantTermOf, celebrantTermLabel, CELEBRANT_SLUG, OFFICIANT_TERM } from '../lib/celebrant-term'
 
 const admin = new Hono<Env>()
 
@@ -895,7 +896,9 @@ admin.get('/admin/businesses', async (c) => {
                   <div class="min-w-0">
                     <p class="font-bold text-gray-900 truncate">{b.business_name}</p>
                     <p class="text-xs text-gray-500 truncate">
-                      {vendorTypeLabel({ slug: b.category ?? '', label: b.category ?? '—' })}
+                      {b.category === CELEBRANT_SLUG
+                        ? celebrantTermLabel(b)
+                        : vendorTypeLabel({ slug: b.category ?? '', label: b.category ?? '—' })}
                       {place ? ` · ${place}` : ''} · {b.user_email}
                     </p>
                   </div>
@@ -1003,6 +1006,21 @@ admin.get('/admin/businesses/:id', async (c) => {
             <label class="block text-sm font-medium text-gray-700 mb-1" for="bio">Bio</label>
             <textarea id="bio" name="bio" rows={4} class={field}>{vendor.bio ?? ''}</textarea>
           </div>
+          {(cats.includes(CELEBRANT_SLUG) || vendor.category === CELEBRANT_SLUG) && (
+            <div>
+              <span class="block text-sm font-medium text-gray-700 mb-1">Celebrant role shown as</span>
+              <div class="flex gap-4">
+                <label class="flex items-center gap-2 text-sm text-gray-700">
+                  <input type="radio" name="celebrant_term" value="" checked={celebrantTermOf(vendor) !== OFFICIANT_TERM} class="border-gray-300 text-gray-900 focus:ring-gray-900" />
+                  Celebrant
+                </label>
+                <label class="flex items-center gap-2 text-sm text-gray-700">
+                  <input type="radio" name="celebrant_term" value={OFFICIANT_TERM} checked={celebrantTermOf(vendor) === OFFICIANT_TERM} class="border-gray-300 text-gray-900 focus:ring-gray-900" />
+                  Officiant
+                </label>
+              </div>
+            </div>
+          )}
           <div class="flex flex-wrap gap-x-6 gap-y-2 pt-1">
             <label class="flex items-center gap-2 text-sm text-gray-700">
               <input type="checkbox" name="directory_listed" value="1" checked={!!vendor.directory_listed} class="rounded border-gray-300 text-gray-900 focus:ring-gray-900" />
@@ -1064,10 +1082,13 @@ admin.post('/admin/businesses/:id', async (c) => {
   const businessName = str(body.business_name)
   if (!businessName) return c.redirect(`/admin/businesses/${id}?error=name`)
 
+  // The category set actually persisted (falls back to the primary).
+  const savedCategories = categories.length ? categories : [str(body.category) || vendor.category]
+
   await updateVendor(c.env.DB, id, {
     business_name: businessName,
     category: str(body.category) || vendor.category,
-    categories: JSON.stringify(categories.length ? categories : [str(body.category) || vendor.category]),
+    categories: JSON.stringify(savedCategories),
     website: str(body.website) || null,
     instagram: str(body.instagram) || null, // updateVendor sanitizes this to a bare handle
     phone: str(body.phone) || null,
@@ -1078,6 +1099,8 @@ admin.post('/admin/businesses/:id', async (c) => {
     bio: str(body.bio) || null,
     directory_listed: body.directory_listed === '1' ? 1 : 0,
     is_agency: body.is_agency === '1' ? 1 : 0,
+    // Only meaningful for celebrants; can't be set on a non-celebrant via a crafted POST.
+    celebrant_term: savedCategories.includes(CELEBRANT_SLUG) ? normalizeCelebrantTerm(body.celebrant_term) : null,
   })
   await auditLog(c, 'admin_edit_business', 'vendor', id, { business_name: businessName }).catch(() => {})
   return c.redirect(`/admin/businesses/${id}?saved=1`)

@@ -849,6 +849,9 @@ export const ja: Dictionary = {
   "marketing.link.plainTextDocs": "プレーンテキストデータのドキュメント",
 
   "settings.categories.help": "あなたの仕事をすべて選んでください — 複数の役割を持つベンダーも多くいます。",
+  "settings.celebrantTerm.label": "あなたの役割はどのように表示されますか？",
+  "settings.celebrantTerm.celebrant": "司会者",
+  "settings.celebrantTerm.officiant": "司式者",
   "weddings.timeline.pendingTitle": "承認待ちのタイムライン変更",
   "weddings.timeline.requestedBy": "{name} からのリクエスト",
   "weddings.timeline.approve": "承認",
@@ -1017,6 +1020,7 @@ export const ja: Dictionary = {
   "onboarding.business.emailPlaceholder": "yourname",
 
   "onboarding.category.celebrant": "司会者",
+  "onboarding.category.officiant": "司式者",
   "onboarding.category.photographer": "カメラマン",
   "onboarding.category.videographer": "ビデオグラファー",
   "onboarding.category.florist": "フローリスト",

@@ -1,5 +1,6 @@
 import type { CoupleVendor } from '../types'
 import { sanitizeInstagramHandle } from '../lib/instagram'
+import { displayRoles } from '../lib/celebrant-term'
 
 export type CreditEntry = {
   /** One or more vendor-type slugs this party is credited as on the wedding. */
@@ -17,6 +18,7 @@ type MemberWithVendor = {
   business_name: string | null
   vendor_instagram: string | null
   vendor_website: string | null
+  celebrant_term: string | null
   user_name: string
   role: string
 }
@@ -74,7 +76,7 @@ export function buildCredits(
     if (m.vendor_profile_id) memberProfileIds.add(m.vendor_profile_id)
     const name = m.business_name ?? m.user_name
     credits.push({
-      roles: parseMemberRoles(m.vendor_roles, m.vendor_role),
+      roles: displayRoles(parseMemberRoles(m.vendor_roles, m.vendor_role), m.celebrant_term),
       name,
       // An email-invited vendor has no profile yet — fall back to the handle
       // captured on the invite so their credit still links.

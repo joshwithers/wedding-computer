@@ -11,11 +11,12 @@ import { updateUser } from '../db/users'
 import { listCoupleVendors, getCoupleVendor, getCoupleVendorByProfileId, createCoupleVendor, updateCoupleVendor, deleteCoupleVendor, syncPlatformVendors, findCoupleVendorByEmail } from '../db/couple-vendors'
 import { getVendorByUserId } from '../db/vendors'
 import { findOrCreateUser, sendVendorWelcomeInvite } from '../services/auth'
-import { isManagerVendor } from '../lib/categories'
+import { isManagerVendor, categoriesLabel } from '../lib/categories'
+import { celebrantTermsDiffer } from '../lib/celebrant-term'
 import { weddingDisplayTitle } from '../lib/wedding-display'
 import { createTimelineRequest, getTimelineControllers } from '../db/timeline-requests'
 import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes } from '../db/timeline'
-import { t } from '../i18n'
+import { t, type MessageKey } from '../i18n'
 import { shouldShowWeather } from '../views/weather'
 import { renderWeatherCard, setWeatherUnit } from './weather-handlers'
 import { WeddingDoc } from '../views/wedding-doc'
@@ -49,6 +50,20 @@ import { consumeRateLimit } from '../middleware/rate-limit'
 import { auditLog } from '../middleware/audit'
 import { listDocumentsForWedding, type DocumentWithUploader } from '../db/documents'
 import { formatDate, formatDateTime, daysUntil } from '../lib/date'
+
+/** Translated label for a couple-vendor category dropdown option. The celebrant
+ *  slug offers both words where the language distinguishes them, since the couple
+ *  hasn't picked a vendor's term yet at the point of choosing a category. A few
+ *  couple-only slugs (e.g. "photo booth") have no onboarding key — t() returns
+ *  the key unchanged there, so fall back to a capitalised slug. */
+const coupleCategoryLabel = (cat: string): string => {
+  if (cat === 'celebrant' && celebrantTermsDiffer()) {
+    return `${t('onboarding.category.celebrant')} / ${t('onboarding.category.officiant')}`
+  }
+  const key = `onboarding.category.${cat}` as MessageKey
+  const label = t(key)
+  return label === key ? cat.charAt(0).toUpperCase() + cat.slice(1) : label
+}
 
 type WeddingInvoice = {
   id: string
@@ -296,7 +311,7 @@ couple.get('/wedding/:id', async (c) => {
                 const vendorPaid = payments
                   .filter((p) => p.status === 'paid' && vendorInvoices.some((i) => i.id === p.invoice_id))
                   .reduce((sum, p) => sum + p.amount_cents, 0)
-                const cat = v.category ? v.category.charAt(0).toUpperCase() + v.category.slice(1) : 'Vendor'
+                const cat = v.category ? categoriesLabel(v) : 'Vendor'
                 const price = vendorInvoiced || v.expected_price_cents
                 const href = isLinked
                   ? `/wedding/${weddingId}/vendor/${v.vendor_profile_id}`
@@ -596,7 +611,7 @@ function InviteVendorForm({ action, csrfToken, error }: { action: string; csrfTo
         >
           <option value="">Choose a type…</option>
           {COUPLE_VENDOR_CATEGORIES.map((cat) => (
-            <option value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+            <option value={cat}>{coupleCategoryLabel(cat)}</option>
           ))}
         </select>
       </div>
@@ -766,7 +781,7 @@ couple.get('/wedding/:id/vendors/:coupleVendorId', async (c) => {
     return c.redirect(`/wedding/${weddingId}/vendor/${vendor.vendor_profile_id}`)
   }
 
-  const cat = vendor.category ? vendor.category.charAt(0).toUpperCase() + vendor.category.slice(1) : null
+  const cat = vendor.category ? categoriesLabel(vendor) : null
 
   return c.html(
     <CoupleLayout title={vendor.name} user={user} wedding={wedding} csrfToken={c.get('csrfToken')}>
@@ -1459,7 +1474,7 @@ couple.get('/wedding/:id/vendor/:vendorProfileId', async (c) => {
   const vendorMember = await c.env.DB
     .prepare(
       `SELECT wm.vendor_role, u.name AS user_name, u.email AS user_email,
-              vp.id AS vendor_profile_id, vp.business_name, vp.category, vp.phone, vp.website, vp.instagram, vp.bio
+              vp.id AS vendor_profile_id, vp.business_name, vp.category, vp.celebrant_term, vp.phone, vp.website, vp.instagram, vp.bio
        FROM wedding_members wm
        JOIN users u ON u.id = wm.user_id
        JOIN vendor_profiles vp ON vp.id = wm.vendor_profile_id
@@ -1474,6 +1489,7 @@ couple.get('/wedding/:id/vendor/:vendorProfileId', async (c) => {
       vendor_profile_id: string
       business_name: string
       category: string
+      celebrant_term: string | null
       phone: string | null
       website: string | null
       instagram: string | null
@@ -1534,7 +1550,7 @@ couple.get('/wedding/:id/vendor/:vendorProfileId', async (c) => {
     .all<Email>()
     .then((r) => r.results)
 
-  const cat = vendorMember.category.charAt(0).toUpperCase() + vendorMember.category.slice(1)
+  const cat = categoriesLabel(vendorMember)
   const totalCost = invoices.reduce((sum, i) => sum + i.amount_cents, 0)
   const totalPaid = payments.filter((p) => p.status === 'paid').reduce((sum, p) => sum + p.amount_cents, 0)
 
@@ -2158,7 +2174,7 @@ function CoupleVendorForm({ action, csrfToken, vendor, submitLabel }: {
             <option value="">Select...</option>
             {COUPLE_VENDOR_CATEGORIES.map((cat) => (
               <option value={cat} selected={vendor?.category === cat}>
-                {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                {coupleCategoryLabel(cat)}
               </option>
             ))}
           </select>

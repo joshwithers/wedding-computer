@@ -63,6 +63,7 @@ export type AdminVendorRow = {
   id: string
   business_name: string
   category: string | null
+  celebrant_term: string | null
   instagram: string | null
   website: string | null
   location_city: string | null
@@ -84,7 +85,7 @@ export async function listVendorsForAdmin(
   if (term) {
     const res = await db
       .prepare(
-        `SELECT vp.id, vp.business_name, vp.category, vp.instagram, vp.website,
+        `SELECT vp.id, vp.business_name, vp.category, vp.celebrant_term, vp.instagram, vp.website,
                 vp.location_city, vp.location_state, u.email AS user_email
          FROM vendor_profiles vp JOIN users u ON u.id = vp.user_id
          WHERE u.deleted_at IS NULL
@@ -100,7 +101,7 @@ export async function listVendorsForAdmin(
   // created_at DESC + small limit hid the earliest-created businesses).
   const res = await db
     .prepare(
-      `SELECT vp.id, vp.business_name, vp.category, vp.instagram, vp.website,
+      `SELECT vp.id, vp.business_name, vp.category, vp.celebrant_term, vp.instagram, vp.website,
               vp.location_city, vp.location_state, u.email AS user_email
        FROM vendor_profiles vp JOIN users u ON u.id = vp.user_id
        WHERE u.deleted_at IS NULL
@@ -279,6 +280,7 @@ export async function updateVendor(
       | 'brand_theme'
       | 'availability_sharing'
       | 'directory_listed'
+      | 'celebrant_term'
     >
   >
 ): Promise<void> {

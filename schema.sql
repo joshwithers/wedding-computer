@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
   business_name TEXT NOT NULL,
   category TEXT NOT NULL,
+  celebrant_term TEXT, -- NULL = "Celebrant", 'officiant' = label the celebrant role as "Officiant"
   categories TEXT, -- JSON array of all vendor types; category is the primary
   phone TEXT,
   website TEXT,

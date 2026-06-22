@@ -28,7 +28,7 @@ export const RESERVED_HANDLES = new Set<string>([
   'theelopementcollective', 'the-elopement-collective',
 
   // ── Generic wedding / common terms ──
-  'celebrant', 'celebrants', 'wedding', 'weddings', 'elopement', 'elopements',
+  'celebrant', 'celebrants', 'officiant', 'officiants', 'wedding', 'weddings', 'elopement', 'elopements',
   'elope', 'marriage', 'married', 'marry', 'wed', 'bride', 'groom', 'ceremony',
   'vows', 'honeymoon', 'engaged', 'engagement', 'love', 'couple', 'couples',
   'nuptials', 'venue', 'venues', 'photographer', 'photography', 'florist', 'planner',

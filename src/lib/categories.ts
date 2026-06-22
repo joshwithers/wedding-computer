@@ -2,10 +2,12 @@
 // public directory API shape, analytics benchmarks, and AI context) plus a
 // `categories` JSON array holding every type they work as.
 
+import { CELEBRANT_SLUG, celebrantTermLabel } from './celebrant-term'
+
 /** Vendor types that administer weddings and control the timeline. */
 export const MANAGER_CATEGORIES = ['planner', 'venue'] as const
 
-type CategorisedVendor = { category: string; categories?: string | null }
+type CategorisedVendor = { category: string | null; categories?: string | null; celebrant_term?: string | null }
 
 /** All categories for a vendor, parsed; falls back to the primary. */
 export function vendorCategories(vendor: CategorisedVendor): string[] {
@@ -30,9 +32,10 @@ export function isManagerVendor(vendor: CategorisedVendor): boolean {
   return MANAGER_CATEGORIES.some((c) => cats.includes(c))
 }
 
-/** Display label: "Photographer", or "Photographer · Videographer". */
+/** Display label: "Photographer", or "Photographer · Videographer". The
+ *  'celebrant' slug honours the vendor's chosen term (Celebrant / Officiant). */
 export function categoriesLabel(vendor: CategorisedVendor): string {
   return vendorCategories(vendor)
-    .map((c) => c.charAt(0).toUpperCase() + c.slice(1))
+    .map((c) => (c === CELEBRANT_SLUG ? celebrantTermLabel(vendor) : c.charAt(0).toUpperCase() + c.slice(1)))
     .join(' · ')
 }

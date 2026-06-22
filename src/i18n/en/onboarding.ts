@@ -29,6 +29,7 @@ export const onboarding = {
 
   // Category labels (what kind of vendor)
   'onboarding.category.celebrant': 'Celebrant',
+  'onboarding.category.officiant': 'Officiant',
   'onboarding.category.photographer': 'Photographer',
   'onboarding.category.videographer': 'Videographer',
   'onboarding.category.florist': 'Florist',

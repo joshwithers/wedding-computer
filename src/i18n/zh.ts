@@ -848,6 +848,9 @@ export const zh: Dictionary = {
   "marketing.link.plainTextDocs": "纯文本数据文档",
 
   "settings.categories.help": "选择你提供的所有服务 — 许多婚礼服务商身兼多职。",
+  "settings.celebrantTerm.label": "你的角色如何显示？",
+  "settings.celebrantTerm.celebrant": "婚礼主持人",
+  "settings.celebrantTerm.officiant": "婚礼证婚人",
   "weddings.timeline.pendingTitle": "待审批的时间线变更",
   "weddings.timeline.requestedBy": "由 {name} 提交",
   "weddings.timeline.approve": "批准",
@@ -1038,6 +1041,7 @@ export const zh: Dictionary = {
 
   // 类别标签（哪一类供应商）
   "onboarding.category.celebrant": "婚礼主持人",
+  "onboarding.category.officiant": "婚礼证婚人",
   "onboarding.category.photographer": "摄影师",
   "onboarding.category.videographer": "摄像师",
   "onboarding.category.florist": "花艺师",

@@ -10,6 +10,7 @@ import { getStorageWithSecrets } from '../storage'
 import { attachVendorToCoupleWedding } from '../services/booking-wedding'
 import { createActivity } from '../db/activities'
 import { getVendorById } from '../db/vendors'
+import { celebrantTermLabel } from '../lib/celebrant-term'
 import { getContractByInvoice, signContract, getContractById } from '../db/contracts'
 import { formatDate, formatDateTime } from '../lib/date'
 import { isValidEmail } from '../lib/validation'
@@ -42,10 +43,15 @@ book.get('/book/:token', async (c) => {
   const embed = c.req.query('embed') === '1'
   const totalPaid = payments.filter((p) => p.status === 'paid').reduce((sum, p) => sum + p.amount_cents, 0)
   const isPaid = invoice.status === 'paid'
-  const category = invoice.vendor_category.charAt(0).toUpperCase() + invoice.vendor_category.slice(1)
   const confirmed = c.req.query('confirmed') === '1'
 
   const vendor = await getVendorById(c.env.DB, invoice.vendor_id)
+  // Honour the vendor's Celebrant/Officiant term when their profile is in scope;
+  // otherwise fall back to the invoice's stored category label.
+  const category =
+    vendor && vendor.category === 'celebrant'
+      ? celebrantTermLabel(vendor)
+      : invoice.vendor_category.charAt(0).toUpperCase() + invoice.vendor_category.slice(1)
   const bookingConfig = vendor ? parseBookingFormConfig(vendor.booking_form) : null
   const hasBookingForm = bookingConfig && bookingConfig.fields.length > 0
   const alreadySubmitted = !!invoice.booking_form_data

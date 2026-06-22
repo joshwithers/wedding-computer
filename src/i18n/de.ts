@@ -834,6 +834,9 @@ export const de: Dictionary = {
   'marketing.link.openFormat': 'Öffnen Sie die Formatspezifikation',
   'marketing.link.plainTextDocs': 'Klartext-Datendokumentation',
   "settings.categories.help": "Wählen Sie alles aus, was Sie anbieten — viele Dienstleister tragen mehr als einen Hut.",
+  "settings.celebrantTerm.label": "Wie wird Ihre Rolle angezeigt?",
+  "settings.celebrantTerm.celebrant": "Trauredner",
+  "settings.celebrantTerm.officiant": "Trauredner",
   "weddings.timeline.pendingTitle": "Ausstehende Zeitplan-Änderungen",
   "weddings.timeline.requestedBy": "Angefragt von {name}",
   "weddings.timeline.approve": "Genehmigen",
@@ -1024,6 +1027,7 @@ export const de: Dictionary = {
 
   // Kategorie-Bezeichnungen (Art des Dienstleisters)
   "onboarding.category.celebrant": "Trauredner",
+  "onboarding.category.officiant": "Trauredner",
   "onboarding.category.photographer": "Fotograf",
   "onboarding.category.videographer": "Videograf",
   "onboarding.category.florist": "Florist",

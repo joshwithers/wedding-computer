@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Env, VendorProfile, CalendarEvent } from '../../types'
 import { MarketingLayout } from '../../views/layouts/marketing'
+import { categoriesLabel } from '../../lib/categories'
 import {
   monthLabel,
   prevMonth,
@@ -22,9 +23,9 @@ const availability = new Hono<Env>()
 availability.get('/v/:vendorId/availability', async (c) => {
   const vendorId = c.req.param('vendorId')
   const vendor = await c.env.DB
-    .prepare('SELECT id, business_name, category, location, availability_sharing, availability_default FROM vendor_profiles WHERE id = ?')
+    .prepare('SELECT id, business_name, category, categories, celebrant_term, location, availability_sharing, availability_default FROM vendor_profiles WHERE id = ?')
     .bind(vendorId)
-    .first<Pick<VendorProfile, 'id' | 'business_name' | 'category' | 'location' | 'availability_sharing' | 'availability_default'>>()
+    .first<Pick<VendorProfile, 'id' | 'business_name' | 'category' | 'categories' | 'celebrant_term' | 'location' | 'availability_sharing' | 'availability_default'>>()
 
   if (!vendor || vendor.availability_sharing !== 'public') {
     return c.html(
@@ -97,7 +98,7 @@ availability.get('/v/:vendorId/availability', async (c) => {
   const next = nextMonth(year, month)
   const totalDays = daysInMonth(year, month)
   const offset = firstDayOffset(year, month)
-  const category = vendor.category.charAt(0).toUpperCase() + vendor.category.slice(1)
+  const category = categoriesLabel(vendor)
 
   function dateStatus(day: number): 'available' | 'booked' | 'past' | 'unavailable' {
     const dateStr = toDateString(year, month, day)

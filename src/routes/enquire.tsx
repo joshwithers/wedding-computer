@@ -3,6 +3,7 @@ import type { Env } from '../types'
 import { SharedHead } from '../views/head'
 import type { HeadMeta } from '../views/head'
 import { getVendorById } from '../db/vendors'
+import { categoriesLabel } from '../lib/categories'
 import { verifyTurnstile } from '../services/turnstile'
 import { rateLimit } from '../middleware/rate-limit'
 import { parseFormConfig } from '../lib/form-schema'
@@ -30,7 +31,7 @@ enquire.get('/enquire/:vendorId', async (c) => {
   const config = parseFormConfig(vendor.enquiry_form)
   const theme = parseBrandTheme(vendor.brand_theme)
   const logoUrl = formLogoUrl(vendor)
-  const category = vendor.category.charAt(0).toUpperCase() + vendor.category.slice(1)
+  const category = categoriesLabel(vendor)
   const meta: HeadMeta = {
     title: 'Enquiry',
     ogTitle: `Enquire with ${vendor.business_name}`,
@@ -177,7 +178,7 @@ function EnquiryForm({
   mapsKey,
   logoUrl,
 }: {
-  vendor: { business_name: string; category: string }
+  vendor: { business_name: string; category: string; categories?: string | null; celebrant_term?: string | null }
   config: FormConfig
   siteKey: string
   error?: string
@@ -186,7 +187,7 @@ function EnquiryForm({
   logoUrl?: string | null
 }) {
   const v = (name: string) => (values?.[name] as string) ?? ''
-  const category = vendor.category.charAt(0).toUpperCase() + vendor.category.slice(1)
+  const category = categoriesLabel(vendor)
 
   return (
     <>

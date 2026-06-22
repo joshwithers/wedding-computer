@@ -2,6 +2,11 @@
 export const settings = {
   'settings.categories.help': 'Pick everything you do — many vendors wear more than one hat.',
 
+  // Celebrant ↔ officiant term — only shown when a vendor offers the celebrant role.
+  'settings.celebrantTerm.label': 'How is your role shown?',
+  'settings.celebrantTerm.celebrant': 'Celebrant',
+  'settings.celebrantTerm.officiant': 'Officiant',
+
   // Form branding — colours/font/logo applied to public enquiry, booking,
   // and custom forms. See src/lib/form-theme.ts and the public form renderers.
   'settings.nav.brand': 'Brand',

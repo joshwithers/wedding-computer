@@ -850,6 +850,9 @@ export const fr: Dictionary = {
   "marketing.link.plainTextDocs": "Documentation sur les données en texte brut",
 
   "settings.categories.help": "Sélectionnez tout ce que vous faites — beaucoup de prestataires portent plusieurs casquettes.",
+  "settings.celebrantTerm.label": "Comment votre rôle est-il affiché ?",
+  "settings.celebrantTerm.celebrant": "Officiant",
+  "settings.celebrantTerm.officiant": "Officiant",
   "weddings.timeline.pendingTitle": "Modifications du planning en attente",
   "weddings.timeline.requestedBy": "Demandé par {name}",
   "weddings.timeline.approve": "Approuver",
@@ -1040,6 +1043,7 @@ export const fr: Dictionary = {
 
   // Category labels (what kind of vendor)
   "onboarding.category.celebrant": "Officiant",
+  "onboarding.category.officiant": "Officiant",
   "onboarding.category.photographer": "Photographe",
   "onboarding.category.videographer": "Vidéaste",
   "onboarding.category.florist": "Fleuriste",

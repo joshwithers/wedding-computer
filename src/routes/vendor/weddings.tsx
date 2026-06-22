@@ -40,6 +40,7 @@ import { TodoSection } from './checklists'
 import { appendWeddingLog, listWeddingLog } from '../../db/wedding-log'
 import { listCoupleVendors } from '../../db/couple-vendors'
 import { buildCredits, formatInstagramCredits, formatWebCredits, formatHtmlCredits, rolesLabel, parseMemberRoles, type CreditEntry } from '../../services/wedding-credits'
+import { displayRoles, CELEBRANT_SLUG, celebrantTermsDiffer } from '../../lib/celebrant-term'
 import {
   getTimelineControllers,
   createTimelineRequest,
@@ -1159,7 +1160,7 @@ weddings.get('/app/weddings/:id', async (c) => {
               const offerTypes = declared.length ? declared.map((s) => ({ slug: s, label: s })) : vendorTypes
               const canEditTypes = canManage && isVendor
               const roleLabel = isVendor
-                ? rolesLabel(currentRoles)
+                ? rolesLabel(displayRoles(currentRoles, m.celebrant_term))
                 : m.role.charAt(0).toUpperCase() + m.role.slice(1)
               return (
                 <div class="text-sm">
@@ -2123,7 +2124,7 @@ function AddPeoplePanel({
             <select name="vendor_role" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white">
               <option value="">{t('weddings.vendorType.any')}</option>
               {vendorTypes.map((vt) => (
-                <option value={vt.slug}>{vendorTypeLabel(vt)}</option>
+                <option value={vt.slug}>{vt.slug === CELEBRANT_SLUG && celebrantTermsDiffer() ? `${vendorTypeLabel(vt)} / ${t('onboarding.category.officiant')}` : vendorTypeLabel(vt)}</option>
               ))}
             </select>
           </div>

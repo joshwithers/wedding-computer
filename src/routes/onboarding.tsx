@@ -15,6 +15,7 @@ import { VENDOR_CATEGORIES } from '../types'
 import { t, tp, type MessageKey } from '../i18n'
 import { categorySetup } from '../lib/onboarding'
 import { isReservedHandle } from '../lib/reserved-handles'
+import { celebrantTermsDiffer } from '../lib/celebrant-term'
 
 const onboarding = new Hono<Env>()
 
@@ -193,7 +194,11 @@ onboarding.get('/onboarding/business', async (c) => {
                       checked={selectedCats.includes(cat)}
                       class="rounded border-gray-300 text-horizon-600 focus:ring-horizon-600"
                     />
-                    <span>{t(`onboarding.category.${cat}` as MessageKey)}</span>
+                    <span>
+                      {cat === 'celebrant' && celebrantTermsDiffer()
+                        ? `${t('onboarding.category.celebrant')} / ${t('onboarding.category.officiant')}`
+                        : t(`onboarding.category.${cat}` as MessageKey)}
+                    </span>
                   </label>
                 ))}
               </div>

@@ -834,6 +834,9 @@ export const el: Dictionary = {
   'marketing.link.openFormat': 'Ανοίξτε την Προδιαγραφή Μορφής',
   'marketing.link.plainTextDocs': 'Τεκμηρίωση δεδομένων απλού κειμένου',
   "settings.categories.help": "Επίλεξε όλα όσα κάνεις — πολλοί επαγγελματίες έχουν περισσότερους από έναν ρόλους.",
+  "settings.celebrantTerm.label": "Πώς εμφανίζεται ο ρόλος σας;",
+  "settings.celebrantTerm.celebrant": "Λειτουργός τελετών",
+  "settings.celebrantTerm.officiant": "Λειτουργός τελετών",
   "weddings.timeline.pendingTitle": "Εκκρεμείς αλλαγές χρονοδιαγράμματος",
   "weddings.timeline.requestedBy": "Αίτημα από {name}",
   "weddings.timeline.approve": "Έγκριση",
@@ -1015,6 +1018,7 @@ export const el: Dictionary = {
 
   // Ετικέτες κατηγοριών (είδος προμηθευτή)
   "onboarding.category.celebrant": "Λειτουργός τελετών",
+  "onboarding.category.officiant": "Λειτουργός τελετών",
   "onboarding.category.photographer": "Φωτογράφος",
   "onboarding.category.videographer": "Βιντεογράφος",
   "onboarding.category.florist": "Ανθοπώλης",
