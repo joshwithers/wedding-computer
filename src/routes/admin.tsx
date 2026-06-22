@@ -961,9 +961,9 @@ admin.get('/admin/businesses/:id', async (c) => {
               {allTypes.map((t) => {
                 const on = cats.includes(t.slug)
                 return (
-                  <label class={`text-xs px-2.5 py-1 rounded-full border cursor-pointer transition-colors ${on ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                    <input type="checkbox" name="categories" value={t.slug} checked={on} class="sr-only" />
-                    {vendorTypeLabel(t)}
+                  <label class="cursor-pointer">
+                    <input type="checkbox" name="categories" value={t.slug} checked={on} class="sr-only peer" />
+                    <span class="inline-block text-xs px-2.5 py-1 rounded-full border transition-colors bg-white border-gray-200 text-gray-600 hover:border-gray-300 peer-checked:bg-gray-900 peer-checked:border-gray-900 peer-checked:text-white">{vendorTypeLabel(t)}</span>
                   </label>
                 )
               })}

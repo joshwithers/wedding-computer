@@ -1156,9 +1156,9 @@ weddings.get('/app/weddings/:id', async (c) => {
                                 {offerTypes.map((ty) => {
                                   const on = currentRoles.includes(ty.slug)
                                   return (
-                                    <label class={`text-xs px-2.5 py-1 rounded-full border cursor-pointer transition-colors ${on ? 'bg-horizon-50 border-horizon-300 text-horizon-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                                    <label class="cursor-pointer">
                                       <input type="checkbox" name="vendor_roles" value={ty.slug} checked={on} class="sr-only peer" />
-                                      <span class="peer-checked:font-bold">{vendorTypeLabel(ty)}</span>
+                                      <span class="inline-block text-xs px-2.5 py-1 rounded-full border transition-colors bg-white border-gray-200 text-gray-600 hover:border-gray-300 peer-checked:bg-horizon-50 peer-checked:border-horizon-300 peer-checked:text-horizon-700">{vendorTypeLabel(ty)}</span>
                                     </label>
                                   )
                                 })}
