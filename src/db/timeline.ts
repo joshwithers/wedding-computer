@@ -480,31 +480,33 @@ export async function getVendorCalendarRowsByIds(
 // ── Roster (for the assignee picker): members + each vendor's assigned staff ──
 
 export async function resolveWeddingRoster(db: D1Database, weddingId: string): Promise<RosterEntry[]> {
-  const members = await db
-    .prepare(
-      `SELECT wm.id, u.name AS user_name, u.avatar_url, wm.role, wm.vendor_role, vp.business_name
-       FROM wedding_members wm
-       JOIN users u ON u.id = wm.user_id
-       LEFT JOIN vendor_profiles vp ON vp.id = wm.vendor_profile_id
-       WHERE wm.wedding_id = ? AND wm.status = 'active'
-       ORDER BY wm.role, wm.created_at`
-    )
-    .bind(weddingId)
-    .all<{ id: string; user_name: string; avatar_url: string | null; role: string; vendor_role: string | null; business_name: string | null }>()
-    .then((r) => r.results)
-
-  const staff = await db
-    .prepare(
-      `SELECT tm.id, tm.name, tm.avatar_url, tm.title, vp.business_name
-       FROM wedding_team_assignments wta
-       JOIN team_members tm ON tm.id = wta.team_member_id
-       JOIN wedding_members wm ON wm.id = wta.wedding_member_id
-       LEFT JOIN vendor_profiles vp ON vp.id = wm.vendor_profile_id
-       WHERE wta.wedding_id = ?`
-    )
-    .bind(weddingId)
-    .all<{ id: string; name: string; avatar_url: string | null; title: string | null; business_name: string | null }>()
-    .then((r) => r.results)
+  // Independent queries — one round-trip, not two serial ones.
+  const [members, staff] = await Promise.all([
+    db
+      .prepare(
+        `SELECT wm.id, u.name AS user_name, u.avatar_url, wm.role, wm.vendor_role, vp.business_name
+         FROM wedding_members wm
+         JOIN users u ON u.id = wm.user_id
+         LEFT JOIN vendor_profiles vp ON vp.id = wm.vendor_profile_id
+         WHERE wm.wedding_id = ? AND wm.status = 'active'
+         ORDER BY wm.role, wm.created_at`
+      )
+      .bind(weddingId)
+      .all<{ id: string; user_name: string; avatar_url: string | null; role: string; vendor_role: string | null; business_name: string | null }>()
+      .then((r) => r.results),
+    db
+      .prepare(
+        `SELECT tm.id, tm.name, tm.avatar_url, tm.title, vp.business_name
+         FROM wedding_team_assignments wta
+         JOIN team_members tm ON tm.id = wta.team_member_id
+         JOIN wedding_members wm ON wm.id = wta.wedding_member_id
+         LEFT JOIN vendor_profiles vp ON vp.id = wm.vendor_profile_id
+         WHERE wta.wedding_id = ?`
+      )
+      .bind(weddingId)
+      .all<{ id: string; name: string; avatar_url: string | null; title: string | null; business_name: string | null }>()
+      .then((r) => r.results),
+  ])
 
   const memberEntries: RosterEntry[] = members.map((m) => ({
     kind: 'member',

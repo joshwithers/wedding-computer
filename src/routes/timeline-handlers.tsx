@@ -300,7 +300,10 @@ export async function renderTimelineSection(
   member: WeddingMember,
   user: User,
   basePath: string,
-  opts?: { wedding?: Awaited<ReturnType<typeof getWedding>> }
+  opts?: {
+    wedding?: Awaited<ReturnType<typeof getWedding>>
+    lead?: Awaited<ReturnType<typeof getTimelineLead>>
+  }
 ) {
   return <WeddingTimeline {...(await buildProps(c, weddingId, member, user, basePath, opts))} />
 }

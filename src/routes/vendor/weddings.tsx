@@ -72,6 +72,7 @@ import {
 import { WebLinks } from '../../views/web-links'
 import { listWebLinks } from '../../db/web-links'
 import { renderTimelineSection } from '../timeline-handlers'
+import { getTimelineLead } from '../../services/timeline-permissions'
 import { getOrGenerateClimateNote } from '../../services/climate'
 import { socialUrl, socialDisplay } from '../../lib/social'
 import { CopyButton } from '../../views/icons'
@@ -754,13 +755,19 @@ weddings.get('/app/weddings/:id', async (c) => {
   const vendor = c.get('vendor')!
   const weddingId = c.req.param('id')
 
-  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  // These four are independent — fire them together instead of four serial D1
+  // round-trips (the click-to-load latency users feel is mostly serial depth).
+  // `lead` is threaded into the timeline section so buildProps skips its own
+  // serial getTimelineLead fetch.
+  const [membership, wedding, allMembers, lead] = await Promise.all([
+    getMembership(c.env.DB, weddingId, user.id),
+    getWedding(c.env.DB, weddingId),
+    getWeddingMembers(c.env.DB, weddingId),
+    getTimelineLead(c.env.DB, weddingId),
+  ])
   if (!membership) return c.text('Wedding not found', 404)
-
-  const wedding = await getWedding(c.env.DB, weddingId)
   if (!wedding) return c.text('Wedding not found', 404)
 
-  const allMembers = await getWeddingMembers(c.env.DB, weddingId)
   const days = wedding.date ? daysUntil(wedding.date) : null
   const hasCoupleOrGuest = allMembers.some((m) => m.role === 'couple' || m.role === 'guest')
   const invited = c.req.query('invited')
@@ -818,8 +825,8 @@ weddings.get('/app/weddings/:id', async (c) => {
     listForms(c.env.DB, vendor.id),
     listFormSendsForWedding(c.env.DB, weddingId, vendor.id),
     listWeddingSubmissions(c.env.DB, weddingId, { role: 'vendor', vendorId: vendor.id }),
-    // Reuse the already-loaded wedding so buildProps doesn't re-fetch it.
-    renderTimelineSection(c, weddingId, membership, user, basePath, { wedding }),
+    // Reuse the already-loaded wedding + lead so buildProps doesn't re-fetch them.
+    renderTimelineSection(c, weddingId, membership, user, basePath, { wedding, lead }),
     listCoupleVendors(c.env.DB, weddingId).catch(() => [] as Awaited<ReturnType<typeof listCoupleVendors>>),
     listWeddingLog(c.env.DB, weddingId, 20).catch(() => [] as Awaited<ReturnType<typeof listWeddingLog>>),
     listPendingTimelineRequests(c.env.DB, weddingId).catch(() => [] as Awaited<ReturnType<typeof listPendingTimelineRequests>>),
