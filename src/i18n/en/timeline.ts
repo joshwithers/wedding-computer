@@ -52,6 +52,7 @@ export const timeline = {
 
   'timeline.field.title': 'What’s happening',
   'timeline.field.titlePlaceholder': 'e.g. First dance',
+  'timeline.field.titleRequired': 'Add a title for this item.',
   'timeline.field.start': 'Start',
   'timeline.field.end': 'End',
   'timeline.field.location': 'Location',

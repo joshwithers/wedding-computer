@@ -71,6 +71,7 @@ export const zh: Dictionary = {
   'dashboard.noContactsYet': '还没有联系人',
   'dashboard.welcome': '欢迎，{name} 👋',
   'dashboard.setup.title': '完成设置',
+  'timeline.field.titleRequired': '请为此项目添加标题。',
   'weddings.vendorType.any': '类型（可选）',
   'dashboard.demo.addTitle': '在你的 Wedding Computer 里加载几场演示婚礼',
   'dashboard.demo.addBlurb': '加载一周示例数据 —— 3 场婚礼，连同各自的供应商团队、流程表和笔记，外加几条新咨询。随时都能移除。',

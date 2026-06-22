@@ -71,6 +71,11 @@ export type TimelineProps = {
   canDecide: boolean
   editId?: string
   flash?: string
+  // Prefill for the add form: the last item's location on a clean render, or the
+  // submitted values on a validation-failure re-render (so input isn't lost).
+  addValues?: Partial<RowFields>
+  // Inline error on the add form (e.g. a missing title) shown above the fields.
+  addError?: string
   // Sunrise / golden-hour / sunset for the wedding's date + location, already
   // localized to the wedding's timezone. Null when we lack a date or can't place
   // the location. `approx` = derived from the region (not a precise venue geocode).
@@ -125,7 +130,7 @@ function AssigneeChip({ a, basePath, itemId, editable, viewerUserId }: { a: Assi
 function AddPersonForm({ basePath, itemId, roster }: { basePath: string; itemId: string; roster: RosterEntry[] }) {
   const listId = `roster-${itemId}`
   return (
-    <form hx-post={`${basePath}/timeline/${itemId}/assignees`} hx-target="#timeline-body" hx-swap="outerHTML" hx-on--after-request="this.reset()" class="inline-flex items-center gap-1">
+    <form hx-post={`${basePath}/timeline/${itemId}/assignees`} hx-target="#timeline-body" hx-swap="outerHTML" hx-on--after-request="if(event.detail.elt===this&&event.detail.successful)this.reset()" class="inline-flex items-center gap-1">
       <input type="text" name="who" list={listId} placeholder={t('timeline.personPlaceholder')} class="w-32 border border-gray-200 rounded-full px-2 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-horizon-600 bg-white" />
       <datalist id={listId}>
         {roster.map((r) => <option value={r.name}>{r.subtitle ? `${r.name} — ${r.subtitle}` : r.name}</option>)}
@@ -163,8 +168,8 @@ function FormFields({
     : at === 'sun' ? `${off < 0 ? 'sunbefore' : 'sunafter'}:${values?.anchor_ref ?? ''}`
     : ''
   return (
-    <div class="grid grid-cols-2 gap-2">
-      <input type="text" name="title" required value={values?.title ?? ''} placeholder={t('timeline.field.titlePlaceholder')} class="col-span-2 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 bg-white" />
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <input type="text" name="title" required value={values?.title ?? ''} placeholder={t('timeline.field.titlePlaceholder')} class="sm:col-span-2 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 bg-white" />
       <label class="text-[10px] text-gray-400 flex flex-col gap-0.5">
         {t('timeline.field.start')}
         <input type="time" name="start_time" value={values?.start_time ?? ''} class={fieldCls} />
@@ -173,7 +178,7 @@ function FormFields({
         {t('timeline.field.end')}
         <input type="time" name="end_time" value={values?.end_time ?? ''} class={fieldCls} />
       </label>
-      <div class="col-span-2 relative" data-places>
+      <div class="sm:col-span-2 relative" data-places>
         <input
           type="text"
           name="location"
@@ -185,6 +190,7 @@ function FormFields({
           hx-target={`#suggestions-location-${scope}`}
           hx-swap="innerHTML"
           hx-include="this"
+          hx-on:blur={`setTimeout(()=>{var s=document.getElementById('suggestions-location-${scope}');if(s)s.innerHTML=''},250)`}
           class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 bg-white"
         />
         <div id={`suggestions-location-${scope}`} />
@@ -201,12 +207,12 @@ function FormFields({
           {creatable.map((v) => <option value={v} selected={(values?.visibility ?? 'couple') === v}>{t(VIS_LABEL[v])}</option>)}
         </select>
       </label>
-      <textarea name="description" placeholder={t('timeline.field.details')} rows={2} class="col-span-2 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 bg-white resize-y">{values?.description ?? ''}</textarea>
+      <textarea name="description" placeholder={t('timeline.field.details')} rows={2} class="sm:col-span-2 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 bg-white resize-y">{values?.description ?? ''}</textarea>
 
       {/* Liquid timing: duration + relative anchoring (item or sun event). */}
-      <details class="col-span-2" open={hasAnchor || values?.duration_minutes != null}>
+      <details class="sm:col-span-2" open={hasAnchor || values?.duration_minutes != null}>
         <summary class="text-[10px] text-gray-400 cursor-pointer select-none">{t('timeline.field.liquid')}</summary>
-        <div class="grid grid-cols-2 gap-2 mt-2">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
           <label class="text-[10px] text-gray-400 flex flex-col gap-0.5">
             {t('timeline.field.duration')}
             <input type="number" name="duration_minutes" min="0" step="5" value={values?.duration_minutes ?? ''} placeholder="—" class={fieldCls} />
@@ -215,7 +221,7 @@ function FormFields({
             {t('timeline.field.offset')}
             <input type="number" name="anchor_offset" min="0" step="5" value={hasAnchor && off ? Math.abs(off) : ''} placeholder="0" class={fieldCls} />
           </label>
-          <label class="text-[10px] text-gray-400 flex flex-col gap-0.5 col-span-2">
+          <label class="text-[10px] text-gray-400 flex flex-col gap-0.5 sm:col-span-2">
             {t('timeline.field.startRel')}
             <select name="anchor" class={fieldCls}>
               <option value="" selected={!hasAnchor}>{t('timeline.anchor.none')}</option>
@@ -423,8 +429,12 @@ export function TimelineBody(props: TimelineProps) {
         </div>
       )}
 
-      <form hx-post={`${basePath}/timeline`} hx-target="#timeline-body" hx-swap="outerHTML" hx-on--after-request="this.reset()" class="px-4 py-3 border-b border-gray-100 space-y-2 bg-gray-50/50">
-        <FormFields creatable={creatable} anchorOptions={anchorOptions} sunAvailable={sunAvailable} />
+      {/* Reset ONLY on the form's own successful submit — guarding against the
+          bubbled htmx:afterRequest from the in-form location autocomplete, which
+          would otherwise wipe everything typed so far. */}
+      <form hx-post={`${basePath}/timeline`} hx-target="#timeline-body" hx-swap="outerHTML" hx-on--after-request="if(event.detail.elt===this&&event.detail.successful)this.reset()" class="px-4 py-3 border-b border-gray-100 space-y-2 bg-gray-50/50">
+        {props.addError && <p class="text-xs text-grapefruit-600 font-bold">{props.addError}</p>}
+        <FormFields values={props.addValues} creatable={creatable} anchorOptions={anchorOptions} sunAvailable={sunAvailable} />
         <button type="submit" class="bg-horizon-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700">{t('timeline.add')}</button>
       </form>
 

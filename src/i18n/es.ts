@@ -71,6 +71,7 @@ export const es: Dictionary = {
   'dashboard.noContactsYet': 'Aún no hay contactos',
   'dashboard.welcome': 'Te damos la bienvenida, {name} 👋',
   'dashboard.setup.title': 'Configura tu cuenta',
+  'timeline.field.titleRequired': 'Añade un título para este elemento.',
   'weddings.vendorType.any': 'Tipo (opcional)',
   'dashboard.demo.addTitle': 'Carga unas bodas de ejemplo en tu Wedding Computer',
   'dashboard.demo.addBlurb': 'Carga una semana de ejemplo — 3 bodas con sus equipos de proveedores, hojas de ejecución y notas, además de algunas consultas recientes. Quítalo cuando quieras.',

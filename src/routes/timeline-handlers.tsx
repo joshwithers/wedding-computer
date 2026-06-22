@@ -159,6 +159,11 @@ async function buildProps(
     // read-only GET render path, which self-fetches.
     lead?: Awaited<ReturnType<typeof getTimelineLead>>
     wedding?: Awaited<ReturnType<typeof getWedding>>
+    // Re-populate the add form after a validation failure (so typed input isn't
+    // lost) + an inline error. When omitted, the add form defaults its location
+    // to the last item's location.
+    addValues?: Partial<RowFields>
+    addError?: string
   }
 ): Promise<TimelineProps> {
   const viewer = viewerOf(user, member)
@@ -264,6 +269,11 @@ async function buildProps(
         isOwn: r.requested_by_user_id === viewer.userId,
       }
     })
+  // Default the next add's location to the last item that has one (people add
+  // consecutive run-sheet items at the same venue). Skipped when re-populating
+  // after a validation failure (we keep what they typed instead).
+  const lastLocation = [...items].reverse().find((i) => !i.marker && i.location)?.location ?? null
+  const addValues = opts?.addValues ?? (lastLocation ? { location: lastLocation } : undefined)
   return {
     items,
     roster,
@@ -279,6 +289,8 @@ async function buildProps(
     sun,
     conflictIds,
     live,
+    addValues,
+    addError: opts?.addError,
   }
 }
 
@@ -338,6 +350,8 @@ export async function renderTimeline(
     flash?: string
     lead?: Awaited<ReturnType<typeof getTimelineLead>>
     wedding?: Awaited<ReturnType<typeof getWedding>>
+    addValues?: Partial<RowFields>
+    addError?: string
   }
 ) {
   return body(c, await buildProps(c, weddingId, member, user, basePath, opts))
@@ -355,7 +369,9 @@ export async function addTimelineItem(c: Ctx, weddingId: string, member: Wedding
   const viewer = viewerOf(user, member)
   const creatable = creatableVisibilities(viewer)
   const fields = fieldsFrom(f, creatable)
-  if (!str(f.title)) return renderTimeline(c, weddingId, member, user, basePath)
+  // Missing title: re-render with what they typed + an inline error, never a
+  // blank form (don't make them retype start/end/location/etc).
+  if (!str(f.title)) return renderTimeline(c, weddingId, member, user, basePath, { addValues: fields, addError: t('timeline.field.titleRequired') })
 
   const lead = await getTimelineLead(c.env.DB, weddingId)
   if (canCreateDirect(viewer, lead, fields.visibility)) {
