@@ -1244,4 +1244,9 @@ export const it: Dictionary = {
   'weddings.form.status': 'Stato',
   'weddings.form.saveChanges': 'Salva modifiche',
   'weddings.form.createWedding': 'Crea matrimonio',
+  'weddings.people.instagramPlaceholder': '@handle',
+  'weddings.people.instagramHint': 'Nome utente Instagram — compare nei crediti anche prima che si uniscano',
+  'weddings.people.editTypes': 'Modifica tipo',
+  'weddings.people.editTypesHint': 'Con quale tipo (o tipi) è accreditato questo fornitore per questo matrimonio?',
+  'weddings.people.saveTypes': 'Salva',
 }

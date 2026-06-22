@@ -156,6 +156,11 @@ export const weddings = {
   'weddings.people.add': 'Add',
   'weddings.people.addSomeoneElse': 'Add someone else',
   'weddings.people.addSomeoneElseHint': '(family, coordinator, etc.)',
+  'weddings.people.instagramPlaceholder': '@handle',
+  'weddings.people.instagramHint': 'Instagram handle — shows in the credits even before they join',
+  'weddings.people.editTypes': 'Edit type',
+  'weddings.people.editTypesHint': 'Which type(s) is this vendor credited as on this wedding?',
+  'weddings.people.saveTypes': 'Save',
 
   // Vendor profile
   'weddings.profile.breadcrumbVendor': 'Vendor',

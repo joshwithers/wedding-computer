@@ -278,6 +278,8 @@ export type WeddingMember = {
   role: 'vendor' | 'couple' | 'guest'
   vendor_profile_id: string | null
   vendor_role: string | null
+  vendor_roles: string | null // JSON array of vendor-type slugs for this wedding (NULL → use vendor_role)
+  invited_instagram: string | null // sanitized handle for an email-invited vendor with no profile yet
   can_manage: number
   is_financial_party: number
   permissions: string

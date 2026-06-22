@@ -1222,4 +1222,9 @@ export const el: Dictionary = {
   "weddings.form.status": "Κατάσταση",
   "weddings.form.saveChanges": "Αποθήκευση αλλαγών",
   "weddings.form.createWedding": "Δημιουργία γάμου",
+  "weddings.people.instagramPlaceholder": "@handle",
+  "weddings.people.instagramHint": "Όνομα χρήστη Instagram — εμφανίζεται στα credits ακόμη και πριν προστεθούν",
+  "weddings.people.editTypes": "Επεξεργασία τύπου",
+  "weddings.people.editTypesHint": "Σε ποιον τύπο/τύπους πιστώνεται αυτός ο προμηθευτής σε αυτόν τον γάμο;",
+  "weddings.people.saveTypes": "Αποθήκευση",
 }

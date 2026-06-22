@@ -1218,4 +1218,9 @@ export const ja: Dictionary = {
   'weddings.form.status': 'ステータス',
   'weddings.form.saveChanges': '変更を保存',
   'weddings.form.createWedding': '結婚式を作成',
+  'weddings.people.instagramPlaceholder': '@handle',
+  'weddings.people.instagramHint': 'Instagram のハンドル名 — 参加前でもクレジットに表示されます',
+  'weddings.people.editTypes': '種別を編集',
+  'weddings.people.editTypesHint': 'このベンダーはこの結婚式でどの種別としてクレジットされますか？',
+  'weddings.people.saveTypes': '保存',
 }

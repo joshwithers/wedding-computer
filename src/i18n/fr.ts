@@ -1247,4 +1247,9 @@ export const fr: Dictionary = {
   'weddings.form.status': 'Statut',
   'weddings.form.saveChanges': 'Enregistrer les modifications',
   'weddings.form.createWedding': 'Créer un mariage',
+  'weddings.people.instagramPlaceholder': '@handle',
+  'weddings.people.instagramHint': 'Identifiant Instagram — apparaît dans les crédits avant même qu\'il ou elle ne rejoigne le mariage',
+  'weddings.people.editTypes': 'Modifier le type',
+  'weddings.people.editTypesHint': 'En tant que quel(s) type(s) ce prestataire est-il crédité sur ce mariage ?',
+  'weddings.people.saveTypes': 'Enregistrer',
 }

@@ -120,17 +120,28 @@ export async function addWeddingMember(
     role: string
     vendor_profile_id?: string | null
     vendor_role?: string | null
+    vendor_roles?: string | null // JSON array of vendor-type slugs for this wedding
+    invited_instagram?: string | null // sanitized handle for an email-invited vendor with no profile
     can_manage?: boolean
     is_financial_party?: boolean
   }
 ): Promise<void> {
+  // On re-add (upsert), COALESCE the new per-wedding fields so the many callers
+  // that don't pass them (createWedding, invites, booking) never wipe roles or a
+  // prefilled handle a manager set earlier.
   await db
     .prepare(
-      `INSERT INTO wedding_members (wedding_id, user_id, role, vendor_profile_id, vendor_role, can_manage, is_financial_party, status, accepted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', datetime('now'))
+      `INSERT INTO wedding_members (wedding_id, user_id, role, vendor_profile_id, vendor_role, vendor_roles, invited_instagram, can_manage, is_financial_party, status, accepted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', datetime('now'))
        ON CONFLICT(wedding_id, user_id) DO UPDATE SET
          role = excluded.role, can_manage = excluded.can_manage,
          is_financial_party = excluded.is_financial_party,
+         -- Link a profile id if one is now known (e.g. a re-add after the invited
+         -- vendor onboarded); COALESCE so a profile-less caller never unlinks it.
+         -- This keeps the credits dedup (which keys on vendor_profile_id) correct.
+         vendor_profile_id = COALESCE(excluded.vendor_profile_id, vendor_profile_id),
+         vendor_roles = COALESCE(excluded.vendor_roles, vendor_roles),
+         invited_instagram = COALESCE(excluded.invited_instagram, invited_instagram),
          status = 'active', accepted_at = datetime('now')`
     )
     .bind(
@@ -139,20 +150,45 @@ export async function addWeddingMember(
       data.role,
       data.vendor_profile_id ?? null,
       data.vendor_role ?? null,
+      data.vendor_roles ?? null,
+      data.invited_instagram ?? null,
       data.can_manage ? 1 : 0,
       data.is_financial_party ? 1 : 0,
     )
     .run()
 }
 
+/**
+ * Replace the per-wedding vendor type(s) for one member. Keeps the singular
+ * vendor_role in sync (= first chosen role) for backward-compatible readers.
+ * Scoped by wedding + user; callers must already have checked can_manage.
+ */
+export async function setWeddingMemberRoles(
+  db: D1Database,
+  weddingId: string,
+  userId: string,
+  roles: string[]
+): Promise<void> {
+  const clean = roles.map((r) => r.trim()).filter(Boolean)
+  await db
+    .prepare(
+      `UPDATE wedding_members
+       SET vendor_roles = ?3, vendor_role = ?4
+       WHERE wedding_id = ?1 AND user_id = ?2 AND role = 'vendor'`
+    )
+    .bind(weddingId, userId, clean.length ? JSON.stringify(clean) : null, clean[0] ?? null)
+    .run()
+}
+
 export async function getWeddingMembers(
   db: D1Database,
   weddingId: string
-): Promise<(WeddingMember & { user_name: string; user_email: string; user_notification_prefs: string; business_name: string | null; vendor_instagram: string | null; vendor_website: string | null })[]> {
+): Promise<(WeddingMember & { user_name: string; user_email: string; user_notification_prefs: string; business_name: string | null; vendor_instagram: string | null; vendor_website: string | null; vendor_categories: string | null; vendor_primary_category: string | null })[]> {
   return db
     .prepare(
       `SELECT wm.*, u.name as user_name, u.email as user_email, u.notification_prefs as user_notification_prefs,
-              vp.business_name, vp.instagram as vendor_instagram, vp.website as vendor_website
+              vp.business_name, vp.instagram as vendor_instagram, vp.website as vendor_website,
+              vp.categories as vendor_categories, vp.category as vendor_primary_category
        FROM wedding_members wm
        JOIN users u ON u.id = wm.user_id
        LEFT JOIN vendor_profiles vp ON vp.id = wm.vendor_profile_id
@@ -160,7 +196,7 @@ export async function getWeddingMembers(
        ORDER BY wm.role, wm.created_at`
     )
     .bind(weddingId)
-    .all<WeddingMember & { user_name: string; user_email: string; user_notification_prefs: string; business_name: string | null; vendor_instagram: string | null; vendor_website: string | null }>()
+    .all<WeddingMember & { user_name: string; user_email: string; user_notification_prefs: string; business_name: string | null; vendor_instagram: string | null; vendor_website: string | null; vendor_categories: string | null; vendor_primary_category: string | null }>()
     .then((r) => r.results)
 }
 

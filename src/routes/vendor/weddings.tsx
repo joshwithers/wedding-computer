@@ -11,6 +11,7 @@ import {
   createWedding,
   updateWedding,
   addWeddingMember,
+  setWeddingMemberRoles,
   getWeddingMembers,
   getMembership,
   getAnyMembership,
@@ -38,7 +39,7 @@ import { listTemplates, getDefaultTemplate } from '../../db/todos'
 import { TodoSection } from './checklists'
 import { appendWeddingLog, listWeddingLog } from '../../db/wedding-log'
 import { listCoupleVendors } from '../../db/couple-vendors'
-import { buildCredits, formatInstagramCredits, formatWebCredits, formatHtmlCredits } from '../../services/wedding-credits'
+import { buildCredits, formatInstagramCredits, formatWebCredits, formatHtmlCredits, rolesLabel, parseMemberRoles, type CreditEntry } from '../../services/wedding-credits'
 import {
   getTimelineControllers,
   createTimelineRequest,
@@ -693,6 +694,8 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
   const email = String(body.email).trim().toLowerCase()
   const name = String(body.name).trim()
   const vendorRole = String(body.vendor_role || '').trim() || null
+  // Prefilled handle so credits work before an invited vendor has an account.
+  const invitedInstagram = sanitizeInstagramHandle(String(body.instagram || ''))
   const canManage = body.can_manage === '1' || body.can_manage === 'on'
   const isFinancialParty = body.is_financial_party === '1' || body.is_financial_party === 'on'
 
@@ -718,6 +721,9 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
     role: 'vendor',
     vendor_profile_id: vendorProfile?.id ?? null,
     vendor_role: assignedRole,
+    // Only keep the prefilled handle while they have no profile of their own;
+    // once they onboard, vendor_profiles.instagram is the source of truth.
+    invited_instagram: vendorProfile ? null : invitedInstagram,
     can_manage: canManage || isManager,
     is_financial_party: isFinancialParty,
   })
@@ -758,6 +764,55 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
   track(c.env.DB, vendor.id, 'vendor_added', { weddingId, metadata: { vendorEmail: email } })
 
   return c.redirect(`/app/weddings/${weddingId}?invited=1`)
+})
+
+// ─── Set a vendor member's type(s) for this wedding ───
+// A vendor may declare many types; on a given wedding they're credited as one or
+// more. Manager-only; keeps the singular vendor_role in sync for legacy readers.
+weddings.post('/app/weddings/:id/members/:userId/roles', rateLimit(60, 60), async (c) => {
+  const user = c.get('user')
+  const weddingId = c.req.param('id')
+  const targetUserId = c.req.param('userId')
+
+  const membership = await getMembership(c.env.DB, weddingId, user.id)
+  if (!membership || !membership.can_manage) return c.text('Not found', 404)
+
+  // The target must be a vendor member of THIS wedding. Pull their declared
+  // types so we can validate the submission server-side (the form only offers
+  // these, but a crafted POST could send anything).
+  const target = await c.env.DB
+    .prepare(
+      `SELECT wm.role, vp.categories, vp.category
+       FROM wedding_members wm
+       LEFT JOIN vendor_profiles vp ON vp.id = wm.vendor_profile_id
+       WHERE wm.wedding_id = ? AND wm.user_id = ? AND wm.status = 'active'`
+    )
+    .bind(weddingId, targetUserId)
+    .first<{ role: string; categories: string | null; category: string | null }>()
+  if (!target || target.role !== 'vendor') return c.text('Not found', 404)
+
+  // Allowed roles = the vendor's own declared types, plus the admin catalog
+  // (covers email-invited vendors with no profile yet).
+  const types = await listVendorTypes(c.env.DB)
+  let declared: string[] = []
+  if (target.categories) {
+    try {
+      const arr = JSON.parse(target.categories)
+      if (Array.isArray(arr)) declared = arr.filter((s): s is string => typeof s === 'string')
+    } catch { /* ignore */ }
+  }
+  if (!declared.length && target.category) declared = [target.category]
+  const allowed = new Set([...declared, ...types.map((t) => t.slug)])
+
+  const body = await c.req.parseBody({ all: true })
+  const raw = body.vendor_roles
+  const roles = (Array.isArray(raw) ? raw : raw != null ? [raw] : [])
+    .map((r) => String(r).trim())
+    .filter((r) => r && allowed.has(r))
+    .slice(0, 12) // generous cap; guards against an abusive payload
+
+  await setWeddingMemberRoles(c.env.DB, weddingId, targetUserId, roles)
+  return c.redirect(`/app/weddings/${weddingId}`)
 })
 
 // ─── Wedding detail ───
@@ -1009,28 +1064,77 @@ weddings.get('/app/weddings/:id', async (c) => {
         <div class="mb-6">
           <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.detail.people')}</h3>
           <div class="bg-white border border-papaya-300/30 rounded-2xl p-4 space-y-3">
-            {members.map((m) => (
-              <div class="flex items-center justify-between text-sm">
-                <div>
-                  {m.vendor_profile_id ? (
-                    <a href={`/app/vendors/${m.vendor_profile_id}`} class="font-medium text-gray-900 hover:text-horizon-700 hover:underline">
-                      {m.business_name ?? m.user_name}
-                    </a>
-                  ) : (
-                    <p class="font-medium text-gray-900">{m.business_name ?? m.user_name}</p>
+            {members.map((m) => {
+              const isVendor = m.role === 'vendor'
+              const currentRoles = parseMemberRoles(m.vendor_roles, m.vendor_role)
+              // Types to offer in the editor: the vendor's own declared types
+              // (their profile categories), else the admin catalog for an
+              // email-invited vendor who hasn't built a profile yet.
+              let declared: string[] = []
+              if (m.vendor_categories) {
+                try {
+                  const arr = JSON.parse(m.vendor_categories)
+                  if (Array.isArray(arr)) declared = arr.filter((s): s is string => typeof s === 'string' && !!s)
+                } catch { /* ignore */ }
+              }
+              if (!declared.length && m.vendor_primary_category) declared = [m.vendor_primary_category]
+              const offerTypes = declared.length ? declared.map((s) => ({ slug: s, label: s })) : vendorTypes
+              const canEditTypes = canManage && isVendor
+              const roleLabel = isVendor
+                ? rolesLabel(currentRoles)
+                : m.role.charAt(0).toUpperCase() + m.role.slice(1)
+              return (
+                <div class="text-sm">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      {m.vendor_profile_id ? (
+                        <a href={`/app/vendors/${m.vendor_profile_id}`} class="font-medium text-gray-900 hover:text-horizon-700 hover:underline">
+                          {m.business_name ?? m.user_name}
+                        </a>
+                      ) : (
+                        <p class="font-medium text-gray-900">{m.business_name ?? m.user_name}</p>
+                      )}
+                      <p class="text-xs text-gray-500">{m.user_email}</p>
+                    </div>
+                    <div class="text-right flex items-center gap-1.5">
+                      <span class="text-xs text-gray-500">{roleLabel}</span>
+                      {!!m.can_manage && (
+                        <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">{t('weddings.detail.managerBadge')}</span>
+                      )}
+                    </div>
+                  </div>
+                  {canEditTypes && (
+                    <details class="group/edit mt-1">
+                      <summary class="text-[11px] text-gray-400 hover:text-horizon-600 cursor-pointer select-none list-none text-right">
+                        {t('weddings.people.editTypes')}
+                      </summary>
+                      <form
+                        method="post"
+                        action={`/app/weddings/${wedding.id}/members/${m.user_id}/roles`}
+                        class="mt-2 border border-gray-100 rounded-xl p-3 bg-gray-50/60"
+                      >
+                        <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                        <p class="text-[11px] text-gray-500 mb-2">{t('weddings.people.editTypesHint')}</p>
+                        <div class="flex flex-wrap gap-1.5 mb-3">
+                          {offerTypes.map((ty) => {
+                            const on = currentRoles.includes(ty.slug)
+                            return (
+                              <label class={`text-xs px-2.5 py-1 rounded-full border cursor-pointer transition-colors ${on ? 'bg-horizon-50 border-horizon-300 text-horizon-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                                <input type="checkbox" name="vendor_roles" value={ty.slug} checked={on} class="sr-only peer" />
+                                <span class="peer-checked:font-bold">{vendorTypeLabel(ty)}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                        <button type="submit" class="bg-horizon-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors">
+                          {t('weddings.people.saveTypes')}
+                        </button>
+                      </form>
+                    </details>
                   )}
-                  <p class="text-xs text-gray-500">{m.user_email}</p>
                 </div>
-                <div class="text-right flex items-center gap-1.5">
-                  <span class="text-xs text-gray-500">
-                    {m.vendor_role ? m.vendor_role.charAt(0).toUpperCase() + m.vendor_role.slice(1) : m.role.charAt(0).toUpperCase() + m.role.slice(1)}
-                  </span>
-                  {!!m.can_manage && (
-                    <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">{t('weddings.detail.managerBadge')}</span>
-                  )}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
           {canManage && (
             <AddPeoplePanel weddingId={wedding.id} csrfToken={c.get('csrfToken')} vendorTypes={vendorTypes} invited={invited} scope="people" />
@@ -1830,8 +1934,6 @@ function WeddingStatusBadge({ status }: { status: string }) {
   )
 }
 
-type CreditEntry = { role: string; name: string; instagram: string | null; website: string | null }
-
 // The "Add people to this wedding" panel — invite the couple, autolookup an
 // existing vendor, invite a new vendor by email, or add another person. Rendered
 // in more than one place (under People + under Credits), so the autocomplete's
@@ -1911,6 +2013,9 @@ function AddPeoplePanel({
               ))}
             </select>
           </div>
+          <div class="min-w-[130px]">
+            <input type="text" name="instagram" maxlength={120} placeholder={t('weddings.people.instagramPlaceholder')} title={t('weddings.people.instagramHint')} class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent bg-white" />
+          </div>
           <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors whitespace-nowrap">{t('weddings.people.add')}</button>
         </form>
 
@@ -1947,7 +2052,7 @@ function WeddingCredits({ credits, weddingTitle }: { credits: CreditEntry[]; wed
         <div class="space-y-1 mb-4">
           {credits.map((c) => (
             <div class="flex items-center gap-2 text-sm">
-              <span class="text-gray-500 font-medium w-28 shrink-0 text-right">{c.role}:</span>
+              <span class="text-gray-500 font-medium w-28 shrink-0 text-right">{rolesLabel(c.roles)}:</span>
               <span class="text-gray-900">{c.name}</span>
               {c.instagram && (
                 <a

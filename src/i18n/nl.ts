@@ -1245,4 +1245,9 @@ export const nl: Dictionary = {
   'weddings.form.status': 'Status',
   'weddings.form.saveChanges': 'Wijzigingen opslaan',
   'weddings.form.createWedding': 'Bruiloft aanmaken',
+  'weddings.people.instagramPlaceholder': '@handle',
+  'weddings.people.instagramHint': 'Instagram-naam — verschijnt in de vermeldingen, zelfs voordat ze zich aansluiten',
+  'weddings.people.editTypes': 'Type bewerken',
+  'weddings.people.editTypesHint': 'Voor welk type(s) wordt deze leverancier bij deze bruiloft vermeld?',
+  'weddings.people.saveTypes': 'Opslaan',
 }

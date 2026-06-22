@@ -70,14 +70,20 @@ export async function linkPendingInvites(
   vendorProfileId: string
 ): Promise<string[]> {
   // Capture which weddings we're about to link, so the caller can create the
-  // couple's CRM contact for each.
-  const pending = await db
+  // couple's CRM contact for each. Also grab any Instagram handle a manager
+  // prefilled on the invite — we merge it into the new profile below.
+  const pendingRows = await db
     .prepare(
-      "SELECT wedding_id FROM wedding_members WHERE user_id = ? AND role = 'vendor' AND vendor_profile_id IS NULL"
+      "SELECT wedding_id, invited_instagram FROM wedding_members WHERE user_id = ? AND role = 'vendor' AND vendor_profile_id IS NULL"
     )
     .bind(userId)
-    .all<{ wedding_id: string }>()
-    .then((r) => r.results.map((row) => row.wedding_id))
+    .all<{ wedding_id: string; invited_instagram: string | null }>()
+    .then((r) => r.results)
+  const pending = pendingRows.map((row) => row.wedding_id)
+  // If they were invited to several weddings with different prefilled handles
+  // (unusual — a vendor has one Instagram), the first non-empty one seeds the
+  // profile; their profile handle is the source of truth from here on.
+  const prefilledInstagram = pendingRows.find((row) => row.invited_instagram)?.invited_instagram ?? null
 
   if (pending.length === 0) return []
 
@@ -87,6 +93,16 @@ export async function linkPendingInvites(
     )
     .bind(userId, vendorProfileId)
     .run()
+
+  // Carry a prefilled invite handle onto the new profile if they haven't set one.
+  if (prefilledInstagram) {
+    await db
+      .prepare(
+        "UPDATE vendor_profiles SET instagram = ?2 WHERE id = ?1 AND (instagram IS NULL OR instagram = '')"
+      )
+      .bind(vendorProfileId, prefilledInstagram)
+      .run()
+  }
 
   await db
     .prepare(

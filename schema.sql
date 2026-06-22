@@ -172,6 +172,8 @@ CREATE TABLE IF NOT EXISTS wedding_members (
   role TEXT NOT NULL CHECK (role IN ('vendor','couple','guest')),
   vendor_profile_id TEXT REFERENCES vendor_profiles(id),
   vendor_role TEXT,
+  vendor_roles TEXT, -- JSON array of vendor-type slugs for THIS wedding; NULL → fall back to vendor_role
+  invited_instagram TEXT, -- sanitized handle for an email-invited vendor with no profile yet (credits before onboarding)
   can_manage INTEGER NOT NULL DEFAULT 0,
   is_financial_party INTEGER NOT NULL DEFAULT 0,
   permissions TEXT NOT NULL DEFAULT '{}',

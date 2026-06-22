@@ -1231,4 +1231,9 @@ export const de: Dictionary = {
   'weddings.form.status': 'Status',
   'weddings.form.saveChanges': 'Änderungen speichern',
   'weddings.form.createWedding': 'Hochzeit erstellen',
+  'weddings.people.instagramPlaceholder': '@handle',
+  'weddings.people.instagramHint': 'Instagram-Name – erscheint in den Credits, schon bevor die Person beitritt',
+  'weddings.people.editTypes': 'Typ bearbeiten',
+  'weddings.people.editTypesHint': 'Als welche(r) Typ(en) wird dieser Anbieter bei dieser Hochzeit aufgeführt?',
+  'weddings.people.saveTypes': 'Speichern',
 }
