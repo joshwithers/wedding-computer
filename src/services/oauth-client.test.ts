@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { resolveClient } from './oauth-client'
+import { resolveClient, revokeGrantImmediately } from './oauth-client'
+import { grantRevokedKey } from '../lib/oauth'
 
 // Fake env: DB always misses (so we exercise the CIMD path), KV is an in-memory Map.
 function makeEnv() {
@@ -11,8 +12,34 @@ function makeEnv() {
 }
 
 function mockFetch(body: unknown, ok = true) {
-  return vi.fn(async () => ({ ok, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) }))
+  return vi.fn(async (u: string) => ({ ok, url: u, headers: { get: () => null }, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) }))
 }
+
+describe('revokeGrantImmediately', () => {
+  function envWithGrant(grant: any) {
+    const kv = new Map<string, string>()
+    let ran = false
+    const env = {
+      DB: { prepare: () => ({ bind: () => ({ first: async () => grant, run: async () => void (ran = true) }) }) },
+      KV: { put: async (k: string, v: string) => void kv.set(k, v) },
+    } as any
+    return { env, kv, ran: () => ran }
+  }
+
+  it('revokes the grant in D1 and drops a KV tombstone for immediate effect', async () => {
+    const { env, kv, ran } = envWithGrant({ id: 'grant1', vendor_id: 'vendor1' })
+    await revokeGrantImmediately(env, 'vendor1', 'grant1')
+    expect(ran()).toBe(true)
+    expect(kv.get(grantRevokedKey('grant1'))).toBe('1')
+  })
+
+  it('is a no-op (no tombstone) when the grant belongs to another vendor', async () => {
+    const { env, kv, ran } = envWithGrant({ id: 'grant1', vendor_id: 'someone-else' })
+    await revokeGrantImmediately(env, 'attacker', 'grant1')
+    expect(ran()).toBe(false)
+    expect(kv.has(grantRevokedKey('grant1'))).toBe(false)
+  })
+})
 
 describe('resolveClient — CIMD (Client ID Metadata Documents)', () => {
   beforeEach(() => vi.restoreAllMocks())

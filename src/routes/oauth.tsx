@@ -36,6 +36,7 @@ import {
   newAuthCode,
   accessTokenKey,
   authCodeKey,
+  grantRevokedKey,
   verifyPkce,
   redirectUriAllowed,
   isValidRedirectUri,
@@ -47,9 +48,8 @@ import {
   upsertOAuthGrant,
   getActiveGrantByRefreshHash,
   rotateRefreshHash,
-  revokeOAuthGrant,
 } from '../db/oauth'
-import { resolveClient } from '../services/oauth-client'
+import { resolveClient, revokeGrantImmediately } from '../services/oauth-client'
 
 const oauth = new Hono<Env>()
 
@@ -252,12 +252,29 @@ function readAuthorizeParams(src: Record<string, string>): AuthorizeParams {
 oauth.get('/oauth/authorize', async (c) => {
   const p = readAuthorizeParams(c.req.query())
 
-  // 1. Validate client + redirect_uri BEFORE trusting redirect_uri for error bounces.
-  const client = p.client_id ? await resolveClient(c.env, p.client_id) : null
+  // 1. Require a session first: a URL client_id triggers a CIMD document fetch,
+  //    so only authenticated vendors should be able to drive it (and the fetch
+  //    cache is then scoped to that vendor).
+  const sessionId = getCookie(c, 'wc_session')
+  const session = sessionId ? await resolveSession(c.env.KV, sessionId) : null
+  if (!session) {
+    const returnTo = '/oauth/authorize?' + new URLSearchParams(c.req.query()).toString()
+    setCookie(c, 'wc_oauth_return', returnTo, { path: '/', httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 600 })
+    return c.redirect('/login')
+  }
+  const vendor = await getVendorByUserId(c.env.DB, session.userId)
+  if (!vendor) {
+    return c.html(<ErrorPage title="Vendor account needed" message="The MCP server is for vendor accounts. Finish setting up your business, then reconnect." />, 403)
+  }
+
+  // 2. Validate client + redirect_uri BEFORE trusting redirect_uri for error bounces.
+  const client = p.client_id ? await resolveClient(c.env, p.client_id, vendor.id) : null
   if (!client) {
+    console.log('[oauth-authorize] client not resolved', { client_id: p.client_id, redirect_uri: p.redirect_uri })
     return c.html(<ErrorPage title="Unknown application" message="This app isn’t registered. Try reconnecting from your AI client." />, 400)
   }
   if (!redirectUriAllowed(p.redirect_uri, client.redirect_uris)) {
+    console.log('[oauth-authorize] redirect_uri mismatch', { redirect_uri: p.redirect_uri, allowed: client.redirect_uris })
     return c.html(<ErrorPage title="Invalid redirect" message="The redirect address doesn’t match this app’s registration." />, 400)
   }
 
@@ -274,20 +291,7 @@ oauth.get('/oauth/authorize', async (c) => {
   }
   if (p.scope && p.scope !== MCP_SCOPE) return bounce({ error: 'invalid_scope' })
 
-  // 2. Require a session; bounce through login and come back.
-  const sessionId = getCookie(c, 'wc_session')
-  const session = sessionId ? await resolveSession(c.env.KV, sessionId) : null
-  if (!session) {
-    const returnTo = '/oauth/authorize?' + new URLSearchParams(c.req.query()).toString()
-    setCookie(c, 'wc_oauth_return', returnTo, { path: '/', httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 600 })
-    return c.redirect('/login')
-  }
-
   // 3. MCP is a Pro vendor feature.
-  const vendor = await getVendorByUserId(c.env.DB, session.userId)
-  if (!vendor) {
-    return c.html(<ErrorPage title="Vendor account needed" message="The MCP server is for vendor accounts. Finish setting up your business, then reconnect." />, 403)
-  }
   if (!(await isProVendor(c.env.DB, vendor.id))) {
     return c.html(<UpgradePage />, 403)
   }
@@ -317,8 +321,17 @@ oauth.post('/oauth/authorize', async (c) => {
   const p = readAuthorizeParams(src)
   const decision = src.decision ?? ''
 
+  // Must be a logged-in Pro vendor (this POST is CSRF-bound to the session).
+  // Resolve them first so the CIMD client fetch is scoped to this vendor.
+  const sessionId = getCookie(c, 'wc_session')
+  const session = sessionId ? await resolveSession(c.env.KV, sessionId) : null
+  const vendor = session ? await getVendorByUserId(c.env.DB, session.userId) : null
+  if (!vendor || !(await isProVendor(c.env.DB, vendor.id))) {
+    return c.html(<ErrorPage title="Sign in required" message="Please start the connection again from your AI client." />, 401)
+  }
+
   // Re-validate client + redirect (never trust the posted redirect blindly).
-  const client = p.client_id ? await resolveClient(c.env, p.client_id) : null
+  const client = p.client_id ? await resolveClient(c.env, p.client_id, vendor.id) : null
   if (!client || !redirectUriAllowed(p.redirect_uri, client.redirect_uris)) {
     return c.html(<ErrorPage title="Invalid request" message="The authorization request is no longer valid. Please start again from your AI client." />, 400)
   }
@@ -329,14 +342,6 @@ oauth.post('/oauth/authorize', async (c) => {
     return c.redirect(u.toString())
   }
   if (p.code_challenge_method !== 'S256' || !p.code_challenge) return bounce({ error: 'invalid_request' })
-
-  // Must still be a logged-in Pro vendor.
-  const sessionId = getCookie(c, 'wc_session')
-  const session = sessionId ? await resolveSession(c.env.KV, sessionId) : null
-  if (!session) return bounce({ error: 'access_denied' })
-  const vendor = await getVendorByUserId(c.env.DB, session.userId)
-  if (!vendor || !(await isProVendor(c.env.DB, vendor.id))) return bounce({ error: 'access_denied' })
-
   if (decision !== 'allow') return bounce({ error: 'access_denied' })
 
   // Issue a single-use authorization code bound to the client, redirect, PKCE
@@ -388,6 +393,8 @@ async function issueTokens(
     scope: grant.scope,
     refresh_token_hash: refreshHash,
   })
+  // Clear any stale revocation tombstone — re-authorizing reuses the grant row.
+  await c.env.KV.delete(grantRevokedKey(grantId))
   const record: AccessTokenRecord = { vendor_id: grant.vendor_id, client_id: grant.client_id, scope: grant.scope, grant_id: grantId }
   await c.env.KV.put(await accessTokenKey(accessToken), JSON.stringify(record), { expirationTtl: ACCESS_TTL })
 
@@ -426,7 +433,7 @@ async function handleAuthorizationCode(c: any, body: Record<string, any>) {
     return c.json({ error: 'invalid_grant' }, 400)
   }
 
-  const client = await resolveClient(c.env, clientId)
+  const client = await resolveClient(c.env, clientId, record.vendor_id)
   if (!client) return c.json({ error: 'invalid_client' }, 401)
 
   // Confidential clients authenticate with their secret; public clients rely on PKCE.
@@ -457,7 +464,7 @@ async function handleRefreshToken(c: any, body: Record<string, any>) {
   if (!grant) return c.json({ error: 'invalid_grant' }, 400)
   if (clientId && grant.client_id !== clientId) return c.json({ error: 'invalid_grant' }, 400)
 
-  const client = await resolveClient(c.env, grant.client_id)
+  const client = await resolveClient(c.env, grant.client_id, grant.vendor_id)
   if (!client) return c.json({ error: 'invalid_client' }, 401)
   if (client.client_secret_hash) {
     if (!clientSecret || (await sha256Hex(clientSecret)) !== client.client_secret_hash) {
@@ -488,9 +495,9 @@ oauth.post('/oauth/revoke', rateLimit(30, 60), async (c) => {
   const body = await c.req.parseBody()
   const token = typeof body.token === 'string' ? body.token : ''
   if (token.startsWith(RT_PREFIX)) {
-    // Revoking a refresh token tears down the whole grant.
+    // Revoking a refresh token tears down the whole grant (+ active access token).
     const grant = await getActiveGrantByRefreshHash(c.env.DB, await sha256Hex(token))
-    if (grant) await revokeOAuthGrant(c.env.DB, grant.vendor_id, grant.id)
+    if (grant) await revokeGrantImmediately(c.env, grant.vendor_id, grant.id)
   } else if (isOAuthAccessToken(token)) {
     // Revoking an access token deletes it from KV for immediate effect.
     await c.env.KV.delete(await accessTokenKey(token))

@@ -35,6 +35,13 @@ export function isOAuthAccessToken(token: string): boolean {
 export const accessTokenKey = async (token: string): Promise<string> => `oauth:at:${await sha256Hex(token)}`
 export const authCodeKey = async (code: string): Promise<string> => `oauth:code:${await sha256Hex(code)}`
 
+/**
+ * Tombstone key: when a grant is revoked we set this (TTL = access-token
+ * lifetime) so any access token still cached in KV for that grant is rejected
+ * immediately, rather than lingering until its own TTL expires.
+ */
+export const grantRevokedKey = (grantId: string): string => `oauth:grant-revoked:${grantId}`
+
 export type AccessTokenRecord = {
   vendor_id: string
   client_id: string

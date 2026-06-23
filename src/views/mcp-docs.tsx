@@ -102,12 +102,12 @@ export function McpDocsPage() {
               <a href="/pricing" class="text-horizon-600 font-medium hover:underline">See pricing →</a>
             </li>
             <li>
-              You need a <strong>sync token</strong>. Generate one in{' '}
+              <strong>Connecting Claude needs no token</strong> — you sign in and approve (step 1). Only the
+              token-based methods (Claude Code, Cursor, scripts) need a <strong>sync token</strong> from{' '}
               <a href="/app/settings#device-sync" class="text-horizon-600 font-medium hover:underline">
                 Settings → Calendar &amp; Sync
-              </a>
-              . It’s shown once — copy it somewhere safe, then paste it in place of{' '}
-              <code class="bg-white/70 px-1 rounded">YOUR_SYNC_TOKEN</code> below.
+              </a>{' '}
+              — shown once; paste it in place of <code class="bg-white/70 px-1 rounded">YOUR_SYNC_TOKEN</code>.
             </li>
           </ul>
         </div>
@@ -125,46 +125,46 @@ export function McpDocsPage() {
           </div>
           <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 p-4">
             <dt class="w-32 shrink-0 font-medium text-gray-500">Authentication</dt>
-            <dd class="text-gray-900">
-              <code class="font-mono">Authorization: Bearer &lt;your-sync-token&gt;</code>
-            </dd>
+            <dd class="text-gray-900">OAuth 2.1 sign-in (PKCE), or a Bearer sync token</dd>
           </div>
         </dl>
 
         {/* Setup */}
         <h2 class="text-xl font-bold text-gray-900 mb-4">Set it up</h2>
         <div class="space-y-5">
-          <Step n={1} title="Claude Code (easiest)">
-            <p>Run this once in your terminal — it registers the server with your token:</p>
-            <CodeBlock id="cmd-claude-code" code={claudeCode} />
-            <p class="text-gray-500">Then ask Claude about your weddings. Remove it any time with <code class="bg-gray-100 px-1 rounded">claude mcp remove wedding-computer</code>.</p>
+          <Step n={1} title="Claude — web, desktop & mobile (recommended)">
+            <p>No token needed — just sign in and approve:</p>
+            <ol class="list-decimal pl-5 space-y-1">
+              <li>In Claude, open <strong>Settings → Connectors → Add custom connector</strong>.</li>
+              <li>
+                Paste <code class="bg-gray-100 px-1 rounded select-all">{ENDPOINT}</code> as the URL and add it.
+              </li>
+              <li>Claude sends you to Wedding Computer to <strong>sign in and approve</strong> — then you’re connected on every Claude surface.</li>
+            </ol>
+            <p class="text-gray-500">Manage or disconnect it anytime under Settings → Calendar &amp; Sync → “Connected apps”.</p>
           </Step>
 
-          <Step n={2} title="Claude Desktop">
-            <p>
-              Claude Desktop reaches remote servers through the <code class="bg-gray-100 px-1 rounded">mcp-remote</code> bridge. Open{' '}
-              <strong>Settings → Developer → Edit Config</strong> and add this to <code class="bg-gray-100 px-1 rounded">claude_desktop_config.json</code>, then restart Claude:
-            </p>
-            <CodeBlock id="cmd-claude-desktop" code={claudeDesktop} />
-            <p class="text-gray-500">Requires Node.js installed (the <code class="bg-gray-100 px-1 rounded">npx</code> command). The token is kept in <code class="bg-gray-100 px-1 rounded">env</code> so it isn’t split on the space.</p>
+          <Step n={2} title="Claude Code (CLI)">
+            <p>Sign-in flow — run this and approve in the browser when prompted:</p>
+            <CodeBlock id="cmd-claude-code-oauth" code={`claude mcp add --transport http wedding-computer ${ENDPOINT}`} />
+            <p class="text-gray-500">Prefer a token instead of signing in? Add a header:</p>
+            <CodeBlock id="cmd-claude-code" code={claudeCode} />
           </Step>
 
           <Step n={3} title="Cursor, Windsurf & other MCP clients">
             <p>
-              Most clients accept a remote URL with headers. For Cursor, add this to <code class="bg-gray-100 px-1 rounded">~/.cursor/mcp.json</code> (other clients use the same shape):
+              Most clients accept a remote URL with a header. For Cursor, add this to <code class="bg-gray-100 px-1 rounded">~/.cursor/mcp.json</code> (others use the same shape):
             </p>
             <CodeBlock id="cmd-cursor" code={cursor} />
           </Step>
-        </div>
 
-        {/* claude.ai web note */}
-        <div class="bg-gray-50 border border-gray-200 rounded-2xl p-5 mt-6 text-sm text-gray-600">
-          <p class="font-bold text-gray-900 mb-1">Using Claude on the web (claude.ai)?</p>
-          <p>
-            The web app’s custom connectors currently authenticate with OAuth only and have no field for a pasted
-            token, so the bearer-token setup above won’t work there yet. Use Claude Code or Claude Desktop in the
-            meantime — both connect to the same server and data.
-          </p>
+          <Step n={4} title="Older clients (manual bridge)">
+            <p>
+              A client that only speaks stdio can reach the server through the <code class="bg-gray-100 px-1 rounded">mcp-remote</code> bridge — e.g. in <code class="bg-gray-100 px-1 rounded">claude_desktop_config.json</code>:
+            </p>
+            <CodeBlock id="cmd-claude-desktop" code={claudeDesktop} />
+            <p class="text-gray-500">Requires Node.js. The token is kept in <code class="bg-gray-100 px-1 rounded">env</code> so it isn’t split on the space.</p>
+          </Step>
         </div>
 
         {/* Capabilities */}

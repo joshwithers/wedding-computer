@@ -6,6 +6,9 @@ import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
 import { updateVendor } from '../../db/vendors'
 import { isProVendor } from '../../db/subscriptions'
+import { listOAuthGrantsForVendor } from '../../db/oauth'
+import { revokeGrantImmediately } from '../../services/oauth-client'
+import { formatDate } from '../../lib/date'
 import { softDeleteAccount } from '../../services/account'
 import { VENDOR_CATEGORIES } from '../../types'
 import { trimOrNull, requireString } from '../../lib/validation'
@@ -42,6 +45,7 @@ settings.get('/app/settings', async (c) => {
   const saved = c.req.query('saved')
   const error = c.req.query('error')
   const isPro = await isProVendor(c.env.DB, vendor.id)
+  const oauthGrants = isPro ? await listOAuthGrantsForVendor(c.env.DB, vendor.id) : []
 
   // One-time sync token reveal: the generate handler stashes the new
   // token in KV under a single-use id; we show it once and delete it.
@@ -895,6 +899,52 @@ settings.get('/app/settings', async (c) => {
                   </p>
                 </div>
               )}
+              {/* AI assistants (MCP) — shown for every Pro vendor; the connector needs no sync token. */}
+              <div class="bg-gray-50 rounded-xl p-4">
+                <p class="text-xs font-bold text-gray-700 mb-1">AI assistants (MCP)</p>
+                <p class="text-xs text-gray-500 mb-2">
+                  Let Claude read and update your weddings, run sheets, contacts, and notes in plain
+                  language. Easiest way — in Claude add a <strong>custom connector</strong> pointing to{' '}
+                  <code class="bg-white px-1 rounded select-all">{`${c.env.APP_URL}/mcp`}</code>, then sign
+                  in and approve. No token needed.
+                </p>
+                <p class="text-xs text-gray-500 mb-2">Prefer a token (Claude Code, Cursor, scripts)?</p>
+                <code class="block text-[11px] text-gray-700 bg-white rounded-lg p-2 break-all select-all">
+                  {`claude mcp add --transport http wedding-computer ${c.env.APP_URL}/mcp --header "Authorization: Bearer <your-sync-token>"`}
+                </code>
+                <p class="text-xs text-gray-500 mt-2">
+                  Full setup guide:{' '}
+                  <a href="/mcp" target="_blank" rel="noopener" class="font-medium text-horizon-600 hover:underline">
+                    wedding.computer/mcp
+                  </a>
+                </p>
+                {oauthGrants.length > 0 && (
+                  <div class="mt-4 pt-3 border-t border-gray-200">
+                    <p class="text-xs font-bold text-gray-700 mb-2">Connected apps</p>
+                    <div class="space-y-2">
+                      {oauthGrants.map((g) => (
+                        <div class="flex items-center justify-between gap-3">
+                          <div class="min-w-0">
+                            <p class="text-xs font-medium text-gray-800 truncate">{g.client_name || 'Connected app'}</p>
+                            <p class="text-[11px] text-gray-400">Connected {formatDate(g.created_at)}</p>
+                          </div>
+                          <form
+                            method="post"
+                            action="/app/settings/revoke-oauth-grant"
+                            onsubmit="return confirm('Disconnect this app? It loses access immediately.')"
+                          >
+                            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                            <input type="hidden" name="grant_id" value={g.id} />
+                            <button type="submit" class="text-[11px] font-bold text-grapefruit-700 hover:underline shrink-0">
+                              Disconnect
+                            </button>
+                          </form>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               {vendor.ical_token ? (
                 <>
                   <FeedUrl
@@ -928,22 +978,6 @@ settings.get('/app/settings', async (c) => {
                       Browse → "Wedding Computer Sync") and paste your sync token. Your contacts,
                       weddings, and checklists become editable markdown files — changes sync both ways
                       on desktop and mobile.
-                    </p>
-                  </div>
-                  <div class="bg-gray-50 rounded-xl p-4">
-                    <p class="text-xs font-bold text-gray-700 mb-1">AI assistants (MCP)</p>
-                    <p class="text-xs text-gray-500 mb-2">
-                      Connect Claude, Cursor, or any MCP client to read and update your weddings, run
-                      sheets, contacts, and notes in plain language. In Claude Code:
-                    </p>
-                    <code class="block text-[11px] text-gray-700 bg-white rounded-lg p-2 break-all select-all">
-                      {`claude mcp add --transport http wedding-computer ${c.env.APP_URL}/mcp --header "Authorization: Bearer <your-sync-token>"`}
-                    </code>
-                    <p class="text-xs text-gray-500 mt-2">
-                      Full setup for Claude Desktop, Cursor and others:{' '}
-                      <a href="/mcp" target="_blank" rel="noopener" class="font-medium text-horizon-600 hover:underline">
-                        wedding.computer/mcp
-                      </a>
                     </p>
                   </div>
                   {!revealedToken && (
@@ -1400,6 +1434,19 @@ settings.post('/app/settings/revoke-sync-token', async (c) => {
   await updateVendor(c.env.DB, vendor.id, { ical_token: null })
   await auditLog(c, 'sync_token_revoked', 'vendor', vendor.id).catch(() => {})
   return c.redirect('/app/settings?saved=1')
+})
+
+// Disconnect a connected AI app (OAuth grant). Scoped by vendor; revokes the
+// refresh token and immediately invalidates the active access token.
+settings.post('/app/settings/revoke-oauth-grant', async (c) => {
+  const vendor = c.get('vendor')!
+  const body = await c.req.parseBody()
+  const grantId = typeof body.grant_id === 'string' ? body.grant_id : ''
+  if (grantId) {
+    await revokeGrantImmediately(c.env, vendor.id, grantId)
+    await auditLog(c, 'oauth_grant_revoked', 'vendor', vendor.id, { grant_id: grantId }).catch(() => {})
+  }
+  return c.redirect('/app/settings#device-sync')
 })
 
 // ─── GitHub sync ───

@@ -21,7 +21,7 @@
 import { Hono } from 'hono'
 import type { Env, Bindings, VendorProfile } from '../types'
 import { getVendorByIcalToken, getVendorById } from '../db/vendors'
-import { isOAuthAccessToken, accessTokenKey, type AccessTokenRecord } from '../lib/oauth'
+import { isOAuthAccessToken, accessTokenKey, grantRevokedKey, type AccessTokenRecord } from '../lib/oauth'
 import { isProVendor } from '../db/subscriptions'
 import { processJsonSubmission, createEnquiry } from '../services/enquiry'
 import { clientIp, isAuthThrottled, recordAuthFailure, consumeRateLimit } from '../middleware/rate-limit'
@@ -51,6 +51,9 @@ async function authenticateMcp(env: Bindings, authHeader: string | undefined): P
       return null
     }
     if (!rec?.vendor_id) return null
+    // Reject immediately if the grant behind this token was revoked (the
+    // revoke handler drops a short-lived tombstone so we don't wait out the TTL).
+    if (rec.grant_id && (await env.KV.get(grantRevokedKey(rec.grant_id)))) return null
     return getVendorById(env.DB, rec.vendor_id)
   }
 

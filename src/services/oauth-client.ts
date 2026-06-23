@@ -13,32 +13,77 @@
  * redirects, size + time capped) and cached in KV for 24h.
  */
 import type { Bindings } from '../types'
-import { getOAuthClient, type OAuthClient } from '../db/oauth'
+import { getOAuthClient, getOAuthGrant, revokeOAuthGrant, type OAuthClient } from '../db/oauth'
 import { isFetchableHost } from './link-metadata'
 import { sha256Hex } from '../lib/crypto'
+import { ACCESS_TTL, grantRevokedKey } from '../lib/oauth'
 
-const CIMD_CACHE_TTL = 60 * 60 * 24 // 24h
+/**
+ * Revoke a grant AND immediately invalidate any access token still cached for
+ * it: clear the grant in D1 (stops refresh) and drop a KV tombstone the MCP
+ * auth path checks, so access already issued stops working within seconds
+ * rather than lingering for its ~1h TTL.
+ */
+export async function revokeGrantImmediately(env: Bindings, vendorId: string, grantId: string): Promise<void> {
+  // Confirm ownership BEFORE writing the KV tombstone — otherwise one vendor
+  // could disable another vendor's connected app by submitting its grant id
+  // (the D1 revoke is already vendor-scoped, but the tombstone would not be).
+  const grant = await getOAuthGrant(env.DB, grantId)
+  if (!grant || grant.vendor_id !== vendorId) return
+  await revokeOAuthGrant(env.DB, vendorId, grantId)
+  await env.KV.put(grantRevokedKey(grantId), '1', { expirationTtl: ACCESS_TTL })
+}
+
+const CIMD_CACHE_TTL = 60 * 60 // 1h — short window limits cross-vendor cache staleness
 const CIMD_MAX_BYTES = 10 * 1024 // spec: documents must be < 10KB
 const CIMD_TIMEOUT_MS = 5000
 
-export async function resolveClient(env: Bindings, clientId: string): Promise<OAuthClient | null> {
+export async function resolveClient(env: Bindings, clientId: string, vendorId?: string): Promise<OAuthClient | null> {
   if (!clientId) return null
   const local = await getOAuthClient(env.DB, clientId)
   if (local) return local
-  if (/^https:\/\//i.test(clientId)) return resolveCimdClient(env, clientId)
+  if (/^https:\/\//i.test(clientId)) return resolveCimdClient(env, clientId, vendorId)
   return null
 }
 
-async function resolveCimdClient(env: Bindings, clientId: string): Promise<OAuthClient | null> {
-  let url: URL
+/** https + not a private/loopback/link-local host, else null. */
+function fetchableHttpsUrl(raw: string): URL | null {
+  let u: URL
   try {
-    url = new URL(clientId)
+    u = new URL(raw)
   } catch {
     return null
   }
-  if (url.protocol !== 'https:' || !isFetchableHost(url.hostname)) return null
+  return u.protocol === 'https:' && isFetchableHost(u.hostname) ? u : null
+}
 
-  const cacheKey = `oauth:cimd:${await sha256Hex(clientId)}`
+/**
+ * Fetch a CIMD document, following redirects (Claude's client_id URL redirects
+ * to its hosted document). The FINAL host is re-validated, and — critically —
+ * on Cloudflare Workers fetch runs at the edge with no route to private,
+ * loopback, or link-local addresses, so a redirect cannot be used to reach an
+ * internal service regardless of which intermediate hop it points at. The 5s
+ * timeout bounds redirect-chain abuse.
+ */
+async function fetchCimdDoc(url: string): Promise<Response | null> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), CIMD_TIMEOUT_MS)
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, redirect: 'follow', headers: { Accept: 'application/json' } })
+    if (!res.ok || !fetchableHttpsUrl(res.url)) return null
+    return res
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function resolveCimdClient(env: Bindings, clientId: string, vendorId?: string): Promise<OAuthClient | null> {
+  if (!fetchableHttpsUrl(clientId)) return null
+
+  // Cache per (vendor, client) so one vendor can't populate another's cache.
+  const cacheKey = `oauth:cimd:${vendorId || 'anon'}:${await sha256Hex(clientId)}`
   const cached = await env.KV.get(cacheKey)
   if (cached) {
     try {
@@ -49,19 +94,8 @@ async function resolveCimdClient(env: Bindings, clientId: string): Promise<OAuth
     }
   }
 
-  let res: Response
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), CIMD_TIMEOUT_MS)
-  try {
-    // No redirects: the SSRF host check only covers the initial host, so a
-    // redirect could otherwise reach an internal address.
-    res = await fetch(clientId, { signal: ctrl.signal, redirect: 'error', headers: { Accept: 'application/json' } })
-  } catch {
-    return null
-  } finally {
-    clearTimeout(timer)
-  }
-  if (!res.ok) return null
+  const res = await fetchCimdDoc(clientId)
+  if (!res) return null
   if (Number(res.headers.get('content-length') || 0) > CIMD_MAX_BYTES) return null
 
   const text = await res.text()
