@@ -73,8 +73,14 @@ export async function geocodeAddress(env: Bindings, address: string): Promise<Ge
 type GeocodeAttempt = { location: GeocodedLocation | null; error: boolean }
 
 async function classicGeocode(env: Bindings, text: string): Promise<GeocodeAttempt> {
+  // The classic Geocoding API ($5/1k) does NOT honour Referer restrictions on
+  // server calls, so the Referer-restricted GOOGLE_MAPS_API_KEY is rejected here
+  // and every lookup fell through to the much pricier Places searchText. Prefer a
+  // dedicated non-Referer key (GOOGLE_GEOCODING_KEY, restricted to the Geocoding
+  // API) when set; fall back to the maps key otherwise.
+  const key = env.GOOGLE_GEOCODING_KEY || env.GOOGLE_MAPS_API_KEY
   const res = await fetch(
-    `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(text)}&key=${env.GOOGLE_MAPS_API_KEY}`
+    `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(text)}&key=${key}`
   )
   if (!res.ok) {
     console.error('[geocode] Geocoding API HTTP error', res.status)

@@ -28,6 +28,10 @@ export type Bindings = {
   TURNSTILE_SECRET_KEY: string
   TURNSTILE_SITE_KEY: string
   GOOGLE_MAPS_API_KEY?: string
+  // Dedicated server-side geocoding key (Geocoding API enabled, NOT Referer-
+  // restricted). When set, classicGeocode uses it instead of falling through to
+  // the much pricier Places searchText. See services/geocode.ts.
+  GOOGLE_GEOCODING_KEY?: string
   // Open-Meteo commercial API key. When set, forecasts use the paid
   // customer-api.open-meteo.com endpoint (commercial licence, BoM ACCESS via
   // best_match for AU); when unset, the free api.open-meteo.com endpoint is used

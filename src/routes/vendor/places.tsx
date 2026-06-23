@@ -35,7 +35,9 @@ places.get('/api/places/search', async (c) => {
   // also accept ?q= for direct calls
   const q = (c.req.query('q') ?? c.req.query(field) ?? '').trim()
 
-  if (!q || q.length < 2) {
+  // Require 3+ chars before hitting Google — 2-char queries return generic
+  // results and just burn Autocomplete quota across every location field.
+  if (!q || q.length < 3) {
     return c.html('')
   }
 

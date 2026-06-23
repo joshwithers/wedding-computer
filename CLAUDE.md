@@ -85,7 +85,8 @@ Set via `wrangler secret put <NAME>` (full list = `Bindings` in [src/types.ts](s
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth |
 | `APPLE_CLIENT_ID` / `APPLE_CLIENT_SECRET` | Apple Sign-In |
 | `TURNSTILE_SECRET_KEY` | CAPTCHA verification |
-| `GOOGLE_MAPS_API_KEY` | Geocoding (optional) |
+| `GOOGLE_MAPS_API_KEY` | Places autocomplete (Referer-restricted browser key) |
+| `GOOGLE_GEOCODING_KEY` | Server-side geocoding — Geocoding API key, NOT Referer-restricted (the cheap classic path; without it geocoding falls through to the ~6× pricier Places searchText) |
 | `SIGNUP_INVITE_CODE` | When set, public self-signup requires this code |
 | `ENABLE_DEV_LOGIN` | Local only — see above |
 
