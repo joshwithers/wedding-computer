@@ -4,6 +4,7 @@
 // CDN and cached in KV (satori needs TTF/OTF/WOFF — NOT woff2 — so we pull the
 // .woff builds from @fontsource).
 import { ImageResponse } from 'workers-og'
+import { PDFDocument } from 'pdf-lib'
 import type { Bindings } from '../types'
 
 type LoadedFont = { name: string; data: ArrayBuffer; weight: 400 | 600 | 700; style: 'normal' }
@@ -37,4 +38,27 @@ export async function renderPng(env: Bindings, html: string, width: number, heig
   const fonts = await loadFonts(env)
   const resp = new ImageResponse(html, { width, height, fonts, format: 'png' })
   return await resp.arrayBuffer()
+}
+
+// A4 portrait, in PDF points (1/72").
+const A4_PT_W = 595.28
+const A4_PT_H = 841.89
+
+/**
+ * Render HTML pages (each `width`×`height` px, A4 ratio) to a multi-page PDF:
+ * each page → PNG (satori/resvg) → embedded full-bleed into a pdf-lib A4 page.
+ * Pages are rendered sequentially — the resvg WASM instance isn't safe to drive
+ * concurrently.
+ */
+export async function renderPdf(env: Bindings, htmlPages: string[], width: number, height: number): Promise<Uint8Array> {
+  const fonts = await loadFonts(env)
+  const doc = await PDFDocument.create()
+  for (const html of htmlPages) {
+    const resp = new ImageResponse(html, { width, height, fonts, format: 'png' })
+    const png = new Uint8Array(await resp.arrayBuffer())
+    const img = await doc.embedPng(png)
+    const page = doc.addPage([A4_PT_W, A4_PT_H])
+    page.drawImage(img, { x: 0, y: 0, width: A4_PT_W, height: A4_PT_H })
+  }
+  return await doc.save()
 }

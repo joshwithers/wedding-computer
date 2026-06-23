@@ -43,6 +43,7 @@ import {
   approveTimelineRequest,
   declineTimelineRequest,
   wallpaperPng,
+  runSheetPdf,
 } from './timeline-handlers'
 import { markTimelineDirty } from '../services/timeline-notify'
 import { ensureCoupleContact } from '../services/couple-contact'
@@ -989,6 +990,13 @@ couple.get('/wedding/:id/timeline/wallpaper.png', async (c) => {
   const ctx = await coupleDocMembership(c, weddingId)
   if (!ctx) return c.text('Forbidden', 403)
   return wallpaperPng(c, weddingId, ctx.membership, ctx.user)
+})
+
+couple.get('/wedding/:id/timeline/run-sheet.pdf', async (c) => {
+  const weddingId = c.req.param('id')
+  const ctx = await coupleDocMembership(c, weddingId)
+  if (!ctx) return c.text('Forbidden', 403)
+  return runSheetPdf(c, weddingId, ctx.membership, ctx.user)
 })
 
 couple.post('/wedding/:id/timeline', async (c) => {

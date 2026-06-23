@@ -52,8 +52,18 @@ import { solveTimeline, minToHhmm, hhmmToMin } from '../lib/timeline-solver'
 import { nowTimeString, formatDate } from '../lib/date'
 import { t, getI18n } from '../i18n'
 import { getCouplePartners } from '../services/couple-contact'
-import { buildWallpaperHtml, selectKeyMoments, generateTagline, WALLPAPER_W, WALLPAPER_H } from '../services/timeline-export'
-import { renderPng } from '../services/og-render'
+import {
+  buildWallpaperHtml,
+  selectKeyMoments,
+  generateTagline,
+  WALLPAPER_W,
+  WALLPAPER_H,
+  buildRunSheetPages,
+  selectRunSheetMoments,
+  RUNSHEET_W,
+  RUNSHEET_H,
+} from '../services/timeline-export'
+import { renderPng, renderPdf } from '../services/og-render'
 
 type Ctx = Context<Env>
 
@@ -635,38 +645,69 @@ export function declineTimelineRequest(c: Ctx, weddingId: string, member: Weddin
 }
 
 /**
- * Render the wedding's run sheet as a phone-lockscreen wallpaper PNG. Any
- * member (vendor or couple) may download it; `member` is already resolved by
- * the route guard, so this is membership-scoped. Couple names use the richest
- * available surnames (vendor's contact → couple members → title), and a warm
- * AI tagline is woven in (cached, best-effort).
+ * Shared data load for the timeline exports (wallpaper PNG + run-sheet PDF).
+ * Couple names use the richest available surnames (vendor's contact → couple
+ * members → title); a warm AI tagline is woven in (cached, best-effort). The
+ * caller is already membership-scoped by the route guard. Returns null if the
+ * wedding doesn't exist.
  */
-export async function wallpaperPng(c: Ctx, weddingId: string, _member: WeddingMember, _user: User) {
+async function loadExportData(c: Ctx, weddingId: string) {
   const wedding = await getWedding(c.env.DB, weddingId)
-  if (!wedding) return c.text('Not found', 404)
-
+  if (!wedding) return null
   const vendorId = c.get('vendor')?.id
   const [partners, items] = await Promise.all([
     getCouplePartners(c.env.DB, weddingId, { vendorId, title: wedding.title }),
     listTimeline(c.env.DB, weddingId),
   ])
-
   const dateLabel = wedding.date ? formatDate(wedding.date) : ''
   const locationLabel =
     [wedding.location_city, wedding.location_state].filter(Boolean).join(', ') || wedding.location || undefined
   const names = partners.map((p) => p.first).filter(Boolean).join(' & ') || wedding.title
   const tagline = await generateTagline(c.env, { weddingId, names, dateLabel, locationLabel })
-
-  const html = buildWallpaperHtml({ partners, dateLabel, locationLabel, tagline, items: selectKeyMoments(items) })
-  const png = await renderPng(c.env, html, WALLPAPER_W, WALLPAPER_H)
-
   const slug = (names || 'wedding').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'wedding'
+  return { wedding, partners, items, dateLabel, locationLabel, names, tagline, slug }
+}
+
+/** Run sheet → phone-lockscreen wallpaper PNG (the ≤8 key moments). */
+export async function wallpaperPng(c: Ctx, weddingId: string, _member: WeddingMember, _user: User) {
+  const d = await loadExportData(c, weddingId)
+  if (!d) return c.text('Not found', 404)
+  const html = buildWallpaperHtml({
+    partners: d.partners,
+    dateLabel: d.dateLabel,
+    locationLabel: d.locationLabel,
+    tagline: d.tagline,
+    items: selectKeyMoments(d.items),
+  })
+  const png = await renderPng(c.env, html, WALLPAPER_W, WALLPAPER_H)
   return new Response(png, {
     headers: {
       'content-type': 'image/png',
       // inline so it opens in a tab — on a phone the vendor can long-press →
       // save to photos → set as lockscreen; on desktop, right-click → save.
-      'content-disposition': `inline; filename="${slug}-run-sheet.png"`,
+      'content-disposition': `inline; filename="${d.slug}-wallpaper.png"`,
+      'cache-control': 'private, max-age=300',
+    },
+  })
+}
+
+/** Run sheet → full printable A4 PDF (every timed item + sun markers, with
+ * location and assigned people, paginated). */
+export async function runSheetPdf(c: Ctx, weddingId: string, _member: WeddingMember, _user: User) {
+  const d = await loadExportData(c, weddingId)
+  if (!d) return c.text('Not found', 404)
+  const pages = buildRunSheetPages({
+    partners: d.partners,
+    dateLabel: d.dateLabel,
+    locationLabel: d.locationLabel,
+    tagline: d.tagline,
+    items: selectRunSheetMoments(d.items),
+  })
+  const pdf = await renderPdf(c.env, pages, RUNSHEET_W, RUNSHEET_H)
+  return new Response(pdf, {
+    headers: {
+      'content-type': 'application/pdf',
+      'content-disposition': `inline; filename="${d.slug}-run-sheet.pdf"`,
       'cache-control': 'private, max-age=300',
     },
   })

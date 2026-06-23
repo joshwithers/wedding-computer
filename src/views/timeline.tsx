@@ -523,19 +523,34 @@ export function WeddingTimeline(props: TimelineProps) {
               {t('timeline.saving')}
             </span>
           </h3>
-          <a
-            href={`${props.basePath}/timeline/wallpaper.png`}
-            target="_blank"
-            rel="noopener"
-            class="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-horizon-700 border border-horizon-200 rounded-lg px-2 py-1 hover:bg-horizon-50 whitespace-nowrap"
-            title={t('timeline.wallpaperHint')}
-          >
-            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="6" y="2" width="12" height="20" rx="2.5" />
-              <path d="M11 19h2" />
-            </svg>
-            {t('timeline.wallpaper')}
-          </a>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <a
+              href={`${props.basePath}/timeline/run-sheet.pdf`}
+              target="_blank"
+              rel="noopener"
+              class="inline-flex items-center gap-1 text-[10px] font-bold text-horizon-700 border border-horizon-200 rounded-lg px-2 py-1 hover:bg-horizon-50 whitespace-nowrap"
+              title={t('timeline.pdfHint')}
+            >
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <path d="M14 2v6h6" />
+              </svg>
+              {t('timeline.pdf')}
+            </a>
+            <a
+              href={`${props.basePath}/timeline/wallpaper.png`}
+              target="_blank"
+              rel="noopener"
+              class="inline-flex items-center gap-1 text-[10px] font-bold text-horizon-700 border border-horizon-200 rounded-lg px-2 py-1 hover:bg-horizon-50 whitespace-nowrap"
+              title={t('timeline.wallpaperHint')}
+            >
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="6" y="2" width="12" height="20" rx="2.5" />
+                <path d="M11 19h2" />
+              </svg>
+              {t('timeline.wallpaper')}
+            </a>
+          </div>
         </div>
         <p class="text-[10px] text-gray-400">{t('timeline.subhead')}</p>
         <p class="text-[10px] text-grapefruit-700 mt-0.5">

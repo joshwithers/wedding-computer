@@ -22,6 +22,7 @@ import {
   approveTimelineRequest,
   declineTimelineRequest,
   wallpaperPng,
+  runSheetPdf,
 } from '../timeline-handlers'
 
 const timeline = new Hono<Env>()
@@ -50,6 +51,13 @@ timeline.get('/app/weddings/:id/timeline/wallpaper.png', async (c) => {
   const x = await ctx(c)
   if (!x) return c.text('Not found', 404)
   return wallpaperPng(c, x.weddingId, x.membership, x.user)
+})
+
+// Run sheet → printable A4 PDF.
+timeline.get('/app/weddings/:id/timeline/run-sheet.pdf', async (c) => {
+  const x = await ctx(c)
+  if (!x) return c.text('Not found', 404)
+  return runSheetPdf(c, x.weddingId, x.membership, x.user)
 })
 
 timeline.post('/app/weddings/:id/timeline', async (c) => {
