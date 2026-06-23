@@ -283,82 +283,28 @@ function HomePage() {
           <p class="text-xs text-gray-400 mt-5">{t('marketing.home.hero.finePrint')}</p>
         </section>
 
-        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
-          <div class="max-w-3xl mx-auto text-center mb-10 sm:mb-12">
-            <h2 class="text-2xl sm:text-3xl font-bold mb-4">{t('marketing.home.why.title')}</h2>
-            <p class="text-gray-600 leading-relaxed">{t('marketing.home.why.body')}</p>
+        <section class="pb-6 sm:pb-10">
+          <div class="bg-grapefruit-700 rounded-2xl sm:rounded-3xl px-6 sm:px-10 py-8 sm:py-10 text-center">
+            <p class="text-papaya-50 text-base sm:text-xl leading-relaxed max-w-3xl mx-auto font-medium">{t('marketing.home.bigIdea.body')}</p>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 max-w-4xl mx-auto">
-            {HOME_PILLARS.map((pillar) => <Pillar color={pillar.color} icon={pillar.icon} title={t(pillar.title)}>{t(pillar.desc)}</Pillar>)}
-          </div>
-        </section>
-
-        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
-          <div class="max-w-3xl mx-auto text-center mb-10">
-            <h2 class="text-xl sm:text-2xl font-bold mb-4">{t('marketing.home.collab.title')}</h2>
-            <p class="text-gray-600 leading-relaxed mb-6">{t('marketing.home.collab.body')}</p>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
-            {HOME_COLLAB_CARDS.map((card) => (
-              <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 text-center">
-                <div class="text-2xl mb-2">{card.emoji}</div>
-                <h3 class="text-sm font-bold mb-1">{t(card.title)}</h3>
-                <p class="text-xs text-gray-500">{t(card.desc)}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
-          <div class="max-w-3xl mx-auto text-center mb-8">
-            <div class="w-12 h-12 rounded-2xl bg-horizon-50 flex items-center justify-center mx-auto mb-4"><div class="w-6 h-6 text-horizon-600" dangerouslySetInnerHTML={{ __html: featureIcons.mcp }} /></div>
-            <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.home.ai.title')}</h2>
-            <p class="text-gray-600 leading-relaxed">{t('marketing.home.ai.body')}</p>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 max-w-3xl mx-auto mb-6">
-            {HOME_AI_EXAMPLES.map((example) => (
-              <div class="bg-white border border-papaya-300/30 rounded-2xl p-4 sm:p-5 text-left">
-                <p class="text-sm font-bold text-gray-900 mb-1.5">“{t(example.q)}”</p>
-                <p class="text-xs text-gray-500 leading-relaxed">{t(example.a)}</p>
-              </div>
-            ))}
-          </div>
-          <p class="text-center text-xs text-gray-400 max-w-lg mx-auto">{t('marketing.home.ai.note')}</p>
         </section>
 
         <section class="py-10 sm:py-16">
-          <h2 class="text-xl sm:text-2xl font-bold text-center mb-3">{t('marketing.home.features.title')}</h2>
-          <p class="text-center text-gray-500 text-sm mb-8 sm:mb-12 max-w-lg mx-auto">{t('marketing.home.features.body')}</p>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
-            {HOME_FEATURES.map((feature) => <FeatureCard color={feature.color} icon={feature.icon} title={t(feature.title)} desc={t(feature.desc)} />)}
+          <div class="max-w-3xl mx-auto text-center mb-10 sm:mb-12">
+            <h2 class="text-2xl sm:text-3xl font-bold mb-3">{t('marketing.home.audience.heading')}</h2>
+            <p class="text-gray-600 leading-relaxed">{t('marketing.home.audience.subheading')}</p>
+          </div>
+          <div class="space-y-5 sm:space-y-6">
+            {HOME_AUDIENCES.map((audience) => <AudienceBlock audience={audience} />)}
           </div>
         </section>
 
         <section class="py-10 sm:py-16 border-t border-papaya-300/30">
           <div class="max-w-3xl mx-auto text-center mb-8">
-            <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.home.roles.title')}</h2>
-            <p class="text-gray-600 text-sm leading-relaxed max-w-lg mx-auto">{t('marketing.home.roles.body')}</p>
+            <h2 class="text-2xl sm:text-3xl font-bold mb-3">{t('marketing.home.switching.title')}</h2>
+            <p class="text-gray-600 leading-relaxed">{t('marketing.home.switching.body')}</p>
           </div>
-          <div class="flex flex-wrap justify-center gap-2 mb-8" id="role-tabs">
-            {HOME_ROLES.map((role, index) => <RoleTab role={role.role} label={t(role.label)} active={index === 0} />)}
-          </div>
-          <div id="role-panels">
-            {HOME_ROLES.map((panel, index) => (
-              <RolePanel role={panel.role} active={index === 0}>
-                {panel.features.map((feature) => <RoleFeature title={t(feature.title)} desc={t(feature.desc)} />)}
-                <RoleCollab>{t(panel.collab)}</RoleCollab>
-              </RolePanel>
-            ))}
-          </div>
-          <script dangerouslySetInnerHTML={{ __html: ROLE_TABS_SCRIPT }} />
-        </section>
-
-        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
-          <div class="max-w-3xl mx-auto text-center mb-8">
-            <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.home.switching.title')}</h2>
-            <p class="text-gray-600 text-sm leading-relaxed max-w-lg mx-auto">{t('marketing.home.switching.body')}</p>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 max-w-3xl mx-auto mb-6">
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 max-w-3xl mx-auto mb-8">
             {CRM_IMPORTS.map((item) => (
               <div class="bg-white border border-papaya-300/30 rounded-xl p-4 text-center">
                 <p class="text-sm font-bold text-gray-700">{item.name}</p>
@@ -366,10 +312,20 @@ function HomePage() {
               </div>
             ))}
           </div>
-          <p class="text-center text-xs text-gray-400 max-w-lg mx-auto">{t('marketing.home.switching.note')}</p>
+          <div class="bg-horizon-50 border border-horizon-600/15 rounded-2xl p-6 sm:p-8 max-w-3xl mx-auto">
+            <div class="flex items-start gap-4">
+              <div class="w-10 h-10 rounded-xl bg-horizon-100 flex items-center justify-center shrink-0"><div class="w-5 h-5 text-horizon-600" dangerouslySetInnerHTML={{ __html: featureIcons.mcp }} /></div>
+              <div>
+                <h3 class="text-lg font-bold mb-2">{t('marketing.home.switching.mcp.title')}</h3>
+                <p class="text-gray-600 leading-relaxed mb-3 text-sm">{t('marketing.home.switching.mcp.body')}</p>
+                <p class="text-xs text-gray-500">{t('marketing.home.switching.mcp.note')}</p>
+              </div>
+            </div>
+          </div>
+          <p class="text-center text-xs text-gray-400 max-w-lg mx-auto mt-5">{t('marketing.home.switching.note')}</p>
         </section>
 
-        <section class="py-10 sm:py-16">
+        <section class="py-10 sm:py-16 border-t border-papaya-300/30">
           <div class="bg-white border border-papaya-300/30 rounded-2xl sm:rounded-3xl p-6 sm:p-10 lg:p-12">
             <div class="max-w-2xl mx-auto text-center">
               <div class="w-12 h-12 rounded-2xl bg-horizon-50 flex items-center justify-center mx-auto mb-4"><div class="w-6 h-6 text-horizon-600" dangerouslySetInnerHTML={{ __html: featureIcons.plaintext }} /></div>
@@ -405,6 +361,33 @@ function HomePage() {
   )
 }
 
+function AudienceBlock({ audience }: { audience: AudienceDef }) {
+  const iconBg = audience.color === 'horizon' ? 'bg-horizon-100' : 'bg-grapefruit-100'
+  const iconColor = audience.color === 'horizon' ? 'text-horizon-600' : 'text-grapefruit-600'
+  const eyebrowColor = audience.color === 'horizon' ? 'text-horizon-700' : 'text-grapefruit-700'
+  const btn = audience.color === 'horizon' ? 'bg-horizon-600 hover:bg-horizon-700 shadow-horizon/20' : 'bg-grapefruit-700 hover:bg-grapefruit-800 shadow-grapefruit/20'
+  return (
+    <div class="bg-white border border-papaya-300/30 rounded-2xl sm:rounded-3xl p-6 sm:p-8 lg:p-10">
+      <div class="grid lg:grid-cols-5 gap-6 lg:gap-10 items-start">
+        <div class="lg:col-span-2">
+          <div class={`w-11 h-11 rounded-2xl ${iconBg} flex items-center justify-center mb-4`}><div class={`w-6 h-6 ${iconColor}`} dangerouslySetInnerHTML={{ __html: featureIcons[audience.icon] }} /></div>
+          <p class={`text-xs font-bold uppercase tracking-wide mb-2 ${eyebrowColor}`}>{t(audience.eyebrow)}</p>
+          <h3 class="text-xl sm:text-2xl font-bold leading-tight mb-5">{t(audience.title)}</h3>
+          <a href="/login" class={`inline-block text-white text-sm font-bold px-6 py-3 rounded-xl transition-colors shadow-lg ${btn}`}>{t(audience.cta)}</a>
+        </div>
+        <ul class="lg:col-span-3 space-y-3">
+          {audience.points.map((point) => (
+            <li class="flex items-start gap-3">
+              <svg class={`w-5 h-5 mt-0.5 shrink-0 ${iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+              <span class="text-sm text-gray-700 leading-relaxed">{t(point)}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
 function AboutPage() {
   return (
     <MarketingLayout title={t('marketing.about.metaTitle')}>
@@ -415,6 +398,23 @@ function AboutPage() {
         <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.about.workspaces.title')}</h2>
         <p class="text-gray-500 text-sm mb-6">{t('marketing.about.workspaces.subtitle')}</p>
         <CopyParagraphs keys={ABOUT_WORKSPACE_PARAGRAPHS} className="space-y-4 text-gray-600 leading-relaxed mb-12" />
+        <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.about.collab.title')}</h2>
+        <p class="text-gray-500 text-sm mb-6">{t('marketing.about.collab.subtitle')}</p>
+        <div class="space-y-3 mb-12">{ABOUT_COLLAB_FEATURES.map((feature) => <AboutFeature title={t(feature.title)} desc={t(feature.desc)} />)}</div>
+        <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.home.roles.title')}</h2>
+        <p class="text-gray-500 text-sm mb-6">{t('marketing.about.roles.examples')}</p>
+        <div class="flex flex-wrap gap-2 mb-6" id="role-tabs">
+          {HOME_ROLES.map((role, index) => <RoleTab role={role.role} label={t(role.label)} active={index === 0} />)}
+        </div>
+        <div id="role-panels" class="mb-12">
+          {HOME_ROLES.map((panel, index) => (
+            <RolePanel role={panel.role} active={index === 0}>
+              {panel.features.map((feature) => <RoleFeature title={t(feature.title)} desc={t(feature.desc)} />)}
+              <RoleCollab>{t(panel.collab)}</RoleCollab>
+            </RolePanel>
+          ))}
+        </div>
+        <script dangerouslySetInnerHTML={{ __html: ROLE_TABS_SCRIPT }} />
         <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.about.data.title')}</h2>
         <p class="text-gray-500 text-sm mb-6">{t('marketing.about.data.subtitle')}</p>
         <CopyParagraphs keys={ABOUT_DATA_PARAGRAPHS} className="space-y-4 text-gray-600 leading-relaxed mb-6" />
@@ -423,6 +423,15 @@ function AboutPage() {
         <p class="text-gray-500 text-sm mb-6">{t('marketing.about.ai.subtitle')}</p>
         <CopyParagraphs keys={ABOUT_AI_PARAGRAPHS} className="space-y-4 text-gray-600 leading-relaxed mb-6" />
         <div class="space-y-3 mb-6">{ABOUT_AI_FEATURES.map((feature) => <AboutFeature title={t(feature.title)} desc={t(feature.desc)} />)}</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+          {HOME_AI_EXAMPLES.map((example) => (
+            <div class="bg-white border border-papaya-300/30 rounded-2xl p-4 sm:p-5">
+              <p class="text-sm font-bold text-gray-900 mb-1.5">“{t(example.q)}”</p>
+              <p class="text-xs text-gray-500 leading-relaxed">{t(example.a)}</p>
+            </div>
+          ))}
+        </div>
+        <p class="text-xs text-gray-400 mb-4">{t('marketing.about.ai.proNote')}</p>
         <p class="text-gray-600 leading-relaxed mb-12"><a href="/mcp" class="text-horizon-700 font-bold hover:underline">{t('marketing.mcp.connectGuide')}</a></p>
         {ABOUT_MORE_SECTIONS.map((section) => <PageFeatureSection section={section} />)}
         <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.about.openData.title')}</h2>
@@ -620,6 +629,7 @@ function ExampleLines({ examples }: { examples: ExampleLine[] }) {
 type MarketingColor = 'horizon' | 'grapefruit'
 type CardDef = { title: MessageKey; desc: MessageKey }
 type FeatureCardDef = CardDef & { color: MarketingColor; icon: string }
+type AudienceDef = { color: MarketingColor; icon: string; eyebrow: MessageKey; title: MessageKey; points: MessageKey[]; cta: MessageKey }
 type RoleDef = { role: string; label: MessageKey; features: CardDef[]; collab: MessageKey }
 type FeatureSection = { title: MessageKey; subtitle?: MessageKey; features: CardDef[] }
 type PlanRowDef = { feature: MessageKey; free?: boolean; pro?: boolean }
@@ -629,36 +639,10 @@ type ExampleLine = { code: string; desc: MessageKey }
 
 const ROLE_TABS_SCRIPT = "document.getElementById('role-tabs').addEventListener('click', function(e) { var btn = e.target.closest('[data-role]'); if (!btn) return; var role = btn.getAttribute('data-role'); document.querySelectorAll('#role-tabs [data-role]').forEach(function(t) { t.classList.remove('bg-horizon-600', 'text-white'); t.classList.add('bg-white', 'text-gray-700'); }); btn.classList.remove('bg-white', 'text-gray-700'); btn.classList.add('bg-horizon-600', 'text-white'); document.querySelectorAll('#role-panels [data-panel]').forEach(function(p) { p.style.display = p.getAttribute('data-panel') === role ? '' : 'none'; }); });"
 
-const HOME_PILLARS: FeatureCardDef[] = [
-  { color: 'horizon', icon: 'workspace', title: 'marketing.home.pillar.collab.title', desc: 'marketing.home.pillar.collab.desc' },
-  { color: 'grapefruit', icon: 'plaintext', title: 'marketing.home.pillar.data.title', desc: 'marketing.home.pillar.data.desc' },
-  { color: 'horizon', icon: 'mcp', title: 'marketing.home.pillar.ai.title', desc: 'marketing.home.pillar.ai.desc' },
-  { color: 'grapefruit', icon: 'analytics', title: 'marketing.home.pillar.market.title', desc: 'marketing.home.pillar.market.desc' },
-]
-const HOME_COLLAB_CARDS: Array<CardDef & { emoji: string }> = [
-  { emoji: '🤝', title: 'marketing.home.collab.timeline.title', desc: 'marketing.home.collab.timeline.desc' },
-  { emoji: '👥', title: 'marketing.home.collab.access.title', desc: 'marketing.home.collab.access.desc' },
-  { emoji: '📋', title: 'marketing.home.collab.credits.title', desc: 'marketing.home.collab.credits.desc' },
-]
-const HOME_FEATURES: FeatureCardDef[] = [
-  { color: 'horizon', icon: 'crm', title: 'marketing.home.feature.crm.title', desc: 'marketing.home.feature.crm.desc' },
-  { color: 'grapefruit', icon: 'form', title: 'marketing.home.feature.forms.title', desc: 'marketing.home.feature.forms.desc' },
-  { color: 'horizon', icon: 'calendar', title: 'marketing.home.feature.calendar.title', desc: 'marketing.home.feature.calendar.desc' },
-  { color: 'grapefruit', icon: 'invoice', title: 'marketing.home.feature.invoices.title', desc: 'marketing.home.feature.invoices.desc' },
-  { color: 'horizon', icon: 'email', title: 'marketing.home.feature.email.title', desc: 'marketing.home.feature.email.desc' },
-  { color: 'grapefruit', icon: 'ai', title: 'marketing.home.feature.aiEmail.title', desc: 'marketing.home.feature.aiEmail.desc' },
-  { color: 'horizon', icon: 'workspace', title: 'marketing.home.feature.workspaces.title', desc: 'marketing.home.feature.workspaces.desc' },
-  { color: 'grapefruit', icon: 'couple', title: 'marketing.home.feature.couple.title', desc: 'marketing.home.feature.couple.desc' },
-  { color: 'horizon', icon: 'import', title: 'marketing.home.feature.import.title', desc: 'marketing.home.feature.import.desc' },
-  { color: 'grapefruit', icon: 'team', title: 'marketing.home.feature.team.title', desc: 'marketing.home.feature.team.desc' },
-  { color: 'horizon', icon: 'sync', title: 'marketing.home.feature.github.title', desc: 'marketing.home.feature.github.desc' },
-  { color: 'grapefruit', icon: 'analytics', title: 'marketing.home.feature.analytics.title', desc: 'marketing.home.feature.analytics.desc' },
-  { color: 'horizon', icon: 'calendar', title: 'marketing.home.feature.demand.title', desc: 'marketing.home.feature.demand.desc' },
-  { color: 'grapefruit', icon: 'invoice', title: 'marketing.home.feature.quote.title', desc: 'marketing.home.feature.quote.desc' },
-  { color: 'horizon', icon: 'runsheet', title: 'marketing.home.feature.runsheet.title', desc: 'marketing.home.feature.runsheet.desc' },
-  { color: 'grapefruit', icon: 'mcp', title: 'marketing.home.feature.mcp.title', desc: 'marketing.home.feature.mcp.desc' },
-  { color: 'horizon', icon: 'openformat', title: 'marketing.home.feature.standard.title', desc: 'marketing.home.feature.standard.desc' },
-  { color: 'grapefruit', icon: 'plaintext', title: 'marketing.home.feature.plainText.title', desc: 'marketing.home.feature.plainText.desc' },
+const HOME_AUDIENCES: AudienceDef[] = [
+  { color: 'horizon', icon: 'couple', eyebrow: 'marketing.home.audience.couples.eyebrow', title: 'marketing.home.audience.couples.title', cta: 'marketing.home.audience.couples.cta', points: ['marketing.home.audience.couples.p1', 'marketing.home.audience.couples.p2', 'marketing.home.audience.couples.p3', 'marketing.home.audience.couples.p4'] },
+  { color: 'grapefruit', icon: 'runsheet', eyebrow: 'marketing.home.audience.venues.eyebrow', title: 'marketing.home.audience.venues.title', cta: 'marketing.home.audience.venues.cta', points: ['marketing.home.audience.venues.p1', 'marketing.home.audience.venues.p2', 'marketing.home.audience.venues.p3', 'marketing.home.audience.venues.p4'] },
+  { color: 'horizon', icon: 'crm', eyebrow: 'marketing.home.audience.vendors.eyebrow', title: 'marketing.home.audience.vendors.title', cta: 'marketing.home.audience.vendors.cta', points: ['marketing.home.audience.vendors.p1', 'marketing.home.audience.vendors.p2', 'marketing.home.audience.vendors.p3', 'marketing.home.audience.vendors.p4'] },
 ]
 const HOME_ROLES: RoleDef[] = [
   { role: 'venue', label: 'marketing.home.role.venue.label', collab: 'marketing.home.role.venue.collab', features: [{ title: 'marketing.home.role.venue.feature.workspace.title', desc: 'marketing.home.role.venue.feature.workspace.desc' },{ title: 'marketing.home.role.venue.feature.forms.title', desc: 'marketing.home.role.venue.feature.forms.desc' },{ title: 'marketing.home.role.venue.feature.calendar.title', desc: 'marketing.home.role.venue.feature.calendar.desc' },{ title: 'marketing.home.role.venue.feature.invoicing.title', desc: 'marketing.home.role.venue.feature.invoicing.desc' }] },
@@ -672,7 +656,19 @@ const HOME_ROLES: RoleDef[] = [
 const CRM_IMPORTS: Array<{ name: string; caption: MessageKey; italic?: boolean }> = [{ name: 'Dubsado', caption: 'marketing.home.switching.csvImport' },{ name: 'Studio Ninja', caption: 'marketing.home.switching.csvImport' },{ name: 'HoneyBook', caption: 'marketing.home.switching.csvImport' },{ name: 'VSCO Workspace', caption: 'marketing.home.switching.formerlyTave', italic: true },{ name: 'Any CSV / JSON', caption: 'marketing.home.switching.customMapping' }]
 const HOME_DATA_TOOLS: Array<{ emoji: string; name: MessageKey; caption: MessageKey }> = [{ emoji: '📂', name: 'marketing.home.data.tool.github', caption: 'marketing.home.data.github' },{ emoji: '💎', name: 'marketing.home.data.tool.obsidian', caption: 'marketing.home.data.obsidian' },{ emoji: '📝', name: 'marketing.home.data.tool.editor', caption: 'marketing.home.data.editor' },{ emoji: '🔧', name: 'marketing.home.data.tool.tools', caption: 'marketing.home.data.tools' }]
 const ABOUT_INTRO: MessageKey[] = ['marketing.about.intro.p1', 'marketing.about.intro.p2', 'marketing.about.intro.p3', 'marketing.about.pricing']
-const ABOUT_SECTIONS: FeatureSection[] = [{ title: 'marketing.about.difference.title', subtitle: 'marketing.about.difference.subtitle', features: [{ title: 'marketing.about.difference.collab.title', desc: 'marketing.about.difference.collab.desc' },{ title: 'marketing.about.difference.data.title', desc: 'marketing.about.difference.data.desc' },{ title: 'marketing.about.difference.ai.title', desc: 'marketing.about.difference.ai.desc' },{ title: 'marketing.about.difference.market.title', desc: 'marketing.about.difference.market.desc' }] },{ title: 'marketing.about.vendors.title', subtitle: 'marketing.about.vendors.subtitle', features: [{ title: 'marketing.about.vendors.pipeline.title', desc: 'marketing.about.vendors.pipeline.desc' },{ title: 'marketing.about.vendors.forms.title', desc: 'marketing.about.vendors.forms.desc' },{ title: 'marketing.about.vendors.calendar.title', desc: 'marketing.about.vendors.calendar.desc' },{ title: 'marketing.about.vendors.invoicing.title', desc: 'marketing.about.vendors.invoicing.desc' },{ title: 'marketing.about.vendors.email.title', desc: 'marketing.about.vendors.email.desc' },{ title: 'marketing.about.vendors.aiEmail.title', desc: 'marketing.about.vendors.aiEmail.desc' },{ title: 'marketing.about.vendors.bookingForms.title', desc: 'marketing.about.vendors.bookingForms.desc' },{ title: 'marketing.about.vendors.carddav.title', desc: 'marketing.about.vendors.carddav.desc' },{ title: 'marketing.about.vendors.notifications.title', desc: 'marketing.about.vendors.notifications.desc' },{ title: 'marketing.about.vendors.analytics.title', desc: 'marketing.about.vendors.analytics.desc' },{ title: 'marketing.about.vendors.goals.title', desc: 'marketing.about.vendors.goals.desc' },{ title: 'marketing.about.vendors.contracts.title', desc: 'marketing.about.vendors.contracts.desc' },{ title: 'marketing.about.vendors.import.title', desc: 'marketing.about.vendors.import.desc' },{ title: 'marketing.about.vendors.team.title', desc: 'marketing.about.vendors.team.desc' },{ title: 'marketing.about.vendors.mcp.title', desc: 'marketing.about.vendors.mcp.desc' }] },{ title: 'marketing.about.couples.title', subtitle: 'marketing.about.couples.subtitle', features: [{ title: 'marketing.about.couples.dashboard.title', desc: 'marketing.about.couples.dashboard.desc' },{ title: 'marketing.about.couples.budget.title', desc: 'marketing.about.couples.budget.desc' },{ title: 'marketing.about.couples.platform.title', desc: 'marketing.about.couples.platform.desc' },{ title: 'marketing.about.couples.visibility.title', desc: 'marketing.about.couples.visibility.desc' }] }]
+const ABOUT_SECTIONS: FeatureSection[] = [{ title: 'marketing.about.difference.title', subtitle: 'marketing.about.difference.subtitle', features: [{ title: 'marketing.about.difference.collab.title', desc: 'marketing.about.difference.collab.desc' },{ title: 'marketing.about.difference.data.title', desc: 'marketing.about.difference.data.desc' },{ title: 'marketing.about.difference.ai.title', desc: 'marketing.about.difference.ai.desc' },{ title: 'marketing.about.difference.market.title', desc: 'marketing.about.difference.market.desc' }] },{ title: 'marketing.about.vendors.title', subtitle: 'marketing.about.vendors.subtitle', features: [{ title: 'marketing.about.vendors.pipeline.title', desc: 'marketing.about.vendors.pipeline.desc' },{ title: 'marketing.about.vendors.forms.title', desc: 'marketing.about.vendors.forms.desc' },{ title: 'marketing.about.vendors.calendar.title', desc: 'marketing.about.vendors.calendar.desc' },{ title: 'marketing.about.vendors.invoicing.title', desc: 'marketing.about.vendors.invoicing.desc' },{ title: 'marketing.about.vendors.email.title', desc: 'marketing.about.vendors.email.desc' },{ title: 'marketing.about.vendors.aiEmail.title', desc: 'marketing.about.vendors.aiEmail.desc' },{ title: 'marketing.about.vendors.bookingForms.title', desc: 'marketing.about.vendors.bookingForms.desc' },{ title: 'marketing.about.vendors.carddav.title', desc: 'marketing.about.vendors.carddav.desc' },{ title: 'marketing.about.vendors.notifications.title', desc: 'marketing.about.vendors.notifications.desc' },{ title: 'marketing.about.vendors.analytics.title', desc: 'marketing.about.vendors.analytics.desc' },{ title: 'marketing.about.vendors.goals.title', desc: 'marketing.about.vendors.goals.desc' },{ title: 'marketing.about.vendors.contracts.title', desc: 'marketing.about.vendors.contracts.desc' },{ title: 'marketing.about.vendors.import.title', desc: 'marketing.about.vendors.import.desc' },{ title: 'marketing.about.vendors.team.title', desc: 'marketing.about.vendors.team.desc' },{ title: 'marketing.about.vendors.quote.title', desc: 'marketing.about.vendors.quote.desc' },{ title: 'marketing.about.vendors.booking.title', desc: 'marketing.about.vendors.booking.desc' },{ title: 'marketing.about.vendors.checklists.title', desc: 'marketing.about.vendors.checklists.desc' },{ title: 'marketing.about.vendors.api.title', desc: 'marketing.about.vendors.api.desc' },{ title: 'marketing.about.vendors.mcp.title', desc: 'marketing.about.vendors.mcp.desc' }] },{ title: 'marketing.about.couples.title', subtitle: 'marketing.about.couples.subtitle', features: [{ title: 'marketing.about.couples.dashboard.title', desc: 'marketing.about.couples.dashboard.desc' },{ title: 'marketing.about.couples.budget.title', desc: 'marketing.about.couples.budget.desc' },{ title: 'marketing.about.couples.platform.title', desc: 'marketing.about.couples.platform.desc' },{ title: 'marketing.about.couples.runsheet.title', desc: 'marketing.about.couples.runsheet.desc' },{ title: 'marketing.about.couples.collab.title', desc: 'marketing.about.couples.collab.desc' },{ title: 'marketing.about.couples.forms.title', desc: 'marketing.about.couples.forms.desc' },{ title: 'marketing.about.couples.messages.title', desc: 'marketing.about.couples.messages.desc' },{ title: 'marketing.about.couples.weather.title', desc: 'marketing.about.couples.weather.desc' },{ title: 'marketing.about.couples.visibility.title', desc: 'marketing.about.couples.visibility.desc' }] }]
+const ABOUT_COLLAB_FEATURES: CardDef[] = [
+  { title: 'marketing.about.collab.runsheet.title', desc: 'marketing.about.collab.runsheet.desc' },
+  { title: 'marketing.about.collab.approval.title', desc: 'marketing.about.collab.approval.desc' },
+  { title: 'marketing.about.collab.live.title', desc: 'marketing.about.collab.live.desc' },
+  { title: 'marketing.about.collab.sun.title', desc: 'marketing.about.collab.sun.desc' },
+  { title: 'marketing.about.collab.notes.title', desc: 'marketing.about.collab.notes.desc' },
+  { title: 'marketing.about.collab.links.title', desc: 'marketing.about.collab.links.desc' },
+  { title: 'marketing.about.collab.files.title', desc: 'marketing.about.collab.files.desc' },
+  { title: 'marketing.about.collab.weather.title', desc: 'marketing.about.collab.weather.desc' },
+  { title: 'marketing.about.collab.credits.title', desc: 'marketing.about.collab.credits.desc' },
+  { title: 'marketing.about.collab.teamAssign.title', desc: 'marketing.about.collab.teamAssign.desc' },
+]
 const ABOUT_WORKSPACE_PARAGRAPHS: MessageKey[] = ['marketing.about.workspaces.p1', 'marketing.about.workspaces.p2', 'marketing.about.workspaces.p3', 'marketing.about.workspaces.p4']
 const ABOUT_DATA_PARAGRAPHS: MessageKey[] = ['marketing.about.data.p1', 'marketing.about.data.p2', 'marketing.about.data.p3']
 const ABOUT_DATA_FEATURES: CardDef[] = [{ title: 'marketing.about.data.markdown.title', desc: 'marketing.about.data.markdown.desc' },{ title: 'marketing.about.data.lockIn.title', desc: 'marketing.about.data.lockIn.desc' },{ title: 'marketing.about.data.standard.title', desc: 'marketing.about.data.standard.desc' }]
@@ -691,9 +687,63 @@ const HOME_AI_EXAMPLES: Array<{ q: MessageKey; a: MessageKey }> = [
   { q: 'marketing.home.ai.example3.q', a: 'marketing.home.ai.example3.a' },
   { q: 'marketing.home.ai.example4.q', a: 'marketing.home.ai.example4.a' },
 ]
-const PRICING_FREE_FEATURES: MessageKey[] = ['marketing.pricing.feature.pipeline','marketing.pricing.feature.forms','marketing.pricing.feature.calendar','marketing.pricing.feature.invoicing','marketing.pricing.feature.email','marketing.pricing.feature.workspaces','marketing.pricing.feature.import','marketing.pricing.feature.team','marketing.pricing.feature.runsheet','marketing.pricing.feature.quote','marketing.pricing.feature.publicCalendar','marketing.pricing.feature.directory','marketing.pricing.feature.coupleDashboard','marketing.pricing.feature.plainText','marketing.pricing.feature.passkeys']
+const PRICING_FREE_FEATURES: MessageKey[] = ['marketing.pricing.feature.pipeline','marketing.pricing.feature.forms','marketing.pricing.feature.calendar','marketing.pricing.feature.invoicing','marketing.pricing.feature.booking','marketing.pricing.feature.email','marketing.pricing.feature.workspaces','marketing.pricing.feature.runsheet','marketing.pricing.feature.collab','marketing.pricing.feature.weather','marketing.pricing.feature.credits','marketing.pricing.feature.import','marketing.pricing.feature.team','marketing.pricing.feature.quote','marketing.pricing.feature.publicCalendar','marketing.pricing.feature.directory','marketing.pricing.feature.coupleDashboard','marketing.pricing.feature.plainText','marketing.pricing.feature.passkeys']
 const PRICING_PRO_FEATURES: MessageKey[] = ['marketing.pricing.feature.everythingFree','marketing.pricing.feature.unlimitedWeddings','marketing.pricing.feature.github','marketing.pricing.feature.caldav','marketing.pricing.feature.carddav','marketing.pricing.feature.analyticsDashboard','marketing.pricing.feature.revenueInsights','marketing.pricing.feature.goals','marketing.pricing.feature.aiDrafting','marketing.pricing.feature.demandScores','marketing.pricing.feature.benchmarks','marketing.pricing.feature.aiReplies','marketing.pricing.feature.mcp']
-const PRICING_COMPARISON: PlanGroupDef[] = [{ label: 'marketing.pricing.group.leads', rows: [{ feature: 'marketing.pricing.compare.pipeline', free: true, pro: true },{ feature: 'marketing.pricing.compare.forms', free: true, pro: true },{ feature: 'marketing.pricing.compare.htmlForm', free: true, pro: true },{ feature: 'marketing.pricing.compare.spam', free: true, pro: true },{ feature: 'marketing.pricing.compare.import', free: true, pro: true },{ feature: 'marketing.pricing.compare.aiDrafting', pro: true },{ feature: 'marketing.pricing.compare.aiReplies', pro: true },{ feature: 'marketing.pricing.compare.webhooks', pro: true },{ feature: 'marketing.pricing.compare.agentLead', pro: true }] },{ label: 'marketing.pricing.group.calendar', rows: [{ feature: 'marketing.pricing.compare.calendar', free: true, pro: true },{ feature: 'marketing.pricing.compare.availability', free: true, pro: true },{ feature: 'marketing.pricing.compare.publicCalendar', free: true, pro: true },{ feature: 'marketing.pricing.compare.directory', free: true, pro: true },{ feature: 'marketing.pricing.compare.caldav', pro: true },{ feature: 'marketing.pricing.compare.carddav', pro: true }] },{ label: 'marketing.pricing.group.money', rows: [{ feature: 'marketing.pricing.compare.invoicing', free: true, pro: true },{ feature: 'marketing.pricing.compare.quote', free: true, pro: true },{ feature: 'marketing.pricing.compare.contracts', free: true, pro: true }] },{ label: 'marketing.pricing.group.weddings', rows: [{ feature: 'marketing.pricing.compare.workspaces', free: true, pro: true },{ feature: 'marketing.pricing.compare.unlimitedWeddings', pro: true },{ feature: 'marketing.pricing.compare.runsheet', free: true, pro: true },{ feature: 'marketing.pricing.compare.checklists', free: true, pro: true },{ feature: 'marketing.pricing.compare.team', free: true, pro: true },{ feature: 'marketing.pricing.compare.coupleDashboard', free: true, pro: true }] },{ label: 'marketing.pricing.group.data', rows: [{ feature: 'marketing.pricing.compare.plainText', free: true, pro: true },{ feature: 'marketing.pricing.compare.passkeys', free: true, pro: true },{ feature: 'marketing.pricing.compare.github', pro: true }] },{ label: 'marketing.pricing.group.insights', rows: [{ feature: 'marketing.pricing.compare.analytics', pro: true },{ feature: 'marketing.pricing.compare.revenue', pro: true },{ feature: 'marketing.pricing.compare.goals', pro: true },{ feature: 'marketing.pricing.compare.demand', pro: true },{ feature: 'marketing.pricing.compare.benchmarks', pro: true },{ feature: 'marketing.pricing.compare.mcp', pro: true }] }]
+const PRICING_COMPARISON: PlanGroupDef[] = [
+  { label: 'marketing.pricing.group.leads', rows: [
+    { feature: 'marketing.pricing.compare.pipeline', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.forms', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.htmlForm', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.spam', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.import', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.aiDrafting', pro: true },
+    { feature: 'marketing.pricing.compare.aiReplies', pro: true },
+    { feature: 'marketing.pricing.compare.webhooks', pro: true },
+    { feature: 'marketing.pricing.compare.agentLead', pro: true },
+  ] },
+  { label: 'marketing.pricing.group.calendar', rows: [
+    { feature: 'marketing.pricing.compare.calendar', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.availability', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.publicCalendar', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.directory', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.personalFeed', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.caldav', pro: true },
+    { feature: 'marketing.pricing.compare.carddav', pro: true },
+  ] },
+  { label: 'marketing.pricing.group.money', rows: [
+    { feature: 'marketing.pricing.compare.invoicing', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.booking', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.quote', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.contracts', free: true, pro: true },
+  ] },
+  { label: 'marketing.pricing.group.weddings', rows: [
+    { feature: 'marketing.pricing.compare.workspaces', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.unlimitedWeddings', pro: true },
+    { feature: 'marketing.pricing.compare.runsheet', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.timelineCollab', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.checklists', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.collab', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.weather', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.credits', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.team', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.coupleDashboard', free: true, pro: true },
+  ] },
+  { label: 'marketing.pricing.group.data', rows: [
+    { feature: 'marketing.pricing.compare.plainText', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.passkeys', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.github', pro: true },
+  ] },
+  { label: 'marketing.pricing.group.insights', rows: [
+    { feature: 'marketing.pricing.compare.analyticsOverview', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.demandTeaser', free: true, pro: true },
+    { feature: 'marketing.pricing.compare.analytics', pro: true },
+    { feature: 'marketing.pricing.compare.demand', pro: true },
+    { feature: 'marketing.pricing.compare.revenue', pro: true },
+    { feature: 'marketing.pricing.compare.goals', pro: true },
+    { feature: 'marketing.pricing.compare.benchmarks', pro: true },
+    { feature: 'marketing.pricing.compare.mcp', pro: true },
+  ] },
+]
 const STANDARD_INTRO: MessageKey[] = ['marketing.standard.intro.p1', 'marketing.standard.intro.p2']
 const STANDARD_WHY: MessageKey[] = ['marketing.standard.why.p1', 'marketing.standard.why.p2', 'marketing.standard.why.p3']
 const STANDARD_FORMAT: MessageKey[] = ['marketing.standard.format.p1']
@@ -795,9 +845,9 @@ const DOCS_ORGANISED_AFTER: MessageKey[] = ['marketing.docs.organised.p2']
 const DOCS_WHY: MessageKey[] = ['marketing.docs.why.p1', 'marketing.docs.why.p2', 'marketing.docs.why.p3']
 const DOCS_CONTACT_SAMPLE = ['---','first_name: Sarah','last_name: Smith','email: sarah@example.com','phone: "0400 123 456"','status: quoted','wedding_date: 2026-12-15','tags:','  - vip','  - referral','---','','Met at the Bridal Expo. Very enthusiastic about','an elopement ceremony at the Royal Botanic Garden.','','Budget: $3,000 - $5,000'].join('\n')
 const DOCS_DIRECTORY_SAMPLE = ['contacts/','  sarah-smith.md','  john-doe.md','  jane-wilson-james-brown.md','weddings/','  2026-12-15-sarah-james/','    wedding.md','    todo.md','    timeline.md','    notes.md','    vendors.md','    log.md','    files/','  doe-wedding/','    wedding.md'].join('\n')
-const DOCS_RCLONE_SAMPLE = ['# rclone - sync everything to a local folder','rclone sync wc:wedding-computer-storage/vendors/YOUR_ID/ ./my-data/','','# AWS CLI - download a single contact','aws s3 cp s3://wedding-computer-storage/vendors/YOUR_ID/contacts/sarah-smith.md . \\','  --endpoint-url https://YOUR_ACCOUNT.r2.cloudflarestorage.com'].join('\n')
+const DOCS_GIT_SAMPLE = ['# Clone your synced repo (Pro: connect GitHub in Settings)','git clone https://github.com/you/your-wedding-data.git','','# Or open a downloaded export folder as an Obsidian vault','# Every contact and wedding is a plain .md file you can read anywhere'].join('\n')
 const DOCS_PYTHON_SAMPLE = ['# Python - list all quoted contacts','import yaml','from pathlib import Path','','for f in Path("contacts").glob("*.md"):','    parts = f.read_text().split("---", 2)','    data = yaml.safe_load(parts[1])','    if data.get("status") == "quoted":','        print(f"{data[\'first_name\']} {data[\'last_name\']}")'].join('\n')
-const DOCS_DEVELOPER_BLOCKS: DeveloperBlock[] = [{ title: 'marketing.docs.developers.r2.title', body: 'marketing.docs.developers.r2.body', code: DOCS_RCLONE_SAMPLE },{ title: 'marketing.docs.developers.scripting.title', body: 'marketing.docs.developers.scripting.body', code: DOCS_PYTHON_SAMPLE },{ title: 'marketing.docs.developers.tools.title', body: 'marketing.docs.developers.tools.body' }]
+const DOCS_DEVELOPER_BLOCKS: DeveloperBlock[] = [{ title: 'marketing.docs.developers.sync.title', body: 'marketing.docs.developers.sync.body', code: DOCS_GIT_SAMPLE },{ title: 'marketing.docs.developers.scripting.title', body: 'marketing.docs.developers.scripting.body', code: DOCS_PYTHON_SAMPLE },{ title: 'marketing.docs.developers.tools.title', body: 'marketing.docs.developers.tools.body' }]
 
 export default marketing
 
@@ -888,35 +938,6 @@ function RoleCollab({ children }: { children: any }) {
     <div class="sm:col-span-2 bg-horizon-50 border border-horizon-600/10 rounded-xl p-4">
       <p class="text-xs font-bold text-horizon-700 mb-1">{t('marketing.home.roles.collabHeading')}</p>
       <p class="text-xs text-gray-700 leading-relaxed">{children}</p>
-    </div>
-  )
-}
-
-function Pillar({ color, icon, title, children }: { color: 'horizon' | 'grapefruit'; icon: string; title: string; children: any }) {
-  const iconBg = color === 'horizon' ? 'bg-horizon-100' : 'bg-grapefruit-100'
-  const iconColor = color === 'horizon' ? 'text-horizon-600' : 'text-grapefruit-600'
-  return (
-    <div class="bg-white border border-papaya-300/30 rounded-2xl sm:rounded-3xl p-6 sm:p-8">
-      <div class={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl ${iconBg} flex items-center justify-center mb-4`}>
-        <div class={`w-6 h-6 ${iconColor}`} dangerouslySetInnerHTML={{ __html: featureIcons[icon] }} />
-      </div>
-      <h3 class="text-lg font-bold text-gray-900 mb-2">{title}</h3>
-      <p class="text-sm text-gray-600 leading-relaxed">{children}</p>
-    </div>
-  )
-}
-
-function FeatureCard({ color, icon, title, desc }: { color: 'horizon' | 'grapefruit'; icon: string; title: string; desc: string }) {
-  const bg = color === 'horizon' ? 'bg-horizon-50' : 'bg-grapefruit-50'
-  const iconBg = color === 'horizon' ? 'bg-horizon-100' : 'bg-grapefruit-100'
-  const iconColor = color === 'horizon' ? 'text-horizon-600' : 'text-grapefruit-600'
-  return (
-    <div class={`${bg} rounded-2xl p-5 sm:p-6`}>
-      <div class={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${iconBg} flex items-center justify-center mb-3 sm:mb-4`}>
-        <div class={`w-5 h-5 ${iconColor}`} dangerouslySetInnerHTML={{ __html: featureIcons[icon] }} />
-      </div>
-      <h3 class="font-bold text-gray-900 mb-1.5">{title}</h3>
-      <p class="text-sm text-gray-600 leading-relaxed">{desc}</p>
     </div>
   )
 }
