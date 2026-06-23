@@ -5,12 +5,13 @@
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // 10 MB
 
 export const ALLOWED_UPLOAD_TYPES = new Set<string>([
-  // Images (note: image/svg+xml is intentionally excluded — SVGs can carry
-  // script and these uploads come from anonymous public submitters)
+  // Images. SVG is allowed, but authenticated downloads force attachment with
+  // nosniff so it cannot execute on the Wedding Computer origin.
   'image/jpeg',
   'image/png',
   'image/webp',
   'image/gif',
+  'image/svg+xml',
   'image/heic',
   'image/heif',
   // Documents

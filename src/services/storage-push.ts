@@ -27,6 +27,7 @@ import { listRunSheetItems } from '../db/run-sheet'
 import { listPendingTimelineRequests } from '../db/timeline-requests'
 import { getVendorsDocContent } from '../db/wedding-docs'
 import { listOwnedItemsAsRows, listVisibleOtherItemRows } from '../db/timeline'
+import { vendorCanAccessWedding } from '../lib/wedding-access'
 
 export type PushResult = {
   folder: string
@@ -248,6 +249,11 @@ export async function pushAllWeddingFiles(
   const storage = await tryGetStorage(env, vendor)
   if (!storage) {
     console.log(`[storage] No storage backend for vendor ${vendor.id} (type=${vendor.storage_type ?? 'none'})`)
+    return
+  }
+
+  if (!(await vendorCanAccessWedding(env.DB, vendor, weddingId))) {
+    console.warn(`[storage] Refused wedding file push for non-member vendor ${vendor.id} wedding ${weddingId}`)
     return
   }
 

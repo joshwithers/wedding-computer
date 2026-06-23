@@ -47,6 +47,20 @@ const ALLOWED_TYPES = new Set([
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB — kept low for git sync compatibility
 
+function safeFilename(name: string): string {
+  const base = name.split(/[\\/]/).pop() ?? 'download'
+  const cleaned = base.replace(/["\r\n<>:|?*\u0000-\u001f]/g, '').trim()
+  return cleaned || 'download'
+}
+
+function contentDisposition(mode: 'inline' | 'attachment', filename: string): string {
+  return `${mode}; filename="${safeFilename(filename)}"`
+}
+
+function shouldForceDownload(mimeType: string): boolean {
+  return mimeType.toLowerCase() === 'image/svg+xml'
+}
+
 function parseShareIds(input: unknown): string[] {
   const raw = Array.isArray(input) ? input : [input]
   return [...new Set(raw.filter((id): id is string => typeof id === 'string' && id.length > 0))]
@@ -174,7 +188,7 @@ files.post('/files/upload/:weddingId', csrf, async (c) => {
         const storage = await getStorageWithSecrets(c.env, managingVendor)
         const { weddingFolder } = await import('../storage/weddings')
         const folder = weddingFolder(wedding.title, wedding.date)
-        const storagePath = `${folder}files/${file.name}`
+          const storagePath = `${folder}files/${safeFilename(file.name)}`
         const arrayBuf = await c.env.STORAGE.get(r2Key).then((obj) => obj?.arrayBuffer())
         if (arrayBuf) {
           await storage.writeBinary(storagePath, arrayBuf, file.type)
@@ -211,7 +225,8 @@ files.get('/files/:id', async (c) => {
 
   const headers = new Headers()
   headers.set('Content-Type', doc.mime_type)
-  headers.set('Content-Disposition', `inline; filename="${doc.filename}"`)
+  headers.set('X-Content-Type-Options', 'nosniff')
+  headers.set('Content-Disposition', contentDisposition(shouldForceDownload(doc.mime_type) ? 'attachment' : 'inline', doc.filename))
   headers.set('Content-Length', String(doc.size_bytes))
   headers.set('Cache-Control', 'private, max-age=3600')
 
@@ -254,7 +269,7 @@ files.get('/form-file/:id', async (c) => {
   const headers = new Headers()
   headers.set('Content-Type', file.mime_type ?? 'application/octet-stream')
   headers.set('X-Content-Type-Options', 'nosniff')
-  headers.set('Content-Disposition', `attachment; filename="${file.filename.replace(/["\r\n]/g, '')}"`)
+  headers.set('Content-Disposition', contentDisposition('attachment', file.filename))
   if (file.size_bytes) headers.set('Content-Length', String(file.size_bytes))
   headers.set('Cache-Control', 'private, max-age=3600')
   return new Response(object.body, { headers })
@@ -279,7 +294,8 @@ files.get('/files/:id/download', async (c) => {
 
   const headers = new Headers()
   headers.set('Content-Type', 'application/octet-stream')
-  headers.set('Content-Disposition', `attachment; filename="${doc.filename}"`)
+  headers.set('X-Content-Type-Options', 'nosniff')
+  headers.set('Content-Disposition', contentDisposition('attachment', doc.filename))
   headers.set('Content-Length', String(doc.size_bytes))
 
   return new Response(object.body, { headers })
@@ -320,7 +336,7 @@ files.post('/files/:id/delete', csrf, async (c) => {
         const storage = await getStorageWithSecrets(c.env, managingVendor)
         const { weddingFolder } = await import('../storage/weddings')
         const folder = weddingFolder(wedding.title, wedding.date)
-        const storagePath = `${folder}files/${doc.filename}`
+        const storagePath = `${folder}files/${safeFilename(doc.filename)}`
         await storage.delete(storagePath)
       }
     }

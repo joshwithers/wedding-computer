@@ -40,6 +40,8 @@ export const dashboard = {
     'Every contact and wedding is a Markdown file with YAML frontmatter. Your data is readable, portable, and yours forever.',
   'dashboard.data.github.title': 'Sync with GitHub',
   'dashboard.data.github.desc': 'Auto-sync to a private repo, open in Obsidian or VS Code',
+  'dashboard.data.archive.title': 'Download archive',
+  'dashboard.data.archive.desc': 'Markdown, JSON, and uploads in one ZIP',
   'dashboard.data.markdown.title': 'Download Markdown',
   'dashboard.data.markdown.desc': 'Contacts and weddings as .md files',
   'dashboard.data.json.title': 'Download JSON',

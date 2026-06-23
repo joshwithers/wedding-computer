@@ -11,23 +11,25 @@ export async function getUserByEmail(
     .first<User>()
 }
 
-/**
- * Resolve a user by their personal calendar feed token. Stored RAW (a read-only
- * capability URL) so the feed URL can be displayed on the account page on every
- * load — unlike the vendor ical_token, which is hashed and shown once.
- */
 export async function getUserByFeedToken(db: D1Database, token: string): Promise<User | null> {
+  const { sha256Hex } = await import('../lib/crypto')
+  const hashed = `sha256:${await sha256Hex(token)}`
   return db
     .prepare('SELECT * FROM users WHERE feed_token = ? AND deleted_at IS NULL')
-    .bind(token)
+    .bind(hashed)
     .first<User>()
 }
 
-/** Lazily mint (and return) a user's personal calendar feed token. */
-export async function ensureUserFeedToken(db: D1Database, user: User): Promise<string> {
-  if (user.feed_token) return user.feed_token
+/** Lazily mint a personal feed token. Returns the raw token only when newly created. */
+export async function ensureUserFeedToken(db: D1Database, user: User): Promise<string | null> {
+  if (user.feed_token) return null
+  return rotateUserFeedToken(db, user.id)
+}
+
+export async function rotateUserFeedToken(db: D1Database, userId: string): Promise<string> {
+  const { sha256Hex } = await import('../lib/crypto')
   const token = await generateToken(16) // 32 hex chars — passes the /cal length guard
-  await updateUser(db, user.id, { feed_token: token })
+  await updateUser(db, userId, { feed_token: `sha256:${await sha256Hex(token)}` })
   return token
 }
 

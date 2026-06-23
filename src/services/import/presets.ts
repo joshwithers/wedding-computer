@@ -1,3 +1,5 @@
+import type { Contact } from '../../types'
+
 export type ColumnMapping = Record<string, string>
 
 export type ImportPreset = {
@@ -268,15 +270,15 @@ function fuzzyMatchField(header: string): string | null {
   return exactMatches[h] ?? null
 }
 
-const VALID_STATUSES = new Set([
+const VALID_STATUSES = new Set<Contact['status']>([
   'new', 'contacted', 'meeting', 'quoted', 'booked', 'completed', 'lost', 'archived',
 ])
 
-export function normalizeStatus(raw: string): string {
+export function normalizeStatus(raw: string): Contact['status'] {
   const s = raw.toLowerCase().trim()
-  if (VALID_STATUSES.has(s)) return s
+  if (VALID_STATUSES.has(s as Contact['status'])) return s as Contact['status']
 
-  const statusMap: Record<string, string> = {
+  const statusMap: Record<string, Contact['status']> = {
     lead: 'new',
     inquiry: 'new',
     enquiry: 'new',

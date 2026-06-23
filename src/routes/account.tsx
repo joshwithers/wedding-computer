@@ -8,7 +8,7 @@ import { requireAuth } from '../middleware/auth'
 import { csrf } from '../middleware/csrf'
 import { t, getI18n, SUPPORTED_LOCALES, listTimezones, isValidTimezone, type MessageKey } from '../i18n'
 import { rateLimit } from '../middleware/rate-limit'
-import { updateUser, updateUserEmail, getUserByEmail, getUserById, updateNotificationPrefs, ensureUserFeedToken } from '../db/users'
+import { updateUser, updateUserEmail, getUserByEmail, getUserById, updateNotificationPrefs, ensureUserFeedToken, rotateUserFeedToken } from '../db/users'
 import { softDeleteAccount } from '../services/account'
 import { getVendorByUserId } from '../db/vendors'
 import { getFirstCoupleWedding } from '../db/weddings'
@@ -29,6 +29,8 @@ import { listPasskeys, deletePasskey } from '../db/passkeys'
 import type { PasskeyCredential } from '../types'
 import { redactedVendorProfile } from '../lib/redaction'
 import { formatDate } from '../lib/date'
+import { createZip, safeZipPath, type ZipEntry } from '../lib/zip'
+import { getStorageWithSecrets } from '../storage'
 
 const account = new Hono<Env>()
 
@@ -90,7 +92,16 @@ const inputClass =
 account.get('/account', async (c) => {
   const user = c.get('user')
   const backUrl = await getBackUrl(c.env.DB, user.id)
-  const feedUrl = `${c.env.APP_URL}/cal/u/${await ensureUserFeedToken(c.env.DB, user)}`
+  const mintedFeedToken = await ensureUserFeedToken(c.env.DB, user)
+  const feedRevealId = c.req.query('feed_reveal')
+  let revealedFeedToken = mintedFeedToken
+  if (!revealedFeedToken && feedRevealId && /^[0-9a-f]{32}$/.test(feedRevealId)) {
+    const revealKey = `user_feed_token_reveal:${user.id}:${feedRevealId}`
+    revealedFeedToken = await c.env.KV.get(revealKey)
+    if (revealedFeedToken) await c.env.KV.delete(revealKey)
+  }
+  const feedUrl = revealedFeedToken ? `${c.env.APP_URL}/cal/u/${revealedFeedToken}` : null
+  const hasFeedToken = !!(user.feed_token || revealedFeedToken)
   const saved = c.req.query('saved')
   const error = c.req.query('error')
   const emailSent = c.req.query('email_sent')
@@ -315,14 +326,30 @@ account.get('/account', async (c) => {
       <section class="mt-10 pt-8 border-t border-gray-200">
         <h2 class="text-base font-bold mb-2">{t('timeline.feed.heading' as MessageKey)}</h2>
         <p class="text-sm text-gray-500 mb-4">{t('timeline.feed.desc' as MessageKey)}</p>
-        <label class="block text-sm font-bold text-gray-700 mb-1.5">{t('timeline.feed.label' as MessageKey)}</label>
-        <input
-          type="text"
-          readonly
-          value={feedUrl}
-          onclick="this.select()"
-          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 font-mono text-gray-600 focus:outline-none focus:ring-2 focus:ring-horizon-600"
-        />
+        {feedUrl ? (
+          <>
+            <label class="block text-sm font-bold text-gray-700 mb-1.5">{t('timeline.feed.label' as MessageKey)}</label>
+            <input
+              type="text"
+              readonly
+              value={feedUrl}
+              onclick="this.select()"
+              class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 font-mono text-gray-600 focus:outline-none focus:ring-2 focus:ring-horizon-600"
+            />
+            <p class="text-xs text-gray-500 mt-2">{t('account.calendar.oneTime' as MessageKey)}</p>
+          </>
+        ) : hasFeedToken ? (
+          <p class="text-sm text-gray-600 mb-3">{t('account.calendar.active' as MessageKey)}</p>
+        ) : null}
+        <form method="post" action="/account/feed-token/regenerate" class="mt-3">
+          <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+          <button
+            type="submit"
+            class="bg-white border border-gray-200 text-gray-700 py-2 px-4 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors"
+          >
+            {hasFeedToken ? t('account.calendar.regenerate' as MessageKey) : t('account.calendar.generate' as MessageKey)}
+          </button>
+        </form>
       </section>
 
       {/* ─── Passkeys ─── */}
@@ -339,7 +366,7 @@ account.get('/account', async (c) => {
             href="/account/export"
             class="inline-block bg-white border border-gray-200 text-gray-700 py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors text-center"
           >
-            {t('account.data.exportJson')}
+            {t('account.data.exportArchive' as MessageKey)}
           </a>
           <form method="post" action="/account/delete" onsubmit={`return confirm(${JSON.stringify(t('account.data.deleteConfirm'))})`}>
             <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
@@ -403,6 +430,15 @@ account.post('/account/locale', async (c) => {
 
   await updateUser(c.env.DB, user.id, { locale, timezone })
   return c.redirect('/account?saved=1')
+})
+
+account.post('/account/feed-token/regenerate', async (c) => {
+  const user = c.get('user')
+  const token = await rotateUserFeedToken(c.env.DB, user.id)
+  const revealId = await generateToken(16)
+  await c.env.KV.put(`user_feed_token_reveal:${user.id}:${revealId}`, token, { expirationTtl: 300 })
+  await auditLog(c, user.feed_token ? 'user_feed_token_rotated' : 'user_feed_token_generated', 'user', user.id).catch(() => {})
+  return c.redirect(`/account?feed_reveal=${revealId}`)
 })
 
 // ─── Request email change ───
@@ -759,6 +795,50 @@ account.post('/account/avatar/remove', async (c) => {
 
 // ─── Data export ───
 
+type ExportFileRow = {
+  id: string
+  r2_key: string
+  filename: string
+}
+
+async function exportableWeddingDocuments(db: D1Database, userId: string): Promise<ExportFileRow[]> {
+  const rows = await db
+    .prepare(
+      `SELECT DISTINCT d.id, d.r2_key, d.filename
+       FROM documents d
+       JOIN wedding_members wm ON wm.wedding_id = d.wedding_id
+       WHERE wm.user_id = ? AND wm.status = 'active'
+         AND (
+           d.uploaded_by_user_id = ?
+           OR d.visibility = 'wedding'
+           OR EXISTS (SELECT 1 FROM document_shares ds WHERE ds.document_id = d.id AND ds.user_id = ?)
+         )
+       ORDER BY d.created_at DESC`
+    )
+    .bind(userId, userId, userId)
+    .all<ExportFileRow>()
+  return rows.results
+}
+
+async function exportableFormFiles(db: D1Database, userId: string, vendorId: string | null): Promise<ExportFileRow[]> {
+  const rows = await db
+    .prepare(
+      `SELECT DISTINCT ff.id, ff.r2_key, ff.filename
+       FROM form_files ff
+       JOIN form_submissions fs ON fs.id = ff.submission_id
+       LEFT JOIN wedding_members wm ON wm.wedding_id = fs.wedding_id AND wm.user_id = ? AND wm.status = 'active'
+       WHERE ff.vendor_id = ?
+          OR (
+            fs.wedding_id IS NOT NULL AND wm.user_id IS NOT NULL
+            AND (wm.role = 'couple' OR fs.shared_with_team = 1 OR wm.vendor_profile_id = ff.vendor_id)
+          )
+       ORDER BY ff.created_at DESC`
+    )
+    .bind(userId, vendorId ?? '')
+    .all<ExportFileRow>()
+  return rows.results
+}
+
 account.get('/account/export', async (c) => {
   const user = c.get('user')
 
@@ -811,10 +891,77 @@ account.get('/account/export', async (c) => {
     data.calendar_events = events.results
   }
 
+  const entries: ZipEntry[] = [
+    {
+      path: 'wedding-computer-export.json',
+      data: JSON.stringify(data, null, 2),
+    },
+  ]
+
+  if (vendor) {
+    try {
+      const storage = await getStorageWithSecrets(c.env, vendor)
+      const queue: string[] = ['']
+      for (const prefix of queue) {
+        const listed = await storage.list(prefix)
+        for (const file of listed.files) {
+          const path = safeZipPath(`markdown/${file.path}`)
+          if (path.endsWith('/')) continue
+          const stored = await storage.read(file.path).catch(() => null)
+          if (stored) entries.push({ path, data: stored.content })
+        }
+        if (listed.cursor) {
+          let cursor: string | undefined = listed.cursor
+          while (cursor) {
+            const next = await storage.list(prefix, cursor)
+            for (const file of next.files) {
+              const path = safeZipPath(`markdown/${file.path}`)
+              if (path.endsWith('/')) continue
+              const stored = await storage.read(file.path).catch(() => null)
+              if (stored) entries.push({ path, data: stored.content })
+            }
+            cursor = next.cursor
+          }
+        }
+      }
+    } catch (err) {
+      entries.push({
+        path: 'export-warnings/storage.txt',
+        data: `Storage files could not be included: ${err instanceof Error ? err.message : 'unknown error'}`,
+      })
+    }
+  }
+
+  if (c.env.STORAGE) {
+    for (const file of await exportableWeddingDocuments(c.env.DB, user.id)) {
+      const object = await c.env.STORAGE.get(file.r2_key).catch(() => null)
+      if (object) {
+        entries.push({
+          path: `uploads/wedding-documents/${file.id}-${safeZipPath(file.filename)}`,
+          data: await object.arrayBuffer(),
+        })
+      }
+    }
+
+    for (const file of await exportableFormFiles(c.env.DB, user.id, vendor?.id ?? null)) {
+      const object = await c.env.STORAGE.get(file.r2_key).catch(() => null)
+      if (object) {
+        entries.push({
+          path: `uploads/form-files/${file.id}-${safeZipPath(file.filename)}`,
+          data: await object.arrayBuffer(),
+        })
+      }
+    }
+  }
+
   await auditLog(c, 'data_export', 'user', user.id).catch(() => {})
 
-  return c.json(data, 200, {
-    'Content-Disposition': `attachment; filename="wedding-computer-export-${new Date().toISOString().slice(0, 10)}.json"`,
+  const zip = createZip(entries)
+  return c.body(zip, 200, {
+    'Content-Type': 'application/zip',
+    'Content-Disposition': `attachment; filename="wedding-computer-export-${new Date().toISOString().slice(0, 10)}.zip"`,
+    'Cache-Control': 'private, no-store',
+    'X-Content-Type-Options': 'nosniff',
   })
 })
 

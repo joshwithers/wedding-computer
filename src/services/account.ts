@@ -81,11 +81,65 @@ export async function purgeAccount(env: Bindings, user: User): Promise<void> {
     for (const name of ['github_access_token', 'github_webhook_secret', 'anthropic_api_key'] as const) {
       await deleteVendorSecret(env.KV, vendor.id, name).catch(() => {})
     }
+
+    if (env.STORAGE) {
+      const formKeys = await listVendorFormFileKeys(env.DB, vendor.id).catch(() => [])
+      await deleteR2Keys(env.STORAGE, formKeys)
+    }
   }
 
-  // 4. D1 rows (reassigns/removes weddings, anonymizes audit, deletes user
+  // 4. User-uploaded wedding docs + solo-wedding docs live outside the vendor
+  //    markdown tree. Delete their binaries before deleting D1 rows.
+  if (env.STORAGE) {
+    const documentKeys = await listAccountDocumentKeys(env.DB, user.id).catch(() => [])
+    await deleteR2Keys(env.STORAGE, documentKeys)
+  }
+  await env.DB
+    .prepare('DELETE FROM documents WHERE uploaded_by_user_id = ?')
+    .bind(user.id)
+    .run()
+    .catch((e: any) => console.error('[purge] document row cleanup failed', e.message))
+
+  // 5. D1 rows (reassigns/removes weddings, anonymizes audit, deletes user
   //    and cascades the rest).
   await deleteUser(env.DB, user.id)
+}
+
+async function listVendorFormFileKeys(db: D1Database, vendorId: string): Promise<string[]> {
+  const rows = await db
+    .prepare('SELECT r2_key FROM form_files WHERE vendor_id = ?')
+    .bind(vendorId)
+    .all<{ r2_key: string }>()
+  return rows.results.map((row) => row.r2_key)
+}
+
+async function listAccountDocumentKeys(db: D1Database, userId: string): Promise<string[]> {
+  const rows = await db
+    .prepare(
+      `SELECT DISTINCT d.r2_key
+       FROM documents d
+       WHERE d.uploaded_by_user_id = ?
+          OR d.wedding_id IN (
+            SELECT w.id FROM weddings w
+            WHERE w.created_by_user_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM wedding_members wm
+                WHERE wm.wedding_id = w.id AND wm.user_id != ? AND wm.status = 'active'
+              )
+          )`
+    )
+    .bind(userId, userId, userId)
+    .all<{ r2_key: string }>()
+  return rows.results.map((row) => row.r2_key)
+}
+
+async function deleteR2Keys(bucket: R2Bucket, keys: string[]): Promise<void> {
+  const unique = [...new Set(keys.filter(Boolean))]
+  for (let i = 0; i < unique.length; i += 1000) {
+    await bucket.delete(unique.slice(i, i + 1000)).catch((e: any) =>
+      console.error('[purge] R2 object cleanup failed', e.message)
+    )
+  }
 }
 
 /** Delete every object under an R2 prefix, paginating the listing. */

@@ -422,12 +422,13 @@ export async function createContact(
     wedding_date?: string | null
     wedding_location?: string | null
     notes?: string | null
-    form_data?: string | null
-    tags?: string | null
-  }
-): Promise<Contact> {
-  const id = generateId()
-  const now = new Date().toISOString()
+	    form_data?: string | null
+	    tags?: string | null
+	    created_at?: string | null
+	  }
+	): Promise<Contact> {
+	  const id = generateId()
+	  const now = data.created_at ?? new Date().toISOString()
 
   const contact: Contact = {
     id,

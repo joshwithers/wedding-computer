@@ -42,9 +42,7 @@ quote.get('/quote/:token', async (c) => {
         token={token}
         siteKey={c.env.TURNSTILE_SITE_KEY}
       />
-    </QuoteShell>,
-    200,
-    { 'X-Frame-Options': 'ALLOWALL' },
+    </QuoteShell>
   )
 })
 
@@ -69,9 +67,7 @@ quote.post('/quote/:token/enquire', rateLimit(10, 60), async (c) => {
     return c.html(
       <QuoteShell title={calc.title}>
         <ThankYou title={calc.title} />
-      </QuoteShell>,
-      200,
-      { 'X-Frame-Options': 'ALLOWALL' },
+      </QuoteShell>
     )
   }
 
@@ -93,9 +89,7 @@ quote.post('/quote/:token/enquire', rateLimit(10, 60), async (c) => {
           siteKey={c.env.TURNSTILE_SITE_KEY}
           error="Verification failed. Please try again."
         />
-      </QuoteShell>,
-      200,
-      { 'X-Frame-Options': 'ALLOWALL' },
+      </QuoteShell>
     )
   }
 
@@ -116,9 +110,7 @@ quote.post('/quote/:token/enquire', rateLimit(10, 60), async (c) => {
           siteKey={c.env.TURNSTILE_SITE_KEY}
           error="Name and a valid email are required."
         />
-      </QuoteShell>,
-      200,
-      { 'X-Frame-Options': 'ALLOWALL' },
+      </QuoteShell>
     )
   }
 
@@ -165,9 +157,7 @@ quote.post('/quote/:token/enquire', rateLimit(10, 60), async (c) => {
   return c.html(
     <QuoteShell title={calc.title}>
       <ThankYou title={calc.title} />
-    </QuoteShell>,
-    200,
-    { 'X-Frame-Options': 'ALLOWALL' },
+    </QuoteShell>
   )
 })
 

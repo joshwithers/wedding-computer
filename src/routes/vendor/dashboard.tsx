@@ -335,7 +335,7 @@ dashboard.get('/app', async (c) => {
               </p>
             </div>
           </div>
-          <div class="grid sm:grid-cols-3 gap-3 mt-4">
+          <div class="grid sm:grid-cols-2 gap-3 mt-4">
             <a
               href="/app/settings#data"
               class="flex items-center gap-3 border border-horizon-600/20 bg-horizon-50 rounded-xl px-4 py-3 hover:bg-horizon-100 transition-colors"
@@ -349,27 +349,15 @@ dashboard.get('/app', async (c) => {
               </div>
             </a>
             <a
-              href="/app/settings/export-markdown"
+              href="/account/export"
               class="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-3 hover:bg-papaya-50 transition-colors"
             >
               <svg class="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
               </svg>
               <div>
-                <p class="text-sm font-bold text-gray-900">{t('dashboard.data.markdown.title')}</p>
-                <p class="text-xs text-gray-500">{t('dashboard.data.markdown.desc')}</p>
-              </div>
-            </a>
-            <a
-              href="/app/settings/export"
-              class="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-3 hover:bg-papaya-50 transition-colors"
-            >
-              <svg class="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <div>
-                <p class="text-sm font-bold text-gray-900">{t('dashboard.data.json.title')}</p>
-                <p class="text-xs text-gray-500">{t('dashboard.data.json.desc')}</p>
+                <p class="text-sm font-bold text-gray-900">{t('dashboard.data.archive.title')}</p>
+                <p class="text-xs text-gray-500">{t('dashboard.data.archive.desc')}</p>
               </div>
             </a>
           </div>

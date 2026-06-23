@@ -46,7 +46,7 @@ import publicRoutes from './routes/public'
 import formsRoute from './routes/vendor/forms'
 import referRoute from './routes/vendor/refer'
 import publicFormRoute from './routes/form'
-import { authenticateVendor, basicAuthToken, CARDDAV_HEADERS, CALDAV_HEADERS, xmlResponse, escXml } from './lib/dav'
+import { authenticateVendor, davPrincipalId, CARDDAV_HEADERS, CALDAV_HEADERS, xmlResponse, escXml } from './lib/dav'
 import { AuthLayout } from './views/layouts/auth'
 import { getVendorWithEmail, getVendorById } from './db/vendors'
 import { getContact } from './storage/contacts'
@@ -69,6 +69,67 @@ import { syncVendorStorage } from './services/storage-sync'
 
 const app = new Hono<Env>()
 
+function isLocalHost(host: string): boolean {
+  const normalized = host.toLowerCase()
+  return (
+    normalized === 'localhost' ||
+    normalized.startsWith('localhost:') ||
+    normalized === '127.0.0.1' ||
+    normalized.startsWith('127.0.0.1:') ||
+    normalized === '::1' ||
+    normalized === '[::1]' ||
+    normalized.startsWith('[::1]:')
+  )
+}
+
+function isLocalUrl(url: string): boolean {
+  const parsed = new URL(url)
+  return isLocalHost(parsed.host) || isLocalHost(parsed.hostname)
+}
+
+function isEmbedRequest(path: string, url: string): boolean {
+  if (path.startsWith('/quote/')) return true
+  if (new URL(url).searchParams.get('embed') !== '1') return false
+  return path.startsWith('/form/') || path.startsWith('/book/') || path.startsWith('/quote/')
+}
+
+function isPrivatePath(path: string): boolean {
+  return (
+    path === '/login' ||
+    path.startsWith('/login/') ||
+    path === '/account' ||
+    path.startsWith('/account/') ||
+    path === '/app' ||
+    path.startsWith('/app/') ||
+    path === '/admin' ||
+    path.startsWith('/admin/') ||
+    path.startsWith('/wedding/') ||
+    path.startsWith('/files/') ||
+    path.startsWith('/form-file/')
+  )
+}
+
+function contentSecurityPolicy(isLocal: boolean, frameAncestors: "'self'" | null): string {
+  const directives = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://challenges.cloudflare.com https://maps.googleapis.com https://maps.gstatic.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "img-src 'self' data: blob: https:",
+    "connect-src 'self' https://challenges.cloudflare.com https://places.googleapis.com https://maps.googleapis.com https://*.googleapis.com https://api.github.com",
+    "frame-src 'self' https://challenges.cloudflare.com",
+    "worker-src 'self' blob:",
+    "manifest-src 'self'",
+    "media-src 'self' blob: data:",
+    "form-action 'self'",
+  ]
+  if (frameAncestors) directives.push(`frame-ancestors ${frameAncestors}`)
+  if (!isLocal) directives.push('upgrade-insecure-requests')
+  return directives.join('; ')
+}
+
 // Every request runs inside an i18n context (AsyncLocalStorage) so t() and
 // the date helpers work anywhere without prop-drilling. Seeded here from
 // the public language preference cookie, then Accept-Language. The auth/tenant
@@ -88,6 +149,42 @@ app.use((c, next) => {
 
 // /app/ and friends: redirect trailing-slash 404s to the canonical path
 app.use(trimTrailingSlash())
+
+app.use('*', async (c, next) => {
+  await next()
+
+  const headers = new Headers(c.res.headers)
+  const path = c.req.path
+  const url = c.req.url
+  const isLocal = isLocalUrl(url) || isLocalHost(c.req.header('host') ?? '')
+  const isEmbed = isEmbedRequest(path, url)
+  const contentType = headers.get('Content-Type') ?? ''
+  const isHtml = contentType.includes('text/html')
+
+  if (!isLocal && !headers.has('Strict-Transport-Security')) {
+    headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
+  }
+  if (!headers.has('X-Content-Type-Options')) headers.set('X-Content-Type-Options', 'nosniff')
+  if (!headers.has('Referrer-Policy')) headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+  if (!headers.has('Permissions-Policy')) {
+    headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()')
+  }
+  if (isPrivatePath(path) && !headers.has('Cache-Control')) {
+    headers.set('Cache-Control', 'private, no-store')
+  }
+  if (isHtml && !headers.has('Content-Security-Policy')) {
+    headers.set('Content-Security-Policy', contentSecurityPolicy(isLocal, isEmbed ? null : "'self'"))
+  }
+  if (isHtml && !isEmbed && !headers.has('X-Frame-Options')) {
+    headers.set('X-Frame-Options', 'SAMEORIGIN')
+  }
+
+  c.res = new Response(c.res.body, {
+    status: c.res.status,
+    statusText: c.res.statusText,
+    headers,
+  })
+})
 
 app.use('*', async (c, next) => {
   await next()
@@ -390,8 +487,7 @@ app.route('/', adminRoute)
 function cardDavDiscoveryXml(href: string, authHeader: string | undefined, db: D1Database) {
   return (async () => {
     const vendor = await authenticateVendor(db, authHeader)
-    const rawToken = basicAuthToken(authHeader)
-    if (!vendor || !rawToken) {
+    if (!vendor) {
       return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
   <D:response>
@@ -405,7 +501,7 @@ function cardDavDiscoveryXml(href: string, authHeader: string | undefined, db: D
   </D:response>
 </D:multistatus>`, 207, CARDDAV_HEADERS)
     }
-    const token = rawToken
+    const token = davPrincipalId(vendor)
     return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
   <D:response>
@@ -425,8 +521,7 @@ function cardDavDiscoveryXml(href: string, authHeader: string | undefined, db: D
 function calDavDiscoveryXml(href: string, authHeader: string | undefined, db: D1Database) {
   return (async () => {
     const vendor = await authenticateVendor(db, authHeader)
-    const rawToken = basicAuthToken(authHeader)
-    if (!vendor || !rawToken) {
+    if (!vendor) {
       return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
   <D:response>
@@ -440,7 +535,7 @@ function calDavDiscoveryXml(href: string, authHeader: string | undefined, db: D1
   </D:response>
 </D:multistatus>`, 207, CALDAV_HEADERS)
     }
-    const token = rawToken
+    const token = davPrincipalId(vendor)
     return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
   <D:response>

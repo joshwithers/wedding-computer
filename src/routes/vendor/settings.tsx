@@ -17,13 +17,10 @@ import { normalizeCelebrantTerm, celebrantTermOf, CELEBRANT_SLUG, OFFICIANT_TERM
 import { isReservedHandle } from '../../lib/reserved-handles'
 import { t } from '../../i18n'
 import { auditLog } from '../../middleware/audit'
-import { listContacts } from '../../storage/contacts'
-import { listInvoices } from '../../db/invoices'
 import { deleteCookie } from 'hono/cookie'
 import { verifyGitHubToken, createGitHubRepo, ensureGitHubWebhook } from '../../storage/github'
 import { deleteVendorSecret, putVendorSecret, resolveSecret } from '../../services/secrets'
 import { geocodeAddress } from '../../services/geocode'
-import { redactedVendorProfile } from '../../lib/redaction'
 import {
   BRAND_FONTS,
   THEME_DEFAULTS,
@@ -1048,16 +1045,10 @@ settings.get('/app/settings', async (c) => {
           </a>
           <div class="flex flex-col sm:flex-row gap-3 items-start">
             <a
-              href="/app/settings/export-markdown"
+              href="/account/export"
               class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors text-center"
             >
-              Download Markdown files
-            </a>
-            <a
-              href="/app/settings/export"
-              class="bg-white border border-gray-200 text-gray-700 py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors text-center"
-            >
-              Export as JSON
+              {t('account.data.exportArchive')}
             </a>
           </div>
           <div class="mt-8 pt-6 border-t border-gray-200">
@@ -1779,171 +1770,10 @@ settings.get('/app/settings/stripe/callback', async (c) => {
   return c.redirect('/app/settings?stripe=complete')
 })
 
-// ─── Data export (JSON) ───
+// ─── Data export ───
 
-settings.get('/app/settings/export', async (c) => {
-  const user = c.get('user')
-  const vendor = c.get('vendor')!
-
-  try {
-    // Try file_index first, fall back to old contacts table
-    let contacts
-    try {
-      contacts = await listContacts(c.env.DB, vendor.id, {})
-    } catch {
-      contacts = await c.env.DB
-        .prepare('SELECT * FROM contacts WHERE vendor_id = ? ORDER BY created_at DESC')
-        .bind(vendor.id).all().then((r) => r.results)
-    }
-
-    const [invoiceList, events, weddings] = await Promise.all([
-      listInvoices(c.env.DB, vendor.id),
-      c.env.DB.prepare('SELECT * FROM calendar_events WHERE vendor_id = ? ORDER BY date DESC').bind(vendor.id).all(),
-      c.env.DB.prepare(
-        `SELECT w.* FROM weddings w
-         JOIN wedding_members wm ON wm.wedding_id = w.id
-         WHERE wm.user_id = ? ORDER BY w.created_at DESC`
-      ).bind(user.id).all(),
-    ])
-
-    const data = {
-      exported_at: new Date().toISOString(),
-      user: { id: user.id, email: user.email, name: user.name, created_at: user.created_at },
-      vendor_profile: redactedVendorProfile(vendor),
-      contacts,
-      invoices: invoiceList,
-      calendar_events: events.results,
-      weddings: weddings.results,
-    }
-
-    await auditLog(c, 'data_export', 'user', user.id).catch(() => {})
-
-    return c.json(data, 200, {
-      'Content-Disposition': `attachment; filename="wedding-computer-export-${new Date().toISOString().slice(0, 10)}.json"`,
-    })
-  } catch (err) {
-    console.error('[export] JSON export failed:', err)
-    return c.redirect('/app/settings?error=Export+failed.+Please+try+again.')
-  }
-})
-
-// ─── Data export (Markdown ZIP) ───
-
-settings.get('/app/settings/export-markdown', async (c) => {
-  const user = c.get('user')
-  const vendor = c.get('vendor')!
-
-  try {
-    // Get contacts from D1 (works whether file_index or old contacts table)
-    let contacts
-    try {
-      contacts = await listContacts(c.env.DB, vendor.id, {})
-    } catch {
-      contacts = await c.env.DB
-        .prepare('SELECT * FROM contacts WHERE vendor_id = ? ORDER BY created_at DESC')
-        .bind(vendor.id).all<any>().then((r) => r.results)
-    }
-
-    // Get weddings
-    const weddings = await c.env.DB
-      .prepare(
-        `SELECT w.* FROM weddings w
-         JOIN wedding_members wm ON wm.wedding_id = w.id
-         WHERE wm.user_id = ? ORDER BY w.created_at DESC`
-      ).bind(user.id).all<any>().then((r) => r.results)
-
-    // Build a simple text bundle — each file separated by a header
-    // Since we can't create ZIPs in Workers easily, we generate
-    // a single concatenated Markdown document with all files
-    const lines: string[] = []
-
-    lines.push('# Wedding Computer — Markdown Export')
-    lines.push(`# Exported: ${new Date().toISOString()}`)
-    lines.push(`# Vendor: ${vendor.business_name}`)
-    lines.push('')
-
-    // Contact files
-    lines.push('---')
-    lines.push('')
-    lines.push('# CONTACTS')
-    lines.push('')
-
-    for (const ct of contacts) {
-      lines.push(`${'='.repeat(60)}`)
-      lines.push(`FILE: contacts/${slugify(ct.first_name, ct.last_name)}.md`)
-      lines.push(`${'='.repeat(60)}`)
-      lines.push('---')
-      lines.push(`id: "${ct.id}"`)
-      lines.push(`first_name: "${ct.first_name ?? ''}"`)
-      lines.push(`last_name: "${ct.last_name ?? ''}"`)
-      if (ct.email) lines.push(`email: "${ct.email}"`)
-      if (ct.phone) lines.push(`phone: "${ct.phone}"`)
-      if (ct.partner_first_name) lines.push(`partner_first_name: "${ct.partner_first_name}"`)
-      if (ct.partner_last_name) lines.push(`partner_last_name: "${ct.partner_last_name}"`)
-      if (ct.partner_email) lines.push(`partner_email: "${ct.partner_email}"`)
-      if (ct.partner_phone) lines.push(`partner_phone: "${ct.partner_phone}"`)
-      if (ct.source) lines.push(`source: "${ct.source}"`)
-      lines.push(`status: "${ct.status}"`)
-      if (ct.wedding_date) lines.push(`wedding_date: "${ct.wedding_date}"`)
-      if (ct.wedding_location) lines.push(`wedding_location: "${ct.wedding_location}"`)
-      lines.push(`created_at: "${ct.created_at}"`)
-      lines.push(`updated_at: "${ct.updated_at}"`)
-      lines.push('---')
-      if (ct.notes) {
-        lines.push('')
-        lines.push(ct.notes)
-      }
-      lines.push('')
-    }
-
-    // Wedding files
-    lines.push('---')
-    lines.push('')
-    lines.push('# WEDDINGS')
-    lines.push('')
-
-    for (const w of weddings) {
-      lines.push(`${'='.repeat(60)}`)
-      const dateSlug = w.date ? `${w.date}-` : ''
-      lines.push(`FILE: weddings/${dateSlug}${slugify(w.title || 'untitled', '')}/wedding.md`)
-      lines.push(`${'='.repeat(60)}`)
-      lines.push('---')
-      lines.push(`id: "${w.id}"`)
-      lines.push(`title: "${w.title}"`)
-      if (w.date) lines.push(`date: "${w.date}"`)
-      if (w.time) lines.push(`time: "${w.time}"`)
-      if (w.location) lines.push(`location: "${w.location}"`)
-      lines.push(`status: "${w.status}"`)
-      if (w.ceremony_type) lines.push(`ceremony_type: "${w.ceremony_type}"`)
-      lines.push(`created_at: "${w.created_at}"`)
-      lines.push('---')
-      if (w.notes) {
-        lines.push('')
-        lines.push(w.notes)
-      }
-      lines.push('')
-    }
-
-    const content = lines.join('\n')
-
-    await auditLog(c, 'data_export', 'user', user.id, { format: 'markdown' }).catch(() => {})
-
-    return new Response(content, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/markdown; charset=utf-8',
-        'Content-Disposition': `attachment; filename="wedding-computer-${new Date().toISOString().slice(0, 10)}.md"`,
-      },
-    })
-  } catch (err) {
-    console.error('[export] Markdown export failed:', err)
-    return c.redirect('/app/settings?error=Export+failed.+Please+try+again.')
-  }
-})
-
-function slugify(first: string, last: string): string {
-  return [first, last].filter(Boolean).join('-').toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unnamed'
-}
+settings.get('/app/settings/export', (c) => c.redirect('/account/export'))
+settings.get('/app/settings/export-markdown', (c) => c.redirect('/account/export'))
 
 // ─── Account deletion ───
 

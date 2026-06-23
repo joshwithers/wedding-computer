@@ -78,6 +78,10 @@ export const account = {
   'account.notifications.type.adminSafety.label': 'Safety alerts',
   'account.notifications.type.adminSafety.desc':
     'A couple removes a vendor from their wedding, or other events that may need review.',
+  'account.calendar.oneTime': 'Copy this now. For security, the feed token is stored hashed and cannot be shown again.',
+  'account.calendar.active': 'Your personal calendar feed is active. For security, the URL is shown only when generated.',
+  'account.calendar.generate': 'Generate calendar URL',
+  'account.calendar.regenerate': 'Regenerate calendar URL',
   'account.passkeys.title': 'Passkeys',
   'account.passkeys.hint':
     'Use a passkey to sign in without email. Works with Touch ID, Face ID, Windows Hello, or a security key.',
@@ -94,6 +98,7 @@ export const account = {
   'account.data.title': 'Your data',
   'account.data.hint': 'Download or delete all your data.',
   'account.data.exportJson': 'Export data (JSON)',
+  'account.data.exportArchive': 'Export data archive',
   'account.data.deleteAccount': 'Delete account',
   'account.data.deleteConfirm':
     'Schedule your account for deletion? You will be signed out, and everything is permanently removed in 30 days. Sign back in any time within 30 days to restore it.',

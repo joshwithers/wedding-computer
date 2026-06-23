@@ -438,7 +438,7 @@ importRoutes.post('/app/import/:id/process', async (c) => {
   }
 
   try {
-    await processImportJob(c.env.DB, vendor.id, jobId)
+    await processImportJob(c.env, vendor.id, jobId)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Import failed'
     await updateImportJob(c.env.DB, vendor.id, jobId, {

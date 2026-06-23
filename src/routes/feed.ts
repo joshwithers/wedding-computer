@@ -13,7 +13,7 @@ const feed = new Hono<Env>()
 
 // Personal calendar feed — the timeline sections this user is assigned to and
 // has opted into, across all their weddings. Works for EVERY member (incl. the
-// couple) — not Pro-gated. Token stored raw (read-only capability URL).
+// couple) — not Pro-gated. Token is stored hashed and shown once.
 feed.get('/cal/u/:token', async (c) => {
   let token = c.req.param('token')
   if (token.endsWith('.ics')) token = token.slice(0, -4)
@@ -35,7 +35,7 @@ feed.get('/cal/u/:token', async (c) => {
   return c.body(ical, 200, {
     'Content-Type': 'text/calendar; charset=utf-8',
     'Content-Disposition': `inline; filename="${user.name.replace(/[^a-zA-Z0-9]/g, '-')}-timeline.ics"`,
-    'Cache-Control': 'public, max-age=900',
+    'Cache-Control': 'private, max-age=900',
   })
 })
 

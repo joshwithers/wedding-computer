@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import type { Env } from '../types'
+import type { Bindings, Env, VendorProfile } from '../types'
 import { SharedHead } from '../views/head'
 import type { HeadMeta } from '../views/head'
 import { getFormByToken, getFormSendByToken, createFormSubmission, createFormFile, formSubmissionFields, incrementSubmissionCount, getFormSubmission } from '../db/forms'
@@ -276,7 +276,7 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
   // Action: create_contact
   if (actions.some(a => a.type === 'create_contact' && a.enabled)) {
     try {
-      contactId = await handleCreateContact(c.env.DB, vendor.id, config, formData)
+      contactId = await handleCreateContact(c.env, vendor, config, formData)
       if (contactId) {
         await c.env.DB.prepare('UPDATE form_submissions SET contact_id = ? WHERE id = ?').bind(contactId, submission.id).run()
       }
@@ -445,8 +445,8 @@ form.post('/form/:token/pdf', rateLimit(5, 60), async (c) => {
 // ─── Contact creation helper ───
 
 async function handleCreateContact(
-  db: D1Database,
-  vendorId: string,
+  env: Bindings,
+  vendor: VendorProfile,
   config: FormConfig,
   formData: Record<string, string>
 ): Promise<string | null> {
@@ -474,11 +474,8 @@ async function handleCreateContact(
 
   const { createContact } = await import('../storage/contacts')
   const { getStorageWithSecrets } = await import('../storage')
-  const vendor = await db.prepare('SELECT * FROM vendor_profiles WHERE id = ?').bind(vendorId).first()
-  if (!vendor) return null
-
-  const storage = await getStorageWithSecrets({ DB: db, KV: null as any, STORAGE: null as any } as any, vendor as any)
-  const contact = await createContact(storage, db, vendorId, {
+  const storage = await getStorageWithSecrets(env, vendor)
+  const contact = await createContact(storage, env.DB, vendor.id, {
     first_name: firstName,
     last_name: mapped.last_name ?? '',
     email: mapped.email ?? null,
@@ -493,7 +490,7 @@ async function handleCreateContact(
   })
 
   const { createActivity } = await import('../db/activities')
-  await createActivity(db, contact.id, 'lead', `Submitted form: ${config.title}`)
+  await createActivity(env.DB, contact.id, 'lead', `Submitted form: ${config.title}`)
 
   return contact.id
 }

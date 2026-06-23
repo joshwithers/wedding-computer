@@ -25,6 +25,7 @@ import {
   sectionStats,
 } from '../../lib/todo-parser'
 import type { ParsedTodoSection } from '../../lib/todo-parser'
+import { vendorCanAccessWedding } from '../../lib/wedding-access'
 
 const checklists = new Hono<Env>()
 
@@ -256,6 +257,10 @@ checklists.post('/app/weddings/:weddingId/todos/deploy', async (c) => {
   const body = await c.req.parseBody()
   const templateId = String(body.template_id ?? '')
 
+  if (!(await vendorCanAccessWedding(c.env.DB, vendor, weddingId))) {
+    return c.text('Not found', 404)
+  }
+
   let content = ''
   if (templateId) {
     const template = await getTemplate(c.env.DB, vendor.id, templateId)
@@ -291,6 +296,9 @@ checklists.post('/app/weddings/:weddingId/todos/toggle', async (c) => {
   const body = await c.req.parseBody()
   const lineNumber = parseInt(String(body.line ?? ''), 10)
   if (isNaN(lineNumber)) return c.text('Invalid line', 400)
+  if (!(await vendorCanAccessWedding(c.env.DB, vendor, weddingId))) {
+    return c.text('Not found', 404)
+  }
 
   const todo = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
   if (!todo) return c.text('No todo list', 404)
@@ -325,6 +333,9 @@ checklists.post('/app/weddings/:weddingId/todos/add', async (c) => {
   const section = String(body.section ?? '') || null
 
   if (!text) return c.text('Text required', 400)
+  if (!(await vendorCanAccessWedding(c.env.DB, vendor, weddingId))) {
+    return c.text('Not found', 404)
+  }
 
   const todo = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
   if (!todo) return c.text('No todo list', 404)
@@ -355,6 +366,9 @@ checklists.post('/app/weddings/:weddingId/todos/remove', async (c) => {
   const body = await c.req.parseBody()
   const lineNumber = parseInt(String(body.line ?? ''), 10)
   if (isNaN(lineNumber)) return c.text('Invalid line', 400)
+  if (!(await vendorCanAccessWedding(c.env.DB, vendor, weddingId))) {
+    return c.text('Not found', 404)
+  }
 
   const todo = await getWeddingTodo(c.env.DB, vendor.id, weddingId)
   if (!todo) return c.text('No todo list', 404)
@@ -384,6 +398,10 @@ checklists.post('/app/weddings/:weddingId/todos/save', async (c) => {
   const weddingId = c.req.param('weddingId')
   const body = await c.req.parseBody()
   const content = String(body.content ?? '')
+
+  if (!(await vendorCanAccessWedding(c.env.DB, vendor, weddingId))) {
+    return c.text('Not found', 404)
+  }
 
   await upsertWeddingTodo(c.env.DB, vendor.id, weddingId, content)
 

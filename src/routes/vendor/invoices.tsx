@@ -27,6 +27,7 @@ import { requireString, trimOrNull } from '../../lib/validation'
 import { formatDate } from '../../lib/date'
 import { auditLog } from '../../middleware/audit'
 import { track } from '../../services/analytics'
+import { vendorCanAccessWedding } from '../../lib/wedding-access'
 
 const invoices = new Hono<Env>()
 
@@ -347,6 +348,9 @@ invoices.post('/app/invoices/new', async (c) => {
     const title = requireString(body.title, 'Title')
     const contactId = trimOrNull(body.contact_id)
     const weddingId = trimOrNull(body.wedding_id)
+    if (weddingId && !(await vendorCanAccessWedding(c.env.DB, vendor, weddingId))) {
+      return c.redirect('/app/invoices/new?error=Wedding+not+found')
+    }
 
     const lineItems: LineItem[] = []
     const itemCount = parseInt(String(body.item_count || '10'))

@@ -1,10 +1,13 @@
-import { createContact, updateContact } from '../../db/contacts'
 import { createWedding, updateWedding, addWeddingMember } from '../../db/weddings'
 import { applyWeddingUpdate } from '../../db/timeline'
 import { createEvent } from '../../db/calendar'
 import { createActivity } from '../../db/activities'
 import { getVendorById } from '../../db/vendors'
 import { todayString } from '../../lib/date'
+import { getStorageWithSecrets } from '../../storage'
+import type { StorageBackend } from '../../storage/types'
+import { createContact as createStoredContact, updateContact as updateStoredContact } from '../../storage/contacts'
+import { pushAllWeddingFiles } from '../storage-push'
 import {
   getImportJob,
   updateImportJob,
@@ -13,7 +16,7 @@ import {
   listImportRecords,
 } from '../../db/imports'
 import { normalizeStatus } from './presets'
-import type { ImportJob, VendorProfile } from '../../types'
+import type { Bindings, ImportJob, VendorProfile } from '../../types'
 
 export type ProcessResult = {
   imported: number
@@ -29,10 +32,11 @@ export type MappedRow = {
 }
 
 export async function processImportJob(
-  db: D1Database,
+  env: Bindings,
   vendorId: string,
   jobId: string
 ): Promise<ProcessResult> {
+  const db = env.DB
   const job = await getImportJob(db, vendorId, jobId)
   if (!job) throw new Error('Import job not found')
   if (job.status !== 'previewing' && job.status !== 'mapping') {
@@ -53,8 +57,9 @@ export async function processImportJob(
     ? safeParse(job.config, {})
     : {}
 
-  // Wedding creation needs the vendor's user for membership rows.
-  const vendor = config.create_weddings ? await getVendorById(db, vendorId) : null
+  const vendor = await getVendorById(db, vendorId)
+  if (!vendor) throw new Error('Vendor not found')
+  const storage = await getStorageWithSecrets(env, vendor)
 
   const result: ProcessResult = { imported: 0, skipped: 0, failed: 0, weddings_created: 0, errors: [] }
 
@@ -81,9 +86,9 @@ export async function processImportJob(
 
     try {
       if (job.entity_type === 'contact') {
-        const { contact, status } = await importContact(db, vendorId, mapped)
-        if (vendor) {
-          const created = await createWeddingForImportedContact(db, vendor, contact.id, mapped, status)
+        const { contact, status } = await importContact(storage, db, vendorId, mapped)
+        if (config.create_weddings) {
+          const created = await createWeddingForImportedContact(env, storage, vendor, contact.id, mapped, status)
           if (created) result.weddings_created++
         }
         await updateImportRecord(db, vendorId, record.id, {
@@ -162,12 +167,14 @@ function applyMapping(
 }
 
 async function importContact(
+  storage: StorageBackend,
   db: D1Database,
   vendorId: string,
   mapped: MappedRow
 ): Promise<{ contact: { id: string }; status: string | null }> {
   const data = mapped.fields
-  const contact = await createContact(db, vendorId, {
+  const status = data.status ? normalizeStatus(data.status) : null
+  const contact = await createStoredContact(storage, db, vendorId, {
     first_name: data.first_name,
     last_name: data.last_name || '',
     email: data.email || null,
@@ -181,15 +188,9 @@ async function importContact(
     wedding_location: data.wedding_location || null,
     notes: data.notes || null,
     form_data: Object.keys(mapped.extras).length > 0 ? JSON.stringify(mapped.extras) : null,
+    status: status ?? undefined,
     created_at: normalizeTimestamp(data.created_at),
   })
-
-  let status: string | null = null
-  if (data.status) {
-    status = normalizeStatus(data.status)
-    const { updateContactStatus } = await import('../../db/contacts')
-    await updateContactStatus(db, vendorId, contact.id, status)
-  }
 
   return { contact, status }
 }
@@ -201,12 +202,14 @@ async function importContact(
  * bulk imports of historical clients must never email them.
  */
 async function createWeddingForImportedContact(
-  db: D1Database,
+  env: Bindings,
+  storage: StorageBackend,
   vendor: VendorProfile,
   contactId: string,
   mapped: MappedRow,
   status: string | null
 ): Promise<boolean> {
+  const db = env.DB
   if (status !== 'booked' && status !== 'completed') return false
 
   const date = normalizeDate(mapped.fields.wedding_date)
@@ -265,8 +268,9 @@ async function createWeddingForImportedContact(
     console.error('[IMPORT] calendar event failed:', err instanceof Error ? err.message : err)
   }
 
-  await updateContact(db, vendor.id, contactId, { wedding_id: wedding.id })
+  await updateStoredContact(storage, db, vendor.id, contactId, { wedding_id: wedding.id })
   await createActivity(db, contactId, 'status_change', `Imported with wedding: ${title}`)
+  await pushAllWeddingFiles(env, vendor, wedding.id)
 
   return true
 }

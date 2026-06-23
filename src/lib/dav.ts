@@ -18,22 +18,8 @@ export const CALDAV_HEADERS = {
   Allow: 'OPTIONS, GET, HEAD, PROPFIND, REPORT',
 }
 
-/**
- * Extract the raw sync token from a Basic auth header (the password
- * half). Used to echo the client's own token back in DAV principal and
- * collection hrefs — the stored column holds a hash, never the token.
- */
-export function basicAuthToken(authHeader: string | undefined): string | null {
-  if (!authHeader?.startsWith('Basic ')) return null
-  try {
-    const decoded = atob(authHeader.slice(6))
-    const idx = decoded.indexOf(':')
-    if (idx < 0) return null
-    const token = decoded.slice(idx + 1)
-    return token.length >= 32 ? token : null
-  } catch {
-    return null
-  }
+export function davPrincipalId(vendor: Pick<VendorProfile, 'id'>): string {
+  return `v-${vendor.id}`
 }
 
 export async function authenticateVendor(
