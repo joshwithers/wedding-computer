@@ -1148,49 +1148,24 @@ couple.get('/wedding/:id/edit', async (c) => {
             </div>
           </div>
 
-          {/* Ceremony */}
+          {/* Location */}
           <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 sm:p-8">
-            <h2 class="text-base font-bold mb-4">Ceremony</h2>
-            <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="time">Time</label>
-                <input type="time" id="time" name="time" value={wedding.time ?? ''} class={inputClass} />
-              </div>
-              <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="location">Location</label>
-                <input type="text" id="location" name="location" value={wedding.location ?? ''} class={inputClass} placeholder="Ceremony venue or address" />
-              </div>
+            <h2 class="text-base font-bold mb-4">Location</h2>
+            <div>
+              <label class="block text-sm font-bold text-gray-700 mb-1.5" for="location">Where</label>
+              <input type="text" id="location" name="location" value={wedding.location ?? ''} class={inputClass} placeholder="Venue or address" />
             </div>
           </div>
 
-          {/* Reception */}
-          <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 sm:p-8">
-            <h2 class="text-base font-bold mb-4">Reception</h2>
-            <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="reception_time">Time</label>
-                <input type="time" id="reception_time" name="reception_time" value={wedding.reception_time ?? ''} class={inputClass} />
-              </div>
-              <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="reception_location">Location</label>
-                <input type="text" id="reception_location" name="reception_location" value={wedding.reception_location ?? ''} class={inputClass} placeholder="Reception venue or address" />
-              </div>
-            </div>
-          </div>
-
-          {/* Getting ready */}
-          <div class="bg-white border border-papaya-300/30 rounded-2xl p-5 sm:p-8">
-            <h2 class="text-base font-bold mb-4">Getting ready</h2>
-            <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="getting_ready_time">Time</label>
-                <input type="time" id="getting_ready_time" name="getting_ready_time" value={wedding.getting_ready_time ?? ''} class={inputClass} />
-              </div>
-              <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1.5" for="getting_ready_location">Location</label>
-                <input type="text" id="getting_ready_location" name="getting_ready_location" value={wedding.getting_ready_location ?? ''} class={inputClass} placeholder="Where you'll be getting ready" />
-              </div>
-            </div>
+          {/* Schedule now lives in the run sheet (timeline) — single source of truth. */}
+          <div class="bg-papaya-50 border border-grapefruit-600/20 rounded-2xl p-5 sm:p-6 text-sm text-gray-600">
+            <p class="font-bold text-gray-900 mb-1">Times &amp; schedule</p>
+            <p>
+              Ceremony, reception and getting-ready times — and everything else on the day — now live in
+              your{' '}
+              <a href={`/wedding/${weddingId}`} class="font-bold text-horizon-700 hover:underline">run sheet</a>.
+              Add and reorder them there; it’s the one schedule your vendors see too.
+            </p>
           </div>
 
           {/* Timeline notes */}
@@ -1280,16 +1255,13 @@ couple.post('/wedding/:id/edit', async (c) => {
     if (!editableCoupleUserIds.has(userId)) return c.text('Forbidden', 403)
   }
 
+  // Schedule times (ceremony/reception/getting-ready) are edited in the run
+  // sheet (timeline_items — the source of truth), never written or cleared here.
   const weddingUpdates: Record<string, string | number | null> = {
     title,
     date: str('date'),
-    time: str('time'),
     location: str('location'),
     ceremony_type: str('ceremony_type'),
-    reception_location: str('reception_location'),
-    reception_time: str('reception_time'),
-    getting_ready_location: str('getting_ready_location'),
-    getting_ready_time: str('getting_ready_time'),
     timeline_notes: str('timeline_notes'),
     dress_code: str('dress_code'),
     guest_count,
@@ -1297,10 +1269,9 @@ couple.post('/wedding/:id/edit', async (c) => {
 
   // Timeline control: a managing planner/venue approves timeline changes,
   // including the couple's. Non-timeline fields still apply immediately.
-  const COUPLE_TIMELINE_FIELDS = [
-    'date', 'time', 'reception_location', 'reception_time',
-    'getting_ready_location', 'getting_ready_time', 'timeline_notes',
-  ]
+  // The only timeline-relevant fields this form still writes (the schedule
+  // slots moved to the run sheet); changes here still route through approval.
+  const COUPLE_TIMELINE_FIELDS = ['date', 'timeline_notes']
   const currentWedding = await getWedding(c.env.DB, weddingId)
   const changedTimelineFields = currentWedding
     ? COUPLE_TIMELINE_FIELDS.filter(
