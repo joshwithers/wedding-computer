@@ -5,6 +5,8 @@ import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
 import { getSubscription, createSubscription, updateSubscription, isProVendor } from '../../db/subscriptions'
+import { getProPrice, type CurrencyCode } from '../../services/pricing'
+import { getI18n } from '../../i18n'
 
 const subscription = new Hono<Env>()
 
@@ -18,6 +20,7 @@ subscription.get('/app/subscription', async (c) => {
   const csrfToken = c.get('csrfToken')
 
   const sub = await getSubscription(c.env.DB, vendor.id)
+  const pro = await getProPrice(c.env, getI18n().currency as CurrencyCode)
   const isPro = sub?.plan === 'pro' && (sub.status === 'active' || sub.status === 'trialing')
   const isCancelled = isPro && sub.cancel_at_period_end === 1
   const success = c.req.query('success')
@@ -85,7 +88,7 @@ subscription.get('/app/subscription', async (c) => {
                 <div class="space-y-2 mb-6">
                   <div class="flex items-center justify-between text-sm">
                     <span class="text-gray-500">Plan</span>
-                    <span class="font-bold text-gray-900">Pro &mdash; $28 AUD / month</span>
+                    <span class="font-bold text-gray-900">Pro &mdash; {pro.formatted} {pro.currency} / month</span>
                   </div>
                   {periodEnd && (
                     <div class="flex items-center justify-between text-sm">
@@ -125,8 +128,8 @@ subscription.get('/app/subscription', async (c) => {
             </ul>
 
             <div class="mb-6">
-              <span class="text-2xl font-bold text-gray-900">$28</span>
-              <span class="text-sm text-gray-500 ml-1">AUD / month</span>
+              <span class="text-2xl font-bold text-gray-900">{pro.formatted}</span>
+              <span class="text-sm text-gray-500 ml-1">{pro.currency} / month</span>
             </div>
 
             <form method="post" action="/app/subscription/checkout">
@@ -151,6 +154,10 @@ subscription.post('/app/subscription/checkout', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
 
+  // Charge in the visitor's presentment currency, derived from the A$28 anchor
+  // (resolved from cf.country / the wc_currency cookie on the i18n context).
+  const pro = await getProPrice(c.env, getI18n().currency as CurrencyCode)
+
   // Redeem banked free months (gifted or earned) as a free trial so the first
   // N months aren't charged. They're consumed in the checkout.session.completed
   // webhook once the subscription is created.
@@ -161,10 +168,10 @@ subscription.post('/app/subscription/checkout', async (c) => {
     // Let customers enter a marketing promotion code at checkout. Stripe
     // validates the code + enforces its expiry/usage limits atomically.
     'allow_promotion_codes': 'true',
-    'line_items[0][price_data][currency]': 'aud',
+    'line_items[0][price_data][currency]': pro.stripeCurrency,
     'line_items[0][price_data][product_data][name]': 'Wedding Computer Pro',
     'line_items[0][price_data][product_data][description]': 'Analytics, insights, AI features, and business goals',
-    'line_items[0][price_data][unit_amount]': '2800',
+    'line_items[0][price_data][unit_amount]': String(pro.unitAmount),
     'line_items[0][price_data][recurring][interval]': 'month',
     'line_items[0][quantity]': '1',
     'success_url': `${c.env.APP_URL}/app/subscription?success=1`,
@@ -174,8 +181,10 @@ subscription.post('/app/subscription/checkout', async (c) => {
     'metadata[vendor_id]': vendor.id,
     'metadata[user_id]': user.id,
     // Also stamp the SUBSCRIPTION (not just the checkout session) so subscription.*
-    // webhooks can self-heal a missing local row from the event alone.
+    // webhooks can self-heal a missing local row from the event alone. The
+    // currency is recorded so referral credits can later match it.
     'subscription_data[metadata][vendor_id]': vendor.id,
+    'subscription_data[metadata][currency]': pro.currency,
   }
   if (freeMonths > 0) {
     params['subscription_data[trial_period_days]'] = String(freeMonths * 30)

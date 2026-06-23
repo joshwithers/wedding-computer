@@ -59,6 +59,7 @@ import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyVisibil
 import { aggregateBusynessScores, aggregateDemandHistory } from './db/busyness'
 import { geocodePendingLocations } from './services/geocode'
 import { runWithI18n, resolveLocale } from './i18n'
+import { resolveCurrency, refreshPrices } from './services/pricing'
 import { runRetention } from './db/retention'
 import { sendPendingVendorInviteReminders } from './services/invite-followups'
 import { flushTimelineNotifications } from './services/timeline-notify'
@@ -72,9 +73,18 @@ const app = new Hono<Env>()
 // the date helpers work anywhere without prop-drilling. Seeded here from
 // the public language preference cookie, then Accept-Language. The auth/tenant
 // middleware refine it with the signed-in user's saved locale and timezone.
-app.use((c, next) =>
-  runWithI18n({ locale: resolveLocale(getCookie(c, 'wc_locale'), c.req.header('accept-language')) }, () => next())
-)
+// Presentment currency is resolved once here too — an explicit wc_currency
+// cookie wins, else the visitor's country (free from Cloudflare's edge).
+app.use((c, next) => {
+  const country = (c.req.raw as { cf?: { country?: string } }).cf?.country
+  return runWithI18n(
+    {
+      locale: resolveLocale(getCookie(c, 'wc_locale'), c.req.header('accept-language')),
+      currency: resolveCurrency(country, getCookie(c, 'wc_currency')),
+    },
+    () => next()
+  )
+})
 
 // /app/ and friends: redirect trailing-slash 404s to the canonical path
 app.use(trimTrailingSlash())
@@ -985,6 +995,15 @@ export default {
         if (n > 0) logEvent('cron.invite_reminders', { sent: n })
       } catch (e: any) {
         console.error('[CRON] invite reminders failed', e.message)
+      }
+
+      // Refresh local-currency Pro prices from the AUD anchor (ECB FX, rounded
+      // up to a clean figure). Stored in KV; falls back to the last good value.
+      try {
+        const map = await refreshPrices(env)
+        logEvent('cron.fx_refreshed', { currencies: Object.keys(map).length })
+      } catch (e: any) {
+        console.error('[CRON] fx refresh failed', e.message)
       }
     }
 

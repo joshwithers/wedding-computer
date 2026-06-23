@@ -386,6 +386,8 @@ export const marketing = {
   'marketing.pricing.pro.name': 'Pro',
   'marketing.pricing.pro.priceNote': 'per month',
   'marketing.pricing.pro.cta': 'Start with Pro',
+  'marketing.pricing.currency.label': 'Currency',
+  'marketing.pricing.currency.help': 'Shown in your local currency, detected from your location — change it anytime.',
   'marketing.pricing.recommended': 'Recommended',
   'marketing.pricing.included': 'Included',
   'marketing.pricing.notIncluded': 'Not included',

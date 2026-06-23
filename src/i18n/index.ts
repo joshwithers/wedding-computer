@@ -72,15 +72,18 @@ export type I18nContext = {
   locale: string // BCP 47, drives Intl date/number formatting
   language: string // primary subtag, picks the dictionary
   timezone: string // IANA zone, drives time-of-day rendering
+  currency: string // ISO 4217 presentment currency for prices (e.g. 'AUD')
 }
 
 export const DEFAULT_LOCALE = 'en-AU'
 export const DEFAULT_TIMEZONE = 'Australia/Sydney'
+export const DEFAULT_CURRENCY = 'AUD'
 
 const DEFAULT_CONTEXT: I18nContext = {
   locale: DEFAULT_LOCALE,
   language: 'en',
   timezone: DEFAULT_TIMEZONE,
+  currency: DEFAULT_CURRENCY,
 }
 
 const als = new AsyncLocalStorage<I18nContext>()
@@ -97,6 +100,7 @@ export function runWithI18n<T>(ctx: Partial<I18nContext>, fn: () => T): T {
       locale,
       language: primaryLanguage(locale),
       timezone: ctx.timezone ?? DEFAULT_TIMEZONE,
+      currency: ctx.currency ?? DEFAULT_CURRENCY,
     },
     fn
   )

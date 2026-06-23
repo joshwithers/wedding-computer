@@ -3,6 +3,7 @@ import { setCookie } from 'hono/cookie'
 import { SUPPORTED_LOCALES, t, getI18n, type MessageKey } from '../i18n'
 import type { Env } from '../types'
 import { MarketingLayout } from '../views/layouts/marketing'
+import { getProPrice, CURRENCIES, PRESENTMENT_CURRENCIES, isCurrencyCode, type CurrencyCode } from '../services/pricing'
 
 const marketing = new Hono<Env>()
 
@@ -51,6 +52,25 @@ marketing.post('/locale', async (c) => {
   if (supported) {
     const isSecureRequest = new URL(c.req.url).protocol === 'https:'
     setCookie(c, 'wc_locale', locale, {
+      path: '/',
+      httpOnly: true,
+      secure: isSecureRequest,
+      sameSite: 'Lax',
+      maxAge: 60 * 60 * 24 * 365,
+    })
+  }
+
+  return c.redirect(safeReturnTo(c, returnTo), 303)
+})
+
+marketing.post('/currency', async (c) => {
+  const body = await c.req.parseBody()
+  const currency = typeof body.currency === 'string' ? body.currency.trim().toUpperCase() : ''
+  const returnTo = typeof body.return_to === 'string' ? body.return_to.trim() : undefined
+
+  if (isCurrencyCode(currency)) {
+    const isSecureRequest = new URL(c.req.url).protocol === 'https:'
+    setCookie(c, 'wc_currency', currency, {
       path: '/',
       httpOnly: true,
       secure: isSecureRequest,
@@ -245,8 +265,10 @@ marketing.get('/about', (c) => {
   return c.html(<AboutPage />)
 })
 
-marketing.get('/pricing', (c) => {
-  return c.html(<PricingPage />)
+marketing.get('/pricing', async (c) => {
+  const currency = getI18n().currency as CurrencyCode
+  const pro = await getProPrice(c.env, currency)
+  return c.html(<PricingPage proPrice={pro.formatted} currency={currency} />)
 })
 
 // ─── Open Standard ───
@@ -504,7 +526,7 @@ function TermsPage() {
   return <LegalPage metaTitle="legal.terms.metaTitle" title="legal.terms.title" intro={['legal.terms.intro.p1']} sections={TERMS_SECTIONS} />
 }
 
-function PricingPage() {
+function PricingPage({ proPrice, currency }: { proPrice: string; currency: CurrencyCode }) {
   return (
     <MarketingLayout title={t('marketing.pricing.metaTitle')}>
       <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
@@ -512,8 +534,9 @@ function PricingPage() {
         <p class="text-gray-600 mb-10 sm:mb-12 text-center max-w-lg mx-auto">{t('marketing.pricing.subtitle')}</p>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 max-w-2xl mx-auto">
           <PlanCard name="marketing.pricing.free.name" price="$0" note="marketing.pricing.free.priceNote" features={PRICING_FREE_FEATURES} cta="marketing.home.hero.primaryCta" />
-          <PlanCard name="marketing.pricing.pro.name" price="$28" note="marketing.pricing.pro.priceNote" features={PRICING_PRO_FEATURES} cta="marketing.pricing.pro.cta" highlighted />
+          <PlanCard name="marketing.pricing.pro.name" price={proPrice} note="marketing.pricing.pro.priceNote" features={PRICING_PRO_FEATURES} cta="marketing.pricing.pro.cta" highlighted />
         </div>
+        <CurrencySwitcher currency={currency} />
         <div class="max-w-3xl mx-auto mt-12 sm:mt-16">
           <div class="bg-horizon-50 border border-horizon-600/20 rounded-2xl p-6 sm:p-10 text-center">
             <div class="inline-block bg-horizon-600 text-white text-xs font-bold px-3 py-1 rounded-full mb-3">{t('marketing.pricing.referral.badge')}</div>
@@ -598,6 +621,40 @@ function PlanCard({ name, price, note, features, cta, highlighted }: { name: Mes
       <p class="text-sm text-gray-500 mb-6">{t(note)}</p>
       <ul class="space-y-2.5 text-sm text-gray-700 mb-8">{features.map((feature, index) => <PricingFeature text={t(feature)} bold={highlighted && index === 0} />)}</ul>
       <a href="/login" class={highlighted ? 'block text-center bg-horizon-600 text-white py-3 px-4 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors shadow-lg shadow-horizon/20' : 'block text-center bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors'}>{t(cta)}</a>
+    </div>
+  )
+}
+
+function currencyName(code: CurrencyCode): string {
+  try {
+    return new Intl.DisplayNames(getI18n().locale, { type: 'currency' }).of(code) ?? CURRENCIES[code].label
+  } catch {
+    return CURRENCIES[code].label
+  }
+}
+
+function CurrencySwitcher({ currency }: { currency: CurrencyCode }) {
+  return (
+    <div class="mt-8 text-center">
+      <form method="post" action="/currency" class="inline-flex items-center gap-2">
+        <input type="hidden" name="return_to" value="/pricing" data-locale-return-to />
+        <label for="currency-select" class="text-sm text-gray-500">{t('marketing.pricing.currency.label')}</label>
+        <select
+          id="currency-select"
+          name="currency"
+          aria-label={t('marketing.pricing.currency.label')}
+          onchange="this.form.submit()"
+          class="h-10 appearance-none rounded-xl bg-white py-2 pl-3 pr-8 text-sm font-semibold text-gray-700 shadow-sm ring-1 ring-gray-200 transition-colors hover:ring-gray-300 focus:outline-none focus:ring-2 focus:ring-horizon-500"
+        >
+          {PRESENTMENT_CURRENCIES.map((code) => (
+            <option value={code} selected={code === currency}>{code} · {currencyName(code)}</option>
+          ))}
+        </select>
+        <noscript>
+          <button type="submit" class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700">{t('common.save')}</button>
+        </noscript>
+      </form>
+      <p class="mt-2 text-xs text-gray-400">{t('marketing.pricing.currency.help')}</p>
     </div>
   )
 }
