@@ -51,6 +51,9 @@ function toMin(s: string | null): number | null {
 
 export type PendingView = {
   id: string
+  // 'run_sheet' rows offer edit-then-approve; 'wedding' headline-field requests
+  // (date/etc.) are a plain approve/decline — their fields don't fit the row form.
+  target: 'wedding' | 'run_sheet'
   op: 'create' | 'update' | 'delete'
   summary: string
   requester: string
@@ -130,7 +133,7 @@ function AssigneeChip({ a, basePath, itemId, editable, viewerUserId }: { a: Assi
 function AddPersonForm({ basePath, itemId, roster }: { basePath: string; itemId: string; roster: RosterEntry[] }) {
   const listId = `roster-${itemId}`
   return (
-    <form hx-post={`${basePath}/timeline/${itemId}/assignees`} hx-target="#timeline-body" hx-swap="outerHTML" hx-on--after-request="if(event.detail.elt===this&&event.detail.successful)this.reset()" class="inline-flex items-center gap-1">
+    <form hx-post={`${basePath}/timeline/${itemId}/assignees`} hx-target="#timeline-body" hx-swap="outerHTML" hx-disabled-elt="find button" hx-on--after-request="if(event.detail.elt===this&&event.detail.successful)this.reset()" class="inline-flex items-center gap-1">
       <input type="text" name="who" list={listId} placeholder={t('timeline.personPlaceholder')} class="w-32 border border-gray-200 rounded-full px-2 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-horizon-600 bg-white" />
       <datalist id={listId}>
         {roster.map((r) => <option value={r.name}>{r.subtitle ? `${r.name} — ${r.subtitle}` : r.name}</option>)}
@@ -259,7 +262,7 @@ function FormFields({
 function RowForm({ item, basePath, creatable, anchorOptions, sunAvailable }: { item: TimelineItemView; basePath: string; creatable: TimelineVisibility[]; anchorOptions: AnchorOption[]; sunAvailable: boolean }) {
   return (
     <li id={`trow-${item.id}`} class="px-4 py-3 bg-horizon-50/40">
-      <form hx-post={`${basePath}/timeline/${item.id}`} hx-target="#timeline-body" hx-swap="outerHTML" class="space-y-2">
+      <form hx-post={`${basePath}/timeline/${item.id}`} hx-target="#timeline-body" hx-swap="outerHTML" hx-disabled-elt="find button" class="space-y-2">
         <FormFields values={item} scope={item.id} creatable={creatable.length ? creatable : [item.visibility]} anchorOptions={anchorOptions.filter((o) => o.id !== item.id)} sunAvailable={sunAvailable} />
         <div class="flex items-center gap-2">
           <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700">{t('timeline.save')}</button>
@@ -369,7 +372,9 @@ function PendingCard({ p, basePath, canDecide, creatable, anchorOptions, sunAvai
         </ul>
       )}
       {canDecide ? (
-        p.op === 'delete' ? (
+        // A delete, or a wedding-headline change — nothing to edit inline, so a
+        // plain approve/decline (the summary above already says what changes).
+        p.op === 'delete' || p.target === 'wedding' ? (
           <div class="flex items-center gap-2 mt-2">
             <button type="button" hx-post={`${basePath}/timeline/requests/${p.id}/approve`} hx-target="#timeline-body" hx-swap="outerHTML" class="bg-horizon-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-horizon-700">{t('timeline.approve')}</button>
             <button type="button" hx-post={`${basePath}/timeline/requests/${p.id}/decline`} hx-target="#timeline-body" hx-swap="outerHTML" class="text-xs text-gray-500 hover:text-red-600">{t('timeline.decline')}</button>
@@ -432,7 +437,7 @@ export function TimelineBody(props: TimelineProps) {
       {/* Reset ONLY on the form's own successful submit — guarding against the
           bubbled htmx:afterRequest from the in-form location autocomplete, which
           would otherwise wipe everything typed so far. */}
-      <form hx-post={`${basePath}/timeline`} hx-target="#timeline-body" hx-swap="outerHTML" hx-on--after-request="if(event.detail.elt===this&&event.detail.successful)this.reset()" class="px-4 py-3 border-b border-gray-100 space-y-2 bg-gray-50/50">
+      <form hx-post={`${basePath}/timeline`} hx-target="#timeline-body" hx-swap="outerHTML" hx-disabled-elt="find button" hx-on--after-request="if(event.detail.elt===this&&event.detail.successful)this.reset()" class="px-4 py-3 border-b border-gray-100 space-y-2 bg-gray-50/50">
         {props.addError && <p class="text-xs text-grapefruit-600 font-bold">{props.addError}</p>}
         <FormFields values={props.addValues} creatable={creatable} anchorOptions={anchorOptions} sunAvailable={sunAvailable} />
         <button type="submit" class="bg-horizon-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700">{t('timeline.add')}</button>
@@ -504,9 +509,19 @@ function DaylightStrip({ sun }: { sun: NonNullable<TimelineProps['sun']> }) {
 export function WeddingTimeline(props: TimelineProps) {
   const hintKey = LEAD_HINT[props.lead.source]
   return (
-    <div class="mt-6" id="timeline">
+    <div class="mt-6" id="timeline" hx-indicator="#timeline-saving">
       <div class="mb-3">
-        <h3 class="text-sm font-bold text-gray-500">{t('timeline.heading')}</h3>
+        <h3 class="text-sm font-bold text-gray-500 flex items-center gap-2">
+          {t('timeline.heading')}
+          {/* Shown only while a timeline mutation is in flight (htmx-indicator). */}
+          <span id="timeline-saving" class="htmx-indicator inline-flex items-center gap-1 text-[10px] font-bold text-horizon-700">
+            <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+            </svg>
+            {t('timeline.saving')}
+          </span>
+        </h3>
         <p class="text-[10px] text-gray-400">{t('timeline.subhead')}</p>
         <p class="text-[10px] text-grapefruit-700 mt-0.5">
           {t('timeline.managedBy', { name: props.leadLabel })}

@@ -29,7 +29,6 @@ import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, formatDateTime, formatTime, daysUntil, addHoursToTime } from '../../lib/date'
 import { createEvent } from '../../db/calendar'
 import { resyncWeddingCalendars } from '../../services/wedding-calendar'
-import { applyRequest } from '../../services/timeline-approval'
 import { track } from '../../services/analytics'
 import { listVendorTypes, vendorTypeLabel, type VendorType } from '../../db/vendor-types'
 import { searchVendorsForWedding, getVendorWithEmail, getVendorByUserId } from '../../db/vendors'
@@ -45,9 +44,6 @@ import { displayRoles, CELEBRANT_SLUG, celebrantTermsDiffer } from '../../lib/ce
 import {
   getTimelineControllers,
   createTimelineRequest,
-  listPendingTimelineRequests,
-  getTimelineRequest,
-  decideTimelineRequest,
 } from '../../db/timeline-requests'
 import { isManagerVendor, categoriesLabel } from '../../lib/categories'
 import { weddingDisplayTitle } from '../../lib/wedding-display'
@@ -946,8 +942,6 @@ weddings.get('/app/weddings/:id', async (c) => {
     timelineSection,
     coupleVendors,
     log,
-    pendingTimelineRequests,
-    controllers,
   ] = await Promise.all([
     listDocumentsForWedding(c.env.DB, weddingId, user.id),
     listInvoicesForWedding(c.env.DB, vendor.id, weddingId),
@@ -972,13 +966,10 @@ weddings.get('/app/weddings/:id', async (c) => {
     renderTimelineSection(c, weddingId, membership, user, basePath, { wedding, lead }),
     listCoupleVendors(c.env.DB, weddingId).catch(() => [] as Awaited<ReturnType<typeof listCoupleVendors>>),
     listWeddingLog(c.env.DB, weddingId, 20).catch(() => [] as Awaited<ReturnType<typeof listWeddingLog>>),
-    listPendingTimelineRequests(c.env.DB, weddingId).catch(() => [] as Awaited<ReturnType<typeof listPendingTimelineRequests>>),
-    getTimelineControllers(c.env.DB, weddingId).catch(() => [] as Awaited<ReturnType<typeof getTimelineControllers>>),
   ])
 
   const sendableForms = sendableFormsAll.filter((f) => f.type === 'custom' && f.is_active)
   const credits = buildCredits(members, coupleVendors)
-  const isTimelineController = controllers.some((tc) => tc.user_id === user.id)
   const timelinePending = c.req.query('timeline_pending')
 
   return c.html(
@@ -1030,39 +1021,9 @@ weddings.get('/app/weddings/:id', async (c) => {
           </div>
         )}
 
-        {pendingTimelineRequests.length > 0 && (
-          <div class="mb-6">
-            <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.timeline.pendingTitle')}</h3>
-            <div class="bg-white border border-horizon-600/30 rounded-2xl p-4 space-y-3">
-              {pendingTimelineRequests.map((req) => (
-                <div class="flex items-start justify-between gap-3 text-sm border-b border-gray-100 last:border-0 pb-3 last:pb-0">
-                  <div>
-                    <p class="text-xs text-gray-500">
-                      {t('weddings.timeline.requestedBy', { name: req.requested_by_label ?? '' })} · {formatDateTime(req.created_at)}
-                    </p>
-                    <p class="text-gray-900 mt-1">{req.summary ?? '—'}</p>
-                  </div>
-                  {isTimelineController && (
-                    <div class="flex gap-2 shrink-0">
-                      <form method="post" action={`/app/weddings/${wedding.id}/timeline-requests/${req.id}/approve`}>
-                        <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                        <button type="submit" class="bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700">
-                          {t('weddings.timeline.approve')}
-                        </button>
-                      </form>
-                      <form method="post" action={`/app/weddings/${wedding.id}/timeline-requests/${req.id}/decline`}>
-                        <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                        <button type="submit" class="border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-papaya-50">
-                          {t('weddings.timeline.decline')}
-                        </button>
-                      </form>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Pending timeline-change approvals (incl. wedding-headline requests like
+            a date change) render inside the run-sheet's own diff cards now —
+            see renderTimelineSection / TimelineBody. */}
 
         {/* Details — one dense card instead of a scatter of single-value boxes */}
         <div class="mb-6">
@@ -1591,72 +1552,11 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
   }
 })
 
-// ─── Timeline change approvals ───
-
-weddings.post('/app/weddings/:id/timeline-requests/:rid/:decision{approve|decline}', async (c) => {
-  const user = c.get('user')
-  const vendor = c.get('vendor')!
-  const weddingId = c.req.param('id')
-  const requestId = c.req.param('rid')
-  const decision = c.req.param('decision') === 'approve' ? 'approved' : 'declined'
-
-  const membership = await getMembership(c.env.DB, weddingId, user.id)
-  if (!membership) return c.text('Not found', 404)
-
-  const controllers = await getTimelineControllers(c.env.DB, weddingId)
-  if (!controllers.some((tc) => tc.user_id === user.id)) return c.text('Not found', 404)
-
-  const request = await getTimelineRequest(c.env.DB, weddingId, requestId)
-  if (!request || request.status !== 'pending') {
-    return c.redirect(`/app/weddings/${weddingId}`)
-  }
-
-  await decideTimelineRequest(c.env.DB, requestId, user.id, decision)
-
-  if (decision === 'approved') {
-    try {
-      // applyRequest handles BOTH run-sheet items AND wedding headline fields —
-      // this box used to apply only target==='wedding', silently dropping
-      // approved run-sheet (timeline) changes.
-      await applyRequest(c.env.DB, request)
-      // Re-solve the liquid timeline + refresh calendars (parity with the
-      // timeline-UI approve path's afterWrite).
-      await resolveAndMaterialize(c.env.DB, weddingId, await weddingSunMinutes(c.env.DB, weddingId))
-      await resyncWeddingCalendars(c.env.DB, weddingId, vendor.id)
-    } catch (err) {
-      console.error('[weddings] applying approved timeline change failed:', err)
-      return c.redirect(`/app/weddings/${weddingId}?error=${encodeURIComponent('Applying the change failed')}`)
-    }
-    if (request.target === 'wedding') {
-      c.executionCtx.waitUntil(
-        geocodeWeddingLocation(c.env, weddingId).catch((err) => console.error('[weddings] geocode failed:', err))
-      )
-    }
-  }
-
-  await appendWeddingLog(
-    c.env.DB, weddingId, user.id,
-    decision === 'approved' ? 'Timeline change approved' : 'Timeline change declined',
-    request.summary
-  ).catch(() => {})
-
-  // Approved changes alter wedding.md; either decision clears the pending
-  // section in timeline.md — refresh the vault both ways.
-  c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
-
-  await c.env.EMAIL_QUEUE.send({
-    type: 'notify_timeline_change_decided',
-    payload: JSON.stringify({
-      weddingId,
-      requesterUserId: request.requested_by_user_id,
-      deciderLabel: vendor.business_name,
-      approved: decision === 'approved',
-      summary: request.summary,
-    }),
-  }).catch((e: any) => console.error('[weddings] timeline decision notify enqueue failed', e.message))
-
-  return c.redirect(`/app/weddings/${weddingId}`)
-})
+// Timeline-change approvals (run-sheet AND wedding-headline requests) are handled
+// by the unified timeline htmx route — POST /app/weddings/:id/timeline/requests/
+// :reqId/:decision in routes/vendor/timeline.tsx → timeline-handlers `decide`,
+// which applies via applyRequest + afterWrite. The old standalone box + route
+// here were removed to keep a single approval UI and apply path.
 
 // ─── Promote contact to wedding ───
 weddings.get('/app/contacts/:id/promote', async (c) => {

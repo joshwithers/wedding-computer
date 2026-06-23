@@ -111,6 +111,7 @@ export const timeline = {
   'timeline.personPlaceholder': 'Name or role…',
 
   'timeline.save': 'Save',
+  'timeline.saving': 'Saving…',
   'timeline.cancel': 'Cancel',
   'timeline.edit': 'Edit',
   'timeline.remove': 'Remove',

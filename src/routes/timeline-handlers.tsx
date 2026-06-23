@@ -256,15 +256,20 @@ async function buildProps(
   }
   const canDecide = isTimelineLead(lead, viewer.userId)
   const pending: PendingView[] = pendingRaw
-    .filter((r) => r.target === 'run_sheet' && (canDecide || r.requested_by_user_id === viewer.userId))
+    .filter((r) => canDecide || r.requested_by_user_id === viewer.userId)
     .map((r) => {
       const p = parsePayload(r)
       return {
         id: r.id,
+        target: r.target,
         op: r.op,
         summary: r.summary ?? '',
         requester: r.requested_by_label ?? 'Someone',
-        diff: diffRows(p),
+        // Wedding-headline requests (a date/etc. change from the wedding form)
+        // carry a flat field map plus a human summary, not a run-sheet
+        // before/after — so diffRows is empty and the card leans on the summary.
+        // Only run-sheet rows get the per-field diff + edit-then-approve form.
+        diff: r.target === 'run_sheet' ? diffRows(p) : [],
         after: p.after ?? {},
         isOwn: r.requested_by_user_id === viewer.userId,
       }
@@ -317,15 +322,14 @@ function body(c: Ctx, props: TimelineProps) {
 async function afterWrite(c: Ctx, weddingId: string) {
   const env = c.env
   const vendor = c.get('vendor')
-  // A run-sheet change was applied directly (not proposed) — mark the wedding
-  // so the debounced cron notifies the rest of the run-sheet team.
-  await markTimelineDirty(env.KV, weddingId, c.get('user')?.id ?? '').catch(() => {})
+  const userId = c.get('user')?.id ?? ''
   // Re-solve the liquid timeline and persist concrete start/end times BEFORE we
   // render + project, so display, the legacy slot columns, calendars and
   // markdown all reflect the recomputed clock. The view renders the persisted
   // start_time, so this MUST stay awaited before the re-render (a deferral here
   // would show new/anchored rows as "—"). One getWedding feeds both this and
-  // the re-render.
+  // the re-render. Everything else (dirty flag, projection, calendars, vault
+  // push) is deferred so the edit feels instant.
   const wedding = await getWedding(env.DB, weddingId)
   try {
     await resolveAndMaterialize(env.DB, weddingId, wedding ? sunMinutesForWedding(wedding) : {})
@@ -335,6 +339,8 @@ async function afterWrite(c: Ctx, weddingId: string) {
   c.executionCtx.waitUntil(
     (async () => {
       try {
+        // Mark the wedding dirty so the debounced cron notifies the run-sheet team.
+        await markTimelineDirty(env.KV, weddingId, userId).catch(() => {})
         await projectTimelineToWedding(env.DB, weddingId)
         await resyncWeddingCalendars(env.DB, weddingId, vendor?.id)
         if (vendor) {
