@@ -20,6 +20,7 @@ import { makeUnsubscribeToken, unsubscribeUrl } from '../services/notification-p
 import { auditLog } from '../middleware/audit'
 import { listVendorTypes, addVendorType, setVendorTypeActive, vendorTypeLabel } from '../db/vendor-types'
 import { resyncWeddingCalendars } from '../services/wedding-calendar'
+import { ensureCoupleContact } from '../services/couple-contact'
 import { sanitizeInstagramHandle } from '../lib/instagram'
 import { normalizeCelebrantTerm, celebrantTermOf, celebrantTermLabel, CELEBRANT_SLUG, OFFICIANT_TERM } from '../lib/celebrant-term'
 
@@ -379,6 +380,60 @@ admin.get('/admin', async (c) => {
               Clean up now
             </button>
           </form>
+        </section>
+
+        <section class="bg-white rounded-2xl p-5 border border-gray-200 mt-6">
+          <h2 class="text-lg font-bold mb-1">Backfill couple contacts</h2>
+          <p class="text-sm text-gray-500 mb-4">
+            One-off: give every vendor on every wedding the couple's full contact details (names, emails,
+            phones, address, socials) as a CRM contact, so vendors added before this fix can see and reach
+            the couple. Couple-owned fields come from the couple's account; the rest from the richest existing
+            contact on the wedding. Non-destructive (fills only missing fields) and safe to re-run. Runs in
+            small batches.
+          </p>
+          <form id="backfill-cc-form">
+            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+            <button id="backfill-cc-btn" type="submit" class="bg-gray-900 text-white rounded-xl px-4 py-2 text-sm font-bold hover:bg-gray-800 transition-colors">
+              Backfill now
+            </button>
+          </form>
+          <p id="backfill-cc-status" class="text-sm text-gray-600 mt-3" role="status" aria-live="polite"></p>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `
+            (function () {
+              var form = document.getElementById('backfill-cc-form');
+              if (!form) return;
+              form.addEventListener('submit', async function (e) {
+                e.preventDefault();
+                var btn = document.getElementById('backfill-cc-btn');
+                var status = document.getElementById('backfill-cc-status');
+                var csrf = form.querySelector('input[name=_csrf]').value;
+                btn.disabled = true; btn.style.opacity = '0.6';
+                var after = '', touched = 0, fail = 0, done = false, lastError = '', batches = 0;
+                try {
+                  while (!done) {
+                    var fd = new FormData();
+                    fd.set('_csrf', csrf);
+                    fd.set('after', after);
+                    var res = await fetch('/admin/backfill-couple-contacts', { method: 'POST', body: fd });
+                    if (!res.ok) { status.textContent = 'Request failed (' + res.status + '). Click to resume.'; break; }
+                    var j = await res.json();
+                    touched += j.vendorsTouched; fail += j.fail; after = j.nextCursor || after; done = !!j.done; batches++;
+                    if (j.lastError) lastError = j.lastError;
+                    status.textContent = 'Vendors processed ' + touched + ', failed ' + fail + ' (' + batches + ' batches)' + (done ? ' — done.' : '…') + (lastError ? ' Last error: ' + lastError : '');
+                    if (!j.batch) break;
+                  }
+                } catch (err) {
+                  status.textContent = 'Stopped: ' + (err && err.message ? err.message : err) + '. Click to resume.';
+                } finally {
+                  btn.disabled = false; btn.style.opacity = '1';
+                }
+              });
+            })();
+          `,
+            }}
+          />
         </section>
       </div>
     </AdminLayout>
@@ -1198,6 +1253,58 @@ admin.post('/admin/backfill-instagram', async (c) => {
   const coupleVendors = await fixTable('couple_vendors')
   await auditLog(c, 'backfill_instagram', 'system', undefined, { vendors, coupleVendors }).catch(() => {})
   return c.json({ vendors, coupleVendors })
+})
+
+// One-off: ensure every vendor on every wedding has the couple's full contact
+// details as a CRM contact (names, emails, phones, address, socials). For
+// vendors added before this was wired into the add-vendor flows. Cursor-batched
+// (storage writes per vendor exceed the per-request budget in one go).
+// ensureCoupleContact is idempotent + non-destructive (fills only missing fields).
+admin.post('/admin/backfill-couple-contacts', async (c) => {
+  const BATCH = 15
+  const body = await c.req.parseBody().catch(() => ({} as Record<string, unknown>))
+  const after = typeof body.after === 'string' ? body.after : ''
+  const weddings = await c.env.DB
+    .prepare(
+      `SELECT DISTINCT w.id FROM weddings w
+       JOIN wedding_members wm ON wm.wedding_id = w.id
+       WHERE wm.role = 'vendor' AND wm.status = 'active' AND wm.vendor_profile_id IS NOT NULL
+         AND w.id > ?1
+       ORDER BY w.id ASC
+       LIMIT ?2`
+    )
+    .bind(after, BATCH)
+    .all<{ id: string }>()
+    .then((r) => r.results)
+  let vendorsTouched = 0
+  let fail = 0
+  let lastError = ''
+  for (const w of weddings) {
+    try {
+      const members = await c.env.DB
+        .prepare(
+          `SELECT DISTINCT vendor_profile_id FROM wedding_members
+           WHERE wedding_id = ? AND role = 'vendor' AND status = 'active' AND vendor_profile_id IS NOT NULL`
+        )
+        .bind(w.id)
+        .all<{ vendor_profile_id: string }>()
+        .then((r) => r.results)
+      for (const m of members) {
+        const vp = await getVendorById(c.env.DB, m.vendor_profile_id)
+        if (!vp) continue
+        await ensureCoupleContact(c.env, vp, w.id)
+        vendorsTouched++
+      }
+    } catch (err) {
+      fail++
+      lastError = String((err as Error)?.message ?? err)
+      console.error('[backfill-couple-contacts] failed', w.id, err)
+    }
+  }
+  const done = weddings.length < BATCH
+  const nextCursor = weddings.length ? weddings[weddings.length - 1].id : after
+  await auditLog(c, 'backfill_couple_contacts', 'system', undefined, { batch: weddings.length, vendorsTouched, fail, done }).catch(() => {})
+  return c.json({ batch: weddings.length, vendorsTouched, fail, done, nextCursor, lastError: lastError || undefined })
 })
 
 // ─── Waitlist ───

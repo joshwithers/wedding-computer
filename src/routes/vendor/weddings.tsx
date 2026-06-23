@@ -48,6 +48,7 @@ import {
 import { isManagerVendor, categoriesLabel } from '../../lib/categories'
 import { weddingDisplayTitle } from '../../lib/wedding-display'
 import { sendVendorWelcomeInvite } from '../../services/auth'
+import { ensureCoupleContact } from '../../services/couple-contact'
 import { TIMELINE_FIELDS } from '../../services/timeline-edit'
 import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes } from '../../db/timeline'
 import { t, tp } from '../../i18n'
@@ -685,6 +686,8 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
         payload: JSON.stringify({ weddingId, vendorEmail: vp.user_email, vendorName: vp.business_name, addedBy: vendor.business_name }),
       }).catch(() => {})
     )
+    // Share the couple's full contact details with the newly-added vendor.
+    c.executionCtx.waitUntil(ensureCoupleContact(c.env, vp, weddingId))
     track(c.env.DB, vendor.id, 'vendor_added', { weddingId, metadata: { vendorId: vp.id } })
     return c.redirect(`/app/weddings/${weddingId}?invited=1`)
   }
@@ -739,6 +742,8 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
         payload: JSON.stringify({ weddingId, vendorEmail: email, vendorName: name, addedBy: vendor.business_name }),
       }).catch(() => {})
     )
+    // Share the couple's full contact details with the newly-added vendor.
+    c.executionCtx.waitUntil(ensureCoupleContact(c.env, vendorProfile, weddingId))
   } else {
     // New to Wedding Computer — introduce the platform (welcome email + magic link).
     c.executionCtx.waitUntil(
