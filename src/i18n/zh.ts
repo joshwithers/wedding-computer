@@ -1306,7 +1306,7 @@ export const zh: Dictionary = {
   'marketing.about.vendors.api.title': "线索接入 API 和 AI 智能体捕获 (Pro)",
   'marketing.about.vendors.api.desc': "通过 JSON 咨询 API，从 Zapier、webhook 或你自己的网站导入咨询，或让 AI 智能体通过 MCP 替你提交一条线索。线索会直接进入你的管道。",
   'marketing.about.collab.title': "每一场婚礼上的协作",
-  'marketing.about.collab.subtitle': "整个团队共同协作的共享层——在每个方案中都免费，供应商和新人皆可使用。",
+  'marketing.about.collab.subtitle': "整个团队共同协作的共享层——所有方案皆免费，供应商和新人都能用。",
   'marketing.about.collab.runsheet.title': "一份共享运行表",
   'marketing.about.collab.runsheet.desc': "一份当天时间线，人人共用。设置一次时间，它就会出现在每位被分配供应商的日历中；改动它，它就为所有人同步更改。",
   'marketing.about.collab.approval.title': "审批流程",
