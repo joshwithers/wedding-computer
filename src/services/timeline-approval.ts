@@ -5,7 +5,8 @@
 // the existing request table + notify_timeline_change_* queue messages.
 
 import { createTimelineRequest } from '../db/timeline-requests'
-import { createItem, updateItem, deleteItem } from '../db/timeline'
+import { createItem, updateItem, deleteItem, applyWeddingUpdate } from '../db/timeline'
+import { getWedding } from '../db/weddings'
 import { appendWeddingLog } from '../db/wedding-log'
 import type {
   TimelineChangeRequest,
@@ -150,6 +151,23 @@ export async function applyRequest(
   req: TimelineChangeRequest,
   editedAfter?: Partial<RowFields>
 ): Promise<void> {
+  // Wedding headline-field proposals (date/time/location/etc. from the wedding
+  // edit form) carry a FLAT field map, not a run_sheet before/after — route them
+  // through applyWeddingUpdate (which lands the times on the slot rows). Without
+  // this, the run_sheet_item_id guard below silently dropped every approved
+  // wedding-field change.
+  if (req.target === 'wedding') {
+    let fields: Record<string, string | number | null> = {}
+    try {
+      fields = JSON.parse(req.payload)
+    } catch {
+      return
+    }
+    const current = await getWedding(db, req.wedding_id)
+    await applyWeddingUpdate(db, req.wedding_id, fields, req.requested_by_user_id, current ?? undefined)
+    return
+  }
+
   const payload = parsePayload(req)
   const after = { ...(payload.after ?? {}), ...(editedAfter ?? {}) }
 

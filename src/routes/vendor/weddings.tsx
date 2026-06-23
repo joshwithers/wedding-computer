@@ -29,6 +29,7 @@ import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, formatDateTime, formatTime, daysUntil, addHoursToTime } from '../../lib/date'
 import { createEvent } from '../../db/calendar'
 import { resyncWeddingCalendars } from '../../services/wedding-calendar'
+import { applyRequest } from '../../services/timeline-approval'
 import { track } from '../../services/analytics'
 import { listVendorTypes, vendorTypeLabel, type VendorType } from '../../db/vendor-types'
 import { searchVendorsForWedding, getVendorWithEmail, getVendorByUserId } from '../../db/vendors'
@@ -1592,21 +1593,6 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
 
 // ─── Timeline change approvals ───
 
-/** Apply an approved wedding-timeline payload and resync everyone's calendars. */
-async function applyTimelinePayload(
-  db: D1Database,
-  weddingId: string,
-  payload: Record<string, any>,
-  fallbackVendorId: string,
-  approverUserId: string
-): Promise<void> {
-  // Route the approved headline-time fields onto the slot rows (source of truth)
-  // rather than writing the derived columns directly.
-  const current = await getWedding(db, weddingId)
-  await applyWeddingUpdate(db, weddingId, payload as Record<string, string | number | null>, approverUserId, current as any)
-  await resyncWeddingCalendars(db, weddingId, fallbackVendorId)
-}
-
 weddings.post('/app/weddings/:id/timeline-requests/:rid/:decision{approve|decline}', async (c) => {
   const user = c.get('user')
   const vendor = c.get('vendor')!
@@ -1627,22 +1613,25 @@ weddings.post('/app/weddings/:id/timeline-requests/:rid/:decision{approve|declin
 
   await decideTimelineRequest(c.env.DB, requestId, user.id, decision)
 
-  if (decision === 'approved' && request.target === 'wedding') {
-    let payload: Record<string, any> = {}
+  if (decision === 'approved') {
     try {
-      payload = JSON.parse(request.payload)
-    } catch {
-      // empty payload — nothing to apply
-    }
-    try {
-      await applyTimelinePayload(c.env.DB, weddingId, payload, vendor.id, user.id)
+      // applyRequest handles BOTH run-sheet items AND wedding headline fields —
+      // this box used to apply only target==='wedding', silently dropping
+      // approved run-sheet (timeline) changes.
+      await applyRequest(c.env.DB, request)
+      // Re-solve the liquid timeline + refresh calendars (parity with the
+      // timeline-UI approve path's afterWrite).
+      await resolveAndMaterialize(c.env.DB, weddingId, await weddingSunMinutes(c.env.DB, weddingId))
+      await resyncWeddingCalendars(c.env.DB, weddingId, vendor.id)
     } catch (err) {
       console.error('[weddings] applying approved timeline change failed:', err)
       return c.redirect(`/app/weddings/${weddingId}?error=${encodeURIComponent('Applying the change failed')}`)
     }
-    c.executionCtx.waitUntil(
-      geocodeWeddingLocation(c.env, weddingId).catch((err) => console.error('[weddings] geocode failed:', err))
-    )
+    if (request.target === 'wedding') {
+      c.executionCtx.waitUntil(
+        geocodeWeddingLocation(c.env, weddingId).catch((err) => console.error('[weddings] geocode failed:', err))
+      )
+    }
   }
 
   await appendWeddingLog(

@@ -6,6 +6,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { applyWeddingUpdate, deleteItem, projectTimelineToWedding, updateItem } from './timeline'
+import { applyRequest } from '../services/timeline-approval'
 import { MockD1Database } from '../storage/__tests__/mock-d1'
 
 const WID = 'wedding-1'
@@ -293,5 +294,43 @@ describe('applyWeddingUpdate', () => {
     expect(db.getTable('weddings')[0].time).toBe('15:00')
     expect(db.getTable('weddings')[0].ceremony_location).toBe('Chapel')
     expect(db.getTable('timeline_items').find((i) => i.id === 'free-1')!.start_time).toBe('18:00')
+  })
+})
+
+describe('applyRequest — approval handshake applies BOTH targets', () => {
+  let db: MockD1Database
+  beforeEach(() => {
+    db = new MockD1Database()
+    db.seed('timeline_items', [ceremonyRow({ start_time: '15:00' })])
+    db.seed('weddings', [makeWedding({ time: '15:00' })])
+  })
+
+  // Regression: a target='wedding' request (headline times from the wedding edit
+  // form) used to early-return in applyRequest (no run_sheet_item_id), so the
+  // planner's approval changed nothing. It must now route through applyWeddingUpdate.
+  it('applies an approved target=wedding request onto the slot row + derived column', async () => {
+    const req = {
+      id: 'r1', wedding_id: WID, target: 'wedding', op: 'update',
+      run_sheet_item_id: null, requested_by_user_id: 'u1', requested_by_label: 'Demo',
+      vendor_profile_id: null, payload: JSON.stringify({ time: '16:30' }),
+      summary: 'Start: 15:00 → 16:30', status: 'pending', created_at: '2026-01-01',
+      decided_by_user_id: null, decided_at: null,
+    } as any
+    await applyRequest(db as any, req)
+    expect(db.getTable('timeline_items').find((i) => i.slot === 'ceremony')!.start_time).toBe('16:30')
+    expect(db.getTable('weddings')[0].time).toBe('16:30')
+  })
+
+  it('still applies an approved target=run_sheet update to its timeline item', async () => {
+    const req = {
+      id: 'r2', wedding_id: WID, target: 'run_sheet', op: 'update',
+      run_sheet_item_id: 'item-ceremony', requested_by_user_id: 'u1', requested_by_label: 'Demo',
+      vendor_profile_id: null,
+      payload: JSON.stringify({ before: { start_time: '15:00' }, after: { start_time: '17:45', title: 'Ceremony' } }),
+      summary: 'Start: 15:00 → 17:45', status: 'pending', created_at: '2026-01-01',
+      decided_by_user_id: null, decided_at: null,
+    } as any
+    await applyRequest(db as any, req)
+    expect(db.getTable('timeline_items').find((i) => i.id === 'item-ceremony')!.start_time).toBe('17:45')
   })
 })
