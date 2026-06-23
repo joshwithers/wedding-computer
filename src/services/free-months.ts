@@ -1,7 +1,6 @@
 import type { Env } from '../types'
 import { getSubscription } from '../db/subscriptions'
 import { getVendorById } from '../db/vendors'
-import { getProPrice, isCurrencyCode, type CurrencyCode } from './pricing'
 
 // Redeem a vendor's banked free months as a Stripe customer-balance credit, so
 // their upcoming Pro invoices are reduced automatically. Only applies when the
@@ -9,12 +8,13 @@ import { getProPrice, isCurrencyCode, type CurrencyCode } from './pricing'
 // months stay banked and are redeemed as a trial at their next checkout.
 // Zeroes the local balance once credited. Safe to call repeatedly (no-op at 0).
 //
-// The credit is issued in the SUBSCRIPTION's own currency. Stripe customer
+// The credit mirrors the subscription's OWN price and currency. Stripe customer
 // balances are per-currency — an AUD credit never discounts a USD-billed
 // invoice — and since 2026-06-23 Pro is charged in the visitor's local currency
-// (see services/pricing.ts). So we read the live subscription's currency and
-// credit one month's real price in it: A$28 for AUD, US$19 for USD, ¥2,800 for
-// JPY, etc. AUD subscribers are unchanged (A$28 × months, credited in AUD).
+// (see services/pricing.ts). We read the live subscription's locked unit amount
+// (not the current market price, which FX may have moved away from since signup)
+// so each free month exactly covers one of their real invoices. AUD subscribers
+// are unchanged (A$28 × months, credited in AUD).
 export async function redeemBankedMonthsToStripe(
   env: Env['Bindings'],
   vendorId: string
@@ -34,16 +34,16 @@ export async function redeemBankedMonthsToStripe(
   const months = vendor?.free_months ?? 0
   if (months <= 0) return
 
-  // Match the credit to what Stripe will actually bill. The subscription's
-  // currency is authoritative; a balance in any other currency would strand.
-  const currency = await fetchSubscriptionCurrency(env.STRIPE_SECRET_KEY, sub.stripe_subscription_id)
-  if (!isCurrencyCode(currency)) {
-    // Unknown/unsupported (or fetch failed) — don't risk crediting the wrong
-    // currency. Leave the months banked so this retries on the next trigger.
-    console.error('[free-months] unresolved subscription currency, leaving banked', vendorId, currency)
+  // The subscription's own locked price + currency is what Stripe actually
+  // bills, so crediting it guarantees the balance applies and one month is
+  // fully covered. A balance in any other currency would strand.
+  const priced = await fetchSubscriptionPrice(env.STRIPE_SECRET_KEY, sub.stripe_subscription_id)
+  if (!priced) {
+    // Fetch failed or no resolvable price — don't risk crediting the wrong
+    // amount/currency. Leave the months banked so this retries next trigger.
+    console.error('[free-months] unresolved subscription price, leaving banked', vendorId)
     return
   }
-  const price = await getProPrice(env, currency.toUpperCase() as CurrencyCode)
 
   // Negative customer balance = account credit Stripe applies to next invoices.
   // unitAmount is already in Stripe minor units (cents, or whole yen for
@@ -57,8 +57,8 @@ export async function redeemBankedMonthsToStripe(
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        amount: String(-price.unitAmount * months),
-        currency: price.stripeCurrency,
+        amount: String(-priced.unitAmount * months),
+        currency: priced.currency,
         description: `${months} free month${months === 1 ? '' : 's'} (Wedding Computer)`,
       }).toString(),
     }
@@ -75,13 +75,14 @@ export async function redeemBankedMonthsToStripe(
     .run()
 }
 
-// Fetch the live subscription's three-letter ISO currency (lowercase), or null
-// if the lookup fails or the field is absent. Keeping AUD subscribers identical
-// relies on Stripe reporting their subscription currency as 'aud'.
-async function fetchSubscriptionCurrency(
+// Read the live subscription's billed monthly amount and ISO currency
+// (lowercase) straight from Stripe — summing line items × quantity. Returns
+// null if the lookup fails or no positive amount resolves, so the caller leaves
+// the months banked rather than guessing.
+async function fetchSubscriptionPrice(
   stripeSecretKey: string,
   subscriptionId: string
-): Promise<string | null> {
+): Promise<{ unitAmount: number; currency: string } | null> {
   const res = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
     headers: { Authorization: `Bearer ${stripeSecretKey}` },
   })
@@ -89,6 +90,20 @@ async function fetchSubscriptionCurrency(
     console.error('[free-months] subscription fetch failed', subscriptionId, res.status)
     return null
   }
-  const data = (await res.json().catch(() => null)) as { currency?: string } | null
-  return data?.currency ?? null
+  const data = (await res.json().catch(() => null)) as {
+    currency?: string
+    items?: { data?: Array<{ quantity?: number; price?: { unit_amount?: number; currency?: string } }> }
+  } | null
+  if (!data) return null
+
+  let unitAmount = 0
+  let currency = data.currency ?? null
+  for (const item of data.items?.data ?? []) {
+    const amount = item.price?.unit_amount
+    if (typeof amount === 'number') unitAmount += amount * (item.quantity ?? 1)
+    if (item.price?.currency) currency = item.price.currency
+  }
+
+  if (!currency || unitAmount <= 0) return null
+  return { unitAmount, currency }
 }
