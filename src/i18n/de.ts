@@ -6,6 +6,8 @@ export const de: Dictionary = {
   'timeline.sun.sunset': 'Sonnenuntergang',
   'timeline.sun.goldenHour': 'Goldene Stunde',
   'timeline.saving': 'Wird gespeichert …',
+  'timeline.wallpaper': 'Hintergrund',
+  'timeline.wallpaperHint': 'Ein Sperrbildschirm-Hintergrundbild des Ablaufplans öffnen',
   'forms.date.today': 'Das ist heute',
   'forms.date.away': 'in {duration}',
   'forms.date.ago': 'vor {duration}',

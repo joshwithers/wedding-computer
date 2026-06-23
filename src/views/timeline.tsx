@@ -511,17 +511,32 @@ export function WeddingTimeline(props: TimelineProps) {
   return (
     <div class="mt-6" id="timeline" hx-indicator="#timeline-saving">
       <div class="mb-3">
-        <h3 class="text-sm font-bold text-gray-500 flex items-center gap-2">
-          {t('timeline.heading')}
-          {/* Shown only while a timeline mutation is in flight (htmx-indicator). */}
-          <span id="timeline-saving" class="htmx-indicator inline-flex items-center gap-1 text-[10px] font-bold text-horizon-700">
-            <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+        <div class="flex items-start justify-between gap-2">
+          <h3 class="text-sm font-bold text-gray-500 flex items-center gap-2">
+            {t('timeline.heading')}
+            {/* Shown only while a timeline mutation is in flight (htmx-indicator). */}
+            <span id="timeline-saving" class="htmx-indicator inline-flex items-center gap-1 text-[10px] font-bold text-horizon-700">
+              <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+              </svg>
+              {t('timeline.saving')}
+            </span>
+          </h3>
+          <a
+            href={`${props.basePath}/timeline/wallpaper.png`}
+            target="_blank"
+            rel="noopener"
+            class="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-horizon-700 border border-horizon-200 rounded-lg px-2 py-1 hover:bg-horizon-50 whitespace-nowrap"
+            title={t('timeline.wallpaperHint')}
+          >
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="6" y="2" width="12" height="20" rx="2.5" />
+              <path d="M11 19h2" />
             </svg>
-            {t('timeline.saving')}
-          </span>
-        </h3>
+            {t('timeline.wallpaper')}
+          </a>
+        </div>
         <p class="text-[10px] text-gray-400">{t('timeline.subhead')}</p>
         <p class="text-[10px] text-grapefruit-700 mt-0.5">
           {t('timeline.managedBy', { name: props.leadLabel })}

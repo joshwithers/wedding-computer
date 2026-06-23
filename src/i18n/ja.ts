@@ -76,6 +76,8 @@ export const ja: Dictionary = {
   'weddings.team.inviteByEmail': 'またはメールで招待',
   'timeline.field.titleRequired': 'この項目のタイトルを入力してください。',
   'timeline.saving': '保存中…',
+  'timeline.wallpaper': '壁紙',
+  'timeline.wallpaperHint': '進行表のロック画面用の壁紙を開く',
   'weddings.vendorType.any': '種類（任意）',
   'dashboard.demo.addTitle': 'Wedding Computer にサンプルの結婚式を読み込む',
   'dashboard.demo.addBlurb': '1 週間分のサンプルを読み込みます — 結婚式 3 件と、その事業者チーム、当日のタイムラインやメモ、さらに新着の問い合わせがいくつか。いつでも削除できます。',

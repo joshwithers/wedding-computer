@@ -49,8 +49,11 @@ import { proposeChange, applyRequest, diffRows, parsePayload, type RowFields } f
 import { getWedding } from '../db/weddings'
 import { daylightStrip, sunMinutesFor, resolveLocationTimezone } from '../lib/sun'
 import { solveTimeline, minToHhmm, hhmmToMin } from '../lib/timeline-solver'
-import { nowTimeString } from '../lib/date'
+import { nowTimeString, formatDate } from '../lib/date'
 import { t, getI18n } from '../i18n'
+import { getCouplePartners } from '../services/couple-contact'
+import { buildWallpaperHtml, selectKeyMoments, generateTagline, WALLPAPER_W, WALLPAPER_H } from '../services/timeline-export'
+import { renderPng } from '../services/og-render'
 
 type Ctx = Context<Env>
 
@@ -629,4 +632,42 @@ export function approveTimelineRequest(c: Ctx, weddingId: string, member: Weddin
 
 export function declineTimelineRequest(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string, requestId: string) {
   return decide(c, weddingId, member, user, basePath, requestId, false)
+}
+
+/**
+ * Render the wedding's run sheet as a phone-lockscreen wallpaper PNG. Any
+ * member (vendor or couple) may download it; `member` is already resolved by
+ * the route guard, so this is membership-scoped. Couple names use the richest
+ * available surnames (vendor's contact → couple members → title), and a warm
+ * AI tagline is woven in (cached, best-effort).
+ */
+export async function wallpaperPng(c: Ctx, weddingId: string, _member: WeddingMember, _user: User) {
+  const wedding = await getWedding(c.env.DB, weddingId)
+  if (!wedding) return c.text('Not found', 404)
+
+  const vendorId = c.get('vendor')?.id
+  const [partners, items] = await Promise.all([
+    getCouplePartners(c.env.DB, weddingId, { vendorId, title: wedding.title }),
+    listTimeline(c.env.DB, weddingId),
+  ])
+
+  const dateLabel = wedding.date ? formatDate(wedding.date) : ''
+  const locationLabel =
+    [wedding.location_city, wedding.location_state].filter(Boolean).join(', ') || wedding.location || undefined
+  const names = partners.map((p) => p.first).filter(Boolean).join(' & ') || wedding.title
+  const tagline = await generateTagline(c.env, { weddingId, names, dateLabel, locationLabel })
+
+  const html = buildWallpaperHtml({ partners, dateLabel, locationLabel, tagline, items: selectKeyMoments(items) })
+  const png = await renderPng(c.env, html, WALLPAPER_W, WALLPAPER_H)
+
+  const slug = (names || 'wedding').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'wedding'
+  return new Response(png, {
+    headers: {
+      'content-type': 'image/png',
+      // inline so it opens in a tab — on a phone the vendor can long-press →
+      // save to photos → set as lockscreen; on desktop, right-click → save.
+      'content-disposition': `inline; filename="${slug}-run-sheet.png"`,
+      'cache-control': 'private, max-age=300',
+    },
+  })
 }

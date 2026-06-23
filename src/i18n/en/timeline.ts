@@ -112,6 +112,8 @@ export const timeline = {
 
   'timeline.save': 'Save',
   'timeline.saving': 'Saving…',
+  'timeline.wallpaper': 'Wallpaper',
+  'timeline.wallpaperHint': 'Open a phone-lockscreen wallpaper of the run sheet',
   'timeline.cancel': 'Cancel',
   'timeline.edit': 'Edit',
   'timeline.remove': 'Remove',

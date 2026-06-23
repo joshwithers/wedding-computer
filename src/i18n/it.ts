@@ -76,6 +76,8 @@ export const it: Dictionary = {
   'weddings.team.inviteByEmail': 'Oppure invita via email',
   'timeline.field.titleRequired': 'Aggiungi un titolo per questo elemento.',
   'timeline.saving': 'Salvataggio…',
+  'timeline.wallpaper': 'Sfondo',
+  'timeline.wallpaperHint': 'Apri uno sfondo per la schermata di blocco con la scaletta',
   'weddings.vendorType.any': 'Tipo (facoltativo)',
   'dashboard.demo.addTitle': 'Carica qualche matrimonio dimostrativo nel tuo Wedding Computer',
   'dashboard.demo.addBlurb': 'Carica una settimana di esempio — 3 matrimoni con i loro team di fornitori, fogli di esecuzione e note, più qualche nuova richiesta. Puoi rimuoverla quando vuoi.',

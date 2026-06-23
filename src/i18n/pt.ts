@@ -76,6 +76,8 @@ export const pt: Dictionary = {
   'weddings.team.inviteByEmail': 'Ou convide por e-mail',
   'timeline.field.titleRequired': 'Adicione um título para este item.',
   'timeline.saving': 'Salvando…',
+  'timeline.wallpaper': 'Papel de parede',
+  'timeline.wallpaperHint': 'Abrir um papel de parede de bloqueio com o roteiro',
   'weddings.vendorType.any': 'Tipo (opcional)',
   'dashboard.demo.addTitle': 'Carregue alguns casamentos de demonstração no seu Wedding Computer',
   'dashboard.demo.addBlurb': 'Carregue uma semana de exemplo — 3 casamentos, suas equipes de fornecedores, planilhas de execução e notas, além de algumas consultas novas. Remova quando quiser.',

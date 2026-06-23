@@ -6,6 +6,8 @@ export const nl: Dictionary = {
   'timeline.sun.sunset': 'Zonsondergang',
   'timeline.sun.goldenHour': 'Gouden uur',
   'timeline.saving': 'Bezig met opslaan…',
+  'timeline.wallpaper': 'Achtergrond',
+  'timeline.wallpaperHint': 'Open een vergrendelscherm-achtergrond van het draaiboek',
   'forms.date.today': 'Dat is vandaag',
   'forms.date.away': 'over {duration}',
   'forms.date.ago': '{duration} geleden',

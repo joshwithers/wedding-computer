@@ -3,9 +3,71 @@ import { getWedding, getWeddingMembers } from '../db/weddings'
 import { getStorageWithSecrets } from '../storage'
 import { createContact } from '../storage/contacts'
 
-function splitName(name?: string | null): [string, string] {
+export function splitName(name?: string | null): [string, string] {
   const parts = (name ?? '').trim().split(/\s+/).filter(Boolean)
   return [parts[0] ?? '', parts.slice(1).join(' ')]
+}
+
+export type CouplePartner = { first: string; last: string }
+
+/** Parse a combined wedding title ("Sarah Smith & James Lee") into partners. */
+export function partnersFromTitle(title?: string | null): CouplePartner[] {
+  const raw = (title ?? '').trim()
+  if (!raw) return []
+  return raw
+    .split(/\s*&\s*|\s+and\s+/i)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => {
+      const [first, last] = splitName(part)
+      return { first: first || part, last }
+    })
+}
+
+/**
+ * Derive the couple's two partners as separate first + last names for display,
+ * richest source first:
+ *   1. the vendor's CRM contact linked to this wedding (explicit partner
+ *      first/last — most likely to carry both surnames),
+ *   2. active couple members (users.name, split on whitespace),
+ *   3. the wedding title parsed on "&"/"and".
+ * Returns 1–2 partners; `last` may be '' when no surname is available.
+ */
+export async function getCouplePartners(
+  db: D1Database,
+  weddingId: string,
+  opts: { vendorId?: string; title?: string | null } = {}
+): Promise<CouplePartner[]> {
+  if (opts.vendorId) {
+    const c = await db
+      .prepare(
+        'SELECT first_name, last_name, partner_first_name, partner_last_name FROM contacts WHERE vendor_id = ? AND wedding_id = ? LIMIT 1'
+      )
+      .bind(opts.vendorId, weddingId)
+      .first<{ first_name: string; last_name: string; partner_first_name: string | null; partner_last_name: string | null }>()
+    // first_name can be an email when the couple had no parseable name — skip then.
+    if (c && c.first_name && !c.first_name.includes('@')) {
+      const partners: CouplePartner[] = [{ first: c.first_name, last: c.last_name || '' }]
+      if (c.partner_first_name) partners.push({ first: c.partner_first_name, last: c.partner_last_name || '' })
+      return partners
+    }
+  }
+
+  try {
+    const members = await getWeddingMembers(db, weddingId)
+    const couples = members.filter((m) => m.role === 'couple' && (m.user_name || m.user_email))
+    if (couples.length) {
+      return couples.slice(0, 2).map((m) => {
+        const [first, last] = splitName(m.user_name)
+        return { first: first || (m.user_email?.split('@')[0] ?? ''), last }
+      })
+    }
+  } catch {
+    // fall through to the title
+  }
+
+  return partnersFromTitle(opts.title)
 }
 
 /**

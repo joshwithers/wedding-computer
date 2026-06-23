@@ -76,6 +76,8 @@ export const el: Dictionary = {
   'weddings.team.inviteByEmail': 'Ή προσκαλέστε μέσω email',
   'timeline.field.titleRequired': 'Προσθέστε έναν τίτλο για αυτό το στοιχείο.',
   'timeline.saving': 'Αποθήκευση…',
+  'timeline.wallpaper': 'Ταπετσαρία',
+  'timeline.wallpaperHint': 'Άνοιγμα ταπετσαρίας οθόνης κλειδώματος με το πρόγραμμα',
   'weddings.vendorType.any': 'Τύπος (προαιρετικό)',
   'dashboard.demo.addTitle': 'Φορτώστε μερικούς δοκιμαστικούς γάμους στο Wedding Computer',
   'dashboard.demo.addBlurb': 'Φορτώστε μια δοκιμαστική εβδομάδα — 3 γάμους, τις ομάδες προμηθευτών τους, τα run sheets και τις σημειώσεις τους, μαζί με μερικά φρέσκα ερωτήματα. Αφαιρέστε τα όποτε θέλετε.',

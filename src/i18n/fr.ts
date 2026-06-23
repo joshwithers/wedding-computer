@@ -76,6 +76,8 @@ export const fr: Dictionary = {
   'weddings.team.inviteByEmail': 'Ou inviter par e-mail',
   'timeline.field.titleRequired': 'Ajoutez un titre pour cet élément.',
   'timeline.saving': 'Enregistrement…',
+  'timeline.wallpaper': 'Fond d’écran',
+  'timeline.wallpaperHint': 'Ouvrir un fond d’écran de verrouillage du déroulé',
   'weddings.vendorType.any': 'Type (facultatif)',
   'dashboard.demo.addTitle': 'Chargez quelques mariages de démonstration dans votre Wedding Computer',
   'dashboard.demo.addBlurb': 'Chargez une semaine d’exemple — 3 mariages, leurs équipes de prestataires, feuilles de route et notes, plus quelques nouvelles demandes. Supprimez-la quand vous voulez.',

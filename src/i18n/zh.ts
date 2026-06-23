@@ -6,6 +6,8 @@ export const zh: Dictionary = {
   'timeline.sun.sunset': '日落',
   'timeline.sun.goldenHour': '黄金时刻',
   'timeline.saving': '保存中…',
+  'timeline.wallpaper': '壁纸',
+  'timeline.wallpaperHint': '打开包含流程表的手机锁屏壁纸',
   'forms.date.today': '就是今天',
   'forms.date.away': '{duration}后',
   'forms.date.ago': '{duration}前',

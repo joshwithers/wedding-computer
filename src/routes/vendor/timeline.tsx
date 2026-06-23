@@ -21,6 +21,7 @@ import {
   toggleAssigneeCalendar,
   approveTimelineRequest,
   declineTimelineRequest,
+  wallpaperPng,
 } from '../timeline-handlers'
 
 const timeline = new Hono<Env>()
@@ -41,6 +42,14 @@ timeline.get('/app/weddings/:id/timeline', async (c) => {
   const x = await ctx(c)
   if (!x) return c.text('Not found', 404)
   return renderTimeline(c, x.weddingId, x.membership, x.user, base(x.weddingId))
+})
+
+// Run sheet → phone-lockscreen wallpaper PNG. Static segment registered before
+// /timeline/:itemId so it isn't captured as an item id.
+timeline.get('/app/weddings/:id/timeline/wallpaper.png', async (c) => {
+  const x = await ctx(c)
+  if (!x) return c.text('Not found', 404)
+  return wallpaperPng(c, x.weddingId, x.membership, x.user)
 })
 
 timeline.post('/app/weddings/:id/timeline', async (c) => {
