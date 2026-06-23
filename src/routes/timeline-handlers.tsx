@@ -56,6 +56,7 @@ import {
   buildWallpaperHtml,
   selectKeyMoments,
   generateTagline,
+  resolveExportPalette,
   WALLPAPER_W,
   WALLPAPER_H,
   buildRunSheetPages,
@@ -654,9 +655,10 @@ export function declineTimelineRequest(c: Ctx, weddingId: string, member: Weddin
 async function loadExportData(c: Ctx, weddingId: string) {
   const wedding = await getWedding(c.env.DB, weddingId)
   if (!wedding) return null
-  const vendorId = c.get('vendor')?.id
+  // The downloading vendor's brand styles the export; couples get the house look.
+  const vendor = c.get('vendor')
   const [partners, items] = await Promise.all([
-    getCouplePartners(c.env.DB, weddingId, { vendorId, title: wedding.title }),
+    getCouplePartners(c.env.DB, weddingId, { vendorId: vendor?.id, title: wedding.title }),
     listTimeline(c.env.DB, weddingId),
   ])
   const dateLabel = wedding.date ? formatDate(wedding.date) : ''
@@ -665,7 +667,8 @@ async function loadExportData(c: Ctx, weddingId: string) {
   const names = partners.map((p) => p.first).filter(Boolean).join(' & ') || wedding.title
   const tagline = await generateTagline(c.env, { weddingId, names, dateLabel, locationLabel })
   const slug = (names || 'wedding').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'wedding'
-  return { wedding, partners, items, dateLabel, locationLabel, names, tagline, slug }
+  const { palette, display } = resolveExportPalette(vendor?.brand_theme)
+  return { wedding, partners, items, dateLabel, locationLabel, names, tagline, slug, palette, display }
 }
 
 /** Run sheet → phone-lockscreen wallpaper PNG (the ≤8 key moments). */
@@ -678,8 +681,9 @@ export async function wallpaperPng(c: Ctx, weddingId: string, _member: WeddingMe
     locationLabel: d.locationLabel,
     tagline: d.tagline,
     items: selectKeyMoments(d.items),
+    palette: d.palette,
   })
-  const png = await renderPng(c.env, html, WALLPAPER_W, WALLPAPER_H)
+  const png = await renderPng(c.env, html, WALLPAPER_W, WALLPAPER_H, d.display)
   return new Response(png, {
     headers: {
       'content-type': 'image/png',
@@ -702,8 +706,9 @@ export async function runSheetPdf(c: Ctx, weddingId: string, _member: WeddingMem
     locationLabel: d.locationLabel,
     tagline: d.tagline,
     items: selectRunSheetMoments(d.items),
+    palette: d.palette,
   })
-  const pdf = await renderPdf(c.env, pages, RUNSHEET_W, RUNSHEET_H)
+  const pdf = await renderPdf(c.env, pages, RUNSHEET_W, RUNSHEET_H, d.display)
   return new Response(pdf, {
     headers: {
       'content-type': 'application/pdf',

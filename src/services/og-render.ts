@@ -9,13 +9,16 @@ import type { Bindings } from '../types'
 
 type LoadedFont = { name: string; data: ArrayBuffer; weight: 400 | 600 | 700; style: 'normal' }
 
-// @fontsource .woff files (satori-compatible). Pinned family: Fraunces (an
-// elegant display serif) for headings + Inter for body/data legibility.
-const FONT_SOURCES: { key: string; url: string; name: string; weight: 400 | 600 | 700 }[] = [
-  { key: 'font:inter-400', name: 'Inter', weight: 400, url: 'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-400-normal.woff' },
-  { key: 'font:inter-600', name: 'Inter', weight: 600, url: 'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-600-normal.woff' },
-  { key: 'font:fraunces-700', name: 'Fraunces', weight: 700, url: 'https://cdn.jsdelivr.net/npm/@fontsource/fraunces/files/fraunces-latin-700-normal.woff' },
-]
+/** The display (heading) font to load, derived from a vendor's brand font.
+ * null = the house default (Fraunces). `pkg` is the @fontsource package name. */
+export type DisplayFont = { family: string; pkg: string } | null
+
+const FONT_BASE = 'https://cdn.jsdelivr.net/npm/@fontsource'
+const fontUrl = (pkg: string, weight: number) => `${FONT_BASE}/${pkg}/files/${pkg}-latin-${weight}-normal.woff`
+
+const INTER_400 = { key: 'font:inter-400', url: fontUrl('inter', 400) }
+const INTER_600 = { key: 'font:inter-600', url: fontUrl('inter', 600) }
+const FRAUNCES_700 = { key: 'font:fraunces-700', url: fontUrl('fraunces', 700) }
 
 async function fetchFont(env: Bindings, src: { key: string; url: string }): Promise<ArrayBuffer> {
   const cached = await env.KV.get(src.key, 'arrayBuffer')
@@ -28,14 +31,38 @@ async function fetchFont(env: Bindings, src: { key: string; url: string }): Prom
   return buf
 }
 
-export async function loadFonts(env: Bindings): Promise<LoadedFont[]> {
-  const datas = await Promise.all(FONT_SOURCES.map((s) => fetchFont(env, s)))
-  return FONT_SOURCES.map((s, i) => ({ name: s.name, data: datas[i], weight: s.weight, style: 'normal' as const }))
+/**
+ * Body face (Inter 400/600) plus the display face at 700. `display` picks the
+ * vendor's brand font (fetched from @fontsource); on any failure — or for the
+ * house default — we fall back to Fraunces, registered under whatever family
+ * name the layout expects so the markup always resolves to a real font.
+ */
+export async function loadFonts(env: Bindings, display?: DisplayFont): Promise<LoadedFont[]> {
+  const [inter400, inter600] = await Promise.all([fetchFont(env, INTER_400), fetchFont(env, INTER_600)])
+
+  let displayName = 'Fraunces'
+  let displayData: ArrayBuffer
+  if (display && display.pkg && display.pkg !== 'fraunces') {
+    displayName = display.family
+    try {
+      displayData = await fetchFont(env, { key: `font:${display.pkg}-700`, url: fontUrl(display.pkg, 700) })
+    } catch {
+      displayData = await fetchFont(env, FRAUNCES_700) // fallback glyphs, still under the brand family name
+    }
+  } else {
+    displayData = await fetchFont(env, FRAUNCES_700)
+  }
+
+  return [
+    { name: 'Inter', data: inter400, weight: 400, style: 'normal' },
+    { name: 'Inter', data: inter600, weight: 600, style: 'normal' },
+    { name: displayName, data: displayData, weight: 700, style: 'normal' },
+  ]
 }
 
 /** Render an HTML string to PNG bytes at the given pixel size. */
-export async function renderPng(env: Bindings, html: string, width: number, height: number): Promise<ArrayBuffer> {
-  const fonts = await loadFonts(env)
+export async function renderPng(env: Bindings, html: string, width: number, height: number, display?: DisplayFont): Promise<ArrayBuffer> {
+  const fonts = await loadFonts(env, display)
   const resp = new ImageResponse(html, { width, height, fonts, format: 'png' })
   return await resp.arrayBuffer()
 }
@@ -50,8 +77,8 @@ const A4_PT_H = 841.89
  * Pages are rendered sequentially — the resvg WASM instance isn't safe to drive
  * concurrently.
  */
-export async function renderPdf(env: Bindings, htmlPages: string[], width: number, height: number): Promise<Uint8Array> {
-  const fonts = await loadFonts(env)
+export async function renderPdf(env: Bindings, htmlPages: string[], width: number, height: number, display?: DisplayFont): Promise<Uint8Array> {
+  const fonts = await loadFonts(env, display)
   const doc = await PDFDocument.create()
   for (const html of htmlPages) {
     const resp = new ImageResponse(html, { width, height, fonts, format: 'png' })
