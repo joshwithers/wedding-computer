@@ -104,7 +104,7 @@ stripe.post('/webhooks/stripe', async (c) => {
               await c.env.EMAIL_QUEUE.send({ type: 'referral_reward', vendorId: conv.referrerVendorId })
               console.log('[STRIPE] referral converted, referrer rewarded', conv.referrerVendorId)
               // The referrer may already be an active subscriber — credit them now.
-              await redeemBankedMonthsToStripe(c.env.STRIPE_SECRET_KEY, c.env.DB, conv.referrerVendorId)
+              await redeemBankedMonthsToStripe(c.env, conv.referrerVendorId)
             }
           } catch (e: any) {
             console.error('[STRIPE] referral conversion failed', e.message)
@@ -112,7 +112,7 @@ stripe.post('/webhooks/stripe', async (c) => {
 
           // The new subscriber's reward (and any leftover banked months not used
           // by the trial) become an account credit on their next invoices.
-          await redeemBankedMonthsToStripe(c.env.STRIPE_SECRET_KEY, c.env.DB, vendorId)
+          await redeemBankedMonthsToStripe(c.env, vendorId)
         }
       }
       break

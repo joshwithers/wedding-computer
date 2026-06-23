@@ -584,7 +584,7 @@ admin.post('/admin/gift-months', async (c) => {
 
   // If they're already an active subscriber, apply the months as a Stripe
   // account credit now (otherwise they stay banked and redeem at next checkout).
-  await redeemBankedMonthsToStripe(c.env.STRIPE_SECRET_KEY, c.env.DB, vendor.id).catch((e) =>
+  await redeemBankedMonthsToStripe(c.env, vendor.id).catch((e) =>
     console.error('[admin] redeem gifted months failed', e)
   )
 

@@ -87,7 +87,11 @@ function deriveUnitAmount(code: CurrencyCode, audRate: number): number {
 type PriceMap = Record<CurrencyCode, number>
 
 const KV_KEY = 'pricing:prices'
-const MEM_TTL_MS = 60 * 60 * 1000 // 1h in-isolation cache; FX only refreshes daily
+// Short in-isolation cache: enough to absorb burst traffic without a KV read
+// per request, but short enough that a price change (daily cron, or a manual
+// reseed) converges across isolations in ~a minute — so the price a visitor
+// sees and the price charged at checkout can't drift apart for long.
+const MEM_TTL_MS = 60 * 1000
 
 let memCache: { at: number; map: PriceMap } | null = null
 
