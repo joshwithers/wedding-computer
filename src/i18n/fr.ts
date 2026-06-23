@@ -444,7 +444,7 @@ export const fr: Dictionary = {
   'marketing.home.switching.customMapping': "CSV ou JSON",
   'marketing.home.switching.note': "Le mappage des colonnes est automatique pour les CRM que les fournisseurs de mariage utilisent réellement, et à correspondance floue pour tout le reste.",
   'marketing.home.data.title': "Vos données vous appartiennent — en texte brut, pour toujours",
-  'marketing.home.data.body': "Pas de format propriétaire, pas d'export à l'aveugle, aucun verrouillage.",
+  'marketing.home.data.body': "Chaque contact et chaque mariage est un fichier en texte brut que vous pouvez lire, exporter et conserver — jamais enfermé dans une base de données que vous ne pouvez pas voir. Les plans gratuits exportent tout à tout moment ; Pro le synchronise en direct vers votre propre dépôt GitHub ou votre coffre Obsidian. Pas de format propriétaire, pas d'export à l'aveugle, aucun verrouillage.",
   "marketing.home.data.tool.github": "GitHub",
   "marketing.home.data.github": "Dépôt synchronisé automatiquement",
   "marketing.home.data.tool.obsidian": "Obsidian",

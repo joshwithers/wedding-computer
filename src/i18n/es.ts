@@ -288,7 +288,7 @@ export const es: Dictionary = {
   "marketing.mcp.connectGuide": "Cómo conectar tu IA →",
   'marketing.home.hero.badge': "Gratis para empezar · Tus datos, para siempre",
   'marketing.home.hero.titleLine1': "Toda la boda,",
-  'marketing.home.hero.titleLine2': "trabajando desde una sola página. (no change to this line itself — but replace 'línea de tiempo' with 'cronograma' across the new marketing keys for consistency with email.timeline.* and weddings.*)",
+  'marketing.home.hero.titleLine2': "trabajando desde una sola página.",
   'marketing.home.hero.body': "Wedding Computer es el espacio de trabajo compartido donde parejas, lugares, planificadores y proveedores planifican juntos la misma boda. Introduce la fecha, la línea de tiempo y la hoja de ejecución una sola vez, y todos las ven. Sin volver a escribir los mismos detalles en una docena de herramientas distintas.",
   "marketing.home.hero.primaryCta": "Empiece gratis",
   'marketing.home.hero.secondaryCta': "Mira todo lo que hace",

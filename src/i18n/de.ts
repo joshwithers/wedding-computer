@@ -1296,7 +1296,7 @@ export const de: Dictionary = {
   'marketing.about.collab.runsheet.title': "Ein gemeinsamer Ablaufplan",
   'marketing.about.collab.runsheet.desc': "Ein einziger Zeitplan für den Hochzeitstag, aus dem alle schöpfen. Legen Sie eine Zeit einmal fest und sie erscheint im Kalender jedes zugewiesenen Anbieters; ändern Sie sie und sie ändert sich für alle.",
   'marketing.about.collab.approval.title': "Freigabe-Ablauf",
-  'marketing.about.collab.approval.desc': "Wenn eine Planung oder Location (oder das Paar) den Zeitplan verwaltet, kommen Bearbeitungen anderer Anbieter als Änderungsanfragen an, die sie genehmigen, anpassen und dann genehmigen oder ablehnen können – so verschieben sich die wichtigsten Zeiten nie hinter dem Rücken anderer.",
+  'marketing.about.collab.approval.desc': "Wenn ein Planer oder eine Location (oder das Paar) den Zeitplan verwaltet, kommen Bearbeitungen anderer Anbieter als Änderungsanfragen an, die sie genehmigen, anpassen und dann genehmigen oder ablehnen können – so verschieben sich die wichtigsten Zeiten nie hinter dem Rücken anderer.",
   'marketing.about.collab.live.title': "Live-Ablaufplan-Modus",
   'marketing.about.collab.live.desc': "Markieren Sie am großen Tag jeden Punkt als gestartet und der Ablaufplan zeigt die Abweichung in Echtzeit, sodass das ganze Team sehen kann, ob alles im Zeitplan liegt.",
   'marketing.about.collab.sun.title': "Sonnen- und Tageslichtmarkierungen",

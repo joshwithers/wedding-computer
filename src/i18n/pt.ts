@@ -79,7 +79,7 @@ export const pt: Dictionary = {
   'timeline.wallpaper': 'Papel de parede',
   'timeline.wallpaperHint': 'Abrir um papel de parede de bloqueio com o roteiro',
   'timeline.pdf': 'PDF',
-  'timeline.pdfHint': 'Abrir o roteiro completo em PDF para impressão',
+  'timeline.pdfHint': "Abrir a planilha de execução completa em PDF para impressão",
   'weddings.vendorType.any': 'Tipo (opcional)',
   'dashboard.demo.addTitle': 'Carregue alguns casamentos de demonstração no seu Wedding Computer',
   'dashboard.demo.addBlurb': 'Carregue uma semana de exemplo — 3 casamentos, suas equipes de fornecedores, planilhas de execução e notas, além de algumas consultas novas. Remova quando quiser.',

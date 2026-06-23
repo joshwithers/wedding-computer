@@ -9,7 +9,7 @@ export const zh: Dictionary = {
   'timeline.wallpaper': '壁纸',
   'timeline.wallpaperHint': '打开包含流程表的手机锁屏壁纸',
   'timeline.pdf': 'PDF',
-  'timeline.pdfHint': '以可打印的PDF格式打开完整流程表',
+  'timeline.pdfHint': "以可打印的 PDF 格式打开完整运行表",
   'forms.date.today': '就是今天',
   'forms.date.away': '{duration}后',
   'forms.date.ago': '{duration}前',
