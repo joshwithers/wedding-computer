@@ -289,7 +289,7 @@ export const marketing = {
   'marketing.about.collab.subtitle': 'The shared layer the whole team works from — free on every plan, for vendors and couples alike.',
   'marketing.about.collab.runsheet.title': 'One shared run sheet',
   'marketing.about.collab.runsheet.desc': 'A single day-of timeline everyone draws from. Set a time once and it appears in every assigned vendor’s calendar; change it and it changes for everyone.',
-  'marketing.about.collab.approval.title': 'Approval handshake',
+  'marketing.about.collab.approval.title': "Approval flow",
   'marketing.about.collab.approval.desc': 'When a planner or venue (or the couple) manages the timeline, edits from other vendors arrive as change requests they can approve, tweak-then-approve, or decline — so headline times never move behind anyone’s back.',
   'marketing.about.collab.live.title': 'Live run-sheet mode',
   'marketing.about.collab.live.desc': 'On the day, mark each item as started and the run sheet shows real-time drift, so the whole team can see whether things are running on time.',
