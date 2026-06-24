@@ -26,6 +26,10 @@ export type MigrationResult = {
   errors: number
 }
 
+export type ContactRepairResult = MigrationResult & {
+  rewritten: number
+}
+
 /**
  * Migrate all contacts for a vendor from D1 to markdown files.
  */
@@ -34,16 +38,30 @@ export async function migrateContacts(
   db: D1Database,
   vendorId: string
 ): Promise<MigrationResult> {
-  const result: MigrationResult = { migrated: 0, skipped: 0, errors: 0 }
+  return repairContacts(storage, db, vendorId)
+}
 
-  // Get already-indexed contact IDs to skip
+/**
+ * Repair the contact storage index for a vendor.
+ *
+ * This handles both historical D1-only rows and stale file_index rows whose
+ * markdown file is no longer present. It never overwrites an existing file.
+ */
+export async function repairContacts(
+  storage: StorageBackend,
+  db: D1Database,
+  vendorId: string
+): Promise<ContactRepairResult> {
+  const result: ContactRepairResult = { migrated: 0, rewritten: 0, skipped: 0, errors: 0 }
+
+  // Get already-indexed contacts.
   const indexed = await db
     .prepare(
-      'SELECT entity_id FROM file_index WHERE vendor_id = ? AND entity_type = ?'
+      'SELECT entity_id, file_path FROM file_index WHERE vendor_id = ? AND entity_type = ?'
     )
     .bind(vendorId, 'contact')
-    .all<{ entity_id: string }>()
-  const indexedIds = new Set(indexed.results.map((r) => r.entity_id))
+    .all<{ entity_id: string; file_path: string }>()
+  const indexedById = new Map(indexed.results.map((r) => [r.entity_id, r.file_path]))
 
   // Get all contacts from the old D1 table
   const contacts = await db
@@ -55,24 +73,31 @@ export async function migrateContacts(
   const existingFiles = await listExistingContactFilenames(storage)
 
   for (const contact of contacts.results) {
-    if (indexedIds.has(contact.id)) {
-      result.skipped++
-      continue
-    }
-
     try {
-      // Generate filename
-      const desiredFilename = contactFilename(
-        contact.first_name,
-        contact.last_name,
-        contact.partner_first_name,
-        contact.partner_last_name
-      )
-      const filename = deduplicateFilename(desiredFilename, existingFiles)
-      const filePath = 'contacts/' + filename
+      const indexedPath = indexedById.get(contact.id)
+      let filePath = indexedPath ?? ''
+      let rewritingMissingIndexedFile = false
+
+      if (indexedPath) {
+        const existing = await storage.head(indexedPath)
+        if (existing) {
+          result.skipped++
+          continue
+        }
+        rewritingMissingIndexedFile = true
+      } else {
+        const desiredFilename = contactFilename(
+          contact.first_name,
+          contact.last_name,
+          contact.partner_first_name,
+          contact.partner_last_name
+        )
+        const filename = deduplicateFilename(desiredFilename, existingFiles)
+        filePath = 'contacts/' + filename
+      }
 
       // Track this filename to avoid collisions within the batch
-      existingFiles.add(filename)
+      existingFiles.add(filePath.slice('contacts/'.length))
 
       // Serialize to markdown
       const doc = contactToMarkdown(contact)
@@ -100,9 +125,13 @@ export async function migrateContacts(
         throw indexErr
       }
 
-      result.migrated++
+      if (rewritingMissingIndexedFile) {
+        result.rewritten++
+      } else {
+        result.migrated++
+      }
     } catch (err) {
-      console.error(`[migrate] Failed to migrate contact ${contact.id}:`, err)
+      console.error(`[migrate] Failed to repair contact ${contact.id}:`, err)
       result.errors++
     }
   }
@@ -191,21 +220,21 @@ export async function needsMigration(
   db: D1Database,
   vendorId: string
 ): Promise<boolean> {
-  const [indexCount, contactCount] = await Promise.all([
-    db
-      .prepare(
-        'SELECT COUNT(*) as count FROM file_index WHERE vendor_id = ? AND entity_type = ?'
-      )
-      .bind(vendorId, 'contact')
-      .first<{ count: number }>(),
-    db
-      .prepare('SELECT COUNT(*) as count FROM contacts WHERE vendor_id = ?')
-      .bind(vendorId)
-      .first<{ count: number }>(),
-  ])
+  const row = await db
+    .prepare(
+      `SELECT c.id
+       FROM contacts c
+       LEFT JOIN file_index fi
+         ON fi.vendor_id = c.vendor_id
+        AND fi.entity_type = 'contact'
+        AND fi.entity_id = c.id
+       WHERE c.vendor_id = ? AND fi.id IS NULL
+       LIMIT 1`
+    )
+    .bind(vendorId)
+    .first<{ id: string }>()
 
-  // Needs migration if there are D1 contacts but no indexed files
-  return (contactCount?.count ?? 0) > 0 && (indexCount?.count ?? 0) === 0
+  return !!row
 }
 
 // ────────────────────────────────────────────
@@ -215,7 +244,14 @@ export async function needsMigration(
 async function listExistingContactFilenames(
   storage: StorageBackend
 ): Promise<Set<string>> {
-  const result = await storage.list('contacts/')
-  return new Set(result.files.map((f) => f.path.slice('contacts/'.length)))
+  const files = new Set<string>()
+  let cursor: string | undefined
+  do {
+    const result = await storage.list('contacts/', cursor)
+    for (const file of result.files) {
+      files.add(file.path.slice('contacts/'.length))
+    }
+    cursor = result.cursor
+  } while (cursor)
+  return files
 }
-

@@ -284,6 +284,9 @@ describe('listContacts', () => {
       last_name: 'Smith',
       email: 'sarah@example.com',
       status: 'new',
+      notes: 'Imported notes',
+      tags: '["vip"]',
+      form_data: '{"lead":"website"}',
       created_at: '2025-06-01T00:00:00.000Z',
       updated_at: '2025-06-01T00:00:00.000Z',
     })
@@ -304,6 +307,9 @@ describe('listContacts', () => {
     expect(contacts[0].id).toBe('c1')
     expect(contacts[0].first_name).toBe('Sarah')
     expect(contacts[0].email).toBe('sarah@example.com')
+    expect(contacts[0].notes).toBe('Imported notes')
+    expect(contacts[0].tags).toBe('["vip"]')
+    expect(contacts[0].form_data).toBe('{"lead":"website"}')
     expect(contacts[0].vendor_id).toBe(VENDOR_ID)
   })
 

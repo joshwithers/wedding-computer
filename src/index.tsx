@@ -633,10 +633,8 @@ function notifyEnv(env: Env['Bindings']): NotifyEnv {
 
 // Git vendors are swept across this many consecutive 5-minute ticks, so the
 // background sync is a ~30-minute backstop (immediate pushes + GitHub
-// webhooks handle real-time). This keeps per-tick fan-out volume ~1/N of the
-// fleet. The shard for a tick is (tickIndex % N); a vendor's shard is a
-// stable function of its id, so every vendor is covered exactly once per
-// cycle regardless of N.
+// webhooks handle real-time). Vendors with detected D1-only data are enqueued
+// immediately regardless of shard so repair is not delayed before launch.
 const SYNC_SHARD_COUNT = 6
 
 /** Enqueue messages in batches of 100 (the sendBatch limit) so the cron's
@@ -651,9 +649,34 @@ async function enqueueStorageSyncJobs(env: Env['Bindings'], scheduledTime: numbe
   const shard = Math.floor(scheduledTime / 300000) % SYNC_SHARD_COUNT
   const vendors = await env.DB
     .prepare(
-      `SELECT id FROM vendor_profiles
-       WHERE storage_type = 'git' AND storage_config IS NOT NULL
-         AND (unicode(substr(id, -1, 1)) % ?) = ?`
+      `SELECT DISTINCT vp.id
+       FROM vendor_profiles vp
+       WHERE (
+           vp.storage_type = 'git'
+           AND vp.storage_config IS NOT NULL
+           AND (unicode(substr(vp.id, -1, 1)) % ?1) = ?2
+         )
+          OR EXISTS (
+            SELECT 1
+            FROM contacts c
+            LEFT JOIN file_index fi
+              ON fi.vendor_id = c.vendor_id
+             AND fi.entity_type = 'contact'
+             AND fi.entity_id = c.id
+            WHERE c.vendor_id = vp.id AND fi.id IS NULL
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM weddings w
+            JOIN wedding_members wm ON wm.wedding_id = w.id
+            LEFT JOIN file_index fi
+              ON fi.vendor_id = vp.id
+             AND fi.entity_type = 'wedding'
+             AND fi.entity_id = w.id
+            WHERE wm.user_id = vp.user_id
+              AND wm.status = 'active'
+              AND fi.id IS NULL
+          )`
     )
     .bind(SYNC_SHARD_COUNT, shard)
     .all<{ id: string }>()
@@ -996,7 +1019,7 @@ export default {
             const vendor = await getVendorById(env.DB, body.vendorId)
             if (vendor) {
               const r = await syncVendorStorage(env, vendor)
-              if (r.errors > 0) logEvent('sync.vendor_errors', { vendorId: body.vendorId, errors: r.errors, pulled: r.pulled, pushed: r.weddingsSynced })
+              if (r.errors > 0) logEvent('sync.vendor_errors', { vendorId: body.vendorId, errors: r.errors, pulled: r.pulled, contacts: r.contactsSynced, pushed: r.weddingsSynced })
             }
           } catch (e: any) {
             logEvent('sync.vendor_failed', { vendorId: body.vendorId, error: e.message })

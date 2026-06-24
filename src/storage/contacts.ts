@@ -346,9 +346,9 @@ export async function listContacts(
       wedding_id: c.wedding_id ?? null,
       wedding_date: c.wedding_date ?? null,
       wedding_location: c.wedding_location ?? null,
-      notes: null, // not cached — read the file for detail view
-      tags: null,
-      form_data: null,
+      notes: c.notes ?? null,
+      tags: c.tags ?? null,
+      form_data: c.form_data ?? null,
       last_contacted_at: c.last_contacted_at ?? null,
       created_at: c.created_at ?? row.created_at,
       updated_at: c.updated_at ?? '',

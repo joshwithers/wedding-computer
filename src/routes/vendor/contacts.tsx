@@ -16,7 +16,7 @@ import {
 } from '../../storage/contacts'
 import { getStorageWithSecrets } from '../../storage'
 import type { StorageBackend } from '../../storage/types'
-import { needsMigration, migrateContacts } from '../../storage/migrate'
+import { needsMigration, repairContacts } from '../../storage/migrate'
 import { listActivities, createActivity } from '../../db/activities'
 import { resolveDemandView, type DemandView, type DemandHistoryContext } from '../../db/busyness'
 import { geocodeContactLocation } from '../../services/geocode'
@@ -25,7 +25,6 @@ import { isProVendor } from '../../db/subscriptions'
 import { describeDemand, formatVsAverage, MONTH_NAMES, SEASON_LABELS, ordinal } from '../../lib/busyness'
 import { requireString, trimOrNull, sanitize } from '../../lib/validation'
 import { ENQUIRY_SOURCES, normalizeSource, sourceLabel } from '../../lib/sources'
-import { generateId } from '../../lib/crypto'
 import { formatDate } from '../../lib/date'
 import { socialUrl, socialDisplay } from '../../lib/social'
 import { CopyButton } from '../../views/icons'
@@ -138,156 +137,6 @@ async function getContactFallback(
     .first<Contact>()
 }
 
-/**
- * Fallback: create a contact directly in the old D1 `contacts` table.
- */
-async function createContactFallback(
-  db: D1Database,
-  vendorId: string,
-  data: {
-    first_name: string
-    last_name: string
-    email?: string | null
-    phone?: string | null
-    partner_first_name?: string | null
-    partner_last_name?: string | null
-    partner_email?: string | null
-    partner_phone?: string | null
-    address?: string | null
-    instagram?: string | null
-    facebook?: string | null
-    tiktok?: string | null
-    website?: string | null
-    source?: string | null
-    wedding_date?: string | null
-    wedding_location?: string | null
-    notes?: string | null
-  }
-): Promise<Contact> {
-  const id = generateId()
-  const now = new Date().toISOString()
-  await db
-    .prepare(
-      `INSERT INTO contacts (id, vendor_id, first_name, last_name, email, phone,
-        partner_first_name, partner_last_name, partner_email, partner_phone,
-        address, instagram, facebook, tiktok, website,
-        source, status, wedding_date, wedding_location, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?)`
-    )
-    .bind(
-      id,
-      vendorId,
-      data.first_name,
-      data.last_name,
-      data.email ?? null,
-      data.phone ?? null,
-      data.partner_first_name ?? null,
-      data.partner_last_name ?? null,
-      data.partner_email ?? null,
-      data.partner_phone ?? null,
-      data.address ?? null,
-      data.instagram ?? null,
-      data.facebook ?? null,
-      data.tiktok ?? null,
-      data.website ?? null,
-      data.source ?? null,
-      data.wedding_date ?? null,
-      data.wedding_location ?? null,
-      data.notes ?? null,
-      now,
-      now
-    )
-    .run()
-
-  return {
-    id,
-    vendor_id: vendorId,
-    first_name: data.first_name,
-    last_name: data.last_name,
-    email: data.email ?? null,
-    phone: data.phone ?? null,
-    partner_first_name: data.partner_first_name ?? null,
-    partner_last_name: data.partner_last_name ?? null,
-    partner_email: data.partner_email ?? null,
-    partner_phone: data.partner_phone ?? null,
-    address: data.address ?? null,
-    instagram: data.instagram ?? null,
-    facebook: data.facebook ?? null,
-    tiktok: data.tiktok ?? null,
-    website: data.website ?? null,
-    source: data.source ?? null,
-    status: 'new',
-    wedding_id: null,
-    wedding_date: data.wedding_date ?? null,
-    wedding_location: data.wedding_location ?? null,
-    notes: data.notes ?? null,
-    tags: null,
-    form_data: null,
-    last_contacted_at: null,
-    created_at: now,
-    updated_at: now,
-  }
-}
-
-/**
- * Fallback: update a contact directly in the old D1 `contacts` table.
- */
-async function updateContactFallback(
-  db: D1Database,
-  vendorId: string,
-  contactId: string,
-  data: Record<string, unknown>
-): Promise<void> {
-  const sets: string[] = []
-  const params: unknown[] = []
-  for (const [key, val] of Object.entries(data)) {
-    if (val !== undefined) {
-      sets.push(`${key} = ?`)
-      params.push(val ?? null)
-    }
-  }
-  if (sets.length === 0) return
-  sets.push("updated_at = datetime('now')")
-  params.push(contactId, vendorId)
-  await db
-    .prepare(
-      `UPDATE contacts SET ${sets.join(', ')} WHERE id = ? AND vendor_id = ?`
-    )
-    .bind(...params)
-    .run()
-}
-
-/**
- * Fallback: update just the status in the old D1 `contacts` table.
- */
-async function updateStatusFallback(
-  db: D1Database,
-  vendorId: string,
-  contactId: string,
-  status: string
-): Promise<void> {
-  await db
-    .prepare(
-      "UPDATE contacts SET status = ?, updated_at = datetime('now') WHERE id = ? AND vendor_id = ?"
-    )
-    .bind(status, contactId, vendorId)
-    .run()
-}
-
-/**
- * Fallback: delete a contact from the old D1 `contacts` table.
- */
-async function deleteContactFallback(
-  db: D1Database,
-  vendorId: string,
-  contactId: string
-): Promise<void> {
-  await db
-    .prepare('DELETE FROM contacts WHERE id = ? AND vendor_id = ?')
-    .bind(contactId, vendorId)
-    .run()
-}
-
 const contacts = new Hono<Env>()
 
 contacts.use('/app/*', requireAuth, csrf, requireVendor)
@@ -306,9 +155,9 @@ contacts.get('/app/contacts', async (c) => {
       if (await needsMigration(c.env.DB, vendor.id)) {
         const storage = await tryGetStorage(c.env, vendor)
         if (storage) {
-          const migrationResult = await migrateContacts(storage, c.env.DB, vendor.id)
+          const migrationResult = await repairContacts(storage, c.env.DB, vendor.id)
           console.log(
-            `[migrate] Vendor ${vendor.id}: migrated ${migrationResult.migrated}, skipped ${migrationResult.skipped}, errors ${migrationResult.errors}`
+            `[migrate] Vendor ${vendor.id}: migrated ${migrationResult.migrated}, rewritten ${migrationResult.rewritten}, skipped ${migrationResult.skipped}, errors ${migrationResult.errors}`
           )
         } else {
           console.error('[contacts] R2 unavailable, skipping lazy migration')
@@ -457,19 +306,8 @@ contacts.post('/app/contacts/new', async (c) => {
       notes: trimOrNull(body.notes),
     }
 
-    let contact: Contact
-    const storage = await tryGetStorage(c.env, vendor)
-    if (storage) {
-      try {
-        contact = await createContact(storage, c.env.DB, vendor.id, contactData)
-      } catch (storageErr) {
-        console.error('[contacts] Storage-backed create failed, falling back to D1:', storageErr)
-        contact = await createContactFallback(c.env.DB, vendor.id, contactData)
-      }
-    } else {
-      console.warn('[contacts] R2 unavailable, creating contact in D1 only')
-      contact = await createContactFallback(c.env.DB, vendor.id, contactData)
-    }
+    const storage = await getStorageWithSecrets(c.env, vendor)
+    const contact = await createContact(storage, c.env.DB, vendor.id, contactData)
 
     await createActivity(c.env.DB, contact.id, 'note', 'Contact created')
     track(c.env.DB, vendor.id, 'contact_created', { contactId: contact.id })
@@ -788,18 +626,11 @@ contacts.post('/app/contacts/:id/edit', async (c) => {
       notes: trimOrNull(body.notes),
     }
 
-    const storage = await tryGetStorage(c.env, vendor)
-    if (storage) {
-      try {
-        await updateContact(storage, c.env.DB, vendor.id, contactId, updateData)
-      } catch (storageErr) {
-        console.error('[contacts] Storage-backed update failed, falling back to D1:', storageErr)
-        await updateContactFallback(c.env.DB, vendor.id, contactId, updateData)
-      }
-    } else {
-      console.warn('[contacts] R2 unavailable, updating contact in D1 only')
-      await updateContactFallback(c.env.DB, vendor.id, contactId, updateData)
+    const storage = await getStorageWithSecrets(c.env, vendor)
+    if (await needsMigration(c.env.DB, vendor.id)) {
+      await repairContacts(storage, c.env.DB, vendor.id)
     }
+    await updateContact(storage, c.env.DB, vendor.id, contactId, updateData)
 
     c.executionCtx.waitUntil(
       geocodeContactLocation(c.env, contactId).catch((err) => console.error('[contacts] geocode failed:', err))
@@ -872,17 +703,11 @@ contacts.post('/app/contacts/:id/status', async (c) => {
     }
 
     // Update status
-    if (storage) {
-      try {
-        await updateContactStatus(storage, c.env.DB, vendor.id, contactId, status)
-      } catch (storageErr) {
-        console.error('[contacts] Storage-backed status update failed, falling back to D1:', storageErr)
-        await updateStatusFallback(c.env.DB, vendor.id, contactId, status)
-      }
-    } else {
-      console.warn('[contacts] R2 unavailable, updating status in D1 only')
-      await updateStatusFallback(c.env.DB, vendor.id, contactId, status)
+    if (!storage) return c.text('Failed to update status', 500)
+    if (await needsMigration(c.env.DB, vendor.id)) {
+      await repairContacts(storage, c.env.DB, vendor.id)
     }
+    await updateContactStatus(storage, c.env.DB, vendor.id, contactId, status)
 
     await createActivity(
       c.env.DB,
@@ -959,18 +784,11 @@ contacts.post('/app/contacts/:id/delete', async (c) => {
   try {
     await auditLog(c, 'contact_deleted', 'contact', contactId).catch(() => {})
 
-    const storage = await tryGetStorage(c.env, vendor)
-    if (storage) {
-      try {
-        await deleteContact(storage, c.env.DB, vendor.id, contactId)
-      } catch (storageErr) {
-        console.error('[contacts] Storage-backed delete failed, falling back to D1:', storageErr)
-        await deleteContactFallback(c.env.DB, vendor.id, contactId)
-      }
-    } else {
-      console.warn('[contacts] R2 unavailable, deleting contact from D1 only')
-      await deleteContactFallback(c.env.DB, vendor.id, contactId)
+    const storage = await getStorageWithSecrets(c.env, vendor)
+    if (await needsMigration(c.env.DB, vendor.id)) {
+      await repairContacts(storage, c.env.DB, vendor.id)
     }
+    await deleteContact(storage, c.env.DB, vendor.id, contactId)
 
     return c.redirect('/app/contacts')
   } catch (err) {

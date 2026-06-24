@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { FC, PropsWithChildren } from 'hono/jsx'
-import type { Env, User } from '../types'
+import type { Contact, Env, User, Wedding } from '../types'
 import { SharedHead } from '../views/head'
 import { Logo } from '../views/logo'
 import { MarketingLayout } from '../views/layouts/marketing'
@@ -31,6 +31,12 @@ import { redactedVendorProfile } from '../lib/redaction'
 import { formatDate } from '../lib/date'
 import { createZip, safeZipPath, type ZipEntry } from '../lib/zip'
 import { getStorageWithSecrets } from '../storage'
+import {
+  addMissingContactMarkdown,
+  addMissingWeddingMarkdown,
+  listExportContacts,
+  listIndexedEntityPaths,
+} from '../services/account-export'
 
 const account = new Hono<Env>()
 
@@ -853,6 +859,9 @@ account.get('/account/export', async (c) => {
 
   const vendor = await getVendorByUserId(c.env.DB, user.id)
 
+  const exportWeddings = weddings.results as Wedding[]
+  let exportContacts: Contact[] = []
+
   const data: Record<string, unknown> = {
     exported_at: new Date().toISOString(),
     user: {
@@ -874,17 +883,17 @@ account.get('/account/export', async (c) => {
       website: user.website,
       created_at: user.created_at,
     },
-    weddings: weddings.results,
+    weddings: exportWeddings,
   }
 
   if (vendor) {
-    const { listContacts } = await import('../db/contacts')
     const { listInvoices } = await import('../db/invoices')
     const [contacts, invoices, events] = await Promise.all([
-      listContacts(c.env.DB, vendor.id, {}),
+      listExportContacts(c.env.DB, vendor.id),
       listInvoices(c.env.DB, vendor.id),
       c.env.DB.prepare('SELECT * FROM calendar_events WHERE vendor_id = ? ORDER BY date DESC').bind(vendor.id).all(),
     ])
+    exportContacts = contacts
     data.vendor_profile = redactedVendorProfile(vendor)
     data.contacts = contacts
     data.invoices = invoices
@@ -899,26 +908,36 @@ account.get('/account/export', async (c) => {
   ]
 
   if (vendor) {
+    const markdownPaths = new Set<string>()
+
     try {
       const storage = await getStorageWithSecrets(c.env, vendor)
       const queue: string[] = ['']
       for (const prefix of queue) {
         const listed = await storage.list(prefix)
         for (const file of listed.files) {
-          const path = safeZipPath(`markdown/${file.path}`)
+          const relativePath = safeZipPath(file.path)
+          const path = safeZipPath(`markdown/${relativePath}`)
           if (path.endsWith('/')) continue
           const stored = await storage.read(file.path).catch(() => null)
-          if (stored) entries.push({ path, data: stored.content })
+          if (stored) {
+            entries.push({ path, data: stored.content })
+            markdownPaths.add(relativePath)
+          }
         }
         if (listed.cursor) {
           let cursor: string | undefined = listed.cursor
           while (cursor) {
             const next = await storage.list(prefix, cursor)
             for (const file of next.files) {
-              const path = safeZipPath(`markdown/${file.path}`)
+              const relativePath = safeZipPath(file.path)
+              const path = safeZipPath(`markdown/${relativePath}`)
               if (path.endsWith('/')) continue
               const stored = await storage.read(file.path).catch(() => null)
-              if (stored) entries.push({ path, data: stored.content })
+              if (stored) {
+                entries.push({ path, data: stored.content })
+                markdownPaths.add(relativePath)
+              }
             }
             cursor = next.cursor
           }
@@ -930,6 +949,13 @@ account.get('/account/export', async (c) => {
         data: `Storage files could not be included: ${err instanceof Error ? err.message : 'unknown error'}`,
       })
     }
+
+    const [contactPaths, weddingPaths] = await Promise.all([
+      listIndexedEntityPaths(c.env.DB, vendor.id, 'contact'),
+      listIndexedEntityPaths(c.env.DB, vendor.id, 'wedding'),
+    ])
+    addMissingContactMarkdown(entries, markdownPaths, exportContacts, contactPaths)
+    addMissingWeddingMarkdown(entries, markdownPaths, exportWeddings, weddingPaths)
   }
 
   if (c.env.STORAGE) {

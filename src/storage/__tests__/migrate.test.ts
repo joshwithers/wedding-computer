@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { migrateContacts, needsMigration } from '../migrate'
+import { migrateContacts, needsMigration, repairContacts } from '../migrate'
 import { parseMarkdown } from '../markdown'
 import { MockStorageBackend } from './mock-storage'
 import { MockD1Database } from './mock-d1'
@@ -95,7 +95,7 @@ describe('migrateContacts', () => {
     expect(doc.body).toBe('Test contact.')
   })
 
-  it('skips already-indexed contacts', async () => {
+  it('rewrites already-indexed contacts when the markdown file is missing', async () => {
     // Contact in D1
     db.seed('contacts', [
       {
@@ -126,10 +126,46 @@ describe('migrateContacts', () => {
       VENDOR_ID
     )
 
+    expect(result.skipped).toBe(0)
+    expect(result.migrated).toBe(0)
+    expect((result as Awaited<ReturnType<typeof repairContacts>>).rewritten).toBe(1)
+    expect(storage.files.has('contacts/sarah-smith.md')).toBe(true)
+  })
+
+  it('skips already-indexed contacts when the markdown file exists', async () => {
+    await storage.write('contacts/sarah-smith.md', 'existing content')
+    db.seed('contacts', [
+      {
+        id: 'contact-001',
+        vendor_id: VENDOR_ID,
+        first_name: 'Sarah',
+        last_name: 'Smith',
+        status: 'new',
+        created_at: '2025-06-01',
+        updated_at: '2025-06-01',
+      },
+    ])
+
+    db.seed('file_index', [
+      {
+        vendor_id: VENDOR_ID,
+        entity_type: 'contact',
+        entity_id: 'contact-001',
+        file_path: 'contacts/sarah-smith.md',
+        etag: 'existing',
+      },
+    ])
+
+    const result = await migrateContacts(
+      storage,
+      db as unknown as D1Database,
+      VENDOR_ID
+    )
+
     expect(result.skipped).toBe(1)
     expect(result.migrated).toBe(0)
-    // No new files created
-    expect(storage.files.size).toBe(0)
+    expect((result as Awaited<ReturnType<typeof repairContacts>>).rewritten).toBe(0)
+    expect(storage.files.size).toBe(1)
   })
 
   it('deduplicates filenames across contacts', async () => {

@@ -1622,10 +1622,8 @@ async function initialGitHubSync(
   repo: string
 ): Promise<{ pushed: number; skipped: number }> {
   const { GitHubStorageBackend } = await import('../../storage/github')
-  const { contactToMarkdown } = await import('../../storage/contacts')
   const { cleanupLegacyWeddingFile } = await import('../../storage/weddings')
-  const { serializeMarkdown } = await import('../../storage/markdown')
-  const { contactFilename } = await import('../../storage/slug')
+  const { repairContacts } = await import('../../storage/migrate')
   const { pushWeddingFiles } = await import('../../services/storage-push')
   const { syncVendor } = await import('../../storage/sync')
 
@@ -1649,33 +1647,12 @@ async function initialGitHubSync(
     console.error('[github-sync] Pull phase failed:', err)
   }
 
-  // Get all contacts from D1
-  const contacts = await db
-    .prepare('SELECT * FROM contacts WHERE vendor_id = ? ORDER BY created_at ASC')
-    .bind(vendor.id)
-    .all<any>()
-    .then((r) => r.results)
-
   let pushed = 0
   let skipped = 0
 
-  for (const ct of contacts) {
-    try {
-      const filename = contactFilename(
-        ct.first_name || '',
-        ct.last_name || '',
-        ct.partner_first_name,
-        ct.partner_last_name
-      )
-      const doc = contactToMarkdown(ct)
-      const content = serializeMarkdown(doc)
-      await github.write(`contacts/${filename}`, content)
-      pushed++
-    } catch (err) {
-      console.error(`[github-sync] Failed to push contact ${ct.id}:`, err)
-      skipped++
-    }
-  }
+  const contactRepair = await repairContacts(github, db, vendor.id)
+  pushed += contactRepair.migrated + contactRepair.rewritten
+  skipped += contactRepair.skipped + contactRepair.errors
 
   // Get weddings
   const weddings = await db

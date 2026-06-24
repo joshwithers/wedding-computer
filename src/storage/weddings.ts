@@ -257,7 +257,8 @@ export async function writeWeddingFile(
   if (oldFolder === desiredFolder) {
     const contentSha = await gitBlobSha(content)
     if (contentSha === indexRow.etag) {
-      return oldFolder
+      const stillExists = await storage.head(oldPath).catch(() => null)
+      if (stillExists) return oldFolder
     }
   }
 

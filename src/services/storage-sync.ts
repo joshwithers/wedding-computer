@@ -14,8 +14,9 @@
  *    of those is dropped, the change lands here within 5 minutes.
  *    Also detects date/title changes that require a folder rename.
  *
- * Only processes vendors with storage_type = 'git' (R2 vendors don't
- * need background sync since R2 writes are immediate and reliable).
+ * Git vendors get a pull+push pass. R2/default vendors normally don't need
+ * a pull, but the same queue also repairs historical D1-only rows so old
+ * imports are materialised as markdown before launch.
  */
 
 import type { Bindings, VendorProfile, Wedding } from '../types'
@@ -24,10 +25,12 @@ import { syncVendor } from '../storage/sync'
 import { weddingFolder } from '../storage/weddings'
 import { gitBlobSha } from '../storage/etag'
 import { pushWeddingFiles } from './storage-push'
+import { repairVendorStorage } from './storage-repair'
 
 type SyncSummary = {
   vendorsChecked: number
   pulled: number       // external changes applied to D1
+  contactsSynced: number
   weddingsSynced: number
   errors: number
 }
@@ -61,12 +64,35 @@ type StaleCandidate = Wedding & {
 }
 
 export async function syncStorageBackground(env: Bindings): Promise<SyncSummary> {
-  const summary: SyncSummary = { vendorsChecked: 0, pulled: 0, weddingsSynced: 0, errors: 0 }
+  const summary: SyncSummary = { vendorsChecked: 0, pulled: 0, contactsSynced: 0, weddingsSynced: 0, errors: 0 }
 
-  // Find all vendors with git storage configured
+  // Find git vendors plus any vendor with D1 rows that still need markdown.
   const vendors = await env.DB
     .prepare(
-      `SELECT * FROM vendor_profiles WHERE storage_type = 'git' AND storage_config IS NOT NULL`
+      `SELECT DISTINCT vp.*
+       FROM vendor_profiles vp
+       WHERE (vp.storage_type = 'git' AND vp.storage_config IS NOT NULL)
+          OR EXISTS (
+            SELECT 1
+            FROM contacts c
+            LEFT JOIN file_index fi
+              ON fi.vendor_id = c.vendor_id
+             AND fi.entity_type = 'contact'
+             AND fi.entity_id = c.id
+            WHERE c.vendor_id = vp.id AND fi.id IS NULL
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM weddings w
+            JOIN wedding_members wm ON wm.wedding_id = w.id
+            LEFT JOIN file_index fi
+              ON fi.vendor_id = vp.id
+             AND fi.entity_type = 'wedding'
+             AND fi.entity_id = w.id
+            WHERE wm.user_id = vp.user_id
+              AND wm.status = 'active'
+              AND fi.id IS NULL
+          )`
     )
     .all<VendorProfile>()
     .then((r) => r.results)
@@ -75,6 +101,7 @@ export async function syncStorageBackground(env: Bindings): Promise<SyncSummary>
     summary.vendorsChecked++
     const result = await syncVendorStorage(env, vendor)
     summary.pulled += result.pulled
+    summary.contactsSynced += result.contactsSynced
     summary.weddingsSynced += result.weddingsSynced
     summary.errors += result.errors
   }
@@ -102,7 +129,7 @@ export async function syncVendorStorage(
   env: Bindings,
   vendor: VendorProfile
 ): Promise<Omit<SyncSummary, 'vendorsChecked'>> {
-  const result = { pulled: 0, weddingsSynced: 0, errors: 0 }
+  const result = { pulled: 0, contactsSynced: 0, weddingsSynced: 0, errors: 0 }
 
   const lockKey = `synclock:${vendor.id}`
   if (await env.KV.get(lockKey)) {
@@ -120,7 +147,7 @@ export async function syncVendorStorage(
 async function runVendorSync(
   env: Bindings,
   vendor: VendorProfile,
-  result: { pulled: number; weddingsSynced: number; errors: number }
+  result: { pulled: number; contactsSynced: number; weddingsSynced: number; errors: number }
 ): Promise<Omit<SyncSummary, 'vendorsChecked'>> {
   let storage
   try {
@@ -128,6 +155,23 @@ async function runVendorSync(
   } catch {
     return result // skip vendors with broken config
   }
+
+  // Default/R2 vendors don't need the external pull phase, but they do need
+  // launch repair for historical D1-only rows.
+  const storageType = vendor.storage_type ?? 'r2'
+  if (storageType !== 'git') {
+    const repaired = await repairVendorStorage(env, vendor, { storage })
+    result.contactsSynced += repaired.contactsMigrated + repaired.contactsRewritten
+    result.weddingsSynced += repaired.weddingsPushed
+    result.errors += repaired.contactErrors + repaired.weddingErrors
+    return result
+  }
+
+  // Git vendors also need contact repair; the wedding push phase below handles
+  // all statuses, including historical completed imports.
+  const repaired = await repairVendorStorage(env, vendor, { storage, weddingLimit: 0 })
+  result.contactsSynced += repaired.contactsMigrated + repaired.contactsRewritten
+  result.errors += repaired.contactErrors
 
   // Skip the (full recursive tree) pull when the backend is unchanged since
   // the last clean sync. The push phase still runs — it's cheap when there's
@@ -189,7 +233,6 @@ async function runVendorSync(
        LEFT JOIN file_index fiv ON fiv.vendor_id = ?1 AND fiv.entity_type = 'vendors' AND fiv.entity_id = w.id
        WHERE wm.user_id = (SELECT user_id FROM vendor_profiles WHERE id = ?1)
          AND wm.status = 'active'
-         AND w.status IN ('planning', 'confirmed')
        ORDER BY w.updated_at DESC
        LIMIT 25`
     )
