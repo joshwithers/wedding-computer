@@ -55,6 +55,8 @@ import { getCouplePartners } from '../services/couple-contact'
 import {
   buildWallpaperHtml,
   selectKeyMoments,
+  singleSharedLocation,
+  timeLabel,
   generateTagline,
   resolveExportPalette,
   WALLPAPER_W,
@@ -664,11 +666,28 @@ async function loadExportData(c: Ctx, weddingId: string) {
   const dateLabel = wedding.date ? formatDate(wedding.date) : ''
   const locationLabel =
     [wedding.location_city, wedding.location_state].filter(Boolean).join(', ') || wedding.location || undefined
+  // Venue-local sunset, compact (matches the run-sheet's "5:08pm" time style).
+  // Best-effort — omitted when there's no date or the place can't be resolved.
+  const sunMin = sunMinutesFor({
+    lat: wedding.location_lat,
+    lng: wedding.location_lng,
+    dateStr: wedding.date,
+    location: wedding.location,
+    city: wedding.location_city,
+    country: wedding.location_country,
+    state: wedding.location_state,
+    fallbackTimezone: getI18n().timezone,
+  })
+  const sunsetHhmm = sunMin?.sunset != null ? minToHhmm(sunMin.sunset) : null
+  const sunsetLabel = sunsetHhmm ? timeLabel(sunsetHhmm) : undefined
+  // The single address for the wallpaper: the one venue every item shares, else
+  // the wedding's location, else the city/state label.
+  const wallpaperAddress = singleSharedLocation(items) || wedding.location || locationLabel
   const names = partners.map((p) => p.first).filter(Boolean).join(' & ') || wedding.title
   const tagline = await generateTagline(c.env, { weddingId, names, dateLabel, locationLabel })
   const slug = (names || 'wedding').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'wedding'
   const { palette, display } = resolveExportPalette(vendor?.brand_theme)
-  return { wedding, partners, items, dateLabel, locationLabel, names, tagline, slug, palette, display }
+  return { wedding, partners, items, dateLabel, locationLabel, sunsetLabel, wallpaperAddress, names, tagline, slug, palette, display }
 }
 
 /** Run sheet → phone-lockscreen wallpaper PNG (the ≤8 key moments). */
@@ -678,7 +697,8 @@ export async function wallpaperPng(c: Ctx, weddingId: string, _member: WeddingMe
   const html = buildWallpaperHtml({
     partners: d.partners,
     dateLabel: d.dateLabel,
-    locationLabel: d.locationLabel,
+    locationLabel: d.wallpaperAddress,
+    sunsetLabel: d.sunsetLabel,
     tagline: d.tagline,
     items: selectKeyMoments(d.items),
     palette: d.palette,

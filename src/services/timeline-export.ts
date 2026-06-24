@@ -115,6 +115,20 @@ export function selectKeyMoments(items: TimelineItemView[], max = 8): ExportMome
     .map((i) => ({ time: timeLabel(i.start_time), title: i.title }))
 }
 
+/** The one venue every scheduled (non-sun) item shares, if they all share it —
+ * else undefined. Lets the wallpaper show a single address instead of repeating
+ * (or omitting) it. Blank locations are treated as "unspecified", not a second
+ * venue, so a mix of "The Barn" and blanks still resolves to "The Barn". */
+export function singleSharedLocation(items: TimelineItemView[]): string | undefined {
+  const locs = new Set<string>()
+  for (const i of items) {
+    if (i.marker) continue
+    const loc = i.location?.trim()
+    if (loc) locs.add(loc)
+  }
+  return locs.size === 1 ? [...locs][0] : undefined
+}
+
 /**
  * A warm one-line tagline for the wallpaper, written by Workers AI from the
  * couple/date/place. Cached per-wedding in KV (an empty string is cached as
@@ -158,7 +172,8 @@ export type ExportPartner = { first: string; last?: string }
 export type WallpaperData = {
   partners: ExportPartner[] // 1–2 partners; first name large, last name small beneath
   dateLabel: string
-  locationLabel?: string
+  locationLabel?: string // a single venue/address line (deduped upstream)
+  sunsetLabel?: string // compact venue-local sunset, e.g. "5:08pm"
   tagline?: string
   items: ExportMoment[]
   palette: ExportPalette
@@ -206,7 +221,13 @@ export function buildWallpaperHtml(d: WallpaperData): string {
     .join('')
 
   const location = d.locationLabel
-    ? `<div style="display:flex;font-family:${pal.bodyFamily};font-weight:400;font-size:32px;color:${pal.secondary};margin-top:8px">${esc(d.locationLabel)}</div>`
+    ? `<div style="display:flex;font-family:${pal.bodyFamily};font-weight:400;font-size:32px;color:${pal.secondary};margin-top:8px;text-align:center">${esc(d.locationLabel)}</div>`
+    : ''
+  // Sunset cue — useful on a run-sheet wallpaper for golden hour. "Sunset" is
+  // kept in English to match the rest of this English-only card (the satori
+  // fonts are Latin-only, so it isn't localized like the in-app UI).
+  const sunset = d.sunsetLabel
+    ? `<div style="display:flex;font-family:${pal.bodyFamily};font-weight:600;font-size:30px;letter-spacing:1px;color:${pal.secondaryDeep};margin-top:14px">Sunset ${esc(d.sunsetLabel)}</div>`
     : ''
   const tagline = d.tagline
     ? `<div style="display:flex;font-family:${pal.displayFamily};font-weight:700;font-size:34px;color:${pal.accent};margin-top:28px;padding:0 40px;text-align:center;line-height:1.25">${esc(d.tagline)}</div>`
@@ -219,6 +240,7 @@ export function buildWallpaperHtml(d: WallpaperData): string {
       <div style="display:flex;margin-top:20px">${namesBlock(d.partners, pal)}</div>
       <div style="display:flex;font-family:${pal.bodyFamily};font-weight:400;font-size:38px;color:${pal.secondary};margin-top:26px">${esc(d.dateLabel)}</div>
       ${location}
+      ${sunset}
       ${tagline}
     </div>
     <div style="display:flex;justify-content:center;margin-top:54px;margin-bottom:54px">
@@ -236,7 +258,24 @@ export function buildWallpaperHtml(d: WallpaperData): string {
 // row never splits. Rendered the same way (satori → PNG) then embedded one
 // PNG per page into a pdf-lib document by og-render.renderPdf.
 
-export type RunSheetMoment = { time: string; title: string; location?: string; people?: string; isMarker?: boolean }
+export type RunSheetMoment = {
+  time: string
+  endTime?: string
+  title: string
+  description?: string
+  location?: string
+  people?: string
+  isMarker?: boolean
+}
+
+// A run-sheet note over this many chars is truncated — a backstop so a single
+// pathological description can't out-grow one page (pagination is height-based).
+const MAX_DESC = 1500
+function clampDesc(s: string | null | undefined): string | undefined {
+  const t = s?.trim()
+  if (!t) return undefined
+  return t.length > MAX_DESC ? t.slice(0, MAX_DESC - 1).trimEnd() + '…' : t
+}
 
 export type RunSheetData = {
   partners: ExportPartner[]
@@ -254,7 +293,9 @@ export function selectRunSheetMoments(items: TimelineItemView[]): RunSheetMoment
     .sort((a, b) => (a.start_time! < b.start_time! ? -1 : a.start_time! > b.start_time! ? 1 : a.sort_order - b.sort_order))
     .map((i) => ({
       time: timeLabel(i.start_time),
+      endTime: i.end_time ? timeLabel(i.end_time) : undefined,
       title: i.title,
+      description: clampDesc(i.description),
       location: i.location || undefined,
       people: i.assignees?.length ? i.assignees.map((a) => a.displayName).filter(Boolean).join(', ') : undefined,
       isMarker: !!i.marker,
@@ -264,20 +305,47 @@ export function selectRunSheetMoments(items: TimelineItemView[]): RunSheetMoment
 // A4 portrait at ~150 dpi (matches the 595.28 × 841.89 pt PDF page 0.707 ratio).
 export const RUNSHEET_W = 1240
 export const RUNSHEET_H = 1754
-const PAGE1_ITEMS = 13 // page 1 carries the full header, so fewer rows
-const PAGEN_ITEMS = 18
 
 function runSheetRow(m: RunSheetMoment, pal: ExportPalette): string {
-  const sub = [m.location, m.people].filter(Boolean).join('   ·   ')
+  const meta = [m.location, m.people].filter(Boolean).join('   ·   ')
   const titleColor = m.isMarker ? pal.secondaryDeep : pal.title
+  const endTime =
+    m.endTime && m.endTime !== m.time
+      ? `<div style="display:flex;font-family:${pal.bodyFamily};font-weight:400;font-size:21px;color:${pal.secondary};margin-top:3px">– ${esc(m.endTime)}</div>`
+      : ''
+  const description = m.description
+    ? `<div style="display:flex;font-family:${pal.bodyFamily};font-weight:400;font-size:24px;color:${pal.secondaryDeep};margin-top:7px;line-height:1.35">${esc(m.description)}</div>`
+    : ''
+  const metaLine = meta
+    ? `<div style="display:flex;font-family:${pal.bodyFamily};font-weight:400;font-size:23px;color:${pal.secondary};margin-top:6px;line-height:1.25">${esc(meta)}</div>`
+    : ''
   return `<div style="display:flex;align-items:flex-start;width:100%;border-bottom:1px solid ${pal.divider};padding-top:17px;padding-bottom:17px">
-    <div style="display:flex;justify-content:flex-end;width:195px;flex-shrink:0;font-family:${pal.bodyFamily};font-weight:600;font-size:30px;color:${pal.accent}">${esc(m.time)}</div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;width:195px;flex-shrink:0">
+      <div style="display:flex;font-family:${pal.bodyFamily};font-weight:600;font-size:30px;color:${pal.accent}">${esc(m.time)}</div>
+      ${endTime}
+    </div>
     <div style="display:flex;width:46px;flex-shrink:0"></div>
     <div style="display:flex;flex-direction:column;flex-grow:1">
       <div style="display:flex;font-family:${pal.bodyFamily};font-weight:600;font-size:31px;color:${titleColor};line-height:1.2">${esc(m.title)}</div>
-      ${sub ? `<div style="display:flex;font-family:${pal.bodyFamily};font-weight:400;font-size:23px;color:${pal.secondary};margin-top:5px;line-height:1.25">${esc(sub)}</div>` : ''}
+      ${description}
+      ${metaLine}
     </div>
   </div>`
+}
+
+// Conservative per-row height estimate (px) used only to paginate. Biased to
+// OVER-estimate: overshooting just starts a new page a row early, while
+// under-estimating would clip a row off the bottom of an A4 page. Char-per-line
+// counts assume the ~815px content column at each font size.
+function estimateRowHeight(m: RunSheetMoment): number {
+  const titleLines = Math.max(1, Math.ceil(esc(m.title).length / 44))
+  const meta = [m.location, m.people].filter(Boolean).join('   ·   ')
+  const contentH =
+    titleLines * 38 +
+    (m.description ? 7 + Math.max(1, Math.ceil(m.description.length / 60)) * 33 : 0) +
+    (meta ? 6 + Math.max(1, Math.ceil(meta.length / 64)) * 29 : 0)
+  const timeH = 36 + (m.endTime && m.endTime !== m.time ? 3 + 24 : 0)
+  return 35 /* padding + border */ + Math.max(contentH, timeH)
 }
 
 function pageShell(inner: string, pageNum: number, totalPages: number, pal: ExportPalette): string {
@@ -294,13 +362,29 @@ function pageShell(inner: string, pageNum: number, totalPages: number, pal: Expo
 
 export function buildRunSheetPages(d: RunSheetData): string[] {
   const pal = d.palette
+  // Paginate by estimated height (not a fixed row count) so rows with
+  // descriptions — which vary in height — never overflow the page. Page 1 carries
+  // the full header, so it gets a smaller row budget than later pages.
+  const contentH = RUNSHEET_H - 72 /* page padding-top */ - 95 /* footer block */
+  const page1Budget = contentH - 290 /* full header */
+  const pageNBudget = contentH - 80 /* slim header */
   const chunks: RunSheetMoment[][] = []
-  let idx = 0
-  while (idx < d.items.length) {
-    const size = chunks.length === 0 ? PAGE1_ITEMS : PAGEN_ITEMS
-    chunks.push(d.items.slice(idx, idx + size))
-    idx += size
+  let cur: RunSheetMoment[] = []
+  let curH = 0
+  for (const m of d.items) {
+    const h = estimateRowHeight(m)
+    const budget = chunks.length === 0 ? page1Budget : pageNBudget
+    // Always keep at least one row per page (a lone over-budget row is rare and
+    // capped by MAX_DESC) — otherwise start a fresh page.
+    if (cur.length > 0 && curH + h > budget) {
+      chunks.push(cur)
+      cur = []
+      curH = 0
+    }
+    cur.push(m)
+    curH += h
   }
+  if (cur.length > 0) chunks.push(cur)
   if (chunks.length === 0) chunks.push([])
   const total = chunks.length
   const namesLine = d.partners.map((p) => p.first).filter(Boolean).join(' & ')
