@@ -18,6 +18,7 @@ export const nav = {
   'nav.analytics': 'Analytics',
   'nav.subscription': 'Subscription',
   'nav.referEarn': 'Refer & earn',
+  'nav.community': 'Community',
   'nav.yourData': 'Your Data',
   'nav.yourProfile': 'Your Profile',
   'nav.settings': 'Settings',

@@ -26,6 +26,8 @@ import { isDocScope } from '../services/doc-permissions'
 import { docSave, docHeartbeat, docClaim, docRelease } from './wedding-docs-handlers'
 import { WebLinks } from '../views/web-links'
 import { listWebLinks } from '../db/web-links'
+import { CommunityJoinCard } from '../views/community'
+import { buildCoupleJoinCard } from '../services/community'
 import { listFormSendsForWedding, listWeddingSubmissions, formSubmissionFields, type WeddingFormSend, type WeddingSubmission } from '../db/forms'
 import { addLink, togglePin, removeLink } from './web-links-handlers'
 import {
@@ -195,6 +197,11 @@ couple.get('/wedding/:id', async (c) => {
     ? await loadDocTabs(c.env.DB, weddingId, membership, user.id)
     : []
 
+  // Opt-in season+year community for this couple's place (couples only).
+  const communityJoinCard = membership.role === 'couple'
+    ? await buildCoupleJoinCard(c.env.DB, user, wedding)
+    : null
+
   // Web links (galleries, Pinterest, playlists…)
   const webLinks = await listWebLinks(c.env.DB, weddingId)
 
@@ -279,6 +286,10 @@ couple.get('/wedding/:id', async (c) => {
               <p class="text-sm text-gray-400 text-center">Add vendors and set expected prices to track your budget</p>
             )}
           </div>
+        )}
+
+        {communityJoinCard && (
+          <CommunityJoinCard data={communityJoinCard} csrfToken={c.get('csrfToken')} />
         )}
 
         {/* Vendors */}
@@ -2225,6 +2236,9 @@ const CoupleLayout: FC<LayoutProps> = ({ title, user, wedding, csrfToken, childr
             Wedding Computer
           </a>
           <div class="flex items-center gap-3">
+            <a href="/community" class="text-sm font-medium text-papaya-200 hover:text-white transition-colors">
+              {t('community.title')}
+            </a>
             <a href="/account" class="text-sm font-medium text-papaya-200 hover:text-white transition-colors">
               {user.name}
             </a>

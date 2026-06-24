@@ -19,6 +19,7 @@ import calendarRoute from './routes/vendor/calendar'
 import invoices from './routes/vendor/invoices'
 import emailRoutes from './routes/vendor/emails'
 import coupleRoute from './routes/couple'
+import communityRoute from './routes/community'
 import bookRoute from './routes/book'
 import bookingFormRoute from './routes/vendor/booking-form'
 import contractRoute from './routes/vendor/contracts'
@@ -479,6 +480,7 @@ app.route('/', formsRoute)
 app.route('/', referRoute)
 app.route('/', accountRoute)
 app.route('/', filesRoute)
+app.route('/', communityRoute)
 app.route('/', coupleRoute)
 app.route('/', adminRoute)
 

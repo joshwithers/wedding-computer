@@ -9,6 +9,7 @@ import type { Bindings, User } from '../types'
 import { getVendorByUserId } from '../db/vendors'
 import { deleteUser, softDeleteUser, listExpiredDeletedUserIds, getUserById } from '../db/users'
 import { deleteVendorSecret } from './secrets'
+import { anonymiseCommunityForUser } from '../db/community'
 
 /** Delete every one of a user's sessions (D1 rows cascade on hard delete, but
  *  their KV `session:<id>` entries do not — collect and clear them). */
@@ -95,6 +96,13 @@ export async function purgeAccount(env: Bindings, user: User): Promise<void> {
     .bind(user.id)
     .run()
     .catch((e: any) => console.error('[purge] document row cleanup failed', e.message))
+
+  // 4b. Anonymise the user's community footprint. Threads/posts survive for the
+  //     people relying on them; FK SET NULL + this strip removes the PII. Must
+  //     run before deleteUser (which would null the author link anyway).
+  await anonymiseCommunityForUser(env.DB, user.id).catch((e: any) =>
+    console.error('[purge] community anonymise failed', e.message)
+  )
 
   // 5. D1 rows (reassigns/removes weddings, anonymizes audit, deletes user
   //    and cascades the rest).

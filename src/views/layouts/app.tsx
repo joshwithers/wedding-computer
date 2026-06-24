@@ -42,6 +42,7 @@ const NAV_SECTIONS: { heading?: MessageKey; items: Array<{ href: string; label: 
       { href: '/app/analytics', label: 'nav.analytics' },
       { href: '/app/subscription', label: 'nav.subscription' },
       { href: '/app/refer', label: 'nav.referEarn' },
+      { href: '/community', label: 'nav.community' },
       { href: '/app/settings#data', label: 'nav.yourData' },
     ],
   },
