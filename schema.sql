@@ -942,28 +942,6 @@ CREATE INDEX IF NOT EXISTS idx_import_records_status ON import_records(import_jo
 CREATE INDEX IF NOT EXISTS idx_invoices_vendor_status ON invoices(vendor_id, status);
 CREATE INDEX IF NOT EXISTS idx_emails_vendor_unread ON emails(vendor_id, direction, is_read, is_system);
 
--- Run sheet items (day-of timeline for a wedding)
-CREATE TABLE IF NOT EXISTS run_sheet_items (
-  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
-  wedding_id TEXT NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
-  vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
-  time TEXT,
-  end_time TEXT,
-  title TEXT NOT NULL,
-  description TEXT,
-  location TEXT,
-  assigned_to TEXT,
-  category TEXT DEFAULT 'other'
-    CHECK (category IN ('getting_ready', 'ceremony', 'portraits', 'reception', 'other')),
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_run_sheet_items_wedding ON run_sheet_items(wedding_id);
-CREATE INDEX IF NOT EXISTS idx_run_sheet_items_vendor ON run_sheet_items(vendor_id);
-CREATE INDEX IF NOT EXISTS idx_run_sheet_items_order ON run_sheet_items(wedding_id, sort_order);
-
 -- Busyness scores (aggregated daily by cron)
 CREATE TABLE IF NOT EXISTS busyness_scores (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),

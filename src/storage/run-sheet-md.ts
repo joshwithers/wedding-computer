@@ -8,7 +8,7 @@
  *   ## Pending timeline approvals ← change requests awaiting a decision
  *
  * Only the `## Run sheet` table is parsed on ingest; the rest is
- * regenerated on every push. Rows are matched to run_sheet_items by the
+ * regenerated on every push. Rows are matched to timeline_items by the
  * trailing `id` column — rows without an id are created (the app assigns
  * the id and re-pushes the canonical file), rows that disappear are
  * deleted, and row order becomes sort_order.

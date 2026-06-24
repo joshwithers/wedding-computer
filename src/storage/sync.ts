@@ -13,7 +13,7 @@
  * The weddings/ directory holds one folder per wedding:
  *   weddings/2026-07-12-sarah-james/wedding.md   → weddings table
  *   weddings/2026-07-12-sarah-james/todo.md      → wedding_todos table
- *   weddings/2026-07-12-sarah-james/timeline.md  → run_sheet_items (own rows two-way)
+ *   weddings/2026-07-12-sarah-james/timeline.md  → timeline_items (own rows two-way)
  *   weddings/2026-07-12-sarah-james/notes.md     → wedding_members.vendor_notes (private)
  *   weddings/2026-07-12-sarah-james/vendors.md   → push-only (derived team list, never pulled)
  *   weddings/2026-07-12-sarah-james/log.md       → push-only (derived changelog, never pulled)
@@ -32,7 +32,6 @@ import { markdownToWedding, weddingCachedData } from './weddings'
 import { parseTimelineMarkdown, diffRunSheetRows } from './run-sheet-md'
 import { isIgnoredPath } from './github'
 import { getWeddingTodo } from '../db/todos'
-import { listRunSheetItems, applyRunSheetDiff } from '../db/run-sheet'
 import { setVendorsDocContent } from '../db/wedding-docs'
 import { listOwnedItemsAsRows, applyTimelineRowDiff, applyWeddingUpdate, pickHeadlineFields } from '../db/timeline'
 import {
@@ -400,34 +399,6 @@ async function isActiveWeddingMember(
   return !!member
 }
 
-/**
- * Snapshot of everything timeline.md renders from, stored in the index
- * row's cached_data. The push sweep compares this against the live tables
- * to decide whether the file needs regenerating.
- */
-export async function timelineCachedData(
-  db: D1Database,
-  weddingId: string
-): Promise<string> {
-  const items = await db
-    .prepare(
-      'SELECT COUNT(*) AS c, MAX(updated_at) AS l FROM run_sheet_items WHERE wedding_id = ?'
-    )
-    .bind(weddingId)
-    .first<{ c: number; l: string | null }>()
-  const pending = await db
-    .prepare(
-      "SELECT COUNT(*) AS p, MAX(created_at) AS pl FROM timeline_change_requests WHERE wedding_id = ? AND status = 'pending'"
-    )
-    .bind(weddingId)
-    .first<{ p: number; pl: string | null }>()
-  return JSON.stringify({
-    c: items?.c ?? 0,
-    l: items?.l ?? null,
-    p: pending?.p ?? 0,
-    pl: pending?.pl ?? null,
-  })
-}
 
 /**
  * Check whether a file would be accepted by applyPulledFile, without

@@ -81,7 +81,6 @@ function seedBase(db: MockD1Database, opts: { editorCanManage?: number; withPlan
   db.seed('wedding_members', members)
   db.seed('timeline_change_requests', [])
   db.seed('wedding_log', [])
-  db.seed('run_sheet_items', [])
 }
 
 describe('wedding.md ingestion permission routing', () => {
