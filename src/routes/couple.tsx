@@ -189,9 +189,7 @@ couple.get('/wedding/:id', async (c) => {
   const bookedCount = coupleVendors.filter((v) => v.status === 'booked').length
   const vendorsWithoutEstimate = coupleVendors.filter((v) => !v.expected_price_cents && !v.vendor_profile_id).length
 
-  // Members for collaboration toggle
   const members = await getWeddingMembers(c.env.DB, weddingId)
-  const platformVendorCount = members.filter((m) => m.role === 'vendor').length
 
   // Collaborative scoped docs — Everyone (read-only) + Couple-only (editable)
   const docTabs = membership.role === 'couple'
@@ -543,41 +541,6 @@ couple.get('/wedding/:id', async (c) => {
           </section>
         )}
 
-        {/* Vendor collaboration */}
-        {platformVendorCount > 1 && (
-          <section>
-            <h2 class="text-sm font-bold text-gray-500 mb-3">Vendor collaboration</h2>
-            <div class="bg-white border border-papaya-300/30 rounded-2xl p-5">
-              <div class="flex items-start justify-between gap-4">
-                <div>
-                  <p class="text-sm font-bold text-gray-900">Allow vendors to see each other</p>
-                  <p class="text-xs text-gray-500 mt-1">
-                    When enabled, your vendors can see who else is working on your {wedding.ceremony_type ?? 'wedding'}.
-                    This helps them coordinate. Only you can change this setting.
-                  </p>
-                </div>
-                <form method="post" action={`/wedding/${weddingId}/visibility`}>
-                  <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                  <input type="hidden" name="visibility" value={wedding.vendor_visibility === 'visible' ? 'private' : 'visible'} />
-                  <button
-                    type="submit"
-                    class={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      wedding.vendor_visibility === 'visible' ? 'bg-horizon-600' : 'bg-gray-200'
-                    }`}
-                    role="switch"
-                    aria-checked={wedding.vendor_visibility === 'visible' ? 'true' : 'false'}
-                  >
-                    <span
-                      class={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        wedding.vendor_visibility === 'visible' ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                </form>
-              </div>
-            </div>
-          </section>
-        )}
       </div>
     </CoupleLayout>
   )
@@ -876,28 +839,6 @@ couple.post('/wedding/:id/vendors/:coupleVendorId/delete', async (c) => {
   return c.redirect(`/wedding/${weddingId}`)
 })
 
-// ─── Vendor visibility toggle ───
-
-couple.post('/wedding/:id/visibility', async (c) => {
-  const user = c.get('user')
-  if (!user) return c.redirect('/login')
-  const weddingId = c.req.param('id')
-
-  const membership = await getMembership(c.env.DB, weddingId, user.id)
-  if (!membership || membership.role !== 'couple') return c.text('Forbidden', 403)
-
-  const body = await c.req.parseBody()
-  const visibility = body.visibility === 'visible' ? 'visible' : 'private'
-
-  await updateWedding(c.env.DB, weddingId, { vendor_visibility: visibility })
-
-  await c.env.EMAIL_QUEUE.send({
-    type: 'notify_visibility_changed',
-    payload: JSON.stringify({ weddingId, isNowVisible: visibility === 'visible' }),
-  })
-
-  return c.redirect(`/wedding/${weddingId}`)
-})
 
 // ─── Collaborative scoped docs (couple side) ───
 // Shared handlers enforce the per-scope gate; the route only resolves the

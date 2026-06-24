@@ -960,12 +960,8 @@ weddings.get('/app/weddings/:id', async (c) => {
   const flashError = peopleErrorMessage(c.req.query('error'))
 
   const canManage = !!membership.can_manage
-  // When vendors are hidden from one another, a non-manager still sees the
-  // couple, themselves — and any managing vendor (planner/venue/organiser), who
-  // coordinates the wedding and is already named as its manager elsewhere.
-  const members = canManage || wedding.vendor_visibility === 'visible'
-    ? allMembers
-    : allMembers.filter((m) => m.user_id === user.id || m.role === 'couple' || m.role === 'guest' || !!m.can_manage)
+  // Everyone on a wedding sees the full team — being added IS the access grant.
+  const members = allMembers
 
   const uploaded = c.req.query('uploaded')
   const deleted = c.req.query('deleted')
@@ -2061,9 +2057,7 @@ async function renderPeopleSection(
   ])
   if (!membership || !wedding) return c.text('Wedding not found', 404)
   const canManage = !!membership.can_manage
-  const members = canManage || wedding.vendor_visibility === 'visible'
-    ? allMembers
-    : allMembers.filter((m) => m.user_id === user.id || m.role === 'couple' || m.role === 'guest' || !!m.can_manage)
+  const members = allMembers // everyone on a wedding sees the full team
   const vendorTypes = canManage ? await listVendorTypes(c.env.DB) : []
   return c.html(
     <PeopleSection

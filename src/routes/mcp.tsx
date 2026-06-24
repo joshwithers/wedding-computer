@@ -1038,9 +1038,9 @@ async function handleTool(
         return { content: [{ type: 'text', text: 'Wedding not found' }] }
       }
       const wedding = await db
-        .prepare('SELECT id, title, vendor_visibility FROM weddings WHERE id = ?')
+        .prepare('SELECT id, title FROM weddings WHERE id = ?')
         .bind(weddingId)
-        .first<{ id: string; title: string; vendor_visibility: 'private' | 'visible' }>()
+        .first<{ id: string; title: string }>()
       if (!wedding) return { content: [{ type: 'text', text: 'Wedding not found' }] }
       const { exportWeddingVendorsMarkdown } = await import('../db/wedding-vendors-export')
       const md = await exportWeddingVendorsMarkdown(db, wedding, vendor.id)

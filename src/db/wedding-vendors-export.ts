@@ -2,9 +2,8 @@
  * vendors.md — who's on a wedding, exported to the vendor's vault.
  *
  * Generated and read-only (like log.md): membership is managed through
- * invites in the app, never by editing a file. The export respects the
- * couple's vendor_visibility setting — when the couple keeps their vendor
- * list private, a vendor's copy shows only the couple and themselves.
+ * invites in the app, never by editing a file. Everyone on a wedding sees the
+ * full team — being added to the wedding is the access grant.
  *
  * Couple-private data (couple_vendors.notes, expected_price_cents) is
  * never exported here.
@@ -47,15 +46,12 @@ export async function vendorsCachedData(
 
 export async function exportWeddingVendorsMarkdown(
   db: D1Database,
-  wedding: Pick<Wedding, 'id' | 'title' | 'vendor_visibility'>,
+  wedding: Pick<Wedding, 'id' | 'title'>,
   viewerVendorId: string
 ): Promise<string> {
   const members = await getWeddingMembers(db, wedding.id)
-  const visible = wedding.vendor_visibility === 'visible'
 
-  const vendorMembers = members.filter(
-    (m) => m.role === 'vendor' && (visible || m.vendor_profile_id === viewerVendorId)
-  )
+  const vendorMembers = members.filter((m) => m.role === 'vendor')
   const coupleMembers = members.filter((m) => m.role === 'couple')
 
   const lines: string[] = [
@@ -93,31 +89,27 @@ export async function exportWeddingVendorsMarkdown(
   }
   lines.push('')
 
-  if (visible) {
-    // The couple's own vendor list, minus rows that duplicate a platform
-    // member above and minus everything the couple keeps private.
-    const memberProfileIds = new Set(
-      vendorMembers.map((m) => m.vendor_profile_id).filter(Boolean)
-    )
-    const coupleVendors = (await listCoupleVendors(db, wedding.id)).filter(
-      (cv) => !cv.vendor_profile_id || !memberProfileIds.has(cv.vendor_profile_id)
-    )
-    if (coupleVendors.length > 0) {
-      lines.push("## Couple's vendor list", '')
-      for (const cv of coupleVendors) {
-        const role = cv.category ? ` — ${cv.category}` : ''
-        lines.push(`- **${cv.name}**${role} · ${cv.status}`)
-        const details: string[] = []
-        if (cv.email) details.push(cv.email)
-        if (cv.phone) details.push(cv.phone)
-        if (cv.website) details.push(cv.website)
-        if (cv.instagram) details.push(`@${cv.instagram.replace(/^@/, '')}`)
-        if (details.length > 0) lines.push(`  - ${details.join(' · ')}`)
-      }
-      lines.push('')
+  // The couple's own vendor list, minus rows that duplicate a platform
+  // member above and minus everything the couple keeps private.
+  const memberProfileIds = new Set(
+    vendorMembers.map((m) => m.vendor_profile_id).filter(Boolean)
+  )
+  const coupleVendors = (await listCoupleVendors(db, wedding.id)).filter(
+    (cv) => !cv.vendor_profile_id || !memberProfileIds.has(cv.vendor_profile_id)
+  )
+  if (coupleVendors.length > 0) {
+    lines.push("## Couple's vendor list", '')
+    for (const cv of coupleVendors) {
+      const role = cv.category ? ` — ${cv.category}` : ''
+      lines.push(`- **${cv.name}**${role} · ${cv.status}`)
+      const details: string[] = []
+      if (cv.email) details.push(cv.email)
+      if (cv.phone) details.push(cv.phone)
+      if (cv.website) details.push(cv.website)
+      if (cv.instagram) details.push(`@${cv.instagram.replace(/^@/, '')}`)
+      if (details.length > 0) lines.push(`  - ${details.join(' · ')}`)
     }
-  } else {
-    lines.push('_The couple keeps their full vendor list private; only your own listing is shown._', '')
+    lines.push('')
   }
 
   return lines.join('\n')
