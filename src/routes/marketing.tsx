@@ -207,7 +207,7 @@ Upgrade for unlimited weddings, plus analytics and AI:
 // lets an edge/proxy cache store one user's response and serve it to another (cross-tenant leak),
 // and serves stale authenticated UI. So we only ever attach the shared-cache header to this
 // explicit allowlist; everything else is left untouched (private by default).
-const CACHEABLE_PUBLIC_PATHS = new Set(['/', '/about', '/pricing', '/standard', '/docs/plain-text'])
+const CACHEABLE_PUBLIC_PATHS = new Set(['/', '/about', '/pricing', '/standard', '/docs/plain-text', '/docs/import'])
 
 // Cache marketing pages at the edge — content rarely changes
 marketing.use('*', async (c, next) => {
@@ -838,6 +838,10 @@ marketing.get('/docs/plain-text', (c) => {
   return c.html(<PlainTextDocsPage />)
 })
 
+marketing.get('/docs/import', (c) => {
+  return c.html(<ImportHelpPage />)
+})
+
 function PlainTextDocsPage() {
   return (
     <MarketingLayout title={t('marketing.docs.metaTitle')}>
@@ -889,6 +893,168 @@ const DOCS_CONTACT_SAMPLE = ['---','first_name: Sarah','last_name: Smith','email
 const DOCS_DIRECTORY_SAMPLE = ['contacts/','  sarah-smith.md','  john-doe.md','  jane-wilson-james-brown.md','weddings/','  2026-12-15-sarah-james/','    wedding.md','    todo.md','    timeline.md','    notes.md','    vendors.md','    log.md','    files/','  doe-wedding/','    wedding.md'].join('\n')
 const DOCS_PYTHON_SAMPLE = ['# Python - list all quoted contacts','import yaml','from pathlib import Path','','for f in Path("contacts").glob("*.md"):','    parts = f.read_text().split("---", 2)','    data = yaml.safe_load(parts[1])','    if data.get("status") == "quoted":','        print(f"{data[\'first_name\']} {data[\'last_name\']}")'].join('\n')
 const DOCS_DEVELOPER_BLOCKS: DeveloperBlock[] = [{ title: 'marketing.docs.developers.scripting.title', body: 'marketing.docs.developers.scripting.body', code: DOCS_PYTHON_SAMPLE },{ title: 'marketing.docs.developers.tools.title', body: 'marketing.docs.developers.tools.body' }]
+
+function ImportHelpPage() {
+  return (
+    <MarketingLayout title={t('marketing.import.metaTitle')}>
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
+        <div class="inline-block bg-horizon-50 text-horizon-700 font-semibold text-sm px-4 py-1.5 rounded-full mb-4">{t('marketing.import.badge')}</div>
+        <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6">{t('marketing.import.title')}</h1>
+        <CopyParagraphs keys={IMPORT_INTRO} className="space-y-4 text-gray-600 leading-relaxed mb-12" />
+
+        {/* ── 1. Import a file ── */}
+        <DocSection title="marketing.import.file.title" paragraphs={IMPORT_FILE_INTRO} />
+        <div class="space-y-3 mb-12">{IMPORT_FILE_STEPS.map((s) => <AboutFeature title={t(s.title)} desc={t(s.desc)} />)}</div>
+
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.import.fields.title')}</h2>
+        <CopyParagraphs keys={IMPORT_FIELDS_INTRO} className="space-y-4 text-gray-600 leading-relaxed mb-6" />
+        <SpecTable heading="marketing.standard.requiredFields" rows={IMPORT_REQUIRED} />
+        <SpecTable heading="marketing.standard.optionalFields" rows={IMPORT_OPTIONAL} />
+        <p class="text-sm text-gray-500 mb-12">{t('marketing.import.fields.note')}</p>
+
+        <h3 class="text-lg font-bold mb-3">{t('marketing.import.sample.title')}</h3>
+        <p class="text-gray-600 leading-relaxed mb-4">{t('marketing.import.sample.body')}</p>
+        <CodeBlock code={IMPORT_CSV_SAMPLE} className="mb-2" />
+        <p class="text-sm text-gray-500 mb-12">{t('marketing.import.sample.caption')}</p>
+
+        <h3 class="text-lg font-bold mb-3">{t('marketing.import.status.title')}</h3>
+        <p class="text-gray-600 leading-relaxed mb-4">{t('marketing.import.status.body')}</p>
+        <CodeBlock code={IMPORT_STATUS_MAP} className="mb-12" />
+
+        <h3 class="text-lg font-bold mb-3">{t('marketing.import.dates.title')}</h3>
+        <CopyParagraphs keys={IMPORT_DATES} className="space-y-4 text-gray-600 leading-relaxed mb-12" />
+
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.import.crms.title')}</h2>
+        <p class="text-gray-600 leading-relaxed mb-6">{t('marketing.import.crms.body')}</p>
+        <div class="space-y-3 mb-12">{IMPORT_CRMS.map((cr) => <AboutFeature title={cr.name} desc={t(cr.desc)} />)}</div>
+
+        <div class="bg-white border border-papaya-300/30 rounded-xl p-4 sm:p-6 mb-12"><h3 class="font-bold text-sm mb-3">{t('marketing.import.limits.title')}</h3><CopyParagraphs keys={IMPORT_LIMITS} className="space-y-2 text-sm text-gray-600" /></div>
+
+        {/* ── 2. Paste text / AI ── */}
+        <DocSection title="marketing.import.ai.title" paragraphs={IMPORT_AI} />
+
+        {/* ── 3. MCP + API ── */}
+        <DocSection title="marketing.import.mcp.title" paragraphs={IMPORT_MCP_INTRO} />
+        <div class="space-y-3 mb-8">{IMPORT_MCP_TOOLS.map((tl) => <AboutFeature title={tl.name} desc={t(tl.desc)} />)}</div>
+        <h3 class="text-lg font-bold mb-3">{t('marketing.import.prompts.title')}</h3>
+        <p class="text-gray-600 leading-relaxed mb-6">{t('marketing.import.prompts.body')}</p>
+        {IMPORT_PROMPTS.map((p) => <><p class="text-sm font-bold text-gray-700 mb-2">{t(p.label)}</p><CodeBlock code={p.code} className="mb-6" /></>)}
+        <h3 class="text-lg font-bold mb-3 mt-6">{t('marketing.import.api.title')}</h3>
+        <CopyParagraphs keys={IMPORT_API} className="space-y-4 text-gray-600 leading-relaxed mb-6" />
+        <CodeBlock code={IMPORT_API_SAMPLE} className="mb-12" />
+
+        {/* ── 4. Vault / round-trip ── */}
+        <DocSection title="marketing.import.vault.title" paragraphs={IMPORT_VAULT} />
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.import.roundtrip.title')}</h2>
+        <CopyParagraphs keys={IMPORT_ROUNDTRIP} className="space-y-4 text-gray-600 leading-relaxed mb-12" />
+
+        <div class="bg-horizon-600 rounded-2xl p-6 sm:p-10 text-center text-white">
+          <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.import.cta.title')}</h2>
+          <p class="text-white mb-6 max-w-md mx-auto text-sm">{t('marketing.import.cta.body')}</p>
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-3"><a href="/login" class="inline-block bg-white text-horizon-700 font-bold px-6 py-3 rounded-xl hover:bg-horizon-50 transition-colors text-sm">{t('marketing.import.cta.primary')}</a><a href="/standard" class="inline-block bg-horizon-500 text-white font-bold px-6 py-3 rounded-xl hover:bg-horizon-400 transition-colors text-sm">{t('marketing.import.cta.standard')}</a></div>
+        </div>
+      </div>
+    </MarketingLayout>
+  )
+}
+
+const IMPORT_INTRO: MessageKey[] = ['marketing.import.intro.p1', 'marketing.import.intro.p2']
+const IMPORT_FILE_INTRO: MessageKey[] = ['marketing.import.file.p1', 'marketing.import.file.p2']
+const IMPORT_FILE_STEPS: CardDef[] = [
+  { title: 'marketing.import.step.upload.title', desc: 'marketing.import.step.upload.desc' },
+  { title: 'marketing.import.step.map.title', desc: 'marketing.import.step.map.desc' },
+  { title: 'marketing.import.step.preview.title', desc: 'marketing.import.step.preview.desc' },
+  { title: 'marketing.import.step.run.title', desc: 'marketing.import.step.run.desc' },
+]
+const IMPORT_FIELDS_INTRO: MessageKey[] = ['marketing.import.fields.p1', 'marketing.import.fields.p2']
+const IMPORT_REQUIRED: SpecDef[] = [
+  { field: 'first_name', type: 'text', desc: 'marketing.import.spec.firstName' },
+  { field: 'last_name', type: 'text', desc: 'marketing.import.spec.lastName' },
+]
+const IMPORT_OPTIONAL: SpecDef[] = [
+  { field: 'email', type: 'text', desc: 'marketing.import.spec.email' },
+  { field: 'phone', type: 'text', desc: 'marketing.import.spec.phone' },
+  { field: 'partner_first_name', type: 'text', desc: 'marketing.import.spec.partnerFirstName' },
+  { field: 'partner_last_name', type: 'text', desc: 'marketing.import.spec.partnerLastName' },
+  { field: 'partner_email', type: 'text', desc: 'marketing.import.spec.partnerEmail' },
+  { field: 'partner_phone', type: 'text', desc: 'marketing.import.spec.partnerPhone' },
+  { field: 'address', type: 'text', desc: 'marketing.import.spec.address' },
+  { field: 'instagram', type: 'text', desc: 'marketing.import.spec.instagram' },
+  { field: 'facebook', type: 'text', desc: 'marketing.import.spec.facebook' },
+  { field: 'tiktok', type: 'text', desc: 'marketing.import.spec.tiktok' },
+  { field: 'website', type: 'text', desc: 'marketing.import.spec.website' },
+  { field: 'wedding_date', type: 'date', desc: 'marketing.import.spec.weddingDate' },
+  { field: 'wedding_location', type: 'text', desc: 'marketing.import.spec.weddingLocation' },
+  { field: 'source', type: 'text', desc: 'marketing.import.spec.source' },
+  { field: 'status', type: 'enum', desc: 'marketing.import.spec.status' },
+  { field: 'notes', type: 'text', desc: 'marketing.import.spec.notes' },
+  { field: 'created_at', type: 'date/time', desc: 'marketing.import.spec.createdAt' },
+]
+const IMPORT_DATES: MessageKey[] = ['marketing.import.dates.p1', 'marketing.import.dates.p2']
+const IMPORT_CRMS: Array<{ name: string; desc: MessageKey }> = [
+  { name: 'Dubsado', desc: 'marketing.import.crm.dubsado' },
+  { name: 'Studio Ninja', desc: 'marketing.import.crm.studioNinja' },
+  { name: 'HoneyBook', desc: 'marketing.import.crm.honeybook' },
+  { name: 'VSCO Workspace (formerly Táve)', desc: 'marketing.import.crm.vsco' },
+  { name: 'Any CSV / JSON', desc: 'marketing.import.crm.generic' },
+]
+const IMPORT_LIMITS: MessageKey[] = ['marketing.import.limits.p1', 'marketing.import.limits.p2', 'marketing.import.limits.p3']
+const IMPORT_AI: MessageKey[] = ['marketing.import.ai.p1', 'marketing.import.ai.p2']
+const IMPORT_MCP_INTRO: MessageKey[] = ['marketing.import.mcp.p1', 'marketing.import.mcp.p2']
+const IMPORT_MCP_TOOLS: Array<{ name: string; desc: MessageKey }> = [
+  { name: 'submit_enquiry', desc: 'marketing.import.tool.submitEnquiry' },
+  { name: 'update_run_sheet', desc: 'marketing.import.tool.updateRunSheet' },
+  { name: 'save_timeline_item', desc: 'marketing.import.tool.saveTimelineItem' },
+  { name: 'update_wedding_todo', desc: 'marketing.import.tool.updateTodo' },
+  { name: 'append_wedding_note', desc: 'marketing.import.tool.appendNote' },
+  { name: 'propose_timeline_change', desc: 'marketing.import.tool.proposeChange' },
+]
+const IMPORT_API: MessageKey[] = ['marketing.import.api.p1', 'marketing.import.api.p2']
+const IMPORT_VAULT: MessageKey[] = ['marketing.import.vault.p1', 'marketing.import.vault.p2']
+const IMPORT_ROUNDTRIP: MessageKey[] = ['marketing.import.roundtrip.p1', 'marketing.import.roundtrip.p2', 'marketing.import.roundtrip.p3']
+
+const IMPORT_PROMPTS: Array<{ label: MessageKey; code: string }> = [
+  { label: 'marketing.import.prompt.leads', code: ['Add these three enquiries as contacts:', '1. Sarah & James Smith — sarah@example.com — 0400 123 456 — wedding 15 Dec 2026, Byron Bay', '2. Tom Nguyen — tom@example.com — no date yet — asked about pricing', '3. Alex Lee — alex@example.com — wedding Oct 2026, Melbourne'].join('\n') },
+  { label: 'marketing.import.prompt.runsheet', code: ["Here's the run sheet the venue sent for the Smith wedding (id abc123). Update the timeline:", '- 12:00  Guest arrival — The Old Chapel', '- 14:30  Ceremony — The Old Chapel — category ceremony', '- 16:00  Couple portraits — East Garden — category portraits', '- 17:30  Reception dinner — The Marquee — category reception'].join('\n') },
+  { label: 'marketing.import.prompt.sun', code: ['For the Smith wedding (abc123), add "Golden hour portraits":', '30 minutes before sunset, 60 minutes long, at the East Garden, assigned to me.'].join('\n') },
+  { label: 'marketing.import.prompt.todo', code: ['Set the checklist for the Smith wedding (abc123):', '- [ ] Confirm coverage hours', '- [x] Send deposit invoice', '- [ ] Final timeline review 3 days before'].join('\n') },
+  { label: 'marketing.import.prompt.reschedule', code: ['The Smith wedding moved a week. For abc123 set date 2026-12-22 and ceremony time 15:00.', "(I'm the planner, so apply it.)"].join('\n') },
+]
+
+const IMPORT_CSV_SAMPLE = [
+  'First name,Last name,Email,Phone,Partner first name,Wedding date,Wedding location,Status,Instagram,Notes',
+  'Sarah,Smith,sarah@example.com,0400 123 456,James,2026-12-15,"Byron Bay, NSW",Booked,@sarahandjames,"Met at the expo — wants an elopement"',
+  'Tom,Nguyen,tom@example.com,0400 222 333,,2026-09-05,Melbourne,Enquiry,,"Asked about pricing"',
+].join('\n')
+
+const IMPORT_STATUS_MAP = [
+  'new        ←  lead, inquiry, enquiry, prospect, pending',
+  'contacted  ←  follow up, responded, replied',
+  'meeting    ←  in progress, consultation',
+  'quoted     ←  proposal, proposal sent, quote, quote sent',
+  'booked     ←  confirmed, hired, active, won',
+  'completed  ←  closed, done, finished, delivered',
+  'lost       ←  declined, rejected, not booked, cancelled',
+  'archived   ←  inactive, old',
+  '',
+  'Anything we don’t recognise becomes "new".',
+].join('\n')
+
+const IMPORT_API_SAMPLE = [
+  'curl -X POST https://wedding.computer/api/v1/enquiries \\',
+  '  -H "Authorization: Bearer YOUR_ENQUIRY_KEY" \\',
+  '  -H "Content-Type: application/json" \\',
+  '  -d \'{',
+  '    "first_name": "Sarah",',
+  '    "last_name": "Smith",',
+  '    "email": "sarah@example.com",',
+  '    "phone": "0400 123 456",',
+  '    "partner_first_name": "James",',
+  '    "wedding_date": "2026-12-15",',
+  '    "wedding_location": "Byron Bay, NSW",',
+  '    "notes": "Wants an elopement"',
+  '  }\'',
+].join('\n')
 
 export default marketing
 

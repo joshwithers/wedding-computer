@@ -143,6 +143,7 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => (
               <a href="/about" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.about')}</a>
               <a href="/pricing" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.pricing')}</a>
               <a href="/standard" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.openStandard')}</a>
+              <a href="/docs/import" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.import')}</a>
               <a href="/docs/plain-text" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('marketing.nav.docs')}</a>
               <a href="/privacy" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('legal.privacy.title')}</a>
               <a href="/terms" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">{t('legal.terms.title')}</a>
