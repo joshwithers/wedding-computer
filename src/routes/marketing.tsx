@@ -902,7 +902,16 @@ function ImportHelpPage() {
         <h1 class="text-2xl sm:text-4xl font-bold mb-4 sm:mb-6">{t('marketing.import.title')}</h1>
         <CopyParagraphs keys={IMPORT_INTRO} className="space-y-4 text-gray-600 leading-relaxed mb-12" />
 
-        {/* ── 1. Import a file ── */}
+        {/* ── Featured: browser agent reads the old CRM + writes via MCP ── */}
+        <div class="inline-block bg-grapefruit-50 text-grapefruit-700 font-semibold text-sm px-4 py-1.5 rounded-full mb-3">{t('marketing.import.browser.badge')}</div>
+        <h2 class="text-xl sm:text-2xl font-bold mb-3">{t('marketing.import.browser.title')}</h2>
+        <CopyParagraphs keys={IMPORT_BROWSER_INTRO} className="space-y-4 text-gray-600 leading-relaxed mb-6" />
+        <div class="space-y-3 mb-6">{IMPORT_BROWSER_STEPS.map((s) => <AboutFeature title={t(s.title)} desc={t(s.desc)} />)}</div>
+        <p class="text-sm font-bold text-gray-700 mb-2">{t('marketing.import.browser.promptLabel')}</p>
+        <CodeBlock code={IMPORT_BROWSER_PROMPT} className="mb-4" />
+        <CopyParagraphs keys={IMPORT_BROWSER_TIPS} className="space-y-2 text-sm text-gray-500 mb-12" />
+
+        {/* ── Import a file ── */}
         <DocSection title="marketing.import.file.title" paragraphs={IMPORT_FILE_INTRO} />
         <div class="space-y-3 mb-12">{IMPORT_FILE_STEPS.map((s) => <AboutFeature title={t(s.title)} desc={t(s.desc)} />)}</div>
 
@@ -959,6 +968,20 @@ function ImportHelpPage() {
 }
 
 const IMPORT_INTRO: MessageKey[] = ['marketing.import.intro.p1', 'marketing.import.intro.p2']
+const IMPORT_BROWSER_INTRO: MessageKey[] = ['marketing.import.browser.p1', 'marketing.import.browser.p2']
+const IMPORT_BROWSER_STEPS: CardDef[] = [
+  { title: 'marketing.import.browser.step1.title', desc: 'marketing.import.browser.step1.desc' },
+  { title: 'marketing.import.browser.step2.title', desc: 'marketing.import.browser.step2.desc' },
+  { title: 'marketing.import.browser.step3.title', desc: 'marketing.import.browser.step3.desc' },
+]
+const IMPORT_BROWSER_TIPS: MessageKey[] = ['marketing.import.browser.tip1', 'marketing.import.browser.tip2', 'marketing.import.browser.tip3']
+const IMPORT_BROWSER_PROMPT = [
+  'I’m logged into my old CRM in this browser tab. Go through my whole client list',
+  'and, for each client, read their name, partner, email, phone, wedding date,',
+  'venue and status — then add them to Wedding Computer with the submit_enquiry',
+  'tool. Work through every page, skip anyone already in my contacts, and give me',
+  'a running count. Pause if anything looks ambiguous so I can check.',
+].join('\n')
 const IMPORT_FILE_INTRO: MessageKey[] = ['marketing.import.file.p1', 'marketing.import.file.p2']
 const IMPORT_FILE_STEPS: CardDef[] = [
   { title: 'marketing.import.step.upload.title', desc: 'marketing.import.step.upload.desc' },
