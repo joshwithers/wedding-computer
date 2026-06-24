@@ -168,7 +168,7 @@ export function WeddingDoc({
     var content=state[scope].content;
     if(canEdit&&window.EasyMDE){
       var ta=document.createElement('textarea'); elEditor.appendChild(ta);
-      mde=new EasyMDE({element:ta,initialValue:content,autofocus:false,spellChecker:false,status:false,autoDownloadFontAwesome:true,minHeight:'220px',
+      mde=new EasyMDE({element:ta,initialValue:content,autofocus:false,spellChecker:false,status:false,autoDownloadFontAwesome:false,minHeight:'220px',
         toolbar:['bold','italic','heading','|','quote','unordered-list','ordered-list','|','link','table','|','preview','side-by-side','guide']});
       mde.codemirror.on('change',onChange);
       editor=mde;
@@ -284,7 +284,19 @@ export function WeddingDoc({
     pollTimer=setInterval(poll,5000);
   }
 
+  // EasyMDE's toolbar buttons are Font Awesome glyphs. We load FA ourselves from
+  // jsdelivr (already CSP-allowlisted) rather than EasyMDE's autoDownload, which
+  // points at maxcdn.bootstrapcdn.com — blocked by our style-src/font-src, which
+  // left the toolbar rendering as empty, icon-less buttons.
+  function ensureFontAwesome(){
+    if(document.getElementById('wdoc-fa')) return;
+    var l=document.createElement('link'); l.id='wdoc-fa'; l.rel='stylesheet';
+    l.href='https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css';
+    document.head.appendChild(l);
+  }
+
   function ensureLibs(cb){
+    ensureFontAwesome();
     var need=[];
     if(!window.EasyMDE) need.push({css:'https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css',js:'https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js'});
     if(typeof window.marked==='undefined') need.push({js:'https://cdn.jsdelivr.net/npm/marked@15/marked.min.js'});

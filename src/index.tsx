@@ -116,7 +116,7 @@ function contentSecurityPolicy(isLocal: boolean, frameAncestors: "'self'" | null
     "object-src 'none'",
     "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://challenges.cloudflare.com https://maps.googleapis.com https://maps.gstatic.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
-    "font-src 'self' https://fonts.gstatic.com data:",
+    "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net data:",
     "img-src 'self' data: blob: https:",
     "connect-src 'self' https://challenges.cloudflare.com https://places.googleapis.com https://maps.googleapis.com https://*.googleapis.com",
     "frame-src 'self' https://challenges.cloudflare.com",
