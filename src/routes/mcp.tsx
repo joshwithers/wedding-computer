@@ -749,12 +749,6 @@ async function handleTool(
       await applyWeddingUpdate(db, weddingId, applied, userId, current as any)
       const { appendWeddingLog } = await import('../db/wedding-log')
       await appendWeddingLog(db, weddingId, userId, 'Wedding updated', summary).catch(() => {})
-      const { resyncWeddingCalendars } = await import('../services/wedding-calendar')
-      try {
-        await resyncWeddingCalendars(db, weddingId, vendor.id)
-      } catch (err) {
-        console.error(`[mcp] calendar resync failed for wedding ${weddingId}:`, err)
-      }
       await pushVault(env, vendor, weddingId, ctx)
       return { content: [{ type: 'text', text: `Applied: ${summary}` }] }
     }
@@ -942,16 +936,14 @@ async function handleTool(
         if (who) await addAssignee(db, itemId, { label: who })
       }
       await resolveAndMaterialize(db, weddingId, await weddingSunMinutes(db, weddingId))
-      // Off the response path: record the change in the wedding log, mark the
-      // run-sheet dirty so the team gets the debounced "updated" email, and
-      // refresh calendars — parity with the web timeline editor (afterWrite).
+      // Off the response path: record the change in the wedding log and mark the
+      // run-sheet dirty so the team gets the debounced "updated" email — parity
+      // with the web timeline editor (afterWrite).
       const post = (async () => {
         const { appendWeddingLog } = await import('../db/wedding-log')
         await appendWeddingLog(db, weddingId, userId, `Timeline item ${action.toLowerCase()}`, logDetail).catch((e) => console.error('[wedding-log] append failed', e))
         const { markTimelineDirty } = await import('../services/timeline-notify')
         await markTimelineDirty(env.KV, weddingId, userId).catch(() => {})
-        const { resyncWeddingCalendars } = await import('../services/wedding-calendar')
-        await resyncWeddingCalendars(db, weddingId, vendor.id).catch(() => {})
       })()
       if (ctx) ctx.waitUntil(post)
       else await post.catch(() => {})
@@ -978,8 +970,6 @@ async function handleTool(
         await appendWeddingLog(db, weddingId, removedUserId, 'Timeline item removed', item.title).catch((e) => console.error('[wedding-log] append failed', e))
         const { markTimelineDirty } = await import('../services/timeline-notify')
         await markTimelineDirty(env.KV, weddingId, removedUserId ?? '').catch(() => {})
-        const { resyncWeddingCalendars } = await import('../services/wedding-calendar')
-        await resyncWeddingCalendars(db, weddingId, vendor.id).catch(() => {})
       })()
       if (ctx) ctx.waitUntil(post)
       else await post.catch(() => {})

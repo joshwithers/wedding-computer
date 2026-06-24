@@ -160,10 +160,6 @@ export function markdownToWedding(
     portrait_location: fm.portrait_location ?? null,
     portrait_time: fm.portrait_time ?? null,
     emoji: fm.emoji ?? null,
-    // Legacy fields still present in older files; parsed for compatibility
-    // but no longer written (per-vendor values live in wedding_members).
-    bump_in_time: (fm as Record<string, unknown>).bump_in_time as string | null ?? null,
-    bump_out_time: (fm as Record<string, unknown>).bump_out_time as string | null ?? null,
     reception_duration_hours: fm.reception_duration_hours ?? null,
     dress_code: fm.dress_code ?? null,
     guest_count: fm.guest_count ?? null,

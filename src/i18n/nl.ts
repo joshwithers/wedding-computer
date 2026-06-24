@@ -203,7 +203,7 @@ export const nl: Dictionary = {
   'account.notifications.type.paymentsReceived.desc': 'Er komt een betaling binnen op een van je facturen.',
   'account.notifications.type.vendorCollaboration.label': 'Samenwerking tussen leveranciers',
   'account.notifications.type.vendorCollaboration.desc':
-    'Een stel boekt een andere leverancier, of wijzigt of leveranciers elkaar kunnen zien.',
+    'Een stel boekt een andere leverancier voor een bruiloft die je deelt.',
   'account.notifications.type.dailyDigest.label': 'Dagelijkse samenvatting',
   'account.notifications.type.dailyDigest.desc':
     'Een ochtendoverzicht van aankomende bruiloften, nieuwe contacten en openstaande betalingen.',

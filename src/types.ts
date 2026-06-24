@@ -226,8 +226,6 @@ export type Wedding = {
   portrait_location: string | null
   portrait_time: string | null
   emoji: string | null
-  bump_in_time: string | null
-  bump_out_time: string | null
   reception_duration_hours: number | null
   timeline_notes: string | null
   dress_code: string | null
@@ -296,8 +294,6 @@ export type WeddingMember = {
   is_financial_party: number
   permissions: string
   status: 'invited' | 'active' | 'removed'
-  bump_in_time: string | null
-  bump_out_time: string | null
   vendor_notes: string | null
   invited_at: string
   accepted_at: string | null
@@ -789,7 +785,6 @@ export type TimelineItemAssignee = {
   wedding_member_id: string | null
   team_member_id: string | null
   label: string | null
-  added_to_calendar: number
   created_at: string
 }
 

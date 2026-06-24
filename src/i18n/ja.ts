@@ -203,7 +203,7 @@ export const ja: Dictionary = {
   'account.notifications.type.paymentsReceived.desc': '請求書の支払いが行われたとき。',
   'account.notifications.type.vendorCollaboration.label': '事業者間の連携',
   'account.notifications.type.vendorCollaboration.desc':
-    'カップルが別の事業者を予約した、または事業者同士の表示設定を変更したとき。',
+    'あなたが関わっている結婚式で、カップルが別の事業者を予約したとき。',
   'account.notifications.type.dailyDigest.label': '毎日のまとめ',
   'account.notifications.type.dailyDigest.desc':
     '今後の結婚式、新しい連絡先、支払い期限を朝にまとめてお知らせします。',

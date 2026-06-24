@@ -12,7 +12,7 @@
  * generate empty commits.
  */
 
-import type { Bindings, RunSheetItem, VendorProfile, Wedding } from '../types'
+import type { Bindings, VendorProfile, Wedding } from '../types'
 import type { StorageBackend } from '../storage/types'
 import { getStorageWithSecrets } from '../storage'
 import { writeWeddingFile } from '../storage/weddings'
@@ -202,38 +202,6 @@ export async function pushWeddingFiles(
   }
 
   return { folder, wrote }
-}
-
-/**
- * Other vendors' run sheet items, grouped per vendor — shown read-only in
- * timeline.md (and the MCP timeline tool) when the couple has made the
- * vendor list visible.
- */
-export async function listOtherVendorItems(
-  db: D1Database,
-  wedding: Wedding,
-  vendorId: string
-): Promise<{ label: string; items: RunSheetItem[] }[]> {
-  if (wedding.vendor_visibility !== 'visible') return []
-  const rows = await db
-    .prepare(
-      `SELECT rsi.*, vp.business_name FROM run_sheet_items rsi
-       JOIN vendor_profiles vp ON vp.id = rsi.vendor_id
-       WHERE rsi.wedding_id = ? AND rsi.vendor_id != ?
-       ORDER BY vp.business_name, rsi.sort_order ASC, rsi.time ASC`
-    )
-    .bind(wedding.id, vendorId)
-    .all<RunSheetItem & { business_name: string | null }>()
-    .then((r) => r.results)
-
-  const groups = new Map<string, RunSheetItem[]>()
-  for (const row of rows) {
-    const label = row.business_name ?? 'Another vendor'
-    const group = groups.get(label) ?? []
-    group.push(row)
-    groups.set(label, group)
-  }
-  return [...groups.entries()].map(([label, items]) => ({ label, items }))
 }
 
 /**

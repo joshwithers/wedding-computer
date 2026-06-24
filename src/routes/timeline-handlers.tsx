@@ -20,8 +20,6 @@ import {
   deleteItem,
   addAssignee,
   removeAssignee,
-  setAssigneeCalendar,
-  assigneeOwnerUserId,
   resolveWeddingRoster,
   projectTimelineToWedding,
   resolveAndMaterialize,
@@ -42,7 +40,6 @@ import {
   isTimelineLead,
   type TimelineViewer,
 } from '../services/timeline-permissions'
-import { resyncWeddingCalendars } from '../services/wedding-calendar'
 import { markTimelineDirty } from '../services/timeline-notify'
 import { appendWeddingLog } from '../db/wedding-log'
 import { listPendingTimelineRequests, getTimelineRequest, decideTimelineRequest } from '../db/timeline-requests'
@@ -367,7 +364,6 @@ async function afterWrite(
         // Mark the wedding dirty so the debounced cron notifies the run-sheet team.
         await markTimelineDirty(env.KV, weddingId, userId).catch(() => {})
         await projectTimelineToWedding(env.DB, weddingId)
-        await resyncWeddingCalendars(env.DB, weddingId, vendor?.id)
         if (vendor) {
           const { pushAllWeddingFiles } = await import('../services/storage-push')
           await pushAllWeddingFiles(env, vendor, weddingId)
@@ -640,19 +636,6 @@ async function decide(c: Ctx, weddingId: string, member: WeddingMember, user: Us
     })
     .catch(() => {})
   return renderTimeline(c, weddingId, member, user, basePath, { lead, wedding })
-}
-
-/** A user opts their OWN assignment in/out of their personal calendar feed. */
-export async function toggleAssigneeCalendar(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string, itemId: string, assigneeId: string) {
-  const owner = await assigneeOwnerUserId(c.env.DB, assigneeId)
-  if (owner === user.id) {
-    const cur = await c.env.DB
-      .prepare('SELECT added_to_calendar FROM timeline_item_assignees WHERE id = ? AND timeline_item_id = ?')
-      .bind(assigneeId, itemId)
-      .first<{ added_to_calendar: number }>()
-    if (cur) await setAssigneeCalendar(c.env.DB, assigneeId, cur.added_to_calendar !== 1)
-  }
-  return renderTimeline(c, weddingId, member, user, basePath)
 }
 
 export function approveTimelineRequest(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string, requestId: string) {

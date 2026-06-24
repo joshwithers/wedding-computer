@@ -10,7 +10,6 @@ import type { Bindings, VendorProfile, Contact } from '../types'
 import { createWedding, addWeddingMember, getAnyMembership } from '../db/weddings'
 import { findOrCreateUser, sendCoupleInvite } from './auth'
 import { getUserByEmail } from '../db/users'
-import { resyncWeddingCalendars } from './wedding-calendar'
 import { createEvent } from '../db/calendar'
 import { getStorageWithSecrets } from '../storage'
 import { updateContact } from '../storage/contacts'
@@ -141,7 +140,5 @@ export async function attachVendorToCoupleWedding(
     }
   }
 
-  // Fan out calendar events so the wedding shows in everyone's iCal/CalDAV feed.
-  await resyncWeddingCalendars(db, weddingId).catch(() => {})
   return weddingId
 }

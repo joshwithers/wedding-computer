@@ -203,7 +203,7 @@ export const fr: Dictionary = {
   'account.notifications.type.paymentsReceived.desc': 'Un paiement arrive sur l’une de vos factures.',
   'account.notifications.type.vendorCollaboration.label': 'Collaboration entre prestataires',
   'account.notifications.type.vendorCollaboration.desc':
-    'Un couple réserve un autre prestataire ou modifie la visibilité entre prestataires.',
+    'Un couple réserve un autre prestataire sur un mariage que vous partagez.',
   'account.notifications.type.dailyDigest.label': 'Résumé quotidien',
   'account.notifications.type.dailyDigest.desc':
     'Un récapitulatif matinal des mariages à venir, nouveaux contacts et paiements dus.',

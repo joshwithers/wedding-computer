@@ -495,24 +495,6 @@ export function coupleJoinedEmail(data: {
   `, { preheader: `${data.coupleName} joined ${data.weddingTitle}` })
 }
 
-export function visibilityChangedEmail(data: {
-  vendorName: string
-  weddingTitle: string
-  isNowVisible: boolean
-  loginUrl: string
-}): string {
-  const message = data.isNowVisible
-    ? `The couple on <strong>${data.weddingTitle}</strong> has enabled vendor collaboration. You can now see other vendors working on this wedding.`
-    : `The couple on <strong>${data.weddingTitle}</strong> has turned off vendor collaboration. Other vendors are no longer visible.`
-  return emailWrapper(`
-    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Vendor visibility updated</h1>
-    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      Hi ${data.vendorName}, ${message}
-    </p>
-    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View wedding</a>
-  `, { preheader: `Vendor visibility changed for ${data.weddingTitle}` })
-}
-
 export function bookingConfirmedEmail(data: {
   recipientName: string
   weddingTitle: string

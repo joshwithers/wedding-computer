@@ -18,7 +18,6 @@ import {
   endLiveTimeline,
   addTimelineAssignee,
   removeTimelineAssignee,
-  toggleAssigneeCalendar,
   approveTimelineRequest,
   declineTimelineRequest,
   wallpaperPng,
@@ -119,12 +118,6 @@ timeline.post('/app/weddings/:id/timeline/:itemId/assignees/:assigneeId/remove',
   const x = await ctx(c)
   if (!x) return c.text('Not found', 404)
   return removeTimelineAssignee(c, x.weddingId, x.membership, x.user, base(x.weddingId), c.req.param('itemId'), c.req.param('assigneeId'))
-})
-
-timeline.post('/app/weddings/:id/timeline/:itemId/assignees/:assigneeId/calendar', async (c) => {
-  const x = await ctx(c)
-  if (!x) return c.text('Not found', 404)
-  return toggleAssigneeCalendar(c, x.weddingId, x.membership, x.user, base(x.weddingId), c.req.param('itemId'), c.req.param('assigneeId'))
 })
 
 timeline.post('/app/weddings/:id/timeline/requests/:reqId/approve', async (c) => {

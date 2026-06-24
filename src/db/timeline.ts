@@ -19,9 +19,6 @@ export type AssigneeView = {
   memberId: string | null
   teamMemberId: string | null
   label: string | null
-  addedToCalendar: boolean
-  /** The login user behind this assignee, if any (for "add to my calendar"). */
-  userId: string | null
 }
 
 export type TimelineItemView = TimelineItem & { assignees: AssigneeView[] }
@@ -296,7 +293,7 @@ export async function resolveAndMaterialize(db: D1Database, weddingId: string, s
 async function listAssigneesForWedding(db: D1Database, weddingId: string): Promise<AssigneeView[]> {
   const rows = await db
     .prepare(
-      `SELECT a.*, u.id AS member_user_id, u.name AS member_user_name, u.avatar_url AS member_avatar,
+      `SELECT a.*, u.name AS member_user_name, u.avatar_url AS member_avatar,
               wm.role AS member_role, wm.vendor_role AS member_vendor_role,
               vp.business_name AS member_business,
               tm.name AS team_name, tm.avatar_url AS team_avatar, tm.title AS team_title
@@ -335,8 +332,6 @@ async function listAssigneesForWedding(db: D1Database, weddingId: string): Promi
       memberId: (r.wedding_member_id as string) ?? null,
       teamMemberId: (r.team_member_id as string) ?? null,
       label: (r.label as string) ?? null,
-      addedToCalendar: r.added_to_calendar === 1,
-      userId: (r.member_user_id as string) ?? null,
     }
   })
 }
@@ -360,31 +355,6 @@ export async function removeAssignee(db: D1Database, itemId: string, assigneeId:
     .prepare('DELETE FROM timeline_item_assignees WHERE id = ? AND timeline_item_id = ?')
     .bind(assigneeId, itemId)
     .run()
-}
-
-/** Toggle a person's calendar opt-in for a section (scoped to their identity). */
-export async function setAssigneeCalendar(
-  db: D1Database,
-  assigneeId: string,
-  on: boolean
-): Promise<void> {
-  await db
-    .prepare('UPDATE timeline_item_assignees SET added_to_calendar = ? WHERE id = ?')
-    .bind(on ? 1 : 0, assigneeId)
-    .run()
-}
-
-/** The login user behind an assignee row (for guarding "add to my calendar"). */
-export async function assigneeOwnerUserId(db: D1Database, assigneeId: string): Promise<string | null> {
-  const row = await db
-    .prepare(
-      `SELECT wm.user_id FROM timeline_item_assignees a
-       JOIN wedding_members wm ON wm.id = a.wedding_member_id
-       WHERE a.id = ?`
-    )
-    .bind(assigneeId)
-    .first<{ user_id: string }>()
-  return row?.user_id ?? null
 }
 
 export type UserCalendarRow = {

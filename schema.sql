@@ -151,8 +151,6 @@ CREATE TABLE IF NOT EXISTS weddings (
   portrait_location TEXT,
   portrait_time TEXT,
   emoji TEXT,
-  bump_in_time TEXT,
-  bump_out_time TEXT,
   reception_duration_hours REAL,
   timeline_notes TEXT,
   dress_code TEXT,
@@ -180,8 +178,6 @@ CREATE TABLE IF NOT EXISTS wedding_members (
   permissions TEXT NOT NULL DEFAULT '{}',
   status TEXT NOT NULL DEFAULT 'active'
     CHECK (status IN ('invited','active','removed')),
-  bump_in_time TEXT,
-  bump_out_time TEXT,
   vendor_notes TEXT,
   invited_at TEXT NOT NULL DEFAULT (datetime('now')),
   accepted_at TEXT,
@@ -288,15 +284,13 @@ CREATE INDEX IF NOT EXISTS idx_timeline_items_wedding ON timeline_items(wedding_
 CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_items_slot ON timeline_items(wedding_id, slot) WHERE slot IS NOT NULL;
 
 -- People involved in a timeline section. Exactly one of (wedding_member_id,
--- team_member_id, label) identifies the assignee; added_to_calendar is that
--- person's opt-in to receive this section in their personal calendar feed.
+-- team_member_id, label) identifies the assignee.
 CREATE TABLE IF NOT EXISTS timeline_item_assignees (
   id                TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
   timeline_item_id  TEXT NOT NULL REFERENCES timeline_items(id) ON DELETE CASCADE,
   wedding_member_id TEXT REFERENCES wedding_members(id) ON DELETE CASCADE,
   team_member_id    TEXT REFERENCES team_members(id) ON DELETE CASCADE,
   label             TEXT,
-  added_to_calendar INTEGER NOT NULL DEFAULT 0,
   created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

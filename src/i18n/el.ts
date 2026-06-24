@@ -196,7 +196,7 @@ export const el: Dictionary = {
   'account.notifications.type.paymentsReceived.label': 'Λήφθηκαν πληρωμές',
   'account.notifications.type.paymentsReceived.desc': 'Μια πληρωμή πραγματοποιείται σε ένα από τα τιμολόγιά σας.',
   'account.notifications.type.vendorCollaboration.label': 'Συνεργασία προμηθευτών',
-  'account.notifications.type.vendorCollaboration.desc': 'Ένα ζευγάρι κάνει κράτηση σε άλλον προμηθευτή ή αλλάζει εάν οι πωλητές μπορούν να βλέπουν ο ένας τον άλλον.',
+  'account.notifications.type.vendorCollaboration.desc': 'Ένα ζευγάρι κάνει κράτηση σε άλλον προμηθευτή σε έναν γάμο που μοιράζεστε.',
   'account.notifications.type.dailyDigest.label': 'Ημερήσια περίληψη',
   'account.notifications.type.dailyDigest.desc': 'Μια πρωινή συλλογή επερχόμενων γάμων, νέων επαφών και πληρωμών που οφείλονται.',
   'account.notifications.type.referrals.label': 'Επιβραβεύσεις παραπομπής',

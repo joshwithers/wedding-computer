@@ -29,7 +29,6 @@ import { getUserByEmail } from '../../db/users'
 import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, formatDateTime, formatTime, daysUntil, addHoursToTime } from '../../lib/date'
 import { createEvent } from '../../db/calendar'
-import { resyncWeddingCalendars } from '../../services/wedding-calendar'
 import { track } from '../../services/analytics'
 import { listVendorTypes, vendorTypeLabel, type VendorType } from '../../db/vendor-types'
 import { searchVendorsForWedding, getVendorWithEmail, getVendorByUserId } from '../../db/vendors'
@@ -701,9 +700,7 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
       can_manage: isManagerVendor(vp),
       is_financial_party: false,
     })
-    // Background: calendar fan-out (so the wedding appears in their iCal/CalDAV
-    // feed) + a heads-up email. Neither blocks the redirect.
-    c.executionCtx.waitUntil(resyncWeddingCalendars(c.env.DB, weddingId).catch((e) => console.error('[weddings] calendar resync failed', e)))
+    // Background: a heads-up email. Doesn't block the redirect.
     c.executionCtx.waitUntil(
       c.env.EMAIL_QUEUE.send({
         type: 'notify_vendor_added_to_wedding',
@@ -769,9 +766,7 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
   // returns immediately; none of this blocks it. The welcome path in particular
   // makes a live Resend HTTP call that used to gate the whole submit.
   if (vendorProfile) {
-    // Fan out calendar events to the new member (so the wedding appears in their
-    // iCal/CalDAV feed) + a short "you've been added" heads-up.
-    c.executionCtx.waitUntil(resyncWeddingCalendars(c.env.DB, weddingId).catch((e) => console.error('[weddings] calendar resync failed', e)))
+    // A short "you've been added" heads-up to the new member.
     c.executionCtx.waitUntil(
       c.env.EMAIL_QUEUE.send({
         type: 'notify_vendor_added_to_wedding',
@@ -896,8 +891,6 @@ weddings.post('/app/weddings/:id/members/:userId/remove', rateLimit(30, 60), asy
         .catch((e) => console.error('[weddings] remove vendor: calendar cleanup failed', e)),
     )
   }
-  // Refresh the remaining members' calendars off the response path.
-  c.executionCtx.waitUntil(resyncWeddingCalendars(c.env.DB, weddingId).catch((e) => console.error('[weddings] resync after remove failed', e)))
   return peopleResult(c, weddingId, {})
 })
 
@@ -1456,15 +1449,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       }
     }
 
-    // Sync calendar events for ALL vendors on this wedding — a derived CalDAV/iCal
-    // mirror nothing in the redirect depends on (it's a per-vendor fan-out of
-    // serial event upserts), so run it after the response instead of blocking it.
     const vendor = c.get('vendor')!
-    c.executionCtx.waitUntil(
-      resyncWeddingCalendars(c.env.DB, weddingId, vendor.id).catch((calErr) =>
-        console.error('[weddings] Failed to sync calendar events:', calErr)
-      )
-    )
 
     // Push all wedding files to storage — waitUntil keeps the
     // push alive after the redirect is sent

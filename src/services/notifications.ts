@@ -6,7 +6,6 @@ import {
   vendorAddedEmail,
   vendorJoinedWeddingEmail,
   coupleJoinedEmail,
-  visibilityChangedEmail,
   bookingConfirmedEmail,
   paymentReceivedEmail,
   paymentReceiptEmail,
@@ -500,31 +499,6 @@ export async function notifyCoupleJoined(env: NotifyEnv, data: {
         weddingTitle: wedding.title,
         appUrl: env.appUrl,
         weddingId: data.weddingId,
-      }),
-      vendorId: vendor.vendor_profile_id,
-    })
-  }
-}
-
-export async function notifyVisibilityChanged(env: NotifyEnv, data: {
-  weddingId: string
-  isNowVisible: boolean
-}): Promise<void> {
-  const wedding = await getWedding(env.db, data.weddingId)
-  if (!wedding) return
-
-  const members = await getWeddingMembers(env.db, data.weddingId)
-  for (const vendor of members.filter((m) => m.role === 'vendor')) {
-    if (!vendor.vendor_profile_id) continue
-    await deliver(env, {
-      key: 'vendor_collaboration',
-      recipient: { id: vendor.user_id, email: vendor.user_email, name: vendor.user_name, notification_prefs: vendor.user_notification_prefs },
-      subject: `Vendor visibility ${data.isNowVisible ? 'enabled' : 'disabled'} on ${wedding.title}`,
-      html: visibilityChangedEmail({
-        vendorName: vendor.business_name ?? vendor.user_name,
-        weddingTitle: wedding.title,
-        isNowVisible: data.isNowVisible,
-        loginUrl: `${env.appUrl}/login`,
       }),
       vendorId: vendor.vendor_profile_id,
     })

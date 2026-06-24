@@ -104,25 +104,11 @@ function Avatar({ name, url }: { name: string; url: string | null }) {
   )
 }
 
-function AssigneeChip({ a, basePath, itemId, editable, viewerUserId }: { a: AssigneeView; basePath: string; itemId: string; editable: boolean; viewerUserId: string }) {
-  const isMe = a.userId != null && a.userId === viewerUserId
+function AssigneeChip({ a, basePath, itemId, editable }: { a: AssigneeView; basePath: string; itemId: string; editable: boolean }) {
   return (
     <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 pl-1 pr-2 py-0.5 text-[11px] text-gray-700">
       <Avatar name={a.displayName} url={a.avatarUrl} />
       {a.displayName}
-      {isMe && (
-        <button
-          type="button"
-          hx-post={`${basePath}/timeline/${itemId}/assignees/${a.id}/calendar`}
-          hx-target="#timeline-body"
-          hx-swap="outerHTML"
-          title={a.addedToCalendar ? t('timeline.inCalendar') : t('timeline.addToCalendar')}
-          aria-label={a.addedToCalendar ? t('timeline.inCalendar') : t('timeline.addToCalendar')}
-          class={`ml-0.5 ${a.addedToCalendar ? 'text-horizon-700' : 'text-gray-400 hover:text-horizon-700'}`}
-        >
-          <svg viewBox="0 0 24 24" width="12" height="12" fill={a.addedToCalendar ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>
-        </button>
-      )}
       {editable && (
         <button type="button" hx-post={`${basePath}/timeline/${itemId}/assignees/${a.id}/remove`} hx-target="#timeline-body" hx-swap="outerHTML" class="text-gray-400 hover:text-red-600 ml-0.5" aria-label={t('timeline.remove')}>×</button>
       )}
@@ -273,7 +259,7 @@ function RowForm({ item, basePath, creatable, anchorOptions, sunAvailable }: { i
   )
 }
 
-function Row({ item, basePath, roster, canEdit, canAssign, viewerUserId, refTitle, conflicted, liveMode, projected, slipped, canStart }: { item: TimelineItemView; basePath: string; roster: RosterEntry[]; canEdit: boolean; canAssign: boolean; viewerUserId: string; refTitle?: string; conflicted?: boolean; liveMode?: boolean; projected?: { start: string | null; end: string | null }; slipped?: boolean; canStart?: boolean }) {
+function Row({ item, basePath, roster, canEdit, canAssign, refTitle, conflicted, liveMode, projected, slipped, canStart }: { item: TimelineItemView; basePath: string; roster: RosterEntry[]; canEdit: boolean; canAssign: boolean; refTitle?: string; conflicted?: boolean; liveMode?: boolean; projected?: { start: string | null; end: string | null }; slipped?: boolean; canStart?: boolean }) {
   const started = item.actual_start
   // In live mode, show the actual start once started, else the projected time.
   const useProj = !!(liveMode && projected && !started)
@@ -309,7 +295,7 @@ function Row({ item, basePath, roster, canEdit, canAssign, viewerUserId, refTitl
         {item.location && <p class="text-[11px] text-gray-400">{item.location}</p>}
         {item.description && <p class="text-[11px] text-gray-500 mt-0.5 whitespace-pre-wrap">{item.description}</p>}
         <div class="flex items-center gap-1.5 flex-wrap mt-1.5">
-          {item.assignees.map((a) => <AssigneeChip a={a} basePath={basePath} itemId={item.id} editable={canAssign} viewerUserId={viewerUserId} />)}
+          {item.assignees.map((a) => <AssigneeChip a={a} basePath={basePath} itemId={item.id} editable={canAssign} />)}
           {canAssign && <AddPersonForm basePath={basePath} itemId={item.id} roster={roster} />}
         </div>
       </div>
@@ -476,7 +462,7 @@ export function TimelineBody(props: TimelineProps) {
               ) : item.id === editId ? (
                 <RowForm item={item} basePath={basePath} creatable={creatable} anchorOptions={anchorOptions} sunAvailable={sunAvailable} />
               ) : (
-                <Row item={item} basePath={basePath} roster={roster} canEdit={canEditOrPropose(item, viewer, lead)} canAssign={canManageAssignees(item, viewer, lead)} viewerUserId={viewer.userId} refTitle={item.anchor_ref ? titleById.get(item.anchor_ref) : undefined} conflicted={props.conflictIds?.has(item.id)} liveMode={!!props.live} projected={props.live?.projected.get(item.id)} slipped={props.live?.slipIds.has(item.id)} canStart={canEditDirect(item, viewer, lead)} />
+                <Row item={item} basePath={basePath} roster={roster} canEdit={canEditOrPropose(item, viewer, lead)} canAssign={canManageAssignees(item, viewer, lead)} refTitle={item.anchor_ref ? titleById.get(item.anchor_ref) : undefined} conflicted={props.conflictIds?.has(item.id)} liveMode={!!props.live} projected={props.live?.projected.get(item.id)} slipped={props.live?.slipIds.has(item.id)} canStart={canEditDirect(item, viewer, lead)} />
               )
             )}
         </ul>

@@ -40,9 +40,7 @@ import {
   getTimelineControl,
   summarizeTimelineChanges,
   queueTimelineChangeRequest,
-  changedTimelineFields,
 } from '../services/timeline-edit'
-import { resyncWeddingCalendars } from '../services/wedding-calendar'
 export { checkForExternalChange, recordConflict } from './conflicts'
 
 export type SyncResult = {
@@ -233,17 +231,6 @@ export async function applyPulledFile(
       direct.updated_at = new Date().toISOString()
     }
 
-    // Timeline fields written directly (pending ones were reverted by the
-    // partition above) must fan out to every member vendor's calendar
-    // events, exactly like the web edit form — otherwise a ceremony moved
-    // in Obsidian leaves stale events and CalDAV/iCal feeds behind. Title
-    // and emoji count too: every derived event title embeds them, and
-    // neither routes through approval, so they always apply directly.
-    const appliedTimelineFields = changedTimelineFields(current, direct)
-    const eventTitleChanged =
-      String(current.title ?? '') !== String(direct.title ?? '') ||
-      String(current.emoji ?? '') !== String(direct.emoji ?? '')
-
     // Snapshot the pre-sync headline values BEFORE the upsert (so only the
     // actually-changed headline fields route onto the rows; pending approval-gated
     // fields equal current and are left for the approver).
@@ -255,14 +242,6 @@ export async function applyPulledFile(
     // closing the row=null + column=set drift.
     await applyWeddingUpdate(db, direct.id, pickHeadlineFields(direct), vendor?.user_id ?? direct.created_by_user_id ?? '', headlineBefore)
     await upsertIndexRow(db, vendorId, 'wedding', direct.id, path, etag, weddingCachedData(direct))
-
-    if (appliedTimelineFields.length > 0 || eventTitleChanged) {
-      try {
-        await resyncWeddingCalendars(db, direct.id, vendorId)
-      } catch (err) {
-        console.error(`[sync] calendar resync failed for wedding ${direct.id}:`, err)
-      }
-    }
 
     return {
       applied: 'wedding',

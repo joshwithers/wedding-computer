@@ -196,7 +196,7 @@ export const de: Dictionary = {
   'account.notifications.type.paymentsReceived.label': 'Eingegangene Zahlungen',
   'account.notifications.type.paymentsReceived.desc': 'Auf einer Ihrer Rechnungen landet eine Zahlung.',
   'account.notifications.type.vendorCollaboration.label': 'Zusammenarbeit mit Anbietern',
-  'account.notifications.type.vendorCollaboration.desc': 'Ein Paar bucht einen anderen Anbieter oder ändert, ob sich die Anbieter gegenseitig sehen können.',
+  'account.notifications.type.vendorCollaboration.desc': 'Ein Paar bucht einen weiteren Anbieter für eine Hochzeit, die Sie gemeinsam betreuen.',
   'account.notifications.type.dailyDigest.label': 'Tägliche Zusammenfassung',
   'account.notifications.type.dailyDigest.desc': 'Eine morgendliche Zusammenfassung bevorstehender Hochzeiten, neuer Kontakte und fälliger Zahlungen.',
   'account.notifications.type.referrals.label': 'Empfehlungsprämien',

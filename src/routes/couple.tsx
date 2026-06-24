@@ -40,7 +40,6 @@ import {
   endLiveTimeline,
   addTimelineAssignee,
   removeTimelineAssignee,
-  toggleAssigneeCalendar,
   approveTimelineRequest,
   declineTimelineRequest,
   wallpaperPng,
@@ -1011,13 +1010,6 @@ couple.post('/wedding/:id/timeline/:itemId/assignees/:assigneeId/remove', async 
   const ctx = await coupleDocMembership(c, weddingId)
   if (!ctx) return c.text('Forbidden', 403)
   return removeTimelineAssignee(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('itemId'), c.req.param('assigneeId'))
-})
-
-couple.post('/wedding/:id/timeline/:itemId/assignees/:assigneeId/calendar', async (c) => {
-  const weddingId = c.req.param('id')
-  const ctx = await coupleDocMembership(c, weddingId)
-  if (!ctx) return c.text('Forbidden', 403)
-  return toggleAssigneeCalendar(c, weddingId, ctx.membership, ctx.user, `/wedding/${weddingId}`, c.req.param('itemId'), c.req.param('assigneeId'))
 })
 
 couple.post('/wedding/:id/timeline/requests/:reqId/approve', async (c) => {

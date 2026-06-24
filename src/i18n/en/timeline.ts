@@ -133,9 +133,6 @@ export const timeline = {
   'timeline.op.update': 'Change',
   'timeline.op.delete': 'Remove',
 
-  'timeline.addToCalendar': 'Add to my calendar',
-  'timeline.inCalendar': 'In your calendar — tap to remove',
-
   'timeline.feed.heading': 'Your wedding calendar',
   'timeline.feed.desc': 'Subscribe to this link in Apple Calendar, Google Calendar or Outlook. The sections you add to your calendar show up here automatically.',
   'timeline.feed.label': 'Calendar feed link',

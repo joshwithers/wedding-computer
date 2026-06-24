@@ -203,7 +203,7 @@ export const pt: Dictionary = {
   'account.notifications.type.paymentsReceived.desc': 'Um pagamento entra em uma das suas faturas.',
   'account.notifications.type.vendorCollaboration.label': 'Colaboração entre fornecedores',
   'account.notifications.type.vendorCollaboration.desc':
-    'Um casal reserva outro fornecedor ou altera se fornecedores podem se ver.',
+    'Um casal reserva outro fornecedor em um casamento que vocês compartilham.',
   'account.notifications.type.dailyDigest.label': 'Resumo diário',
   'account.notifications.type.dailyDigest.desc':
     'Um resumo matinal de próximos casamentos, novos contatos e pagamentos a vencer.',

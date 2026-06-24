@@ -54,7 +54,7 @@ export const account = {
   'account.notifications.type.paymentsReceived.desc': 'A payment lands on one of your invoices.',
   'account.notifications.type.vendorCollaboration.label': 'Vendor collaboration',
   'account.notifications.type.vendorCollaboration.desc':
-    'A couple books another vendor, or changes whether vendors can see each other.',
+    'A couple books another vendor on a wedding you share.',
   'account.notifications.type.dailyDigest.label': 'Daily summary',
   'account.notifications.type.dailyDigest.desc':
     'A morning round-up of upcoming weddings, new contacts, and payments due.',

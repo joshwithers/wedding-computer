@@ -202,7 +202,7 @@ export const zh: Dictionary = {
   'account.notifications.type.paymentsReceived.desc': '你的一张发票收到付款。',
   'account.notifications.type.vendorCollaboration.label': '供应商协作',
   'account.notifications.type.vendorCollaboration.desc':
-    '新人预订了另一位供应商，或更改供应商之间是否可见。',
+    '新人在你们共同负责的婚礼上预订了另一位供应商。',
   'account.notifications.type.dailyDigest.label': '每日摘要',
   'account.notifications.type.dailyDigest.desc':
     '每天早晨汇总即将到来的婚礼、新联系人和待付款项。',

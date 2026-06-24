@@ -71,8 +71,6 @@ function wedding(overrides: Partial<Wedding> = {}): Wedding {
     portrait_location: null,
     portrait_time: null,
     emoji: null,
-    bump_in_time: null,
-    bump_out_time: null,
     reception_duration_hours: null,
     timeline_notes: null,
     dress_code: null,
