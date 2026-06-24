@@ -123,20 +123,6 @@ export async function repairContacts(
 
     for (const contact of indexedContacts.results) {
       try {
-        const existing = await storage.head(contact.__file_path)
-        if (existing) {
-          await db
-            .prepare(
-              `UPDATE file_index
-               SET etag = ?, cached_data = ?, last_synced_at = datetime('now')
-               WHERE vendor_id = ? AND entity_type = 'contact' AND entity_id = ?`
-            )
-            .bind(existing.etag, contactCachedData(contact), vendorId, contact.id)
-            .run()
-          result.skipped++
-          repaired++
-          continue
-        }
         await writeContactMarkdown(contact, contact.__file_path, true)
       } catch (err) {
         console.error(`[migrate] Failed to repair contact ${contact.id}:`, err)
