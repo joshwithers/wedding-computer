@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   singleSharedLocation,
+  firstScheduledLocation,
+  eventTypeLabels,
   selectRunSheetMoments,
   buildRunSheetPages,
   buildWallpaperHtml,
@@ -66,6 +68,41 @@ describe('singleSharedLocation', () => {
   })
 })
 
+describe('firstScheduledLocation', () => {
+  it('returns the earliest timed item that names a venue', () => {
+    const items = [
+      item({ start_time: '15:00', location: 'The Chapel' }),
+      item({ start_time: '10:00', location: 'Getting Ready Suite' }),
+      item({ start_time: '12:00', location: null }),
+    ]
+    expect(firstScheduledLocation(items)).toBe('Getting Ready Suite')
+  })
+
+  it('skips markers, blanks and untimed items, and trims', () => {
+    const items = [
+      item({ start_time: null, location: 'No time' }),
+      item({ start_time: '09:00', marker: 'sunrise', location: 'Sky' }),
+      item({ start_time: '11:00', location: '  Town Hall  ' }),
+    ]
+    expect(firstScheduledLocation(items)).toBe('Town Hall')
+    expect(firstScheduledLocation([item({ location: null })])).toBeUndefined()
+  })
+})
+
+describe('eventTypeLabels', () => {
+  it('treats a plain wedding as the default (no overline)', () => {
+    expect(eventTypeLabels('wedding')).toEqual({ noun: 'wedding' })
+    expect(eventTypeLabels('Wedding')).toEqual({ noun: 'wedding' })
+    expect(eventTypeLabels(null)).toEqual({ noun: 'wedding' })
+    expect(eventTypeLabels('')).toEqual({ noun: 'wedding' })
+  })
+
+  it('surfaces a non-wedding type as both tagline noun and overline label', () => {
+    expect(eventTypeLabels('Elopement')).toEqual({ noun: 'elopement', label: 'Elopement' })
+    expect(eventTypeLabels('micro_wedding')).toEqual({ noun: 'micro wedding', label: 'micro wedding' })
+  })
+})
+
 describe('selectRunSheetMoments', () => {
   it('carries description and end time, chronological, skipping untimed', () => {
     const moments = selectRunSheetMoments([
@@ -116,6 +153,13 @@ describe('buildRunSheetPages', () => {
     const pages = buildRunSheetPages({ partners: [], dateLabel: '', items: [], palette: DEFAULT_PALETTE })
     expect(pages.length).toBe(1)
   })
+
+  it('overline reflects the event type for non-weddings, else RUN SHEET', () => {
+    const wedding = buildRunSheetPages({ partners: [], dateLabel: '', items: [moment(0)], palette: DEFAULT_PALETTE })
+    expect(wedding[0]).toContain('RUN SHEET')
+    const elopement = buildRunSheetPages({ partners: [], dateLabel: '', items: [moment(0)], eventLabel: 'Elopement', palette: DEFAULT_PALETTE })
+    expect(elopement[0]).toContain('ELOPEMENT · RUN SHEET')
+  })
 })
 
 describe('buildWallpaperHtml', () => {
@@ -140,5 +184,12 @@ describe('buildWallpaperHtml', () => {
 
   it('omits the sunset line when there is no sunset', () => {
     expect(buildWallpaperHtml(base)).not.toContain('Sunset')
+  })
+
+  it('overline shows the event type for non-weddings, else RUN SHEET', () => {
+    expect(buildWallpaperHtml(base)).toContain('RUN SHEET')
+    const elopement = buildWallpaperHtml({ ...base, eventLabel: 'Elopement' })
+    expect(elopement).toContain('ELOPEMENT')
+    expect(elopement).not.toContain('RUN SHEET')
   })
 })

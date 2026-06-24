@@ -129,6 +129,27 @@ export function singleSharedLocation(items: TimelineItemView[]): string | undefi
   return locs.size === 1 ? [...locs][0] : undefined
 }
 
+/** The chronologically-first scheduled item that names a venue. Used as the
+ * wallpaper's address when items span more than one place, so there's always a
+ * venue line (the first one) rather than a blank. */
+export function firstScheduledLocation(items: TimelineItemView[]): string | undefined {
+  const located = items
+    .filter((i) => !i.marker && i.start_time && i.location?.trim())
+    .sort((a, b) => (a.start_time! < b.start_time! ? -1 : a.start_time! > b.start_time! ? 1 : a.sort_order - b.sort_order))
+  return located[0]?.location?.trim() || undefined
+}
+
+/** Derive the export's event wording from a wedding's ceremony_type. `noun` is
+ * the lowercase word for the tagline prompt ("elopement", "wedding"); `label`
+ * is a title-cased overline shown only when the type isn't a plain wedding — so
+ * an elopement run sheet reads "ELOPEMENT" while a wedding keeps "RUN SHEET". */
+export function eventTypeLabels(ceremonyType: string | null | undefined): { noun: string; label?: string } {
+  const human = (ceremonyType ?? '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!human) return { noun: 'wedding' }
+  const isWedding = human.toLowerCase() === 'wedding'
+  return { noun: human.toLowerCase(), label: isWedding ? undefined : human }
+}
+
 /**
  * A warm one-line tagline for the wallpaper, written by Workers AI from the
  * couple/date/place. Cached per-wedding in KV (an empty string is cached as
@@ -137,9 +158,12 @@ export function singleSharedLocation(items: TimelineItemView[]): string | undefi
  */
 export async function generateTagline(
   env: Bindings,
-  opts: { weddingId: string; names: string; dateLabel: string; locationLabel?: string }
+  opts: { weddingId: string; names: string; dateLabel: string; locationLabel?: string; eventNoun?: string }
 ): Promise<string | undefined> {
-  const cacheKey = `wallpaper-tagline:${opts.weddingId}`
+  const eventNoun = opts.eventNoun || 'wedding'
+  // Keyed by event type too, so changing a wedding to an elopement (or back)
+  // regenerates rather than serving the old, wrong-flavour tagline.
+  const cacheKey = `wallpaper-tagline:${opts.weddingId}:${eventNoun}`
   try {
     const cached = await env.KV.get(cacheKey)
     if (cached !== null) return cached || undefined
@@ -148,7 +172,7 @@ export async function generateTagline(
   }
   try {
     const prompt =
-      `Write ONE short, warm, elegant tagline for a wedding run-sheet card. ` +
+      `Write ONE short, warm, elegant tagline for a ${eventNoun} run-sheet card. ` +
       `Couple: ${opts.names}. Date: ${opts.dateLabel}.` +
       (opts.locationLabel ? ` Place: ${opts.locationLabel}.` : '') +
       ` Maximum 8 words. No quotation marks, no emoji, no hashtags, no trailing punctuation. ` +
@@ -175,6 +199,7 @@ export type WallpaperData = {
   locationLabel?: string // a single venue/address line (deduped upstream)
   sunsetLabel?: string // compact venue-local sunset, e.g. "5:08pm"
   tagline?: string
+  eventLabel?: string // ceremony type when not a plain wedding (e.g. "Elopement")
   items: ExportMoment[]
   palette: ExportPalette
 }
@@ -236,7 +261,7 @@ export function buildWallpaperHtml(d: WallpaperData): string {
   return `<div style="display:flex;flex-direction:column;width:${WALLPAPER_W}px;height:${WALLPAPER_H}px;background:linear-gradient(160deg,${pal.bg} 0%,${pal.bgEnd} 100%);font-family:${pal.bodyFamily}">
     <div style="display:flex;height:${CLOCK_CLEARANCE}px;flex-shrink:0"></div>
     <div style="display:flex;flex-direction:column;align-items:center;padding:0 90px">
-      <div style="display:flex;font-family:${pal.bodyFamily};font-weight:600;font-size:28px;letter-spacing:8px;color:${pal.accent}">RUN SHEET</div>
+      <div style="display:flex;font-family:${pal.bodyFamily};font-weight:600;font-size:28px;letter-spacing:8px;color:${pal.accent}">${esc(d.eventLabel ? d.eventLabel.toUpperCase() : 'RUN SHEET')}</div>
       <div style="display:flex;margin-top:20px">${namesBlock(d.partners, pal)}</div>
       <div style="display:flex;font-family:${pal.bodyFamily};font-weight:400;font-size:38px;color:${pal.secondary};margin-top:26px">${esc(d.dateLabel)}</div>
       ${location}
@@ -282,6 +307,7 @@ export type RunSheetData = {
   dateLabel: string
   locationLabel?: string
   tagline?: string
+  eventLabel?: string // ceremony type when not a plain wedding (e.g. "Elopement")
   items: RunSheetMoment[]
   palette: ExportPalette
 }
@@ -390,7 +416,7 @@ export function buildRunSheetPages(d: RunSheetData): string[] {
   const namesLine = d.partners.map((p) => p.first).filter(Boolean).join(' & ')
 
   const fullHeader = `<div style="display:flex;flex-direction:column;align-items:center;margin-bottom:28px">
-      <div style="display:flex;font-family:${pal.bodyFamily};font-weight:600;font-size:24px;letter-spacing:8px;color:${pal.accent}">RUN SHEET</div>
+      <div style="display:flex;font-family:${pal.bodyFamily};font-weight:600;font-size:24px;letter-spacing:8px;color:${pal.accent}">${esc(d.eventLabel ? `${d.eventLabel.toUpperCase()} · RUN SHEET` : 'RUN SHEET')}</div>
       <div style="display:flex;margin-top:18px">${namesBlock(d.partners, pal, { first: 64, last: 26, amp: 46, pad: 24 })}</div>
       <div style="display:flex;font-family:${pal.bodyFamily};font-weight:400;font-size:30px;color:${pal.secondary};margin-top:18px">${esc(d.dateLabel)}${d.locationLabel ? `   ·   ${esc(d.locationLabel)}` : ''}</div>
       ${d.tagline ? `<div style="display:flex;font-family:${pal.displayFamily};font-weight:700;font-size:28px;color:${pal.accent};margin-top:16px;text-align:center;padding:0 40px">${esc(d.tagline)}</div>` : ''}

@@ -54,6 +54,8 @@ import {
   buildWallpaperHtml,
   selectKeyMoments,
   singleSharedLocation,
+  firstScheduledLocation,
+  eventTypeLabels,
   timeLabel,
   generateTagline,
   resolveExportPalette,
@@ -679,14 +681,24 @@ async function loadExportData(c: Ctx, weddingId: string) {
   })
   const sunsetHhmm = sunMin?.sunset != null ? minToHhmm(sunMin.sunset) : null
   const sunsetLabel = sunsetHhmm ? timeLabel(sunsetHhmm) : undefined
-  // The single address for the wallpaper: the one venue every item shares, else
-  // the wedding's location, else the city/state label.
-  const wallpaperAddress = singleSharedLocation(items) || wedding.location || locationLabel
+  // The address for the wallpaper, in priority order: the one venue every item
+  // shares → the first scheduled item's venue (when they span places) → the
+  // structured ceremony venue → the wedding's location → the city/state label.
+  // So there's always a venue line, even for a multi-stop or single-item day.
+  const wallpaperAddress =
+    singleSharedLocation(items) ||
+    firstScheduledLocation(items) ||
+    wedding.ceremony_location ||
+    wedding.location ||
+    locationLabel
+  // Event wording from the wedding's type so an elopement isn't presented as a
+  // generic "wedding" — drives the overline and the AI tagline's flavour.
+  const { noun: eventNoun, label: eventLabel } = eventTypeLabels(wedding.ceremony_type)
   const names = partners.map((p) => p.first).filter(Boolean).join(' & ') || wedding.title
-  const tagline = await generateTagline(c.env, { weddingId, names, dateLabel, locationLabel })
+  const tagline = await generateTagline(c.env, { weddingId, names, dateLabel, locationLabel, eventNoun })
   const slug = (names || 'wedding').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'wedding'
   const { palette, display } = resolveExportPalette(vendor?.brand_theme)
-  return { wedding, partners, items, dateLabel, locationLabel, sunsetLabel, wallpaperAddress, names, tagline, slug, palette, display }
+  return { wedding, partners, items, dateLabel, locationLabel, sunsetLabel, wallpaperAddress, eventLabel, names, tagline, slug, palette, display }
 }
 
 /** Run sheet → phone-lockscreen wallpaper PNG (the ≤8 key moments). */
@@ -699,6 +711,7 @@ export async function wallpaperPng(c: Ctx, weddingId: string, _member: WeddingMe
     locationLabel: d.wallpaperAddress,
     sunsetLabel: d.sunsetLabel,
     tagline: d.tagline,
+    eventLabel: d.eventLabel,
     items: selectKeyMoments(d.items),
     palette: d.palette,
   })
@@ -724,6 +737,7 @@ export async function runSheetPdf(c: Ctx, weddingId: string, _member: WeddingMem
     dateLabel: d.dateLabel,
     locationLabel: d.locationLabel,
     tagline: d.tagline,
+    eventLabel: d.eventLabel,
     items: selectRunSheetMoments(d.items),
     palette: d.palette,
   })
