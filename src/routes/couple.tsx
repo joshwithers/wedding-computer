@@ -7,6 +7,7 @@ import { Logo } from '../views/logo'
 import { requireAuth } from '../middleware/auth'
 import { csrf } from '../middleware/csrf'
 import { getWedding, getWeddingMembers, getMembership, getAnyMembership, addWeddingMember, updateWedding } from '../db/weddings'
+import { appendWeddingLog } from '../db/wedding-log'
 import { updateUser } from '../db/users'
 import { listCoupleVendors, getCoupleVendor, getCoupleVendorByProfileId, createCoupleVendor, updateCoupleVendor, deleteCoupleVendor, syncPlatformVendors, findCoupleVendorByEmail } from '../db/couple-vendors'
 import { getVendorByUserId } from '../db/vendors'
@@ -719,6 +720,8 @@ couple.post('/wedding/:id/vendors/add', async (c) => {
     can_manage: isManager,
     is_financial_party: false,
   })
+
+  c.executionCtx.waitUntil(appendWeddingLog(c.env.DB, weddingId, user.id, 'Vendor added', vendorProfile?.business_name ?? email).catch((e) => console.error('[wedding-log] append failed', e)))
 
   if (vendorProfile) {
     // Already on the platform — notify them; syncPlatformVendors surfaces the

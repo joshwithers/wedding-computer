@@ -162,6 +162,10 @@ export const weddings = {
   'weddings.people.makeManager': '+ Make manager',
   'weddings.people.removeManager': 'Remove as manager',
   'weddings.people.lastManager': 'A wedding needs at least one manager — make someone else a manager first.',
+  'weddings.people.alreadyOtherRole': 'That email already belongs to someone else on this wedding.',
+  'weddings.people.removedCannotReadd': 'That person was removed from this wedding earlier and can’t be re-added here.',
+  'weddings.people.invalidEmailName': 'Enter a valid email address and a name.',
+  'weddings.people.vendorNotFound': 'That vendor could not be found.',
 
   // Vendor profile
   'weddings.profile.breadcrumbVendor': 'Vendor',

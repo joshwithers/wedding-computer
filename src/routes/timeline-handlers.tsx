@@ -44,6 +44,7 @@ import {
 } from '../services/timeline-permissions'
 import { resyncWeddingCalendars } from '../services/wedding-calendar'
 import { markTimelineDirty } from '../services/timeline-notify'
+import { appendWeddingLog } from '../db/wedding-log'
 import { listPendingTimelineRequests, getTimelineRequest, decideTimelineRequest } from '../db/timeline-requests'
 import { proposeChange, applyRequest, diffRows, parsePayload, type RowFields } from '../services/timeline-approval'
 import { getWedding } from '../db/weddings'
@@ -334,8 +335,15 @@ function body(c: Ctx, props: TimelineProps) {
 }
 
 /** Side effects after any APPLIED timeline write. Returns the wedding it loaded
- *  so the re-render can reuse it instead of fetching it again. */
-async function afterWrite(c: Ctx, weddingId: string) {
+ *  so the re-render can reuse it instead of fetching it again. Pass `log` to
+ *  record the change in the wedding's activity log (written off the response
+ *  path, alongside the dirty flag / projection / push). */
+async function afterWrite(
+  c: Ctx,
+  weddingId: string,
+  log?: { action: string; detail?: string | null },
+  preWedding?: Awaited<ReturnType<typeof getWedding>>
+) {
   const env = c.env
   const vendor = c.get('vendor')
   const userId = c.get('user')?.id ?? ''
@@ -346,7 +354,7 @@ async function afterWrite(c: Ctx, weddingId: string) {
   // would show new/anchored rows as "—"). One getWedding feeds both this and
   // the re-render. Everything else (dirty flag, projection, calendars, vault
   // push) is deferred so the edit feels instant.
-  const wedding = await getWedding(env.DB, weddingId)
+  const wedding = preWedding ?? (await getWedding(env.DB, weddingId))
   try {
     await resolveAndMaterialize(env.DB, weddingId, wedding ? sunMinutesForWedding(wedding) : {})
   } catch (err) {
@@ -355,6 +363,7 @@ async function afterWrite(c: Ctx, weddingId: string) {
   c.executionCtx.waitUntil(
     (async () => {
       try {
+        if (log) await appendWeddingLog(env.DB, weddingId, userId || null, log.action, log.detail ?? null).catch((e) => console.error('[wedding-log] append failed', e))
         // Mark the wedding dirty so the debounced cron notifies the run-sheet team.
         await markTimelineDirty(env.KV, weddingId, userId).catch(() => {})
         await projectTimelineToWedding(env.DB, weddingId)
@@ -405,10 +414,15 @@ export async function addTimelineItem(c: Ctx, weddingId: string, member: Wedding
   // blank form (don't make them retype start/end/location/etc).
   if (!str(f.title)) return renderTimeline(c, weddingId, member, user, basePath, { addValues: fields, addError: t('timeline.field.titleRequired') })
 
-  const lead = await getTimelineLead(c.env.DB, weddingId)
+  // lead + wedding are independent of the create itself — fetch in parallel and
+  // reuse the wedding in afterWrite (saves a serial getWedding on the hot path).
+  const [lead, preWedding] = await Promise.all([
+    getTimelineLead(c.env.DB, weddingId),
+    getWedding(c.env.DB, weddingId),
+  ])
   if (canCreateDirect(viewer, lead, fields.visibility)) {
     await createItem(c.env.DB, { wedding_id: weddingId, ...fields, owner_vendor_id: member.vendor_profile_id, created_by_user_id: user.id })
-    const wedding = await afterWrite(c, weddingId)
+    const wedding = await afterWrite(c, weddingId, { action: 'Timeline item added', detail: fields.title }, preWedding)
     return renderTimeline(c, weddingId, member, user, basePath, { lead, wedding })
   }
   await proposeChange(c.env.DB, {
@@ -477,7 +491,7 @@ export async function addSunTimes(c: Ctx, weddingId: string, member: WeddingMemb
   if (created.length === 0) {
     return renderTimeline(c, weddingId, member, user, basePath, { flash: t('timeline.sun.alreadyAdded') })
   }
-  const wedding = await afterWrite(c, weddingId)
+  const wedding = await afterWrite(c, weddingId, { action: 'Sun times added', detail: created.join(', ') })
   return renderTimeline(c, weddingId, member, user, basePath, { wedding })
 }
 
@@ -492,7 +506,7 @@ export async function updateTimelineItem(c: Ctx, weddingId: string, member: Wedd
 
   if (canEditDirect(item, viewer, lead)) {
     await updateItem(c.env.DB, weddingId, itemId, after)
-    const wedding = await afterWrite(c, weddingId)
+    const wedding = await afterWrite(c, weddingId, { action: 'Timeline item updated', detail: after.title ?? item.title })
     return renderTimeline(c, weddingId, member, user, basePath, { lead, wedding })
   }
   if (canPropose(item, viewer, lead)) {
@@ -518,14 +532,14 @@ export async function deleteTimelineItem(c: Ctx, weddingId: string, member: Wedd
   // Sun markers are facts anyone may add — and remove — directly, no approval.
   if (item.marker) {
     await deleteItem(c.env.DB, weddingId, itemId)
-    const wedding = await afterWrite(c, weddingId)
+    const wedding = await afterWrite(c, weddingId, { action: 'Timeline item removed', detail: item.title })
     return renderTimeline(c, weddingId, member, user, basePath, { wedding })
   }
   const viewer = viewerOf(user, member)
   const lead = await getTimelineLead(c.env.DB, weddingId)
   if (canEditDirect(item, viewer, lead)) {
     await deleteItem(c.env.DB, weddingId, itemId)
-    const wedding = await afterWrite(c, weddingId)
+    const wedding = await afterWrite(c, weddingId, { action: 'Timeline item removed', detail: item.title })
     return renderTimeline(c, weddingId, member, user, basePath, { lead, wedding })
   }
   if (canPropose(item, viewer, lead)) {
@@ -614,9 +628,11 @@ async function decide(c: Ctx, weddingId: string, member: WeddingMember, user: Us
       }
     }
     await applyRequest(c.env.DB, req, edited)
-    wedding = await afterWrite(c, weddingId)
+    wedding = await afterWrite(c, weddingId, { action: 'Timeline change approved', detail: req.summary })
   }
   await decideTimelineRequest(c.env.DB, requestId, user.id, approve ? 'approved' : 'declined')
+  // Approvals are logged via afterWrite above; declines apply no write, so log here.
+  if (!approve) c.executionCtx.waitUntil(appendWeddingLog(c.env.DB, weddingId, user.id, 'Timeline change declined', req.summary).catch((e) => console.error('[wedding-log] append failed', e)))
   await c.env.EMAIL_QUEUE
     .send({
       type: 'notify_timeline_change_decided',

@@ -95,17 +95,19 @@ export async function createItem(
     marker?: TimelineMarker | null
   }
 ): Promise<TimelineItem> {
-  const next = await db
-    .prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM timeline_items WHERE wedding_id = ?')
-    .bind(data.wedding_id)
-    .first<{ n: number }>()
+  // Compute sort_order inline via a subquery so creation is a SINGLE round-trip
+  // (was a SELECT MAX then INSERT). SQLite serialises writes, so the subquery in
+  // each INSERT sees prior rows — this also closes the read-then-write race the
+  // two-statement version had under concurrent adds.
   const row = await db
     .prepare(
       `INSERT INTO timeline_items
          (wedding_id, start_time, end_time, title, description, location, category,
           owner_vendor_id, created_by_user_id, visibility, slot, sort_order,
           duration_minutes, anchor_type, anchor_ref, anchor_offset_minutes, pinned, marker)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+               (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM timeline_items WHERE wedding_id = ?),
+               ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
@@ -120,7 +122,7 @@ export async function createItem(
       data.created_by_user_id,
       data.visibility,
       data.slot ?? null,
-      next?.n ?? 0,
+      data.wedding_id, // sort_order subquery scope
       data.duration_minutes ?? null,
       data.anchor_type ?? null,
       data.anchor_ref ?? null,

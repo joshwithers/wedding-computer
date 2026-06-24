@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { Env } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
 import { requireAuth } from '../../middleware/auth'
@@ -524,11 +525,19 @@ weddings.post('/app/weddings/:id/invite', rateLimit(20, 60), async (c) => {
   const name = String(body.name).trim()
 
   if (!isValidEmail(email) || !name) {
-    return c.redirect(`/app/weddings/${weddingId}?error=Valid+email+and+name+required`)
+    return peopleResult(c, weddingId, { errorCode: 'invalid' })
   }
 
   const isNewUser = !(await getUserByEmail(c.env.DB, email))
   const coupleUser = await findOrCreateUser(c.env.DB, email, name)
+  // Guard against the upsert's role-flip / resurrection foot-guns: never demote an
+  // existing vendor/guest into a couple, or silently re-activate a removed member.
+  const existing = await getAnyMembership(c.env.DB, weddingId, coupleUser.id)
+  if (existing) {
+    if (existing.role !== 'couple') return peopleResult(c, weddingId, { errorCode: 'already_other' })
+    if (existing.status === 'removed') return peopleResult(c, weddingId, { errorCode: 'removed' })
+    return peopleResult(c, weddingId, {}) // already an active couple — idempotent no-op
+  }
   await addWeddingMember(c.env.DB, {
     wedding_id: weddingId,
     user_id: coupleUser.id,
@@ -537,6 +546,8 @@ weddings.post('/app/weddings/:id/invite', rateLimit(20, 60), async (c) => {
     // still edit their wedding + manage vendors via role-based checks.
     role: 'couple',
   })
+
+  c.executionCtx.waitUntil(appendWeddingLog(c.env.DB, weddingId, user.id, 'Couple added', name).catch((e) => console.error('[wedding-log] append failed', e)))
 
   const wedding = await getWedding(c.env.DB, weddingId)
   sendCoupleInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
@@ -562,7 +573,7 @@ weddings.post('/app/weddings/:id/invite', rateLimit(20, 60), async (c) => {
 
   track(c.env.DB, vendor.id, 'couple_invited', { weddingId })
 
-  return c.redirect(`/app/weddings/${weddingId}?invited=1`)
+  return peopleResult(c, weddingId, { invited: true })
 })
 
 // ─── Add guest / other person to wedding ───
@@ -580,16 +591,26 @@ weddings.post('/app/weddings/:id/add-guest', rateLimit(60, 60), async (c) => {
   const canManageGuest = body.can_manage === '1' || body.can_manage === 'on'
 
   if (!isValidEmail(email) || !name) {
-    return c.redirect(`/app/weddings/${weddingId}?error=Valid+email+and+name+required`)
+    return peopleResult(c, weddingId, { errorCode: 'invalid' })
   }
 
   const guestUser = await findOrCreateUser(c.env.DB, email, name)
+  // Guard against role-flip / resurrection: never demote an existing vendor/couple
+  // into a guest, or silently re-activate a removed member, via the upsert.
+  const existing = await getAnyMembership(c.env.DB, weddingId, guestUser.id)
+  if (existing) {
+    if (existing.role !== 'guest') return peopleResult(c, weddingId, { errorCode: 'already_other' })
+    if (existing.status === 'removed') return peopleResult(c, weddingId, { errorCode: 'removed' })
+    return peopleResult(c, weddingId, {}) // already an active guest — idempotent no-op
+  }
   await addWeddingMember(c.env.DB, {
     wedding_id: weddingId,
     user_id: guestUser.id,
     role: 'guest',
     can_manage: canManageGuest,
   })
+
+  c.executionCtx.waitUntil(appendWeddingLog(c.env.DB, weddingId, user.id, 'Guest added', name).catch((e) => console.error('[wedding-log] append failed', e)))
 
   // Send them the same invite email so they can access the wedding
   const wedding = await getWedding(c.env.DB, weddingId)
@@ -601,7 +622,7 @@ weddings.post('/app/weddings/:id/add-guest', rateLimit(60, 60), async (c) => {
     weddingDate: wedding?.date ? formatDate(wedding.date) : null,
   }).catch((e) => console.error('[INVITE]', e.message))
 
-  return c.redirect(`/app/weddings/${weddingId}?invited=1`)
+  return peopleResult(c, weddingId, { invited: true })
 })
 
 // ─── Autolookup: typeahead of existing Wedding Computer vendors ───
@@ -628,7 +649,7 @@ weddings.get('/app/weddings/:id/vendor-search', rateLimit(60, 60), async (c) => 
       {matches.map((m) => {
         const place = [m.location_city, m.location_state].filter(Boolean).join(', ')
         return (
-          <form method="post" action={`/app/weddings/${weddingId}/add-vendor`}>
+          <form method="post" action={`/app/weddings/${weddingId}/add-vendor`} hx-post={`/app/weddings/${weddingId}/add-vendor`} hx-target="#people-section" hx-swap="outerHTML" hx-disabled-elt="find button">
             <input type="hidden" name="_csrf" value={csrfToken} />
             <input type="hidden" name="vendor_profile_id" value={m.id} />
             <button type="submit" class="block w-full text-left px-4 py-2.5 hover:bg-papaya-50 transition-colors border-b border-gray-100 last:border-0">
@@ -662,11 +683,14 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
   const pickedId = String(body.vendor_profile_id ?? '').trim()
   if (pickedId) {
     const vp = await getVendorWithEmail(c.env.DB, pickedId)
-    if (!vp?.user_email) return c.redirect(`/app/weddings/${weddingId}?error=${encodeURIComponent('That vendor could not be found.')}`)
-    // getAnyMembership (not active-only) so a crafted POST can't silently
-    // resurrect a previously-removed member via the upsert.
-    if (await getAnyMembership(c.env.DB, weddingId, vp.user_id)) {
-      return c.redirect(`/app/weddings/${weddingId}`) // already on / previously on the wedding
+    if (!vp?.user_email) return peopleResult(c, weddingId, { errorCode: 'vendor_not_found' })
+    // getAnyMembership (not active-only) + explicit checks, identical to the email
+    // branch: never demote an existing couple/guest or resurrect a removed member.
+    const existingVp = await getAnyMembership(c.env.DB, weddingId, vp.user_id)
+    if (existingVp) {
+      if (existingVp.role !== 'vendor') return peopleResult(c, weddingId, { errorCode: 'already_other' })
+      if (existingVp.status === 'removed') return peopleResult(c, weddingId, { errorCode: 'removed' })
+      return peopleResult(c, weddingId, {}) // already an active vendor — idempotent no-op
     }
     await addWeddingMember(c.env.DB, {
       wedding_id: weddingId,
@@ -688,8 +712,9 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
     )
     // Share the couple's full contact details with the newly-added vendor.
     c.executionCtx.waitUntil(ensureCoupleContact(c.env, vp, weddingId))
+    c.executionCtx.waitUntil(appendWeddingLog(c.env.DB, weddingId, user.id, 'Vendor added', vp.business_name).catch((e) => console.error('[wedding-log] append failed', e)))
     track(c.env.DB, vendor.id, 'vendor_added', { weddingId, metadata: { vendorId: vp.id } })
-    return c.redirect(`/app/weddings/${weddingId}?invited=1`)
+    return peopleResult(c, weddingId, { invited: true })
   }
 
   const email = String(body.email).trim().toLowerCase()
@@ -701,11 +726,20 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
   const isFinancialParty = body.is_financial_party === '1' || body.is_financial_party === 'on'
 
   if (!isValidEmail(email) || !name) {
-    return c.redirect(`/app/weddings/${weddingId}?error=Valid+email+and+name+required`)
+    return peopleResult(c, weddingId, { errorCode: 'invalid' })
   }
 
   // Find or create the vendor user
   const vendorUser = await findOrCreateUser(c.env.DB, email, name)
+
+  // Same role-flip / resurrection guard as the autolookup branch: don't let an
+  // email invite demote an existing couple/guest or revive a removed member.
+  const existingVendor = await getAnyMembership(c.env.DB, weddingId, vendorUser.id)
+  if (existingVendor) {
+    if (existingVendor.role !== 'vendor') return peopleResult(c, weddingId, { errorCode: 'already_other' })
+    if (existingVendor.status === 'removed') return peopleResult(c, weddingId, { errorCode: 'removed' })
+    return peopleResult(c, weddingId, {}) // already an active vendor — idempotent no-op
+  }
 
   // Check if they have a vendor profile
   const vendorProfile = await getVendorByUserId(c.env.DB, vendorUser.id)
@@ -728,6 +762,8 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
     can_manage: canManage || isManager,
     is_financial_party: isFinancialParty,
   })
+
+  c.executionCtx.waitUntil(appendWeddingLog(c.env.DB, weddingId, user.id, 'Vendor added', name).catch((e) => console.error('[wedding-log] append failed', e)))
 
   // Everything past the membership write is BACKGROUND (waitUntil) — the redirect
   // returns immediately; none of this blocks it. The welcome path in particular
@@ -766,7 +802,7 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
 
   track(c.env.DB, vendor.id, 'vendor_added', { weddingId, metadata: { vendorEmail: email } })
 
-  return c.redirect(`/app/weddings/${weddingId}?invited=1`)
+  return peopleResult(c, weddingId, { invited: true })
 })
 
 // ─── Set a vendor member's type(s) for this wedding ───
@@ -815,7 +851,7 @@ weddings.post('/app/weddings/:id/members/:userId/roles', rateLimit(60, 60), asyn
     .slice(0, 12) // generous cap; guards against an abusive payload
 
   await setWeddingMemberRoles(c.env.DB, weddingId, targetUserId, roles)
-  return c.redirect(`/app/weddings/${weddingId}`)
+  return peopleResult(c, weddingId, {})
 })
 
 // ─── Remove a vendor from this wedding (manager-only, soft remove) ───
@@ -827,7 +863,7 @@ weddings.post('/app/weddings/:id/members/:userId/remove', rateLimit(30, 60), asy
   const membership = await getMembership(c.env.DB, weddingId, user.id)
   if (!membership || !membership.can_manage) return c.text('Not found', 404)
   // A manager can't remove themselves here (avoid orphaning the wedding).
-  if (targetUserId === user.id) return c.redirect(`/app/weddings/${weddingId}`)
+  if (targetUserId === user.id) return peopleResult(c, weddingId, {})
 
   const target = await getMembership(c.env.DB, weddingId, targetUserId)
   if (!target || target.role !== 'vendor') return c.text('Not found', 404)
@@ -836,6 +872,13 @@ weddings.post('/app/weddings/:id/members/:userId/remove', rateLimit(30, 60), asy
     .prepare("UPDATE wedding_members SET status = 'removed' WHERE wedding_id = ? AND user_id = ? AND role = 'vendor'")
     .bind(weddingId, targetUserId)
     .run()
+
+  c.executionCtx.waitUntil(
+    (async () => {
+      const u = await c.env.DB.prepare('SELECT name FROM users WHERE id = ?').bind(targetUserId).first<{ name: string }>()
+      await appendWeddingLog(c.env.DB, weddingId, user.id, 'Vendor removed', u?.name ?? null)
+    })().catch(() => {})
+  )
 
   if (target.vendor_profile_id) {
     // Mirror the removal into the couple's tracked vendors + drop the vendor's
@@ -855,7 +898,7 @@ weddings.post('/app/weddings/:id/members/:userId/remove', rateLimit(30, 60), asy
   }
   // Refresh the remaining members' calendars off the response path.
   c.executionCtx.waitUntil(resyncWeddingCalendars(c.env.DB, weddingId).catch((e) => console.error('[weddings] resync after remove failed', e)))
-  return c.redirect(`/app/weddings/${weddingId}?removed=1`)
+  return peopleResult(c, weddingId, {})
 })
 
 // ─── Grant/revoke wedding-manager (can_manage) for a member (manager-only) ───
@@ -881,7 +924,7 @@ weddings.post('/app/weddings/:id/members/:userId/manage', rateLimit(60, 60), asy
       .bind(weddingId)
       .first<{ n: number }>()
     if ((managers?.n ?? 0) <= 1) {
-      return c.redirect(`/app/weddings/${weddingId}?error=last_manager`)
+      return peopleResult(c, weddingId, { errorCode: 'last_manager' })
     }
   }
 
@@ -889,7 +932,7 @@ weddings.post('/app/weddings/:id/members/:userId/manage', rateLimit(60, 60), asy
     .prepare("UPDATE wedding_members SET can_manage = ? WHERE wedding_id = ? AND user_id = ?")
     .bind(grant ? 1 : 0, weddingId, targetUserId)
     .run()
-  return c.redirect(`/app/weddings/${weddingId}`)
+  return peopleResult(c, weddingId, {})
 })
 
 // ─── Wedding detail ───
@@ -914,7 +957,7 @@ weddings.get('/app/weddings/:id', async (c) => {
   const days = wedding.date ? daysUntil(wedding.date) : null
   const hasCoupleOrGuest = allMembers.some((m) => m.role === 'couple' || m.role === 'guest')
   const invited = c.req.query('invited')
-  const flashError = c.req.query('error') === 'last_manager' ? t('weddings.people.lastManager') : null
+  const flashError = peopleErrorMessage(c.req.query('error'))
 
   const canManage = !!membership.can_manage
   // When vendors are hidden from one another, a non-manager still sees the
@@ -1107,121 +1150,15 @@ weddings.get('/app/weddings/:id', async (c) => {
         )}
 
         {/* People */}
-        <div class="mb-6">
-          <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.detail.people')}</h3>
-          <div class="bg-white border border-papaya-300/30 rounded-2xl p-4 space-y-3">
-            {members.map((m) => {
-              const isVendor = m.role === 'vendor'
-              const currentRoles = parseMemberRoles(m.vendor_roles, m.vendor_role)
-              // Types to offer in the editor: the vendor's own declared types
-              // (their profile categories), else the admin catalog for an
-              // email-invited vendor who hasn't built a profile yet.
-              let declared: string[] = []
-              if (m.vendor_categories) {
-                try {
-                  const arr = JSON.parse(m.vendor_categories)
-                  if (Array.isArray(arr)) declared = arr.filter((s): s is string => typeof s === 'string' && !!s)
-                } catch { /* ignore */ }
-              }
-              if (!declared.length && m.vendor_primary_category) declared = [m.vendor_primary_category]
-              const offerTypes = declared.length ? declared.map((s) => ({ slug: s, label: s })) : vendorTypes
-              const canEditTypes = canManage && isVendor
-              const roleLabel = isVendor
-                ? rolesLabel(displayRoles(currentRoles, m.celebrant_term))
-                : m.role.charAt(0).toUpperCase() + m.role.slice(1)
-              return (
-                <div class="text-sm">
-                  <div class="flex items-center justify-between">
-                    <div>
-                      {m.vendor_profile_id ? (
-                        <a href={`/app/vendors/${m.vendor_profile_id}`} class="font-medium text-gray-900 hover:text-horizon-700 hover:underline">
-                          {m.business_name ?? m.user_name}
-                        </a>
-                      ) : (
-                        <p class="font-medium text-gray-900">{m.business_name ?? m.user_name}</p>
-                      )}
-                      <p class="text-xs text-gray-500">{m.user_email}</p>
-                    </div>
-                    <div class="flex items-center gap-1.5 shrink-0">
-                      {canEditTypes ? (
-                        <details class="group/edit relative">
-                          <summary
-                            class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none inline-flex items-center gap-1 text-xs text-gray-500 hover:text-horizon-700 transition-colors"
-                            title={t('weddings.people.editTypes')}
-                          >
-                            <span>{roleLabel}</span>
-                            <svg class="w-3 h-3 text-gray-300 group-hover/edit:text-horizon-500 group-open/edit:text-horizon-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </summary>
-                          <div class="absolute right-0 z-30 mt-1.5 w-56 bg-white ring-1 ring-gray-900/10 shadow-xl rounded-xl p-3 text-left">
-                            <form method="post" action={`/app/weddings/${wedding.id}/members/${m.user_id}/roles`}>
-                              <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                              <p class="text-[11px] font-medium text-gray-400 mb-2">{t('weddings.people.editTypesHint')}</p>
-                              <div class="flex flex-wrap gap-1.5 mb-3">
-                                {offerTypes.map((ty) => {
-                                  const on = currentRoles.includes(ty.slug)
-                                  return (
-                                    <label class="cursor-pointer">
-                                      <input type="checkbox" name="vendor_roles" value={ty.slug} checked={on} class="sr-only peer" />
-                                      <span class="inline-block text-xs px-2.5 py-1 rounded-full border transition-colors bg-white border-gray-200 text-gray-600 hover:border-gray-300 peer-checked:bg-horizon-50 peer-checked:border-horizon-300 peer-checked:text-horizon-700">{vendorTypeLabel(ty)}</span>
-                                    </label>
-                                  )
-                                })}
-                              </div>
-                              <button type="submit" class="w-full bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors">
-                                {t('weddings.people.saveTypes')}
-                              </button>
-                            </form>
-                          </div>
-                        </details>
-                      ) : (
-                        <span class="text-xs text-gray-500">{roleLabel}</span>
-                      )}
-                      {canManage && isVendor ? (
-                        m.can_manage ? (
-                          <form method="post" action={`${basePath}/members/${m.user_id}/manage`} class="flex">
-                            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                            <input type="hidden" name="manage" value="0" />
-                            <button type="submit" title={t('weddings.people.removeManager')} class="text-[10px] font-bold text-horizon-700 bg-horizon-50 hover:bg-grapefruit-50 hover:text-grapefruit-700 px-1.5 py-0.5 rounded transition-colors">{t('weddings.detail.managerBadge')}</button>
-                          </form>
-                        ) : (
-                          <form method="post" action={`${basePath}/members/${m.user_id}/manage`} class="flex">
-                            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                            <input type="hidden" name="manage" value="1" />
-                            <button type="submit" class="text-[10px] font-medium text-gray-400 hover:text-horizon-600 px-1.5 py-0.5 rounded transition-colors">{t('weddings.people.makeManager')}</button>
-                          </form>
-                        )
-                      ) : (
-                        !!m.can_manage && (
-                          <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">{t('weddings.detail.managerBadge')}</span>
-                        )
-                      )}
-                      {canManage && isVendor && m.user_id !== user.id && (
-                        <form
-                          method="post"
-                          action={`/app/weddings/${wedding.id}/members/${m.user_id}/remove`}
-                          onsubmit={`return confirm(${JSON.stringify(t('weddings.people.removeConfirm', { name: m.business_name ?? m.user_name }))})`}
-                          class="flex"
-                        >
-                          <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                          <button type="submit" title={t('weddings.people.remove')} aria-label={t('weddings.people.remove')} class="text-gray-300 hover:text-grapefruit-600 transition-colors">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </form>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          {canManage && (
-            <AddPeoplePanel weddingId={wedding.id} csrfToken={c.get('csrfToken')} vendorTypes={vendorTypes} invited={invited} scope="people" />
-          )}
-        </div>
+        <PeopleSection
+          wedding={wedding}
+          members={members}
+          canManage={canManage}
+          vendorTypes={vendorTypes}
+          csrfToken={c.get('csrfToken')}
+          currentUserId={user.id}
+          invited={invited}
+        />
 
         {/* Your team (agencies) */}
         {vendor.is_agency === 1 && (
@@ -1299,11 +1236,6 @@ weddings.get('/app/weddings/:id', async (c) => {
         {/* Vendor Credits */}
         {credits.length > 0 && (
           <WeddingCredits credits={credits} weddingTitle={wedding.title} />
-        )}
-
-        {/* Add people — the same panel as under the People section above */}
-        {canManage && (
-          <AddPeoplePanel weddingId={wedding.id} csrfToken={c.get('csrfToken')} vendorTypes={vendorTypes} invited={invited} scope="credits" />
         )}
 
         {/* Wedding Log */}
@@ -1943,26 +1875,250 @@ function WeddingStatusBadge({ status }: { status: string }) {
   )
 }
 
+type PeopleMemberRow = Awaited<ReturnType<typeof getWeddingMembers>>[number]
+
+// Map an error CODE (carried in ?error= for full-page reloads, and shared with
+// the htmx partial) to a localised message. Codes keep reflected query text out
+// of the page and keep everything translatable.
+function peopleErrorMessage(code: string | null | undefined): string | null {
+  switch (code) {
+    case 'last_manager': return t('weddings.people.lastManager')
+    case 'already_other': return t('weddings.people.alreadyOtherRole')
+    case 'removed': return t('weddings.people.removedCannotReadd')
+    case 'invalid': return t('weddings.people.invalidEmailName')
+    case 'vendor_not_found': return t('weddings.people.vendorNotFound')
+    default: return null
+  }
+}
+
+// A single member/vendor/couple/guest row with its inline controls. Extracted so
+// the htmx partial (renderPeopleSection) and the full page render the same markup.
+function MemberRow({ m, wedding, canManage, vendorTypes, csrfToken, currentUserId }: {
+  m: PeopleMemberRow
+  wedding: Wedding
+  canManage: boolean
+  vendorTypes: VendorType[]
+  csrfToken: string
+  currentUserId: string
+}) {
+  const basePath = `/app/weddings/${wedding.id}`
+  const isVendor = m.role === 'vendor'
+  const currentRoles = parseMemberRoles(m.vendor_roles, m.vendor_role)
+  let declared: string[] = []
+  if (m.vendor_categories) {
+    try {
+      const arr = JSON.parse(m.vendor_categories)
+      if (Array.isArray(arr)) declared = arr.filter((s): s is string => typeof s === 'string' && !!s)
+    } catch { /* ignore */ }
+  }
+  if (!declared.length && m.vendor_primary_category) declared = [m.vendor_primary_category]
+  const offerTypes = declared.length ? declared.map((s) => ({ slug: s, label: s })) : vendorTypes
+  const canEditTypes = canManage && isVendor
+  const roleLabel = isVendor
+    ? rolesLabel(displayRoles(currentRoles, m.celebrant_term))
+    : m.role.charAt(0).toUpperCase() + m.role.slice(1)
+  return (
+    <div class="text-sm">
+      <div class="flex items-center justify-between">
+        <div>
+          {m.vendor_profile_id ? (
+            <a href={`/app/vendors/${m.vendor_profile_id}`} class="font-medium text-gray-900 hover:text-horizon-700 hover:underline">
+              {m.business_name ?? m.user_name}
+            </a>
+          ) : (
+            <p class="font-medium text-gray-900">{m.business_name ?? m.user_name}</p>
+          )}
+          <p class="text-xs text-gray-500">{m.user_email}</p>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          {canEditTypes ? (
+            <details class="group/edit relative">
+              <summary
+                class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none inline-flex items-center gap-1 text-xs text-gray-500 hover:text-horizon-700 transition-colors"
+                title={t('weddings.people.editTypes')}
+              >
+                <span>{roleLabel}</span>
+                <svg class="w-3 h-3 text-gray-300 group-hover/edit:text-horizon-500 group-open/edit:text-horizon-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </summary>
+              <div class="absolute right-0 z-30 mt-1.5 w-56 bg-white ring-1 ring-gray-900/10 shadow-xl rounded-xl p-3 text-left">
+                <form method="post" action={`${basePath}/members/${m.user_id}/roles`} hx-post={`${basePath}/members/${m.user_id}/roles`} hx-target="#people-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+                  <input type="hidden" name="_csrf" value={csrfToken} />
+                  <p class="text-[11px] font-medium text-gray-400 mb-2">{t('weddings.people.editTypesHint')}</p>
+                  <div class="flex flex-wrap gap-1.5 mb-3">
+                    {offerTypes.map((ty) => {
+                      const on = currentRoles.includes(ty.slug)
+                      return (
+                        <label class="cursor-pointer">
+                          <input type="checkbox" name="vendor_roles" value={ty.slug} checked={on} class="sr-only peer" />
+                          <span class="inline-block text-xs px-2.5 py-1 rounded-full border transition-colors bg-white border-gray-200 text-gray-600 hover:border-gray-300 peer-checked:bg-horizon-50 peer-checked:border-horizon-300 peer-checked:text-horizon-700">{vendorTypeLabel(ty)}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  <button type="submit" class="w-full bg-horizon-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-horizon-700 transition-colors">
+                    {t('weddings.people.saveTypes')}
+                  </button>
+                </form>
+              </div>
+            </details>
+          ) : (
+            <span class="text-xs text-gray-500">{roleLabel}</span>
+          )}
+          {canManage && isVendor ? (
+            m.can_manage ? (
+              <form method="post" action={`${basePath}/members/${m.user_id}/manage`} hx-post={`${basePath}/members/${m.user_id}/manage`} hx-target="#people-section" hx-swap="outerHTML" hx-disabled-elt="find button" class="flex">
+                <input type="hidden" name="_csrf" value={csrfToken} />
+                <input type="hidden" name="manage" value="0" />
+                <button type="submit" title={t('weddings.people.removeManager')} class="text-[10px] font-bold text-horizon-700 bg-horizon-50 hover:bg-grapefruit-50 hover:text-grapefruit-700 px-1.5 py-0.5 rounded transition-colors">{t('weddings.detail.managerBadge')}</button>
+              </form>
+            ) : (
+              <form method="post" action={`${basePath}/members/${m.user_id}/manage`} hx-post={`${basePath}/members/${m.user_id}/manage`} hx-target="#people-section" hx-swap="outerHTML" hx-disabled-elt="find button" class="flex">
+                <input type="hidden" name="_csrf" value={csrfToken} />
+                <input type="hidden" name="manage" value="1" />
+                <button type="submit" class="text-[10px] font-medium text-gray-400 hover:text-horizon-600 px-1.5 py-0.5 rounded transition-colors">{t('weddings.people.makeManager')}</button>
+              </form>
+            )
+          ) : (
+            !!m.can_manage && (
+              <span class="text-[10px] text-horizon-600 font-bold bg-horizon-50 px-1.5 py-0.5 rounded">{t('weddings.detail.managerBadge')}</span>
+            )
+          )}
+          {canManage && isVendor && m.user_id !== currentUserId && (
+            <form
+              method="post"
+              action={`${basePath}/members/${m.user_id}/remove`}
+              hx-post={`${basePath}/members/${m.user_id}/remove`}
+              hx-target="#people-section"
+              hx-swap="outerHTML"
+              hx-disabled-elt="find button"
+              hx-confirm={t('weddings.people.removeConfirm', { name: m.business_name ?? m.user_name })}
+              class="flex"
+            >
+              <input type="hidden" name="_csrf" value={csrfToken} />
+              <button type="submit" title={t('weddings.people.remove')} aria-label={t('weddings.people.remove')} class="text-gray-300 hover:text-grapefruit-600 transition-colors">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// The whole People block: members list + (for managers) the add panel, wrapped in
+// #people-section so add/remove/role POSTs can swap it in place via htmx instead
+// of a full-page reload. `invited`/`error` surface the result of the last action.
+function PeopleSection({ wedding, members, canManage, vendorTypes, csrfToken, currentUserId, invited, error }: {
+  wedding: Wedding
+  members: PeopleMemberRow[]
+  canManage: boolean
+  vendorTypes: VendorType[]
+  csrfToken: string
+  currentUserId: string
+  invited?: string
+  error?: string
+}) {
+  return (
+    <div id="people-section" class="mb-6">
+      <h3 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.detail.people')}</h3>
+      {error && (
+        <div class="mb-3 bg-grapefruit-50 border border-grapefruit-200 text-grapefruit-700 text-sm rounded-xl px-4 py-2.5">{error}</div>
+      )}
+      <div class="bg-white border border-papaya-300/30 rounded-2xl p-4 space-y-3">
+        {members.map((m) => (
+          <MemberRow m={m} wedding={wedding} canManage={canManage} vendorTypes={vendorTypes} csrfToken={csrfToken} currentUserId={currentUserId} />
+        ))}
+      </div>
+      {canManage && (
+        <AddPeoplePanel weddingId={wedding.id} csrfToken={csrfToken} vendorTypes={vendorTypes} invited={invited} scope="people" open={!!invited || !!error} />
+      )}
+    </div>
+  )
+}
+
+// True when htmx made the request (so handlers return the section fragment rather
+// than redirecting to a full page reload).
+function wantsPartial(c: Context<Env>): boolean {
+  return c.req.header('HX-Request') === 'true'
+}
+
+// Re-load the People section's data and render the #people-section fragment.
+async function renderPeopleSection(
+  c: Context<Env>,
+  weddingId: string,
+  opts?: { invited?: string; error?: string }
+): Promise<Response> {
+  const user = c.get('user')
+  const [membership, wedding, allMembers] = await Promise.all([
+    getMembership(c.env.DB, weddingId, user.id),
+    getWedding(c.env.DB, weddingId),
+    getWeddingMembers(c.env.DB, weddingId),
+  ])
+  if (!membership || !wedding) return c.text('Wedding not found', 404)
+  const canManage = !!membership.can_manage
+  const members = canManage || wedding.vendor_visibility === 'visible'
+    ? allMembers
+    : allMembers.filter((m) => m.user_id === user.id || m.role === 'couple' || m.role === 'guest' || !!m.can_manage)
+  const vendorTypes = canManage ? await listVendorTypes(c.env.DB) : []
+  return c.html(
+    <PeopleSection
+      wedding={wedding}
+      members={members}
+      canManage={canManage}
+      vendorTypes={vendorTypes}
+      csrfToken={c.get('csrfToken')}
+      currentUserId={user.id}
+      invited={opts?.invited}
+      error={opts?.error}
+    />
+  )
+}
+
+// Single exit point for the member-mutation handlers: an htmx caller gets the
+// re-rendered #people-section; a plain form post gets the usual redirect (error
+// codes round-trip through ?error= → peopleErrorMessage).
+async function peopleResult(
+  c: Context<Env>,
+  weddingId: string,
+  opts: { errorCode?: string; invited?: boolean }
+): Promise<Response> {
+  if (wantsPartial(c)) {
+    return renderPeopleSection(c, weddingId, {
+      invited: opts.invited ? '1' : undefined,
+      error: opts.errorCode ? (peopleErrorMessage(opts.errorCode) ?? undefined) : undefined,
+    })
+  }
+  const qs = opts.errorCode ? `?error=${opts.errorCode}` : opts.invited ? '?invited=1' : ''
+  return c.redirect(`/app/weddings/${weddingId}${qs}`)
+}
+
 // The "Add people to this wedding" panel — invite the couple, autolookup an
 // existing vendor, invite a new vendor by email, or add another person. Rendered
-// in more than one place (under People + under Credits), so the autocomplete's
-// suggestion container id is scoped to avoid htmx target collisions.
+// once, inside PeopleSection; its forms hx-swap #people-section in place. (scope
+// just namespaces the autocomplete suggestion container id.)
 function AddPeoplePanel({
   weddingId,
   csrfToken,
   vendorTypes,
   invited,
   scope,
+  open,
 }: {
   weddingId: string
   csrfToken: string
   vendorTypes: VendorType[]
   invited?: string
   scope: string
+  open?: boolean
 }) {
   const sugId = `vendor-suggestions-${scope}`
   return (
-    <details class="group mt-2">
+    <details class="group mt-2" open={open ?? !!invited}>
       <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 transition-colors select-none flex items-center gap-1.5">
         <svg class="w-3.5 h-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -1973,7 +2129,7 @@ function AddPeoplePanel({
         {invited && <p class="text-sm text-horizon-700 font-medium">{t('weddings.people.invitedSuccess')}</p>}
 
         {/* Invite one of the people getting married */}
-        <form method="post" action={`/app/weddings/${weddingId}/invite`} class="flex gap-2 items-end">
+        <form method="post" action={`/app/weddings/${weddingId}/invite`} hx-post={`/app/weddings/${weddingId}/invite`} hx-target="#people-section" hx-swap="outerHTML" hx-disabled-elt="find button" hx-on--after-request="if(event.detail.elt===this&&event.detail.successful)this.reset()" class="flex gap-2 items-end">
           <input type="hidden" name="_csrf" value={csrfToken} />
           <div class="flex-1">
             <label class="block text-xs font-medium text-gray-500 mb-1">{t('weddings.people.inviteGettingMarried')}</label>
@@ -2005,7 +2161,7 @@ function AddPeoplePanel({
         </div>
 
         {/* Fallback: invite a vendor who isn't on Wedding Computer yet */}
-        <form method="post" action={`/app/weddings/${weddingId}/add-vendor`} class="flex gap-2 items-end flex-wrap">
+        <form method="post" action={`/app/weddings/${weddingId}/add-vendor`} hx-post={`/app/weddings/${weddingId}/add-vendor`} hx-target="#people-section" hx-swap="outerHTML" hx-disabled-elt="find button" hx-on--after-request="if(event.detail.elt===this&&event.detail.successful)this.reset()" class="flex gap-2 items-end flex-wrap">
           <input type="hidden" name="_csrf" value={csrfToken} />
           <div class="flex-1 min-w-[140px]">
             <label class="block text-xs font-medium text-gray-500 mb-1">{t('weddings.team.inviteByEmail')}</label>
@@ -2029,7 +2185,7 @@ function AddPeoplePanel({
         </form>
 
         {/* Add another person (family, coordinator, etc.) */}
-        <form method="post" action={`/app/weddings/${weddingId}/add-guest`} class="flex gap-2 items-end">
+        <form method="post" action={`/app/weddings/${weddingId}/add-guest`} hx-post={`/app/weddings/${weddingId}/add-guest`} hx-target="#people-section" hx-swap="outerHTML" hx-disabled-elt="find button" hx-on--after-request="if(event.detail.elt===this&&event.detail.successful)this.reset()" class="flex gap-2 items-end">
           <input type="hidden" name="_csrf" value={csrfToken} />
           <div class="flex-1">
             <label class="block text-xs font-medium text-gray-500 mb-1">

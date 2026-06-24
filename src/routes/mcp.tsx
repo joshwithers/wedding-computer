@@ -885,6 +885,7 @@ async function handleTool(
 
       let itemId: string
       let action: string
+      let logDetail: string | null = null
       if (id) {
         const item = await getItem(db, weddingId, id)
         if (!item || item.owner_vendor_id !== vendor.id) {
@@ -909,6 +910,7 @@ async function handleTool(
         if (Object.keys(patch).length > 0) await updateItem(db, weddingId, id, patch as any)
         itemId = id
         action = 'Updated'
+        logDetail = (patch.title as string | undefined) ?? item.title
       } else {
         const title = args.title != null ? String(args.title).trim() : ''
         if (!title) return { content: [{ type: 'text', text: 'A title is required to add a timeline item.' }] }
@@ -931,6 +933,7 @@ async function handleTool(
         })
         itemId = created.id
         action = 'Added'
+        logDetail = title
       }
       // 'who' → a single label assignee (replace any existing on the item).
       if (args.assigned_to !== undefined) {
@@ -939,6 +942,19 @@ async function handleTool(
         if (who) await addAssignee(db, itemId, { label: who })
       }
       await resolveAndMaterialize(db, weddingId, await weddingSunMinutes(db, weddingId))
+      // Off the response path: record the change in the wedding log, mark the
+      // run-sheet dirty so the team gets the debounced "updated" email, and
+      // refresh calendars — parity with the web timeline editor (afterWrite).
+      const post = (async () => {
+        const { appendWeddingLog } = await import('../db/wedding-log')
+        await appendWeddingLog(db, weddingId, userId, `Timeline item ${action.toLowerCase()}`, logDetail).catch((e) => console.error('[wedding-log] append failed', e))
+        const { markTimelineDirty } = await import('../services/timeline-notify')
+        await markTimelineDirty(env.KV, weddingId, userId).catch(() => {})
+        const { resyncWeddingCalendars } = await import('../services/wedding-calendar')
+        await resyncWeddingCalendars(db, weddingId, vendor.id).catch(() => {})
+      })()
+      if (ctx) ctx.waitUntil(post)
+      else await post.catch(() => {})
       await pushVault(env, vendor, weddingId, ctx)
       return { content: [{ type: 'text', text: `${action} timeline item (id ${itemId}).` }] }
     }
@@ -956,6 +972,17 @@ async function handleTool(
       }
       await deleteItem(db, weddingId, id)
       await resolveAndMaterialize(db, weddingId, await weddingSunMinutes(db, weddingId))
+      const removedUserId = await vendorUserId(db, vendor.id)
+      const post = (async () => {
+        const { appendWeddingLog } = await import('../db/wedding-log')
+        await appendWeddingLog(db, weddingId, removedUserId, 'Timeline item removed', item.title).catch((e) => console.error('[wedding-log] append failed', e))
+        const { markTimelineDirty } = await import('../services/timeline-notify')
+        await markTimelineDirty(env.KV, weddingId, removedUserId ?? '').catch(() => {})
+        const { resyncWeddingCalendars } = await import('../services/wedding-calendar')
+        await resyncWeddingCalendars(db, weddingId, vendor.id).catch(() => {})
+      })()
+      if (ctx) ctx.waitUntil(post)
+      else await post.catch(() => {})
       await pushVault(env, vendor, weddingId, ctx)
       return { content: [{ type: 'text', text: `Removed "${item.title}".` }] }
     }
