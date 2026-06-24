@@ -225,6 +225,50 @@ describe('writeWeddingFile', () => {
     expect(rows[0].entity_id).toBe('wedding-001')
   })
 
+  it('uses a stable suffixed folder for duplicate wedding titles and dates', async () => {
+    const first = makeWedding({ id: 'wedding-001' })
+    const second = makeWedding({ id: 'wedding-002' })
+
+    const firstFolder = await writeWeddingFile(
+      storage,
+      db as unknown as D1Database,
+      VENDOR_ID,
+      first
+    )
+    const secondFolder = await writeWeddingFile(
+      storage,
+      db as unknown as D1Database,
+      VENDOR_ID,
+      second
+    )
+
+    expect(firstFolder).toBe('weddings/2026-12-15-sarah-james/')
+    expect(secondFolder).toBe('weddings/2026-12-15-sarah-james-2/')
+
+    const rows = db.getTable('file_index')
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          entity_id: 'wedding-001',
+          file_path: 'weddings/2026-12-15-sarah-james/wedding.md',
+        }),
+        expect.objectContaining({
+          entity_id: 'wedding-002',
+          file_path: 'weddings/2026-12-15-sarah-james-2/wedding.md',
+        }),
+      ])
+    )
+
+    const secondFolderAgain = await writeWeddingFile(
+      storage,
+      db as unknown as D1Database,
+      VENDOR_ID,
+      second
+    )
+
+    expect(secondFolderAgain).toBe(secondFolder)
+  })
+
   it('cleans up R2 file when D1 index fails for new file', async () => {
     db.throwOnQuery = (sql: string) => {
       if (sql.includes('file_index')) return new Error('D1 is down')

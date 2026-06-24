@@ -19,7 +19,7 @@
 import type { Wedding } from '../types'
 import type { StorageBackend, MarkdownDocument } from './types'
 import { parseMarkdown, serializeMarkdown } from './markdown'
-import { weddingFolderName, slugify, deduplicateFilename } from './slug'
+import { weddingFolderName, slugify } from './slug'
 import { recordWriteConflict } from './conflicts'
 import { gitBlobSha } from './etag'
 
@@ -217,7 +217,7 @@ export async function writeWeddingFile(
     .bind(vendorId, 'wedding', wedding.id)
     .first<{ file_path: string; etag: string }>()
 
-  const desiredFolder = weddingFolder(wedding.title, wedding.date)
+  const desiredFolder = await resolveWeddingFolder(storage, db, vendorId, wedding, indexRow?.file_path)
   const desiredPath = desiredFolder + 'wedding.md'
 
   const doc = weddingToMarkdown(wedding)
@@ -354,6 +354,36 @@ export async function writeWeddingFile(
   try { await cleanupLegacyWeddingFile(storage, wedding) } catch { /* best effort */ }
 
   return desiredFolder
+}
+
+async function resolveWeddingFolder(
+  storage: StorageBackend,
+  db: D1Database,
+  vendorId: string,
+  wedding: Wedding,
+  currentPath?: string
+): Promise<string> {
+  const baseName = weddingFolderName(wedding.title, wedding.date)
+
+  let suffix = 1
+  while (true) {
+    const folderName = suffix === 1 ? baseName : `${baseName}-${suffix}`
+    const folder = WEDDINGS_DIR + folderName + '/'
+    const path = folder + 'wedding.md'
+
+    const owner = await db
+      .prepare('SELECT entity_id FROM file_index WHERE vendor_id = ? AND entity_type = ? AND file_path = ?')
+      .bind(vendorId, 'wedding', path)
+      .first<{ entity_id: string }>()
+
+    if (!owner || owner.entity_id === wedding.id) {
+      if (path === currentPath || !(await storage.head(path).catch(() => null))) {
+        return folder
+      }
+    }
+
+    suffix++
+  }
 }
 
 /**
