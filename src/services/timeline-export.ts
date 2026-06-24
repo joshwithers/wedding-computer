@@ -103,16 +103,54 @@ export function resolveExportPalette(brandThemeJson: string | null | undefined):
 
 // ── Wallpaper ───────────────────────────────────────────────────────────────
 
-export type ExportMoment = { time: string; title: string }
+export type ExportMoment = { time: string; title: string; isMarker?: boolean }
 
-/** Pick the concise set of key moments for the wallpaper: timed, non-sun-fact
- * items in chronological order, capped. */
+/** Pick the concise set of key moments for the wallpaper: timed items in
+ * chronological order, capped. Sun markers (sunrise/sunset) ARE included and
+ * reserved a slot first, so an astronomical cue like sunset always survives the
+ * cap and sits in the schedule at its real time rather than floating above it. */
 export function selectKeyMoments(items: TimelineItemView[], max = 8): ExportMoment[] {
-  return items
-    .filter((i) => i.start_time && !i.marker)
-    .sort((a, b) => (a.start_time! < b.start_time! ? -1 : a.start_time! > b.start_time! ? 1 : a.sort_order - b.sort_order))
+  const chrono = (a: TimelineItemView, b: TimelineItemView) =>
+    a.start_time! < b.start_time! ? -1 : a.start_time! > b.start_time! ? 1 : a.sort_order - b.sort_order
+  const timed = items.filter((i) => i.start_time).sort(chrono)
+  const markers = timed.filter((i) => i.marker)
+  const room = Math.max(0, max - markers.length)
+  const nonMarkers = timed.filter((i) => !i.marker).slice(0, room)
+  return [...markers, ...nonMarkers]
+    .sort(chrono)
     .slice(0, max)
-    .map((i) => ({ time: timeLabel(i.start_time), title: i.title }))
+    .map((i) => ({ time: timeLabel(i.start_time), title: i.title, isMarker: !!i.marker }))
+}
+
+/** A synthetic sunset row for the exports, used when the couple hasn't already
+ * dropped a real sun marker on the timeline (via "add sun times"). The title is
+ * English to match the export's Latin-only fonts, like the rest of the card. */
+export function sunMarkerMoment(weddingId: string, hhmm: string): TimelineItemView {
+  return {
+    id: `sun-sunset-${weddingId}`,
+    wedding_id: weddingId,
+    start_time: hhmm,
+    end_time: null,
+    title: 'Sunset',
+    description: null,
+    location: null,
+    category: 'other',
+    owner_vendor_id: null,
+    created_by_user_id: null,
+    visibility: 'couple',
+    slot: null,
+    sort_order: 9999,
+    duration_minutes: null,
+    anchor_type: null,
+    anchor_ref: null,
+    anchor_offset_minutes: 0,
+    pinned: 0,
+    actual_start: null,
+    marker: 'sunset',
+    created_at: '',
+    updated_at: '',
+    assignees: [],
+  }
 }
 
 /** The one venue every scheduled (non-sun) item shares, if they all share it —
@@ -197,7 +235,6 @@ export type WallpaperData = {
   partners: ExportPartner[] // 1–2 partners; first name large, last name small beneath
   dateLabel: string
   locationLabel?: string // a single venue/address line (deduped upstream)
-  sunsetLabel?: string // compact venue-local sunset, e.g. "5:08pm"
   tagline?: string
   eventLabel?: string // ceremony type when not a plain wedding (e.g. "Elopement")
   items: ExportMoment[]
@@ -237,22 +274,18 @@ export function buildWallpaperHtml(d: WallpaperData): string {
   const pal = d.palette
   const rows = d.items
     .map(
+      // Sun markers (sunset/sunrise) sit in the schedule too, in a softer colour
+      // so they read as an ambient cue rather than an action to run.
       (it) => `<div style="display:flex;align-items:baseline;width:100%;margin-bottom:30px">
         <div style="display:flex;justify-content:flex-end;width:215px;flex-shrink:0;font-family:${pal.bodyFamily};font-weight:600;font-size:42px;color:${pal.accent}">${esc(it.time)}</div>
         <div style="display:flex;width:56px;flex-shrink:0"></div>
-        <div style="display:flex;font-family:${pal.bodyFamily};font-weight:400;font-size:42px;color:${pal.title};line-height:1.15">${esc(it.title)}</div>
+        <div style="display:flex;font-family:${pal.bodyFamily};font-weight:400;font-size:42px;color:${it.isMarker ? pal.secondaryDeep : pal.title};line-height:1.15">${esc(it.title)}</div>
       </div>`,
     )
     .join('')
 
   const location = d.locationLabel
     ? `<div style="display:flex;font-family:${pal.bodyFamily};font-weight:400;font-size:32px;color:${pal.secondary};margin-top:8px;text-align:center">${esc(d.locationLabel)}</div>`
-    : ''
-  // Sunset cue — useful on a run-sheet wallpaper for golden hour. "Sunset" is
-  // kept in English to match the rest of this English-only card (the satori
-  // fonts are Latin-only, so it isn't localized like the in-app UI).
-  const sunset = d.sunsetLabel
-    ? `<div style="display:flex;font-family:${pal.bodyFamily};font-weight:600;font-size:30px;letter-spacing:1px;color:${pal.secondaryDeep};margin-top:14px">Sunset ${esc(d.sunsetLabel)}</div>`
     : ''
   const tagline = d.tagline
     ? `<div style="display:flex;font-family:${pal.displayFamily};font-weight:700;font-size:34px;color:${pal.accent};margin-top:28px;padding:0 40px;text-align:center;line-height:1.25">${esc(d.tagline)}</div>`
@@ -265,7 +298,6 @@ export function buildWallpaperHtml(d: WallpaperData): string {
       <div style="display:flex;margin-top:20px">${namesBlock(d.partners, pal)}</div>
       <div style="display:flex;font-family:${pal.bodyFamily};font-weight:400;font-size:38px;color:${pal.secondary};margin-top:26px">${esc(d.dateLabel)}</div>
       ${location}
-      ${sunset}
       ${tagline}
     </div>
     <div style="display:flex;justify-content:center;margin-top:54px;margin-bottom:54px">

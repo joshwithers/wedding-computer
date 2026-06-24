@@ -3,6 +3,8 @@ import {
   singleSharedLocation,
   firstScheduledLocation,
   eventTypeLabels,
+  selectKeyMoments,
+  sunMarkerMoment,
   selectRunSheetMoments,
   buildRunSheetPages,
   buildWallpaperHtml,
@@ -103,6 +105,41 @@ describe('eventTypeLabels', () => {
   })
 })
 
+describe('selectKeyMoments', () => {
+  it('includes sun markers, flags them, and orders chronologically', () => {
+    const moments = selectKeyMoments([
+      item({ start_time: '15:00', title: 'Ceremony' }),
+      item({ start_time: '17:23', title: 'Sunset', marker: 'sunset' }),
+      item({ start_time: '10:00', title: 'Hair' }),
+    ])
+    expect(moments.map((m) => m.title)).toEqual(['Hair', 'Ceremony', 'Sunset'])
+    expect(moments.find((m) => m.title === 'Sunset')!.isMarker).toBe(true)
+    expect(moments.find((m) => m.title === 'Hair')!.isMarker).toBe(false)
+  })
+
+  it('reserves a slot for markers so sunset survives the cap', () => {
+    const many = Array.from({ length: 12 }, (_, i) =>
+      item({ start_time: `${String(8 + i).padStart(2, '0')}:00`, title: `Item ${i}` }),
+    )
+    const sunset = item({ start_time: '23:30', title: 'Sunset', marker: 'sunset' })
+    const moments = selectKeyMoments([...many, sunset], 8)
+    expect(moments).toHaveLength(8)
+    expect(moments.some((m) => m.title === 'Sunset')).toBe(true) // the latest item, but kept
+  })
+
+  it('skips untimed items', () => {
+    const moments = selectKeyMoments([item({ start_time: null, title: 'Someday' }), item({ start_time: '09:00', title: 'Hair' })])
+    expect(moments.map((m) => m.title)).toEqual(['Hair'])
+  })
+})
+
+describe('sunMarkerMoment', () => {
+  it('builds an English sunset marker at the given time', () => {
+    const m = sunMarkerMoment('w1', '17:23')
+    expect(m).toMatchObject({ marker: 'sunset', start_time: '17:23', title: 'Sunset' })
+  })
+})
+
 describe('selectRunSheetMoments', () => {
   it('carries description and end time, chronological, skipping untimed', () => {
     const moments = selectRunSheetMoments([
@@ -173,16 +210,29 @@ describe('buildWallpaperHtml', () => {
     palette: DEFAULT_PALETTE,
   }
 
-  it('renders surnames, the address line and the sunset cue', () => {
-    const html = buildWallpaperHtml({ ...base, locationLabel: 'The Barn', sunsetLabel: '5:18pm' })
+  it('renders surnames and the address line', () => {
+    const html = buildWallpaperHtml({ ...base, locationLabel: 'The Barn' })
     expect(html).toContain('Olivia')
     expect(html).toContain('Martin')
     expect(html).toContain('Wilson')
     expect(html).toContain('The Barn')
-    expect(html).toContain('Sunset 5:18pm')
   })
 
-  it('omits the sunset line when there is no sunset', () => {
+  it('renders a sun marker as a schedule row in the muted colour, not the header', () => {
+    const html = buildWallpaperHtml({
+      ...base,
+      items: [
+        { time: '3pm', title: 'Ceremony' },
+        { time: '5:23pm', title: 'Sunset', isMarker: true },
+      ],
+    })
+    // sunset is a row (its time appears) and uses the muted marker colour…
+    expect(html).toContain(`color:${DEFAULT_PALETTE.secondaryDeep};line-height:1.15">Sunset`)
+    // …while a normal item keeps the regular title colour.
+    expect(html).toContain(`color:${DEFAULT_PALETTE.title};line-height:1.15">Ceremony`)
+  })
+
+  it('shows no sunset when no item carries it', () => {
     expect(buildWallpaperHtml(base)).not.toContain('Sunset')
   })
 

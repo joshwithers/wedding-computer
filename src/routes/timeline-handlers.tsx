@@ -55,6 +55,7 @@ import {
   selectKeyMoments,
   singleSharedLocation,
   firstScheduledLocation,
+  sunMarkerMoment,
   eventTypeLabels,
   timeLabel,
   generateTagline,
@@ -680,7 +681,13 @@ async function loadExportData(c: Ctx, weddingId: string) {
     fallbackTimezone: getI18n().timezone,
   })
   const sunsetHhmm = sunMin?.sunset != null ? minToHhmm(sunMin.sunset) : null
-  const sunsetLabel = sunsetHhmm ? timeLabel(sunsetHhmm) : undefined
+  // Put the venue-local sunset INTO the schedule (not a header stat) so it reads
+  // as a moment in the day, on both exports. Skipped when the couple already
+  // dropped a real sunset marker via "add sun times", so it's never doubled.
+  const exportItems =
+    sunsetHhmm && !items.some((i) => i.marker === 'sunset')
+      ? [...items, sunMarkerMoment(weddingId, sunsetHhmm)]
+      : items
   // The address for the wallpaper, in priority order: the one venue every item
   // shares → the first scheduled item's venue (when they span places) → the
   // structured ceremony venue → the wedding's location → the city/state label.
@@ -698,7 +705,7 @@ async function loadExportData(c: Ctx, weddingId: string) {
   const tagline = await generateTagline(c.env, { weddingId, names, dateLabel, locationLabel, eventNoun })
   const slug = (names || 'wedding').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'wedding'
   const { palette, display } = resolveExportPalette(vendor?.brand_theme)
-  return { wedding, partners, items, dateLabel, locationLabel, sunsetLabel, wallpaperAddress, eventLabel, names, tagline, slug, palette, display }
+  return { wedding, partners, items: exportItems, dateLabel, locationLabel, wallpaperAddress, eventLabel, names, tagline, slug, palette, display }
 }
 
 /** Run sheet → phone-lockscreen wallpaper PNG (the ≤8 key moments). */
@@ -709,7 +716,6 @@ export async function wallpaperPng(c: Ctx, weddingId: string, _member: WeddingMe
     partners: d.partners,
     dateLabel: d.dateLabel,
     locationLabel: d.wallpaperAddress,
-    sunsetLabel: d.sunsetLabel,
     tagline: d.tagline,
     eventLabel: d.eventLabel,
     items: selectKeyMoments(d.items),
