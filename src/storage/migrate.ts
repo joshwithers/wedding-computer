@@ -30,6 +30,11 @@ export type ContactRepairResult = MigrationResult & {
   rewritten: number
 }
 
+export type ContactRepairOptions = {
+  limit?: number
+  verifyIndexedFiles?: boolean
+}
+
 /**
  * Migrate all contacts for a vendor from D1 to markdown files.
  */
@@ -50,9 +55,12 @@ export async function migrateContacts(
 export async function repairContacts(
   storage: StorageBackend,
   db: D1Database,
-  vendorId: string
+  vendorId: string,
+  options: ContactRepairOptions = {}
 ): Promise<ContactRepairResult> {
   const result: ContactRepairResult = { migrated: 0, rewritten: 0, skipped: 0, errors: 0 }
+  const verifyIndexedFiles = options.verifyIndexedFiles ?? true
+  let repaired = 0
 
   // Get already-indexed contacts.
   const indexed = await db
@@ -79,6 +87,10 @@ export async function repairContacts(
       let rewritingMissingIndexedFile = false
 
       if (indexedPath) {
+        if (!verifyIndexedFiles) {
+          result.skipped++
+          continue
+        }
         const existing = await storage.head(indexedPath)
         if (existing) {
           result.skipped++
@@ -86,6 +98,10 @@ export async function repairContacts(
         }
         rewritingMissingIndexedFile = true
       } else {
+        if (options.limit && repaired >= options.limit) {
+          result.skipped++
+          continue
+        }
         const desiredFilename = contactFilename(
           contact.first_name,
           contact.last_name,
@@ -130,6 +146,7 @@ export async function repairContacts(
       } else {
         result.migrated++
       }
+      repaired++
     } catch (err) {
       console.error(`[migrate] Failed to repair contact ${contact.id}:`, err)
       result.errors++

@@ -15,6 +15,7 @@ export type StorageRepairResult = {
 
 type RepairOptions = {
   storage?: StorageBackend
+  contactLimit?: number
   weddingLimit?: number
   verifyIndexedContacts?: boolean
 }
@@ -36,7 +37,10 @@ export async function repairVendorStorage(
   const storage = options.storage ?? await getStorageWithSecrets(env, vendor)
 
   if (options.verifyIndexedContacts || await needsMigration(env.DB, vendor.id)) {
-    const contacts = await repairContacts(storage, env.DB, vendor.id)
+    const contacts = await repairContacts(storage, env.DB, vendor.id, {
+      limit: options.contactLimit ?? 100,
+      verifyIndexedFiles: options.verifyIndexedContacts ?? false,
+    })
     result.contactsMigrated = contacts.migrated
     result.contactsRewritten = contacts.rewritten
     result.contactsSkipped = contacts.skipped
