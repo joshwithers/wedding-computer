@@ -10,6 +10,7 @@ import { formatDate, daysUntil } from '../../lib/date'
 import { countEvents } from '../../db/analytics'
 import { isProVendor } from '../../db/subscriptions'
 import { listWeddingTodosWithProgress } from '../../db/todos'
+import { listVendorCalendarRows } from '../../db/timeline'
 import { todoStats } from '../../lib/todo-parser'
 import { buildSetupChecklist, categorySetup, type SetupChecklist, type CategorySetup } from '../../lib/onboarding'
 import { dismissSetup, dismissDemo } from '../../db/vendors'
@@ -48,7 +49,7 @@ dashboard.get('/app', async (c) => {
   const thirtyAgo = new Date(Date.parse(today + 'T00:00:00Z') - 30 * 86400000).toISOString().slice(0, 10)
 
   try {
-    const [weddings, contacts, overdue, revenueRow, contactCounts, events, todos, eventsCountRow, enq30, book30, pro, demoLoaded, newVendor] =
+    const [weddings, contacts, overdue, revenueRow, contactCounts, events, todos, eventsCountRow, enq30, book30, pro, demoLoaded, newVendor, tlRows] =
       await Promise.all([
         db
           .prepare(
@@ -128,6 +129,10 @@ dashboard.get('/app', async (c) => {
         isProVendor(db, vendor.id),
         hasDemoData(db, vendor.id, user.id),
         isNewVendor(db, vendor.id, user.id),
+        // The shared run sheet across every wedding this vendor is on — so the
+        // dashboard "coming up" shows the whole shared timeline, not just the
+        // legacy ceremony anchor in calendar_events.
+        listVendorCalendarRows(db, vendor.id),
       ])
 
     upcomingWeddings = weddings
@@ -135,7 +140,28 @@ dashboard.get('/app', async (c) => {
     overduePayments = overdue
     revenue = revenueRow?.total ?? 0
     counts = contactCounts ?? { total: 0, new_leads: 0, booked: 0 }
-    upcomingEvents = events
+    // Merge legacy calendar_events with the shared timeline. Dedup TIMED events by
+    // date+time so the legacy ceremony anchor and its timeline section don't both
+    // show; untimed events stay distinct (keyed by id).
+    const tlEvents = tlRows
+      .filter((r) => r.wedding_date >= today)
+      .map((r) => ({
+        id: r.id,
+        title: r.wedding_title ? `${r.wedding_title}: ${r.title}` : r.title,
+        date: r.wedding_date,
+        start_time: r.start_time,
+        type: 'timeline',
+      }))
+    const seenEv = new Set<string>()
+    upcomingEvents = [...events, ...tlEvents]
+      .filter((ev) => {
+        const k = ev.start_time ? `${ev.date}|${ev.start_time}` : `${ev.type}|${ev.id}`
+        if (seenEv.has(k)) return false
+        seenEv.add(k)
+        return true
+      })
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.start_time ?? '~').localeCompare(b.start_time ?? '~'))
+      .slice(0, 5)
     todoProgress = todos
     eventsCount = eventsCountRow?.total ?? 0
     enquiries30 = enq30

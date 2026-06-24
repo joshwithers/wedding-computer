@@ -19,7 +19,7 @@ import { RUN_SHEET_CATEGORIES } from '../types'
 import { parseMarkdown, serializeMarkdown, ParseError } from './markdown'
 
 export const RUN_SHEET_SECTION = '## Run sheet'
-export const OTHER_VENDORS_SECTION = '## Other vendors'
+export const OTHER_VENDORS_SECTION = '## Rest of the shared timeline'
 export const PENDING_SECTION = '## Pending timeline approvals'
 
 const CATEGORY_LABELS: Record<RunSheetItem['category'], string> = {
@@ -91,9 +91,11 @@ export function timelineToMarkdown(data: {
   const body: string[] = [
     `# ${data.wedding.title} — Timeline`,
     '',
+    '_This wedding has one shared run sheet. Everyone added to the wedding shares it and sees all of it. The table below is your own sections — yours to edit; the rest of the shared timeline follows._',
+    '',
     RUN_SHEET_SECTION,
     '',
-    'Rows in this table are yours — edits sync back to Wedding Computer.',
+    'Your sections of the shared run sheet — edits here sync back to Wedding Computer.',
     'Leave the `id` cell empty for new rows; the app fills it in.',
     '',
     ...renderTable(data.ownItems, true),
@@ -101,7 +103,7 @@ export function timelineToMarkdown(data: {
 
   if (data.otherVendors.length > 0) {
     body.push('', OTHER_VENDORS_SECTION, '')
-    body.push('_Read-only — these items belong to other vendors on this wedding._')
+    body.push("_The rest of this wedding's one shared timeline — you can see all of it. These sections belong to other people on the wedding (read-only here; ask the timeline manager to change a section that isn't yours)._")
     for (const other of data.otherVendors) {
       body.push('', `### ${other.label}`, '', ...renderTable(other.items, false))
     }

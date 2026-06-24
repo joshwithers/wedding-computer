@@ -421,9 +421,13 @@ const CALENDAR_ROW_SELECT = (scopeCol: string, visClause: string) =>
               (SELECT cu.email FROM wedding_members cwm JOIN users cu ON cu.id = cwm.user_id
                  WHERE cwm.wedding_id = ti.wedding_id AND cwm.role = 'couple' AND cwm.status = 'active'
                  ORDER BY cwm.created_at LIMIT 1) AS couple_email
-       FROM timeline_item_assignees a
-       JOIN wedding_members wm ON wm.id = a.wedding_member_id
-       JOIN timeline_items ti ON ti.id = a.timeline_item_id
+       -- One shared timeline per wedding: select straight from the viewer's
+       -- active memberships to EVERY section they're allowed to see (by
+       -- visibility), not just the rows they're personally assigned to. Being
+       -- added to the wedding is the grant — the whole shared run sheet lands on
+       -- their calendar.
+       FROM wedding_members wm
+       JOIN timeline_items ti ON ti.wedding_id = wm.wedding_id
        JOIN weddings w ON w.id = ti.wedding_id
        WHERE wm.${scopeCol} = ? AND wm.status = 'active' AND w.date IS NOT NULL
          -- markers (sun rows) aren't events; respect timeline visibility so a
@@ -438,7 +442,7 @@ const VENDOR_CALENDAR_SELECT = CALENDAR_ROW_SELECT(
   "ti.visibility IN ('couple','vendors') OR ti.owner_vendor_id = wm.vendor_profile_id",
 )
 
-/** Timeline sections this user is assigned to and has opted into, across weddings. */
+/** Every shared-timeline section this user may see (by visibility), across weddings. */
 export async function listUserCalendarRows(db: D1Database, userId: string): Promise<UserCalendarRow[]> {
   return db
     .prepare(`${USER_CALENDAR_SELECT}
@@ -450,10 +454,10 @@ export async function listUserCalendarRows(db: D1Database, userId: string): Prom
 
 // ── Vendor-scoped variants for the vendor's business feed (iCal + CalDAV) ──
 // Keyed on the vendor PROFILE, not its owner user — a vendor's membership user
-// is not always the profile owner, and a vendor wants every section assigned to
-// any of its own memberships.
+// is not always the profile owner, and a vendor wants the shared timeline for
+// every wedding any of its memberships are on.
 
-/** Timeline sections assigned to this vendor (any membership) + opted in. */
+/** Every shared-timeline section this vendor may see, across all its weddings. */
 export async function listVendorCalendarRows(db: D1Database, vendorId: string): Promise<UserCalendarRow[]> {
   return db
     .prepare(`${VENDOR_CALENDAR_SELECT}
