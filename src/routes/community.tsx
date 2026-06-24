@@ -46,7 +46,7 @@ import {
   type JoinCardData,
   type VendorJoinData,
 } from '../views/community'
-import { buildCoupleJoinCard } from '../services/community'
+import { buildCoupleJoinCard, canUseCommunityPost } from '../services/community'
 
 const community = new Hono<Env>()
 
@@ -373,6 +373,8 @@ community.get('/community/p/:postId', async (c) => {
   const user = c.get('user')
   const post = await getPost(c.env.DB, c.req.param('postId'))
   if (!post || post.is_removed === 1) return c.text('', 404)
+  const member = await loadActiveMember(c, post.cohort_id, user.id)
+  if (!canUseCommunityPost(user.id, member, post, 'view')) return c.text('', 403)
   return c.html(
     <PostItem
       post={post}
@@ -386,7 +388,9 @@ community.get('/community/p/:postId', async (c) => {
 community.get('/community/p/:postId/edit', async (c) => {
   const user = c.get('user')
   const post = await getPost(c.env.DB, c.req.param('postId'))
-  if (!post || post.is_removed === 1 || post.author_user_id !== user.id) return c.text('', 403)
+  if (!post || post.is_removed === 1) return c.text('', 404)
+  const member = await loadActiveMember(c, post.cohort_id, user.id)
+  if (!canUseCommunityPost(user.id, member, post, 'edit')) return c.text('', 403)
   return c.html(<PostEditForm post={post} token={contentToken(post.body)} csrfToken={c.get('csrfToken')} />)
 })
 
@@ -396,6 +400,12 @@ community.post('/community/p/:postId/edit', async (c) => {
   const body = await c.req.parseBody()
   const text = String(body.body ?? '').trim()
   const token = String(body.token ?? '')
+
+  const existing = await getPost(c.env.DB, postId)
+  if (!existing || existing.is_removed === 1) return c.text('', 404)
+  const member = await loadActiveMember(c, existing.cohort_id, user.id)
+  if (!canUseCommunityPost(user.id, member, existing, 'edit')) return c.text('', 403)
+  if (!text) return c.text('', 400)
 
   const result = await editOwnPost(c.env.DB, postId, user.id, text, token)
   if (!result) return c.text('', 403)
@@ -420,7 +430,9 @@ community.post('/community/p/:postId/edit', async (c) => {
 community.post('/community/p/:postId/delete', async (c) => {
   const user = c.get('user')
   const post = await getPost(c.env.DB, c.req.param('postId'))
-  if (!post || post.author_user_id !== user.id) return c.text('', 403)
+  if (!post || post.is_removed === 1) return c.text('', 404)
+  const member = await loadActiveMember(c, post.cohort_id, user.id)
+  if (!canUseCommunityPost(user.id, member, post, 'delete')) return c.text('', 403)
 
   const result = await deleteOwnPost(c.env.DB, post.id, user.id)
   if (!result) return c.text('', 403)
@@ -436,7 +448,9 @@ community.post('/community/p/:postId/delete', async (c) => {
 community.post('/community/p/:postId/report', async (c) => {
   const user = c.get('user')
   const post = await getPost(c.env.DB, c.req.param('postId'))
-  if (!post) return c.text('', 404)
+  if (!post || post.is_removed === 1) return c.text('', 404)
+  const member = await loadActiveMember(c, post.cohort_id, user.id)
+  if (!canUseCommunityPost(user.id, member, post, 'report')) return c.text('', 403)
   if (!(await consumeRateLimit(c.env.KV, `community:report:${user.id}`, 20, 3600))) {
     return c.html(<span class="text-[11px] text-gray-400">{t('community.rateLimited')}</span>)
   }

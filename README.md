@@ -1,243 +1,193 @@
 # Wedding Computer
 
-A multi-party wedding collaboration platform for the wedding industry. Vendors manage leads, contacts, calendars, and invoicing. Couples track vendors, budgets, and wedding details. Everyone coordinates on a shared wedding entity.
+A multi-party wedding collaboration platform for the wedding industry. Vendors manage leads, contacts, calendars, invoicing, quotes, forms, contracts, timelines, files, and email. Couples get a planning hub for vendors, wedding details, budgets, forms, messages, files, links, weather, timelines, and opt-in community rooms. Everyone coordinates on a shared wedding workspace.
 
-Your data is stored as **plain text markdown files** — not trapped in a proprietary database. Read the [open standard](https://wedding.computer/standard).
+Wedding Computer is live at [wedding.computer](https://wedding.computer).
 
-**Live:** [wedding.computer](https://wedding.computer)
-**Source:** [github.com/joshwithers/wedding-computer](https://github.com/joshwithers/wedding-computer)
-**License:** AGPL-3.0
+This project is closed source and proprietary. The openness story is open data: every vendor's contacts and weddings are represented as plain-text markdown files with YAML frontmatter, and the file format is published as an open standard at [wedding.computer/standard](https://wedding.computer/standard).
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Runtime | Cloudflare Workers |
-| Framework | Hono (TypeScript, JSX) |
-| Database | Cloudflare D1 (SQLite) — queryable index |
-| Storage | Cloudflare R2 — markdown files (source of truth) |
-| KV | Cloudflare KV (sessions, cache) |
-| Jobs | Cloudflare Queues |
-| Auth | Magic links + Passkeys (WebAuthn) |
-| Payments | Stripe Connect |
-| Email | Resend + Cloudflare Email Routing |
-| AI | Anthropic Claude + Cloudflare Workers AI |
-| Frontend | Server-rendered JSX + htmx |
-| CSS | Tailwind CSS (CDN) |
-| Protocols | CardDAV, CalDAV, iCal feeds |
+| Framework | Hono with TypeScript and server-rendered JSX |
+| Database | Cloudflare D1 (SQLite) as the queryable index |
+| Storage | Cloudflare R2 markdown files as the source of truth |
+| KV | Cloudflare KV for sessions, tokens, cache, and rate limits |
+| Jobs | Cloudflare Queues plus scheduled Worker cron jobs |
+| Auth | Magic links and passkeys (WebAuthn) |
+| Payments | Stripe Connect Standard, plus manual payment records |
+| Email | Resend and Cloudflare Email Routing |
+| AI | Anthropic Claude, Cloudflare Workers AI, MCP, and native handoff support |
+| Frontend | Server-rendered Hono JSX plus htmx |
+| CSS | Tailwind CSS v3 CLI build into `public/styles.css` |
+| Protocols | MCP, vault sync API, CardDAV, CalDAV, and iCal feeds |
 
-## Data Philosophy
+## Data Model
 
-Wedding Computer stores contacts and weddings as plain text markdown files with YAML frontmatter. The D1 database is a queryable index — a cache that can always be rebuilt from the files. If the app disappears, your data still makes perfect sense in any text editor.
+`schema.sql` and `src/types.ts` are the source of truth for the data model. Numbered files in `migrations/` must stay in step with `schema.sql`.
 
-**GitHub sync** lets you connect a private GitHub repository. Your contacts and weddings are pushed to the repo automatically — clone it to your computer and open the files in Obsidian, VS Code, or any text editor. Changes made in the app sync to GitHub in real time.
+The application is markdown-first:
 
-We published the file format as an [open standard](https://wedding.computer/standard) (CC0 / public domain) so other tools can read and write the same files. See [how to access your files](https://wedding.computer/docs/plain-text) for detailed instructions on using GitHub sync, rclone, Obsidian, the AWS CLI, or any text editor with your data.
+- Contacts are stored as markdown files under `contacts/`.
+- Weddings are stored as folders with `wedding.md`, `todo.md`, `timeline.md`, `notes.md`, `vendors.md`, `log.md`, and uploads.
+- D1 is a rebuildable index and query layer, not the canonical record.
+- Web app writes, vault API writes, MCP writes, imports, and sync jobs must preserve the markdown source-of-truth promise.
+- Conflicts are ETag-detected and recorded instead of silently overwritten.
 
 ## Getting Started
 
-### Prerequisites
+### Requirements
 
 - Node.js 20+
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/) (`npm install -g wrangler`)
-- Cloudflare account with D1, KV, R2, and Queues enabled
+- Wrangler CLI v4
+- Cloudflare account with D1, KV, R2, Queues, Email Routing, and Worker bindings configured
 
-### Install and Run
+### Local Development
 
 ```bash
-git clone https://github.com/joshwithers/wedding-computer.git
-cd wedding-computer
 npm install
-npm run db:migrate:local    # Create local D1 tables
-npm run db:seed:local       # Seed demo data
-npm run dev                 # http://localhost:8787
+npm run db:schema:local     # fresh local D1 from schema.sql
+npm run db:migrate:local    # or apply numbered migrations to an existing DB
+npm run db:seed:local
+npm run dev                 # builds CSS, then starts wrangler dev on localhost:8787
 ```
 
-In local development, use `/dev/login/<email>` (with the seeded email from `seed.sql`) to bypass auth.
+For local auth bypass, set `ENABLE_DEV_LOGIN=true` in `.dev.vars`, then visit `/dev/login/:email`. The route 404s unless the value is exactly `true`; do not set it in deployed environments.
 
-### Environment Secrets
+### Verification
 
-Set via `wrangler secret put <NAME>`:
+```bash
+npm run build:css
+npm run typecheck
+npm test
+npx wrangler deploy --dry-run
+```
 
-| Secret | Purpose |
+## Environment
+
+Set secrets with `wrangler secret put <NAME>`. Public vars such as `APP_URL` and `TURNSTILE_SITE_KEY` live in `wrangler.toml`.
+
+Core secrets and bindings include:
+
+| Name | Purpose |
 |---|---|
-| `SESSION_SECRET` | Session cookie signing (32+ random bytes) |
+| `SESSION_SECRET` | Session and CSRF signing |
 | `RESEND_API_KEY` | Transactional email |
-| `ANTHROPIC_API_KEY` | AI email drafting (optional) |
-| `STRIPE_SECRET_KEY` | Platform Stripe key |
-| `STRIPE_WEBHOOK_SECRET` | Stripe event verification |
-| `GOOGLE_CLIENT_ID` | Google OAuth |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth |
-| `APPLE_CLIENT_ID` | Apple Sign-In |
-| `APPLE_CLIENT_SECRET` | Apple Sign-In (JWT) |
-| `TURNSTILE_SECRET_KEY` | CAPTCHA verification |
-| `SIGNUP_INVITE_CODE` | Optional — gates new signups behind an invite code when set (see [Invite-only signups](#invite-only-signups)) |
+| `RESEND_WEBHOOK_SECRET` | Resend delivery webhook verification |
+| `ANTHROPIC_API_KEY` | Optional AI provider key |
+| `STRIPE_SECRET_KEY` | Stripe platform API |
+| `STRIPE_WEBHOOK_SECRET` | Platform-account Stripe webhook signing |
+| `STRIPE_CONNECT_WEBHOOK_SECRET` | Connected-account Stripe webhook signing |
+| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile verification |
+| `GOOGLE_MAPS_API_KEY` | Browser Places autocomplete |
+| `GOOGLE_GEOCODING_KEY` | Server-side geocoding fallback |
+| `WEATHER_API_KEY` | Optional Open-Meteo commercial API key |
+| `SIGNUP_INVITE_CODE` | Optional public signup gate |
+| `ENABLE_DEV_LOGIN` | Local-only login bypass |
+| `RESERVED_FORWARD_EMAIL` | Forwarding destination for reserved email handles |
 
-Public vars are in `wrangler.toml`: `TURNSTILE_SITE_KEY`, `APP_URL`.
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APPLE_CLIENT_ID`, and `APPLE_CLIENT_SECRET` are reserved bindings. Google and Apple social sign-in are not a shipped auth surface yet.
 
-### Invite-only signups
+## Repository Map
 
-New self-signups via the public `/login` page can be gated behind a shared invite code.
-The feature is always deployed in the app; it switches **on** whenever the
-`SIGNUP_INVITE_CODE` secret is set to a non-empty value, and **off** when the secret
-is unset. No redeploy is needed either way — setting the secret rolls a new Worker
-version automatically.
-
-**Turn it on / set the code:**
-
-```bash
-wrangler secret put SIGNUP_INVITE_CODE   # type the code at the prompt
-```
-
-Takes effect within seconds. Open `/login` to confirm the **Invite code** field appears.
-
-**Change the code:** run `wrangler secret put SIGNUP_INVITE_CODE` again (it overwrites).
-
-**Turn it off (reopen signups):**
-
-```bash
-wrangler secret delete SIGNUP_INVITE_CODE
-```
-
-Behaviour:
-
-- One shared code, matched case-insensitively.
-- Existing users sign in as normal — no code required.
-- Invited couples and vendors bypass the gate (their magic link lands on `/login/verify`, not the public form).
-- Visitors without a code are pointed to the `/notify` waitlist.
-
-### Deploy
-
-```bash
-npm run db:migrate:remote   # Migrate production D1
-wrangler deploy             # Deploy to Cloudflare Workers
-```
-
-### Tests
-
-```bash
-npm test                    # Run all tests (253 across 13 suites)
-npm run test:watch          # Watch mode
-```
-
-## Directory Overview
-
-```
+```text
 src/
-  index.tsx              Entry point, route mounting, cron/queue handlers
-  types.ts               All TypeScript interfaces
+  index.tsx                 App entry, middleware, route mounting, queues, email, cron
+  types.ts                  Bindings and domain types
   routes/
-    marketing.tsx        Public website, /standard, /docs/plain-text
-    auth.ts              Login, magic links, passkeys
-    book.tsx             Public booking page (contracts, payments)
-    enquire.tsx          Public enquiry form + AI auto-reply
-    vendor/
-      dashboard.tsx      Vendor home
-      contacts.tsx       CRM contacts & pipeline
-      weddings.tsx       Wedding list & detail
-      calendar.tsx       Calendar & availability
-      invoices.tsx       Invoicing with Stripe Connect
-      settings.tsx       Profile, tax, location picker, availability sharing
-      analytics.tsx      Analytics, benchmarks, busyness heatmaps
-      run-sheet.tsx      Day-of run sheet builder
-      quotes.tsx         Quote calculator config
-      team.tsx           Team & agency management
-      import.tsx         CSV/JSON import wizard
-      emails.tsx         Built-in email
-      booking-form.tsx   Custom booking forms
-      contracts.tsx      Service contracts
-      checklists.tsx     Wedding checklists
-      places.tsx         Google Places autocomplete + geocoding
-    public/
-      availability.tsx   Public availability calendar
-      quote.tsx          Embeddable quote calculator
-      directory.tsx      JSON API for wedding.institute directory
-    couple.tsx           Couple dashboard, vendor tracking, wedding editing
-    stripe.ts            Stripe webhooks
-    carddav.ts           CardDAV contact sync
-    caldav.ts            CalDAV calendar sync
-    feed.ts              iCal feed
-    mcp.ts               MCP server (AI agent access)
-  middleware/             Auth, CSRF, rate limiting, audit
-  db/
-    vendors.ts           Vendor profile CRUD
-    contacts.ts          CRM contacts
-    invoices.ts          Invoice records + tax calculations
-    calendar.ts          Events & availability
-    analytics.ts         Event tracking & aggregate queries
-    busyness.ts          Date busyness score aggregation (daily cron)
-    quotes.ts            Quote calculator CRUD
-    run-sheet.ts         Run sheet item CRUD
-    team-members.ts      Team member CRUD & wedding assignment
-    imports.ts           Import job & record tracking
-    subscriptions.ts     Pro subscription management
-  storage/               Markdown file storage layer
-    markdown.ts          YAML frontmatter parser/serializer
-    contacts.ts          Contact ↔ markdown + CRUD
-    weddings.ts          Wedding ↔ markdown + file ops
-    slug.ts              Human-readable filename generation
-    r2.ts                R2 StorageBackend implementation
-    github.ts            GitHub StorageBackend (Contents API)
-    sync.ts              Scan-and-index engine (ETag-based)
-    migrate.ts           Lazy D1→markdown migration
-    __tests__/           Storage module tests
-  services/
-    ai.ts                Claude/Workers AI (email drafts, run sheets, enquiry replies)
-    email.ts             Transactional email via Resend
-    notifications.ts     Email notifications for wedding events
-    analytics.ts         Event tracking
-    import/              CSV parser, AI text extraction, import processing
-  views/                 Layouts, shared components
-  lib/                   Utilities (dates, validation, crypto, DAV)
-schema.sql               Full database schema
-migrations/              Numbered migration files (001–030)
+    marketing.tsx           Public site, /about, /pricing, /standard, docs
+    auth.tsx                Login, magic links, passkeys, dev login
+    onboarding.tsx          First-login setup
+    account.tsx             Account settings, export, deletion, OAuth grants
+    couple.tsx              Couple-facing wedding dashboard
+    community.tsx           Authenticated couples/vendor community rooms
+    enquire.tsx             Public enquiry form
+    book.tsx                Public booking, payments, e-signatures
+    form.tsx                Public custom form renderer
+    files.tsx               Authenticated file access
+    native.ts               Native app web-session handoff
+    oauth.tsx               OAuth 2.1 authorization server for MCP
+    mcp.tsx                 MCP Streamable HTTP server
+    api.ts                  JSON lead intake API
+    vault-api.ts            Vault sync API used by the Obsidian plugin
+    caldav.ts, carddav.ts   Device sync protocols
+    feed.ts                 iCal feeds
+    stripe.ts, webhooks.ts  Webhooks
+    public/                 Directory, availability, and quote endpoints
+    vendor/                 Authenticated vendor app modules
+  db/                       Tenant-scoped D1 access
+  storage/                  Markdown/R2 storage, sync, conflicts, serialization
+  services/                 Business logic, email, AI, imports, pricing, sync, weather
+  middleware/               Auth, tenant, CSRF, rate limiting, audit
+  i18n/                     Dictionaries and request locale context
+  lib/                      Date, crypto, validation, DAV, region, season, OAuth helpers
+  views/                    Layouts and shared components
+
+schema.sql                  Full database schema
+migrations/                 Numbered D1 migrations
+public/                     Static assets and built CSS
+scripts/                    Operational scripts
 ```
 
-## Features
+## Product Surfaces
 
-### For Vendors
-- **CRM**: Lead capture forms, eight-stage contact pipeline, activity logging, search
-- **Calendar**: Monthly view, availability settings, CardDAV/CalDAV/iCal sync
-- **Public availability calendar**: Opt-in to share your availability publicly, with vendors only, or via AI auto-replies
-- **Invoicing**: ATO-compliant tax invoices with GST/ABN, line items, payment schedules, booking fees, Stripe Connect
-- **Quote calculator**: Configurable pricing tool, embeddable on your website via iframe
-- **Booking forms**: Custom form builder, service contracts, e-signatures
-- **Email**: Inbound/outbound email with AI-assisted drafting
-- **AI enquiry auto-replies**: When a new enquiry arrives, AI drafts an availability-aware response for your review
-- **Day-of run sheet**: Timeline planner for each wedding with AI generation from wedding details
-- **Analytics & benchmarks**: Business analytics with anonymised industry benchmarks at city/state/country/global levels
-- **Date busyness scores**: See how busy any date is for enquiries and bookings in your area
-- **Team management**: Agency rosters with member assignment to individual weddings
-- **Import from anywhere**: CSV/JSON import from Dubsado, Studio Ninja, HoneyBook, VSCO Workspace, or any spreadsheet — plus AI-powered text extraction
-- **Weddings**: Multi-vendor collaboration on shared wedding entities
-- **Directory listing**: Opt in to the wedding.institute vendor directory
-- **Plain text data**: All contacts/weddings stored as markdown files you can access anywhere
-- **GitHub sync**: Connect a private repo and your data syncs automatically — open in Obsidian or VS Code
+### Vendors
 
-### For Couples
-- **Wedding dashboard**: Budget tracking, vendor management, payment overview
-- **Wedding details**: Edit ceremony, reception, getting-ready logistics
-- **Vendor tracking**: Add any vendor (on or off platform), set budgets
-- **Privacy controls**: Toggle vendor-to-vendor visibility
+- CRM contacts with an eight-stage pipeline, activity history, search, imports, and lead capture.
+- Custom enquiry forms, booking forms, file uploads, NOIM support, and configurable form sends.
+- Calendar, availability, public availability pages, personal feeds, CalDAV, CardDAV, and iCal.
+- Invoicing with tax settings, payment schedules, Stripe Connect, manual payments, contracts, booking fees, and e-signatures.
+- Built-in email with vendor handles, inbound mail, outbound mail, notifications, and AI-assisted drafts.
+- Shared wedding workspaces with timelines, checklists, notes, files, web links, weather, sun markers, live run-sheet mode, vendor credits, and approval flows.
+- Quotes, public quote calculators, team/agency management, per-wedding assignments, analytics, goals, demand scores, referrals, subscription management, and directory listing.
+- MCP, JSON lead intake, vault sync, native handoff, and Obsidian sync for Pro vendors.
 
-### Public API
-- **Directory API**: JSON endpoints at `/api/directory/vendors`, `/api/directory/categories`, `/api/directory/locations` for the wedding.institute directory (CORS-enabled)
-- **Public availability**: `/v/:vendorId/availability` — calendar view for vendors who opt in
-- **Embeddable quote**: `/quote/:token` — standalone quote calculator with enquiry form
+### Couples
 
-### Platform
-- **Zero-JS frontend**: Server-rendered HTML with htmx for interactivity
-- **Global edge**: Sub-50ms responses via Cloudflare Workers
-- **Protocol support**: CardDAV, CalDAV, iCal for native app integration
-- **MCP server**: AI agent access to contacts, weddings, checklists, and calendar
-- **GitHub sync**: Auto-push markdown files to a private repo for local access
-- **Open data format**: [Wedding CRM Markdown Standard](https://wedding.computer/standard) (CC0)
-- **Multi-ceremony**: Weddings, elopements, vow renewals, commitments
-- **Busyness aggregation**: Daily cron computes enquiry/booking density at city/state/country/global levels
-- **Open source**: AGPL-3.0 — audit the code, self-host, or contribute
+- Wedding dashboard with date, location, vendors, budget, invoices, payments, files, links, weather, and timeline.
+- Couple-owned wedding creation and vendor invitation flows.
+- Vendor-to-vendor visibility controls.
+- Vendor forms and messages collected in the wedding workspace.
+- Opt-in seasonal community rooms based on country, season, and year.
+
+### Community
+
+Community rooms are authenticated and opt-in. Cohorts are keyed by country, season, and year; state/province is a filter tag rather than a separate room. The feature is designed to avoid exposing exact wedding dates, venues, or contact details:
+
+- Couples join from their wedding date and broad location.
+- Vendors can join explicitly and are badged as vendors.
+- Posts are markdown stored in D1 and rendered client-side through DOMPurify.
+- Posting, replying, editing, deleting, and reporting are CSRF-protected and rate-limited.
+- Post-level actions require active membership in the post's cohort.
+- Reports are de-duplicated per user and post for moderation follow-up.
+
+## External Interfaces
+
+Stable external surfaces:
+
+| Surface | Route | Consumer / auth |
+|---|---|---|
+| Public directory | `/api/directory/*` | Wedding Institute, public JSON |
+| Vault sync | `/vault/v1/*` | Obsidian plugin, Pro bearer sync token |
+| MCP | `POST /mcp` | MCP clients, OAuth access token or Pro bearer sync token |
+| Lead intake API | `POST /api/v1/enquiries` | Webhooks, Zapier, agents, Pro bearer enquiry key |
+| Calendar feed | `/cal/:token`, user feeds | Tokenized iCal |
+| Device sync | `/caldav`, `/carddav` | Pro sync token |
+| Discovery | `/.well-known/*` | Agent, MCP, OAuth, DAV metadata |
+| Webhooks | `/webhooks/*`, `/webhooks/stripe` | Resend and Stripe signatures |
+
+## Security And Privacy Notes
+
+- All state-changing authenticated routes require CSRF protection.
+- Vendor routes must pass `requireAuth`, `csrf`, and `requireVendor`.
+- Couple and community routes use wedding membership or active community membership checks instead of vendor tenancy.
+- Every DB helper should be scoped by vendor ID, user ID, wedding ID, or another ownership boundary.
+- Public/token routes use rate limits, auth-failure throttling, Turnstile, signed URLs, or bearer tokens as appropriate.
+- User-facing strings go through `src/i18n` and dates through `src/lib/date.ts`.
+- No project copy should describe Wedding Computer itself as open source, AGPL, or licensed for reuse.
 
 ## License
 
-This project is licensed under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE) for the full text.
-
-Anyone modifying and deploying this software must share their changes under the same license.
+Wedding Computer is proprietary software. All rights are reserved. The Wedding CRM Markdown Standard is separately published as a CC0 public-domain/open data specification.

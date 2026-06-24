@@ -44,8 +44,8 @@ export type Bindings = {
   SIGNUP_INVITE_CODE?: string
   // Enables the /dev/login/:email session-minting bypass. MUST be unset in
   // any deployed environment — set to 'true' only in local .dev.vars. The
-  // route 404s unless this is exactly 'true', so production and self-hosted
-  // installs are safe by default regardless of proxy/header behaviour.
+  // route 404s unless this is exactly 'true', so deployed environments are
+  // safe by default regardless of proxy/header behaviour.
   ENABLE_DEV_LOGIN?: string
   // Where inbound mail to a RESERVED @wedding.computer handle (admin, support,
   // our brand words, generic terms — see lib/reserved-handles.ts) is forwarded.

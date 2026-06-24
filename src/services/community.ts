@@ -6,11 +6,30 @@ import type { User, Wedding } from '../types'
 import type { JoinCardData } from '../views/community'
 import { resolveRegion } from '../lib/region'
 import { cohortForWedding, cohortLabel } from '../lib/season'
-import { getCohortByKey, getMembership } from '../db/community'
+import { getCohortByKey, getMembership, type CommunityMember, type CommunityPost } from '../db/community'
 
 export function communityFirstName(name: string): string {
   const first = name.trim().split(/\s+/)[0]
   return first || name.trim() || 'Guest'
+}
+
+export type CommunityPostAction = 'view' | 'edit' | 'delete' | 'report'
+
+/**
+ * Direct htmx endpoints must enforce the same membership assumptions as the UI.
+ * Thread pages may be readable before joining, but post-level actions should
+ * only work for active members of that post's cohort.
+ */
+export function canUseCommunityPost(
+  userId: string,
+  member: CommunityMember | null,
+  post: CommunityPost,
+  action: CommunityPostAction
+): boolean {
+  if (!member || member.status !== 'active' || member.cohort_id !== post.cohort_id) return false
+  if (action === 'edit' || action === 'delete') return post.author_user_id === userId
+  if (action === 'report') return post.author_user_id !== userId
+  return true
 }
 
 /**

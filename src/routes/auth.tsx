@@ -162,7 +162,7 @@ auth.post('/logout', async (c) => {
 // Dev-only: bypass magic link for local testing. Gated on an explicit
 // opt-in env var (set only in local .dev.vars), NOT on the absence of an
 // infrastructure header — a header check would silently expose this
-// full-account-takeover bypass on any non-Cloudflare or self-hosted deploy.
+// full-account-takeover bypass on any non-Cloudflare deployment.
 auth.get('/dev/login/:email', async (c) => {
   if (c.env.ENABLE_DEV_LOGIN !== 'true') {
     return c.notFound()
