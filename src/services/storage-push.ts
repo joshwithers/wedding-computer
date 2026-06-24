@@ -1,7 +1,7 @@
 /**
  * Shared push path: write a wedding's files (wedding.md, todo.md,
  * timeline.md, notes.md, vendors.md, log.md) to the vendor's storage
- * backend (GitHub/R2) and keep the file_index in step so the sync engine
+ * backend and keep the file_index in step so the sync engine
  * can tell what changed.
  *
  * Used by route handlers (after an edit, via executionCtx.waitUntil), the

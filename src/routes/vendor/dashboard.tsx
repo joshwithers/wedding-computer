@@ -337,15 +337,15 @@ dashboard.get('/app', async (c) => {
           </div>
           <div class="grid sm:grid-cols-2 gap-3 mt-4">
             <a
-              href="/app/settings#data"
+              href="/docs/plain-text"
               class="flex items-center gap-3 border border-horizon-600/20 bg-horizon-50 rounded-xl px-4 py-3 hover:bg-horizon-100 transition-colors"
             >
               <svg class="w-5 h-5 text-horizon-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
               <div>
-                <p class="text-sm font-bold text-horizon-700">{t('dashboard.data.github.title')}</p>
-                <p class="text-xs text-gray-600">{t('dashboard.data.github.desc')}</p>
+                <p class="text-sm font-bold text-horizon-700">{t('dashboard.data.markdown.title')}</p>
+                <p class="text-xs text-gray-600">{t('dashboard.data.markdown.desc')}</p>
               </div>
             </a>
             <a

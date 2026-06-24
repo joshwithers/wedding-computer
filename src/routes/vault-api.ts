@@ -12,7 +12,7 @@
  * used for CalDAV/CardDAV device sync (Pro feature). Basic auth with the
  * token as the password also works.
  *
- * Writes go through the vendor's storage backend (R2 or GitHub) and are
+ * Writes go through the vendor's storage backend and are
  * ingested into D1 immediately, so an edit saved in Obsidian shows up in
  * the web app without waiting for the background sweep.
  */

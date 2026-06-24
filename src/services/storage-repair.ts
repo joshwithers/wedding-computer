@@ -18,7 +18,11 @@ type RepairOptions = {
   contactLimit?: number
   weddingLimit?: number
   verifyIndexedContacts?: boolean
+  includeIndexedWeddings?: boolean
 }
+
+const DEFAULT_CONTACT_REPAIR_LIMIT = 20
+const DEFAULT_WEDDING_REPAIR_LIMIT = 10
 
 export async function repairVendorStorage(
   env: Bindings,
@@ -35,11 +39,14 @@ export async function repairVendorStorage(
   }
 
   const storage = options.storage ?? await getStorageWithSecrets(env, vendor)
+  const legacyGitProfile = vendor.storage_type === 'git'
+  const verifyIndexedContacts = options.verifyIndexedContacts ?? legacyGitProfile
+  const includeIndexedWeddings = options.includeIndexedWeddings ?? legacyGitProfile
 
-  if (options.verifyIndexedContacts || await needsMigration(env.DB, vendor.id)) {
+  if (verifyIndexedContacts || await needsMigration(env.DB, vendor.id)) {
     const contacts = await repairContacts(storage, env.DB, vendor.id, {
-      limit: options.contactLimit ?? 100,
-      verifyIndexedFiles: options.verifyIndexedContacts ?? false,
+      limit: options.contactLimit ?? DEFAULT_CONTACT_REPAIR_LIMIT,
+      verifyIndexedFiles: verifyIndexedContacts,
     })
     result.contactsMigrated = contacts.migrated
     result.contactsRewritten = contacts.rewritten
@@ -47,10 +54,10 @@ export async function repairVendorStorage(
     result.contactErrors = contacts.errors
   }
 
-  const weddingLimit = options.weddingLimit ?? 25
+  const weddingLimit = options.weddingLimit ?? DEFAULT_WEDDING_REPAIR_LIMIT
   if (weddingLimit <= 0) return result
 
-  const weddings = await repairableWeddings(env.DB, vendor, weddingLimit)
+  const weddings = await repairableWeddings(env.DB, vendor, weddingLimit, includeIndexedWeddings)
   for (const wedding of weddings) {
     try {
       await pushWeddingFiles(env.DB, storage, vendor.id, wedding)
@@ -67,7 +74,8 @@ export async function repairVendorStorage(
 async function repairableWeddings(
   db: D1Database,
   vendor: VendorProfile,
-  limit: number
+  limit: number,
+  includeIndexed: boolean
 ): Promise<Wedding[]> {
   const rows = await db
     .prepare(
@@ -81,6 +89,8 @@ async function repairableWeddings(
        WHERE wm.user_id = ?2
          AND wm.status = 'active'
          AND (
+           ?4 = 1
+           OR
            fi.id IS NULL
            OR w.updated_at > COALESCE(fi.last_synced_at, '')
          )
@@ -89,7 +99,7 @@ async function repairableWeddings(
          w.updated_at DESC
        LIMIT ?3`
     )
-    .bind(vendor.id, vendor.user_id, limit)
+    .bind(vendor.id, vendor.user_id, limit, includeIndexed ? 1 : 0)
     .all<Wedding>()
 
   return rows.results

@@ -1,5 +1,5 @@
 // One permission rule for the scoped wedding docs, applied at every write
-// door (vendor web route, couple web route, vault PUT ingest, GitHub sync).
+// door (vendor web route, couple web route, vault PUT ingest).
 // Mirrors the "one rule, all doors" shape of timeline-edit.ts.
 //
 // Scopes:

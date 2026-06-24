@@ -204,7 +204,7 @@ export async function createEnquiry(
     vendorId: vendor.id,
     contactId: contact.id,
     // Embed display fields so the notification doesn't depend on a storage
-    // (GitHub) read at delivery time — a storage outage must not drop alerts.
+    // read at delivery time — a storage outage must not drop alerts.
     contactFirst: contact.first_name,
     contactLast: contact.last_name,
     contactEmail: contact.email ?? '',

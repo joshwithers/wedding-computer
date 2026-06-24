@@ -8,7 +8,7 @@
  *
  * The app routes (vendor wedding edit, couple edit) enforce this in their
  * handlers; this module is the same rule for every other door into the
- * data — vault API writes, GitHub sync pulls, and MCP tools — so a file
+ * data — vault API writes and MCP tools — so a file
  * edit can never bypass an approval the web form would have required.
  */
 

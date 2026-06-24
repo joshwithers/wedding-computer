@@ -2,7 +2,7 @@
 // weddings (couple, fake vendor team, full run-sheet, notes in every scope) plus
 // a handful of fresh enquiries — so an empty account doesn't look empty, then
 // remove it cleanly in one click. Everything is tagged is_demo and scoped to the
-// vendor, so teardown is exact (D1 rows AND the R2/GitHub markdown).
+// vendor, so teardown is exact (D1 rows AND the R2 markdown).
 //
 // This calls the low-level db/storage creators directly (never the route flows),
 // so it fires NO emails, analytics, geocode, or couple invites.

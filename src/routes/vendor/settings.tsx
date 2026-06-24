@@ -18,8 +18,7 @@ import { isReservedHandle } from '../../lib/reserved-handles'
 import { t } from '../../i18n'
 import { auditLog } from '../../middleware/audit'
 import { deleteCookie } from 'hono/cookie'
-import { verifyGitHubToken, createGitHubRepo, ensureGitHubWebhook } from '../../storage/github'
-import { deleteVendorSecret, putVendorSecret, resolveSecret } from '../../services/secrets'
+import { deleteVendorSecret, putVendorSecret } from '../../services/secrets'
 import { geocodeAddress } from '../../services/geocode'
 import {
   BRAND_FONTS,
@@ -75,7 +74,6 @@ settings.get('/app/settings', async (c) => {
             <a href="#email" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Email</a>
             <a href="#sharing" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Sharing</a>
             <a href="#brand" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">{t('settings.nav.brand')}</a>
-            <a href="#integrations" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Integrations</a>
             <a href="#data" class="px-3 py-1.5 rounded-lg font-medium text-gray-600 hover:bg-papaya-100 hover:text-gray-900 transition-colors">Your data</a>
           </div>
         </nav>
@@ -733,108 +731,6 @@ settings.get('/app/settings', async (c) => {
           </form>
         </section>
 
-        <section id="integrations" class="mt-10 pt-8 border-t border-gray-200 scroll-mt-24">
-          <h2 class="text-base font-bold mb-2">GitHub sync <ProBadge /></h2>
-          <p class="text-sm text-gray-500 mb-4">
-            Sync your contacts and weddings to a private GitHub repository. Open your files in Obsidian, VS Code, or any text editor.
-          </p>
-          {(() => {
-            let gitConfig: { git_repo?: string; git_access_token?: string; git_access_token_ref?: string; git_webhook_active?: boolean } | null = null
-            if (vendor.storage_config) {
-              try { gitConfig = JSON.parse(vendor.storage_config) } catch { /* ignore */ }
-            }
-            const isConnected = vendor.storage_type === 'git' && gitConfig?.git_repo && (gitConfig?.git_access_token_ref || gitConfig?.git_access_token)
-
-            if (isConnected) {
-              return (
-                <div class="space-y-4">
-                  <div class="bg-horizon-50 border border-horizon-600/20 rounded-xl p-4">
-                    <div class="flex items-center gap-2 mb-1">
-                      <div class="w-2 h-2 rounded-full bg-green-500" />
-                      <p class="text-sm font-bold text-horizon-700">Connected to GitHub</p>
-                    </div>
-                    <p class="text-xs text-gray-600">
-                      Repository: <a href={`https://github.com/${gitConfig!.git_repo}`} class="font-medium text-horizon-600 hover:underline" target="_blank" rel="noopener">{gitConfig!.git_repo}</a>
-                    </p>
-                    <p class="text-xs text-gray-500 mt-1">
-                      Two-way sync: changes you make here are pushed to your repo, and edits you make
-                      in the repo (Obsidian, VS Code, GitHub) are pulled back in.
-                    </p>
-                    <p class="text-xs text-gray-500 mt-1">
-                      {gitConfig!.git_webhook_active
-                        ? 'Repo edits sync back within seconds (webhook active).'
-                        : 'Repo edits sync back within 5 minutes. For instant sync, use a token with webhook (admin:repo_hook) permission and press "Sync all files now".'}
-                    </p>
-                  </div>
-                  <div class="flex gap-3">
-                    <form method="post" action="/app/settings/github/sync">
-                      <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                      <button type="submit" class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
-                        Sync all files now
-                      </button>
-                    </form>
-                    <form method="post" action="/app/settings/github/disconnect">
-                      <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                      <button type="submit" class="border border-gray-200 text-gray-600 py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors">
-                        Disconnect
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              )
-            }
-
-            if (!isPro) {
-              return <ProUpsell feature="GitHub sync" />
-            }
-
-            return (
-              <form method="post" action="/app/settings/github/connect" class="space-y-4">
-                <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-                <div>
-                  <label class="block text-sm font-bold text-gray-700 mb-1.5" for="github_token">
-                    GitHub Personal Access Token
-                  </label>
-                  <input
-                    type="password"
-                    id="github_token"
-                    name="github_token"
-                    required
-                    placeholder="ghp_..."
-                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-                  />
-                  <p class="text-xs text-gray-400 mt-1.5">
-                    Create a token at{' '}
-                    <a href="https://github.com/settings/tokens/new?scopes=repo&description=Wedding+Computer" target="_blank" rel="noopener" class="text-horizon-600 hover:underline">
-                      github.com/settings/tokens
-                    </a>
-                    {' '}with <strong>repo</strong> scope.
-                  </p>
-                </div>
-                <div>
-                  <label class="block text-sm font-bold text-gray-700 mb-1.5" for="github_repo">
-                    Repository name
-                  </label>
-                  <input
-                    type="text"
-                    id="github_repo"
-                    name="github_repo"
-                    required
-                    placeholder="wedding-data"
-                    class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
-                  />
-                  <p class="text-xs text-gray-400 mt-1.5">
-                    {"We'll create a private repo with this name if it doesn't exist."}
-                  </p>
-                </div>
-                <button type="submit" class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
-                  Connect GitHub
-                </button>
-              </form>
-            )
-          })()}
-        </section>
-
         <section class="mt-10 pt-8 border-t border-gray-200">
           <h2 class="text-base font-bold mb-2">AI</h2>
           <p class="text-sm text-gray-500 mb-4">
@@ -1440,95 +1336,9 @@ settings.post('/app/settings/revoke-oauth-grant', async (c) => {
   return c.redirect('/app/settings#device-sync')
 })
 
-// ─── GitHub sync ───
+// ─── Legacy GitHub sync cleanup ───
 
-settings.post('/app/settings/github/connect', async (c) => {
-  const vendor = c.get('vendor')!
-  // GitHub sync is a Pro feature.
-  if (!(await isProVendor(c.env.DB, vendor.id))) {
-    return c.redirect('/app/settings?error=' + encodeURIComponent('GitHub sync requires a Pro subscription'))
-  }
-  const body = await c.req.parseBody()
-  const token = typeof body.github_token === 'string' ? body.github_token.trim() : ''
-  const repoName = typeof body.github_repo === 'string' ? body.github_repo.trim() : ''
-
-  if (!token || !repoName) {
-    return c.redirect('/app/settings?error=Token+and+repository+name+are+required')
-  }
-
-  try {
-    // Verify the token works
-    const user = await verifyGitHubToken(token)
-    if (!user) {
-      return c.redirect('/app/settings?error=Invalid+GitHub+token.+Check+it+has+repo+scope.')
-    }
-
-    // Check if repo exists, create if not
-    const fullRepoName = repoName.includes('/') ? repoName : `${user.login}/${repoName}`
-    const repoCheck = await fetch(`https://api.github.com/repos/${fullRepoName}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github.v3+json',
-        'User-Agent': 'WeddingComputer/1.0',
-      },
-    })
-
-    let repoFullName = fullRepoName
-    if (repoCheck.status === 404) {
-      // Create the repo
-      const simpleName = repoName.includes('/') ? repoName.split('/').pop()! : repoName
-      const created = await createGitHubRepo(
-        token,
-        simpleName,
-        `Wedding Computer data for ${vendor.business_name}`
-      )
-      if (!created) {
-        return c.redirect('/app/settings?error=Failed+to+create+GitHub+repository')
-      }
-      repoFullName = created.full_name
-    } else if (!repoCheck.ok) {
-      return c.redirect('/app/settings?error=Could+not+access+that+repository.+Check+your+token+permissions.')
-    }
-
-    const tokenRef = await putVendorSecret(c.env.KV, vendor.id, 'github_access_token', token)
-
-    // Register a push webhook for instant pull of external edits.
-    // Needs hook permission on the token — when missing, the 5-minute
-    // background sync still picks changes up.
-    const webhookActive = await registerGitHubWebhook(c.env, vendor.id, token, repoFullName)
-
-    // Save the config
-    const config = JSON.stringify({
-      type: 'git',
-      git_provider: 'github',
-      git_repo: repoFullName,
-      git_branch: 'main',
-      git_path: '',
-      git_access_token_ref: tokenRef,
-      git_webhook_active: webhookActive,
-    })
-
-    await updateVendor(c.env.DB, vendor.id, {
-      storage_type: 'git',
-      storage_config: config,
-    })
-
-    await auditLog(c, 'github_connected', 'vendor', vendor.id, { repo: repoFullName }).catch(() => {})
-
-    // Trigger initial sync — push all existing contacts to GitHub
-    try {
-      await initialGitHubSync(c.env.DB, vendor, token, repoFullName)
-    } catch (syncErr) {
-      console.error('[github] Initial sync failed:', syncErr)
-      // Don't fail the connect — the repo is linked, sync can happen later
-    }
-
-    return c.redirect('/app/settings?saved=1')
-  } catch (err: any) {
-    console.error('[github] connect error:', err)
-    return c.redirect(`/app/settings?error=${encodeURIComponent(err.message || 'Failed to connect GitHub')}`)
-  }
-})
+settings.post('/app/settings/github/connect', (c) => c.notFound())
 
 settings.post('/app/settings/github/disconnect', async (c) => {
   const vendor = c.get('vendor')!
@@ -1545,141 +1355,7 @@ settings.post('/app/settings/github/disconnect', async (c) => {
   return c.redirect('/app/settings?saved=1')
 })
 
-settings.post('/app/settings/github/sync', async (c) => {
-  const vendor = c.get('vendor')!
-  // GitHub sync is a Pro feature.
-  if (!(await isProVendor(c.env.DB, vendor.id))) {
-    return c.redirect('/app/settings?error=' + encodeURIComponent('GitHub sync requires a Pro subscription'))
-  }
-
-  let config: { git_repo?: string; git_access_token?: string; git_access_token_ref?: string } | null = null
-  if (vendor.storage_config) {
-    try { config = JSON.parse(vendor.storage_config) } catch { /* ignore */ }
-  }
-
-  const token = await resolveSecret(c.env.KV, config?.git_access_token_ref ?? config?.git_access_token)
-  if (!config?.git_repo || !token) {
-    return c.redirect('/app/settings?error=GitHub+is+not+connected')
-  }
-
-  try {
-    // Re-attempt webhook registration — picks up token permission changes
-    const webhookActive = await registerGitHubWebhook(c.env, vendor.id, token, config.git_repo)
-    if (vendor.storage_config) {
-      try {
-        const fullConfig = JSON.parse(vendor.storage_config)
-        if (fullConfig.git_webhook_active !== webhookActive) {
-          fullConfig.git_webhook_active = webhookActive
-          await updateVendor(c.env.DB, vendor.id, { storage_config: JSON.stringify(fullConfig) })
-        }
-      } catch { /* leave config as-is */ }
-    }
-
-    const result = await initialGitHubSync(c.env.DB, vendor, token, config.git_repo)
-    return c.redirect(`/app/settings?saved=1&synced=${result.pushed}`)
-  } catch (err: any) {
-    console.error('[github] sync error:', err)
-    return c.redirect(`/app/settings?error=${encodeURIComponent('Sync failed: ' + (err.message || 'unknown error'))}`)
-  }
-})
-
-/**
- * Generate (or reuse) the per-vendor webhook secret and make sure the
- * repo has a push webhook pointing at /webhooks/github. Returns whether
- * the webhook is in place.
- */
-async function registerGitHubWebhook(
-  env: Env['Bindings'],
-  vendorId: string,
-  token: string,
-  repo: string
-): Promise<boolean> {
-  try {
-    const { vendorSecretKey } = await import('../../services/secrets')
-    let secret = await env.KV.get(vendorSecretKey(vendorId, 'github_webhook_secret'))
-    if (!secret) {
-      const bytes = new Uint8Array(32)
-      crypto.getRandomValues(bytes)
-      secret = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
-      await putVendorSecret(env.KV, vendorId, 'github_webhook_secret', secret)
-    }
-    return await ensureGitHubWebhook(token, repo, `${env.APP_URL}/webhooks/github`, secret)
-  } catch (err) {
-    console.error('[github] webhook registration failed:', err)
-    return false
-  }
-}
-
-/**
- * Full reconciliation against a GitHub repo: pull external edits in,
- * then push all contacts and weddings (wedding.md, todo.md, log.md) out.
- * Runs when a user first connects and via the "Sync all files now" button.
- */
-async function initialGitHubSync(
-  db: D1Database,
-  vendor: VendorProfile,
-  token: string,
-  repo: string
-): Promise<{ pushed: number; skipped: number }> {
-  const { GitHubStorageBackend } = await import('../../storage/github')
-  const { cleanupLegacyWeddingFile } = await import('../../storage/weddings')
-  const { repairContacts } = await import('../../storage/migrate')
-  const { pushWeddingFiles } = await import('../../services/storage-push')
-  const { syncVendor } = await import('../../storage/sync')
-
-  const github = new GitHubStorageBackend({ token, repo, branch: 'main', path: '' })
-
-  // Clean up boilerplate files (Obsidian Welcome.md, GitHub README.md)
-  for (const junkFile of ['Welcome.md', 'README.md']) {
-    try {
-      const exists = await github.head(junkFile)
-      if (exists) {
-        await github.delete(junkFile)
-        console.log(`[github-sync] Deleted ${junkFile} from repo`)
-      }
-    } catch { /* ignore — file might not exist or delete might fail */ }
-  }
-
-  // Pull external edits first so the push below doesn't fight them
-  try {
-    await syncVendor(github, db, vendor.id)
-  } catch (err) {
-    console.error('[github-sync] Pull phase failed:', err)
-  }
-
-  let pushed = 0
-  let skipped = 0
-
-  const contactRepair = await repairContacts(github, db, vendor.id)
-  pushed += contactRepair.migrated + contactRepair.rewritten
-  skipped += contactRepair.skipped + contactRepair.errors
-
-  // Get weddings
-  const weddings = await db
-    .prepare(
-      `SELECT w.* FROM weddings w
-       JOIN wedding_members wm ON wm.wedding_id = w.id
-       WHERE wm.vendor_profile_id = ? AND wm.status = 'active'
-       ORDER BY w.created_at ASC`
-    )
-    .bind(vendor.id)
-    .all<any>()
-    .then((r) => r.results)
-
-  for (const w of weddings) {
-    try {
-      await pushWeddingFiles(db, github, vendor.id, w)
-      await cleanupLegacyWeddingFile(github, w).catch(() => false)
-      pushed++
-    } catch (err) {
-      console.error(`[github-sync] Failed to push wedding ${w.id}:`, err)
-      skipped++
-    }
-  }
-
-  console.log(`[github-sync] Vendor ${vendor.id}: pushed ${pushed}, skipped ${skipped}`)
-  return { pushed, skipped }
-}
+settings.post('/app/settings/github/sync', (c) => c.notFound())
 
 // ─── Stripe Connect ───
 

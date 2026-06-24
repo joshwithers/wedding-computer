@@ -6,7 +6,7 @@
  * "wc:*" marker in the event notes. Every door that changes timeline
  * fields routes through here so all member vendors' calendars (and their
  * CalDAV/iCal feeds) follow: the web edit form, approved timeline change
- * requests, and storage ingests (vault API, GitHub webhook/sweep).
+ * requests, and storage ingests (vault API).
  */
 
 import type { Wedding } from '../types'

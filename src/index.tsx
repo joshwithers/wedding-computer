@@ -118,7 +118,7 @@ function contentSecurityPolicy(isLocal: boolean, frameAncestors: "'self'" | null
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: blob: https:",
-    "connect-src 'self' https://challenges.cloudflare.com https://places.googleapis.com https://maps.googleapis.com https://*.googleapis.com https://api.github.com",
+    "connect-src 'self' https://challenges.cloudflare.com https://places.googleapis.com https://maps.googleapis.com https://*.googleapis.com",
     "frame-src 'self' https://challenges.cloudflare.com",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
@@ -409,7 +409,7 @@ app.get('/.well-known/mcp/server-card.json', (c) =>
       name: 'wedding-computer',
       version: '1.0.0',
       title: 'Wedding Computer',
-      description: 'Access your contacts, weddings, checklists, calendar, and vendor credits via MCP. Data returned as plain text markdown — the same format stored in your GitHub repo.',
+      description: 'Access your contacts, weddings, checklists, calendar, and vendor credits via MCP. Data returned as plain text markdown, matching your vault sync and export format.',
     },
     transport: {
       type: 'streamable-http',
@@ -631,12 +631,6 @@ function notifyEnv(env: Env['Bindings']): NotifyEnv {
   return { db: env.DB, resendApiKey: env.RESEND_API_KEY, appUrl: env.APP_URL, sessionSecret: env.SESSION_SECRET }
 }
 
-// Git vendors are swept across this many consecutive 5-minute ticks, so the
-// background sync is a ~30-minute backstop (immediate pushes + GitHub
-// webhooks handle real-time). Vendors with detected D1-only data are enqueued
-// immediately regardless of shard so repair is not delayed before launch.
-const SYNC_SHARD_COUNT = 6
-
 /** Enqueue messages in batches of 100 (the sendBatch limit) so the cron's
  *  own subrequest budget isn't blown fanning out thousands of vendors. */
 async function enqueueInBatches(env: Env['Bindings'], messages: { body: Record<string, string> }[]): Promise<void> {
@@ -646,16 +640,11 @@ async function enqueueInBatches(env: Env['Bindings'], messages: { body: Record<s
 }
 
 async function enqueueStorageSyncJobs(env: Env['Bindings'], scheduledTime: number): Promise<number> {
-  const shard = Math.floor(scheduledTime / 300000) % SYNC_SHARD_COUNT
   const vendors = await env.DB
     .prepare(
       `SELECT DISTINCT vp.id
        FROM vendor_profiles vp
-       WHERE (
-           vp.storage_type = 'git'
-           AND vp.storage_config IS NOT NULL
-           AND (unicode(substr(vp.id, -1, 1)) % ?1) = ?2
-         )
+       WHERE vp.storage_type = 'git'
           OR EXISTS (
             SELECT 1
             FROM contacts c
@@ -678,7 +667,6 @@ async function enqueueStorageSyncJobs(env: Env['Bindings'], scheduledTime: numbe
               AND fi.id IS NULL
           )`
     )
-    .bind(SYNC_SHARD_COUNT, shard)
     .all<{ id: string }>()
     .then((r) => r.results)
   await enqueueInBatches(env, vendors.map((v) => ({ body: { type: 'sync_vendor', vendorId: v.id } })))
@@ -1126,9 +1114,8 @@ export default {
     }
 
     if (event.cron === '*/5 * * * *') {
-      // Storage sync — fan out one job per git vendor, sharded across ticks
-      // so each message handles a single vendor (bounded subrequests) and no
-      // single invocation iterates the whole fleet.
+      // Storage repair — fan out one job per affected vendor so each message
+      // stays bounded and no single invocation iterates the whole fleet.
       try {
         const n = await enqueueStorageSyncJobs(env, event.scheduledTime)
         if (n > 0) logEvent('cron.sync_enqueued', { jobs: n })

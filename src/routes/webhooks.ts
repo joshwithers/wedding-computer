@@ -1,99 +1,19 @@
 /**
  * External webhooks (non-Stripe).
  *
- * POST /webhooks/github — GitHub push events for vendors with git
- * storage. Registered automatically when a vendor connects GitHub
- * (token permitting). Verifies the per-vendor HMAC secret, then pulls
- * external edits into D1 immediately instead of waiting for the
- * 5-minute background sweep.
- *
- * Note: our own API writes also fire this webhook. That's fine — the
- * pull engine compares etags against file_index and no-ops on files we
- * wrote ourselves.
+ * POST /webhooks/github — retained as an inert compatibility endpoint while
+ * GitHub sync is disabled for launch.
  */
 
 import { Hono } from 'hono'
-import type { Env, VendorProfile } from '../types'
-import { vendorSecretKey } from '../services/secrets'
-import { syncVendorStorage } from '../services/storage-sync'
+import type { Env } from '../types'
 import { suppressEmail } from '../db/emails'
-import { APP_COMMIT_EMAIL } from '../storage/github'
-import { logEvent } from '../lib/log'
 
 const webhooks = new Hono<Env>()
 
 webhooks.post('/webhooks/github', async (c) => {
-  const signature = c.req.header('x-hub-signature-256')
-  const event = c.req.header('x-github-event')
-  const body = await c.req.text()
-
-  if (!signature) return c.json({ error: 'Missing signature' }, 401)
-
-  let payload: {
-    ref?: string
-    repository?: { full_name?: string }
-    commits?: { committer?: { email?: string } }[]
-  }
-  try {
-    payload = JSON.parse(body)
-  } catch {
-    return c.json({ error: 'Invalid payload' }, 400)
-  }
-
-  const repo = payload.repository?.full_name
-  if (!repo) return c.json({ error: 'Missing repository' }, 400)
-
-  // Skip pushes that are entirely our own bot commits — re-pulling them would
-  // be a no-op (etags already match) but still burns GitHub API + D1 calls.
-  const commits = payload.commits ?? []
-  if (commits.length > 0 && commits.every((cm) => cm.committer?.email === APP_COMMIT_EMAIL)) {
-    return c.json({ ok: true, skipped: 'self-commit' })
-  }
-
-  // A repo can in principle back more than one vendor profile
-  const vendors = await c.env.DB
-    .prepare(
-      `SELECT * FROM vendor_profiles
-       WHERE storage_type = 'git' AND json_extract(storage_config, '$.git_repo') = ?`
-    )
-    .bind(repo)
-    .all<VendorProfile>()
-    .then((r) => r.results)
-
-  if (vendors.length === 0) return c.json({ ok: true })
-
-  const verified: VendorProfile[] = []
-  for (const vendor of vendors) {
-    const secret = await c.env.KV.get(vendorSecretKey(vendor.id, 'github_webhook_secret'))
-    if (secret && (await verifyGitHubSignature(body, signature, secret))) {
-      verified.push(vendor)
-    }
-  }
-  if (verified.length === 0) return c.json({ error: 'Invalid signature' }, 401)
-
-  // GitHub sends a "ping" on hook creation; only pushes need a sync
-  if (event !== 'push') return c.json({ ok: true })
-
-  for (const vendor of verified) {
-    let branch = 'main'
-    try {
-      branch = JSON.parse(vendor.storage_config ?? '{}').git_branch ?? 'main'
-    } catch { /* default */ }
-    if (payload.ref && payload.ref !== `refs/heads/${branch}`) continue
-
-    // Respond to GitHub fast; sync in the background
-    c.executionCtx.waitUntil(
-      syncVendorStorage(c.env, vendor)
-        .then((r) => {
-          if (r.pulled > 0 || r.errors > 0) {
-            console.log(`[webhook] github sync vendor ${vendor.id}: ${r.pulled} pulled, ${r.weddingsSynced} pushed, ${r.errors} errors`)
-          }
-        })
-        .catch((err) => logEvent('webhook.github_sync_failed', { vendorId: vendor.id, error: err?.message ?? String(err) }))
-    )
-  }
-
-  return c.json({ ok: true })
+  await c.req.text().catch(() => '')
+  return c.json({ ok: true, disabled: 'github_sync' })
 })
 
 /**

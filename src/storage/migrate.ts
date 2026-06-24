@@ -91,6 +91,10 @@ export async function repairContacts(
           result.skipped++
           continue
         }
+        if (options.limit && repaired >= options.limit) {
+          result.skipped++
+          continue
+        }
         const existing = await storage.head(indexedPath)
         if (existing) {
           result.skipped++

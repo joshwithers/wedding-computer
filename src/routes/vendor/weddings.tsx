@@ -441,7 +441,7 @@ weddings.post('/app/weddings/new', async (c) => {
       await upsertWeddingTodo(c.env.DB, vendor.id, wedding.id, defaultTemplate.content, defaultTemplate.id)
     }
 
-    // Push wedding files to storage (GitHub/R2) — keeps running after the
+    // Push wedding files to storage — keeps running after the
     // response is sent; without waitUntil the runtime may cancel it
     c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, wedding.id))
     c.executionCtx.waitUntil(
@@ -1538,7 +1538,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       )
     )
 
-    // Push all wedding files to storage (GitHub/R2) — waitUntil keeps the
+    // Push all wedding files to storage — waitUntil keeps the
     // push alive after the redirect is sent
     c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
 

@@ -1,7 +1,7 @@
 /**
  * Storage abstraction for markdown-backed entities.
  *
- * The storage backend is pluggable — R2 by default, Git for power users.
+ * R2 is the canonical storage backend for launch.
  * Every vendor's data lives as a folder of markdown files that can be
  * opened in any text editor, even Obsidian.
  */

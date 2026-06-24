@@ -93,7 +93,7 @@ The collaboration platform where vendors, venues, planners, and couples plan wed
 A wedding is a dozen people working toward one day — yet most tools treat each vendor as an island, and the big marketplaces rent you back your own data. Wedding Computer is built on four ideas the rest of the industry forgot:
 
 - **Built for collaboration, not silos** — set the ceremony time once and it lands in every vendor's calendar; update the run sheet and the whole team sees it instantly. No re-keying the same details into a dozen forms.
-- **Your data, in plain text, forever** — every contact and wedding is a markdown file synced live to your own GitHub, editable in Obsidian or any text editor. A living mirror you control, not a CSV export. No lock-in, ever.
+- **Your data, in plain text, forever** — every contact and wedding is available as markdown and JSON through export, Obsidian, and the vault API. Real files you control, not a CSV afterthought. No lock-in, ever.
 - **AI-native, by design** — connect Claude, ChatGPT, or Cursor straight to your data over MCP. Because your data is open text, you (or any AI you trust) can read and write it directly.
 - **Know your market** — anonymised demand scores show how in-demand any date is for enquiries and bookings in your area, so you can decide which dates to chase and what to charge.
 
@@ -116,7 +116,6 @@ A wedding is a dozen people working toward one day — yet most tools treat each
 - **Team & agency management** — manage team rosters and assign members to weddings
 - **Couple planner** — vendor grid, budget tracker, booking forms
 - **Directory listing** — opt in to the wedding.institute vendor directory
-- **GitHub sync** — contacts and weddings sync to a private repo as plain text markdown
 - **Obsidian plugin** — official two-way sync plugin in the [Obsidian community directory](https://community.obsidian.md/plugins/wedding-computer-sync)
 - **Plain text files** — every file is portable, human-readable, and never locked in
 - **Open file format** — files follow a CC0 public-domain standard (https://wedding.computer/standard) that any tool can implement
@@ -127,7 +126,7 @@ Every wedding is a shared workspace. Set ceremony, portraits, and reception time
 
 ## Your Data
 
-All data is stored as plain text markdown files, synced live to GitHub. Access your files in Obsidian, VS Code, TextEdit, Notepad, or any text editor. If you stop using Wedding Computer, your data is already on your computer.
+All data is available as plain text markdown files through export, Obsidian, and the vault API. Access your files in Obsidian, VS Code, TextEdit, Notepad, or any text editor. If you stop using Wedding Computer, your data comes with you.
 
 ## Agent Access
 
@@ -154,11 +153,11 @@ A wedding is one of the most collaborative events there is, yet most software tr
 ## What makes it different
 
 - **Built for collaboration, not silos** — the wedding itself is the shared object. Enter the date, timeline, and run sheet once; every vendor and the couple work from the same source of truth.
-- **Your data in plain text, owned by you** — every contact and wedding is a markdown file synced live to your own GitHub, editable in Obsidian or any text editor. A living mirror you control, not an export. No lock-in.
+- **Your data in plain text, owned by you** — every contact and wedding is readable as markdown and JSON through export, Obsidian, and the vault API. Your data stays portable. No lock-in.
 - **AI-native through MCP** — connect Claude, ChatGPT, Cursor, or your own agent directly to your data. Your open-text data is readable and writable by you and any AI you trust.
 - **Market intelligence built in** — anonymised demand scores show how in-demand any date is for enquiries and bookings, so vendors can decide which dates to chase and what to charge.
 
-Built on Cloudflare Workers. Your data lives in plain text markdown following an open, CC0-licensed format — synced live to your own GitHub repo and editable both ways via the official Obsidian plugin.
+Built on Cloudflare Workers. Your data follows an open, CC0-licensed markdown format, with exports, vault API access, and two-way editing via the official Obsidian plugin.
 
 ## Pricing
 
@@ -191,7 +190,7 @@ Upgrade for unlimited weddings, plus analytics and AI:
 - AI-powered insights
 - AI enquiry auto-replies
 - AI email drafting
-- Device sync (CalDAV/CardDAV) and GitHub sync
+- Device sync (CalDAV/CardDAV) and Obsidian sync
 - MCP access for AI tools (Claude, ChatGPT, Cursor, etc.)
 
 ## Links
@@ -711,7 +710,7 @@ const HOME_ROLES: RoleDef[] = [
   { role: 'music', label: 'marketing.home.role.music.label', collab: 'marketing.home.role.music.collab', features: [{ title: 'marketing.home.role.music.feature.timeline.title', desc: 'marketing.home.role.music.feature.timeline.desc' },{ title: 'marketing.home.role.music.feature.forms.title', desc: 'marketing.home.role.music.feature.forms.desc' },{ title: 'marketing.home.role.music.feature.calendar.title', desc: 'marketing.home.role.music.feature.calendar.desc' },{ title: 'marketing.home.role.music.feature.quote.title', desc: 'marketing.home.role.music.feature.quote.desc' }] },
 ]
 const CRM_IMPORTS: Array<{ name: string; caption: MessageKey; italic?: boolean }> = [{ name: 'Dubsado', caption: 'marketing.home.switching.csvImport' },{ name: 'Studio Ninja', caption: 'marketing.home.switching.csvImport' },{ name: 'HoneyBook', caption: 'marketing.home.switching.csvImport' },{ name: 'VSCO Workspace', caption: 'marketing.home.switching.formerlyTave', italic: true },{ name: 'Any CSV / JSON', caption: 'marketing.home.switching.customMapping' }]
-const HOME_DATA_TOOLS: Array<{ emoji: string; name: MessageKey; caption: MessageKey }> = [{ emoji: '📂', name: 'marketing.home.data.tool.github', caption: 'marketing.home.data.github' },{ emoji: '💎', name: 'marketing.home.data.tool.obsidian', caption: 'marketing.home.data.obsidian' },{ emoji: '📝', name: 'marketing.home.data.tool.editor', caption: 'marketing.home.data.editor' },{ emoji: '🔧', name: 'marketing.home.data.tool.tools', caption: 'marketing.home.data.tools' }]
+const HOME_DATA_TOOLS: Array<{ emoji: string; name: MessageKey; caption: MessageKey }> = [{ emoji: '💎', name: 'marketing.home.data.tool.obsidian', caption: 'marketing.home.data.obsidian' },{ emoji: '📝', name: 'marketing.home.data.tool.editor', caption: 'marketing.home.data.editor' },{ emoji: '🔧', name: 'marketing.home.data.tool.tools', caption: 'marketing.home.data.tools' }]
 const ABOUT_INTRO: MessageKey[] = ['marketing.about.intro.p1', 'marketing.about.intro.p2', 'marketing.about.intro.p3', 'marketing.about.pricing']
 const ABOUT_SECTIONS: FeatureSection[] = [{ title: 'marketing.about.difference.title', subtitle: 'marketing.about.difference.subtitle', features: [{ title: 'marketing.about.difference.collab.title', desc: 'marketing.about.difference.collab.desc' },{ title: 'marketing.about.difference.data.title', desc: 'marketing.about.difference.data.desc' },{ title: 'marketing.about.difference.ai.title', desc: 'marketing.about.difference.ai.desc' },{ title: 'marketing.about.difference.market.title', desc: 'marketing.about.difference.market.desc' }] },{ title: 'marketing.about.vendors.title', subtitle: 'marketing.about.vendors.subtitle', features: [{ title: 'marketing.about.vendors.pipeline.title', desc: 'marketing.about.vendors.pipeline.desc' },{ title: 'marketing.about.vendors.forms.title', desc: 'marketing.about.vendors.forms.desc' },{ title: 'marketing.about.vendors.calendar.title', desc: 'marketing.about.vendors.calendar.desc' },{ title: 'marketing.about.vendors.invoicing.title', desc: 'marketing.about.vendors.invoicing.desc' },{ title: 'marketing.about.vendors.email.title', desc: 'marketing.about.vendors.email.desc' },{ title: 'marketing.about.vendors.aiEmail.title', desc: 'marketing.about.vendors.aiEmail.desc' },{ title: 'marketing.about.vendors.bookingForms.title', desc: 'marketing.about.vendors.bookingForms.desc' },{ title: 'marketing.about.vendors.carddav.title', desc: 'marketing.about.vendors.carddav.desc' },{ title: 'marketing.about.vendors.notifications.title', desc: 'marketing.about.vendors.notifications.desc' },{ title: 'marketing.about.vendors.analytics.title', desc: 'marketing.about.vendors.analytics.desc' },{ title: 'marketing.about.vendors.goals.title', desc: 'marketing.about.vendors.goals.desc' },{ title: 'marketing.about.vendors.contracts.title', desc: 'marketing.about.vendors.contracts.desc' },{ title: 'marketing.about.vendors.import.title', desc: 'marketing.about.vendors.import.desc' },{ title: 'marketing.about.vendors.team.title', desc: 'marketing.about.vendors.team.desc' },{ title: 'marketing.about.vendors.quote.title', desc: 'marketing.about.vendors.quote.desc' },{ title: 'marketing.about.vendors.booking.title', desc: 'marketing.about.vendors.booking.desc' },{ title: 'marketing.about.vendors.checklists.title', desc: 'marketing.about.vendors.checklists.desc' },{ title: 'marketing.about.vendors.api.title', desc: 'marketing.about.vendors.api.desc' },{ title: 'marketing.about.vendors.mcp.title', desc: 'marketing.about.vendors.mcp.desc' }] },{ title: 'marketing.about.couples.title', subtitle: 'marketing.about.couples.subtitle', features: [{ title: 'marketing.about.couples.dashboard.title', desc: 'marketing.about.couples.dashboard.desc' },{ title: 'marketing.about.couples.budget.title', desc: 'marketing.about.couples.budget.desc' },{ title: 'marketing.about.couples.platform.title', desc: 'marketing.about.couples.platform.desc' },{ title: 'marketing.about.couples.runsheet.title', desc: 'marketing.about.couples.runsheet.desc' },{ title: 'marketing.about.couples.collab.title', desc: 'marketing.about.couples.collab.desc' },{ title: 'marketing.about.couples.forms.title', desc: 'marketing.about.couples.forms.desc' },{ title: 'marketing.about.couples.messages.title', desc: 'marketing.about.couples.messages.desc' },{ title: 'marketing.about.couples.weather.title', desc: 'marketing.about.couples.weather.desc' },{ title: 'marketing.about.couples.visibility.title', desc: 'marketing.about.couples.visibility.desc' }] }]
 const ABOUT_COLLAB_FEATURES: CardDef[] = [
@@ -745,7 +744,7 @@ const HOME_AI_EXAMPLES: Array<{ q: MessageKey; a: MessageKey }> = [
   { q: 'marketing.home.ai.example4.q', a: 'marketing.home.ai.example4.a' },
 ]
 const PRICING_FREE_FEATURES: MessageKey[] = ['marketing.pricing.feature.pipeline','marketing.pricing.feature.forms','marketing.pricing.feature.calendar','marketing.pricing.feature.invoicing','marketing.pricing.feature.booking','marketing.pricing.feature.email','marketing.pricing.feature.workspaces','marketing.pricing.feature.runsheet','marketing.pricing.feature.collab','marketing.pricing.feature.weather','marketing.pricing.feature.credits','marketing.pricing.feature.import','marketing.pricing.feature.team','marketing.pricing.feature.quote','marketing.pricing.feature.publicCalendar','marketing.pricing.feature.directory','marketing.pricing.feature.coupleDashboard','marketing.pricing.feature.plainText','marketing.pricing.feature.passkeys']
-const PRICING_PRO_FEATURES: MessageKey[] = ['marketing.pricing.feature.everythingFree','marketing.pricing.feature.unlimitedWeddings','marketing.pricing.feature.github','marketing.pricing.feature.caldav','marketing.pricing.feature.carddav','marketing.pricing.feature.analyticsDashboard','marketing.pricing.feature.revenueInsights','marketing.pricing.feature.goals','marketing.pricing.feature.aiDrafting','marketing.pricing.feature.demandScores','marketing.pricing.feature.benchmarks','marketing.pricing.feature.aiReplies','marketing.pricing.feature.mcp']
+const PRICING_PRO_FEATURES: MessageKey[] = ['marketing.pricing.feature.everythingFree','marketing.pricing.feature.unlimitedWeddings','marketing.pricing.feature.caldav','marketing.pricing.feature.carddav','marketing.pricing.feature.analyticsDashboard','marketing.pricing.feature.revenueInsights','marketing.pricing.feature.goals','marketing.pricing.feature.aiDrafting','marketing.pricing.feature.demandScores','marketing.pricing.feature.benchmarks','marketing.pricing.feature.aiReplies','marketing.pricing.feature.mcp']
 const PRICING_COMPARISON: PlanGroupDef[] = [
   { label: 'marketing.pricing.group.leads', rows: [
     { feature: 'marketing.pricing.compare.pipeline', free: true, pro: true },
@@ -788,7 +787,6 @@ const PRICING_COMPARISON: PlanGroupDef[] = [
   { label: 'marketing.pricing.group.data', rows: [
     { feature: 'marketing.pricing.compare.plainText', free: true, pro: true },
     { feature: 'marketing.pricing.compare.passkeys', free: true, pro: true },
-    { feature: 'marketing.pricing.compare.github', pro: true },
   ] },
   { label: 'marketing.pricing.group.insights', rows: [
     { feature: 'marketing.pricing.compare.analyticsOverview', free: true, pro: true },
@@ -819,7 +817,7 @@ const STANDARD_WEDDING_OPTIONAL: SpecDef[] = [{ field: 'date', type: 'string', d
 const STANDARD_CONTACT_FILENAME_EXAMPLES: ExampleLine[] = [{ code: 'sarah-smith.md', desc: 'marketing.standard.example.singleContact' },{ code: 'sarah-james-smith.md', desc: 'marketing.standard.example.sameSurname' },{ code: 'sarah-smith-james-wilson.md', desc: 'marketing.standard.example.differentSurnames' },{ code: 'john-doe-2.md', desc: 'marketing.standard.example.deduplicated' }]
 const STANDARD_WEDDING_FILENAME_EXAMPLES: ExampleLine[] = [{ code: 'sarah-james-2026-12-15.md', desc: 'marketing.standard.example.weddingWithDate' },{ code: 'smith-jones-wedding.md', desc: 'marketing.standard.example.weddingWithoutDate' }]
 
-const STANDARD_COMPANIONS: MessageKey[] = ['marketing.standard.companions.p1', 'marketing.standard.companions.p2', 'marketing.standard.companions.p3']
+const STANDARD_COMPANIONS: MessageKey[] = ['marketing.standard.companions.p1', 'marketing.standard.companions.p3']
 
 const STANDARD_COMPANION_FILES: SpecDef[] = [
   { field: 'wedding.md', type: 'two-way', desc: 'marketing.standard.companions.wedding' },
@@ -849,18 +847,6 @@ function PlainTextDocsPage() {
         <DocSection title="marketing.docs.look.title" paragraphs={DOCS_LOOK_PARAGRAPHS} />
         <CodeBlock code={DOCS_CONTACT_SAMPLE} className="mb-4" />
         <p class="text-sm text-gray-500 mb-12">{t('marketing.docs.look.caption')}</p>
-        <div class="bg-horizon-50 rounded-2xl p-6 sm:p-8 mb-12">
-          <div class="flex items-start gap-4">
-            <div class="w-10 h-10 rounded-xl bg-horizon-100 flex items-center justify-center shrink-0"><div class="w-5 h-5 text-horizon-600" dangerouslySetInnerHTML={{ __html: featureIcons.sync }} /></div>
-            <div>
-              <div class="inline-block bg-horizon-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full mb-2">{t('marketing.pricing.recommended')}</div>
-              <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.docs.github.title')}</h2>
-              <p class="text-gray-600 leading-relaxed mb-4">{t('marketing.docs.github.body')}</p>
-            </div>
-          </div>
-          <div class="space-y-3 mt-4">{DOCS_GITHUB_FEATURES.map((feature) => <AboutFeature title={t(feature.title)} desc={t(feature.desc)} />)}</div>
-          <p class="text-sm text-gray-500 mt-4">{t('marketing.docs.github.proNote')}</p>
-        </div>
         {DOCS_FEATURE_SECTIONS.map((section) => <PageFeatureSection section={section} />)}
         <DocSection title="marketing.docs.organised.title" paragraphs={DOCS_ORGANISED_PARAGRAPHS} />
         <CodeBlock code={DOCS_DIRECTORY_SAMPLE} className="mb-8" />
@@ -895,16 +881,14 @@ type DeveloperBlock = { title: MessageKey; body: MessageKey; code?: string }
 
 const DOCS_INTRO: MessageKey[] = ['marketing.docs.intro.p1', 'marketing.docs.intro.p2']
 const DOCS_LOOK_PARAGRAPHS: MessageKey[] = ['marketing.docs.look.p1']
-const DOCS_GITHUB_FEATURES: CardDef[] = [{ title: 'marketing.docs.github.setup.title', desc: 'marketing.docs.github.setup.desc' },{ title: 'marketing.docs.github.next.title', desc: 'marketing.docs.github.next.desc' },{ title: 'marketing.docs.github.history.title', desc: 'marketing.docs.github.history.desc' },{ title: 'marketing.docs.github.obsidian.title', desc: 'marketing.docs.github.obsidian.desc' },{ title: 'marketing.docs.github.offline.title', desc: 'marketing.docs.github.offline.desc' }]
 const DOCS_FEATURE_SECTIONS: FeatureSection[] = [{ title: 'marketing.docs.download.title', subtitle: 'marketing.docs.download.subtitle', features: [{ title: 'marketing.docs.download.export.title', desc: 'marketing.docs.download.export.desc' },{ title: 'marketing.docs.download.limits.title', desc: 'marketing.docs.download.limits.desc' },{ title: 'marketing.docs.download.backups.title', desc: 'marketing.docs.download.backups.desc' }] },{ title: 'marketing.docs.obsidian.title', subtitle: 'marketing.docs.obsidian.subtitle', features: [{ title: 'marketing.docs.obsidian.plugin.title', desc: 'marketing.docs.obsidian.plugin.desc' },{ title: 'marketing.docs.obsidian.export.title', desc: 'marketing.docs.obsidian.export.desc' },{ title: 'marketing.docs.obsidian.view.title', desc: 'marketing.docs.obsidian.view.desc' }] },{ title: 'marketing.docs.phone.title', subtitle: 'marketing.docs.phone.subtitle', features: [{ title: 'marketing.docs.phone.carddav.title', desc: 'marketing.docs.phone.carddav.desc' },{ title: 'marketing.docs.phone.caldav.title', desc: 'marketing.docs.phone.caldav.desc' },{ title: 'marketing.docs.phone.setup.title', desc: 'marketing.docs.phone.setup.desc' }] }]
 const DOCS_ORGANISED_PARAGRAPHS: MessageKey[] = ['marketing.docs.organised.p1']
 const DOCS_ORGANISED_AFTER: MessageKey[] = ['marketing.docs.organised.p2']
 const DOCS_WHY: MessageKey[] = ['marketing.docs.why.p1', 'marketing.docs.why.p2', 'marketing.docs.why.p3']
 const DOCS_CONTACT_SAMPLE = ['---','first_name: Sarah','last_name: Smith','email: sarah@example.com','phone: "0400 123 456"','status: quoted','wedding_date: 2026-12-15','tags:','  - vip','  - referral','---','','Met at the Bridal Expo. Very enthusiastic about','an elopement ceremony at the Royal Botanic Garden.','','Budget: $3,000 - $5,000'].join('\n')
 const DOCS_DIRECTORY_SAMPLE = ['contacts/','  sarah-smith.md','  john-doe.md','  jane-wilson-james-brown.md','weddings/','  2026-12-15-sarah-james/','    wedding.md','    todo.md','    timeline.md','    notes.md','    vendors.md','    log.md','    files/','  doe-wedding/','    wedding.md'].join('\n')
-const DOCS_GIT_SAMPLE = ['# Clone your synced repo (Pro: connect GitHub in Settings)','git clone https://github.com/you/your-wedding-data.git','','# Or open a downloaded export folder as an Obsidian vault','# Every contact and wedding is a plain .md file you can read anywhere'].join('\n')
 const DOCS_PYTHON_SAMPLE = ['# Python - list all quoted contacts','import yaml','from pathlib import Path','','for f in Path("contacts").glob("*.md"):','    parts = f.read_text().split("---", 2)','    data = yaml.safe_load(parts[1])','    if data.get("status") == "quoted":','        print(f"{data[\'first_name\']} {data[\'last_name\']}")'].join('\n')
-const DOCS_DEVELOPER_BLOCKS: DeveloperBlock[] = [{ title: 'marketing.docs.developers.sync.title', body: 'marketing.docs.developers.sync.body', code: DOCS_GIT_SAMPLE },{ title: 'marketing.docs.developers.scripting.title', body: 'marketing.docs.developers.scripting.body', code: DOCS_PYTHON_SAMPLE },{ title: 'marketing.docs.developers.tools.title', body: 'marketing.docs.developers.tools.body' }]
+const DOCS_DEVELOPER_BLOCKS: DeveloperBlock[] = [{ title: 'marketing.docs.developers.scripting.title', body: 'marketing.docs.developers.scripting.body', code: DOCS_PYTHON_SAMPLE },{ title: 'marketing.docs.developers.tools.title', body: 'marketing.docs.developers.tools.body' }]
 
 export default marketing
 

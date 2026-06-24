@@ -3,10 +3,6 @@
  * FK cascades), an account leaves data in places D1 cascade can't reach:
  * KV (sessions, vendor secrets) and R2 (avatar, vendor logo, and the
  * vendor's whole markdown storage tree). This purges all of it.
- *
- * For git-backed vendors the markdown lives in the user's own GitHub repo —
- * that's theirs, so we leave it (and the inbound webhook simply no-ops once
- * the vendor row is gone).
  */
 
 import type { Bindings, User } from '../types'
@@ -71,9 +67,9 @@ export async function purgeAccount(env: Bindings, user: User): Promise<void> {
     if (vendor.logo_r2_key && env.STORAGE) {
       await env.STORAGE.delete(vendor.logo_r2_key).catch(() => {})
     }
-    // Delete the vendor's R2 storage tree. Git-backed vendors keep their
-    // files in their own repo, so only purge R2 for non-git vendors.
-    if (env.STORAGE && vendor.storage_type !== 'git') {
+    // Delete the vendor's R2 storage tree. R2 is canonical, including for
+    // legacy profiles that still carry storage_type='git'.
+    if (env.STORAGE) {
       await deleteR2Prefix(env.STORAGE, `vendors/${vendor.id}/`).catch((e: any) =>
         console.error('[purge] R2 tree cleanup failed', e.message)
       )
