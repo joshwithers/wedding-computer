@@ -197,6 +197,13 @@ export const weddings = {
   'lifecycle.cancellation.event_called_off': 'Wedding called off',
   'lifecycle.cancellation.double_booked': 'Double-booked',
   'lifecycle.cancellation.other': 'Other',
+  // Lost contact reasons
+  'lifecycle.lost.price': 'Price',
+  'lifecycle.lost.availability': 'Availability',
+  'lifecycle.lost.chose_competitor': 'Chose another vendor',
+  'lifecycle.lost.no_response': 'No response',
+  'lifecycle.lost.not_a_fit': 'Not a fit',
+  'lifecycle.lost.other': 'Other',
   // Couple-facing lifecycle banners
   'lifecycle.couple.cancelledTitle': 'This wedding has been cancelled',
   'lifecycle.couple.postponedTitle': 'This wedding has been postponed',

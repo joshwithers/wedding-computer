@@ -16,6 +16,9 @@ import {
   countVendors,
   getFirstResponseDurations,
   getMonthlyRevenue,
+  getWinLossSummary,
+  getCancellationBreakdown,
+  getLostReasonBreakdown,
 } from '../../db/analytics'
 import { listGoals, upsertGoal, deleteGoal, getCurrentYearGoals } from '../../db/goals'
 import { getDateHeatmap } from '../../db/busyness'
@@ -222,6 +225,9 @@ analytics.get('/app/analytics', async (c) => {
     cityHeatmap,
     stateHeatmap,
     globalHeatmap,
+    winLoss,
+    lostReasons,
+    cancellationReasons,
   ] = await Promise.all([
     getConversionFunnel(db, vendor.id, w.yearStart, w.yearEnd),
     getSourceBreakdown(db, vendor.id, w.yearStart, w.yearEnd),
@@ -240,6 +246,9 @@ analytics.get('/app/analytics', async (c) => {
       ? getDateHeatmap(db, w.today, w.ninetyAhead, 'state', vendor.location_state)
       : Promise.resolve([]),
     getDateHeatmap(db, w.today, w.ninetyAhead, 'global', 'global'),
+    getWinLossSummary(db, vendor.id, w.yearStart, w.yearEnd),
+    getLostReasonBreakdown(db, vendor.id),
+    getCancellationBreakdown(db, vendor.id),
   ])
 
   // Funnel — cumulative "reached at least this stage"
@@ -378,6 +387,8 @@ analytics.get('/app/analytics', async (c) => {
             )}
           </section>
         </div>
+
+        <WinLossSection winLoss={winLoss} lostReasons={lostReasons} cancellations={cancellationReasons} />
 
         {/* Goals */}
         <section class="bg-white rounded-2xl p-5 sm:p-6">
@@ -934,6 +945,91 @@ function DemandSection({ primary, compare, today, badge, footer }: { primary: De
 // Free-tier demand teaser: next 30 days, global only, with an upgrade footer.
 function DemandTeaser({ data }: { data: DemandCell[] }) {
   return <DemandSection primary={{ label: t('analytics.demand.global'), data }} compare={[]} today={todayString()} badge footer />
+}
+
+function WinLossSection({
+  winLoss,
+  lostReasons,
+  cancellations,
+}: {
+  winLoss: { won: number; lost: number }
+  lostReasons: { reason: string; count: number }[]
+  cancellations: { reason: string; count: number }[]
+}) {
+  const total = winLoss.won + winLoss.lost
+  const winRate = total > 0 ? Math.round((winLoss.won / total) * 100) : null
+  const lostMax = Math.max(1, ...lostReasons.map((r) => r.count))
+  const cancelMax = Math.max(1, ...cancellations.map((r) => r.count))
+  return (
+    <section class="bg-white rounded-2xl p-5 sm:p-6">
+      <h3 class="font-bold text-gray-900 mb-1">{t('analytics.winloss.title')}</h3>
+      <p class="text-sm text-gray-500 mb-5">{t('analytics.winloss.subtitle')}</p>
+      {total > 0 && (
+        <div class="grid grid-cols-3 gap-4 mb-6">
+          <div class="border border-gray-100 rounded-xl p-4 text-center">
+            <p class="text-2xl font-bold text-horizon-600 tabular-nums">{winLoss.won}</p>
+            <p class="text-xs text-gray-500 mt-1">{t('analytics.winloss.wonLabel')}</p>
+          </div>
+          <div class="border border-gray-100 rounded-xl p-4 text-center">
+            <p class="text-2xl font-bold text-grapefruit-600 tabular-nums">{winLoss.lost}</p>
+            <p class="text-xs text-gray-500 mt-1">{t('analytics.winloss.lostLabel')}</p>
+          </div>
+          <div class="border border-gray-100 rounded-xl p-4 text-center">
+            <p class={`text-2xl font-bold tabular-nums ${winRate !== null && winRate >= 50 ? 'text-horizon-600' : 'text-grapefruit-600'}`}>
+              {winRate !== null ? `${winRate}%` : '—'}
+            </p>
+            <p class="text-xs text-gray-500 mt-1">{t('analytics.winloss.winRateLabel')}</p>
+          </div>
+        </div>
+      )}
+      {total === 0 && lostReasons.length === 0 && cancellations.length === 0 ? (
+        <p class="text-sm text-gray-400">{t('analytics.winloss.noResolved')}</p>
+      ) : (
+        <div class="grid sm:grid-cols-2 gap-6">
+          <div>
+            <h4 class="text-sm font-bold text-gray-700 mb-3">{t('analytics.winloss.lostReasons.title')}</h4>
+            {lostReasons.length === 0 ? (
+              <p class="text-sm text-gray-400">{t('analytics.winloss.lostReasons.none')}</p>
+            ) : (
+              <div class="space-y-2.5">
+                {lostReasons.map((r) => (
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-sm text-gray-700">{t(`lifecycle.lost.${r.reason}` as any)}</span>
+                      <span class="text-sm font-bold text-gray-900">{r.count}</span>
+                    </div>
+                    <div class="bg-gray-100 rounded-full h-3 overflow-hidden">
+                      <div class="bg-grapefruit-400 h-full rounded-full" style={`width: ${(r.count / lostMax) * 100}%`} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <h4 class="text-sm font-bold text-gray-700 mb-3">{t('analytics.winloss.cancelled.title')}</h4>
+            {cancellations.length === 0 ? (
+              <p class="text-sm text-gray-400">{t('analytics.winloss.cancelled.none')}</p>
+            ) : (
+              <div class="space-y-2.5">
+                {cancellations.map((r) => (
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-sm text-gray-700">{t(`lifecycle.cancellation.${r.reason}` as any)}</span>
+                      <span class="text-sm font-bold text-gray-900">{r.count}</span>
+                    </div>
+                    <div class="bg-gray-100 rounded-full h-3 overflow-hidden">
+                      <div class="bg-papaya-400 h-full rounded-full" style={`width: ${(r.count / cancelMax) * 100}%`} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  )
 }
 
 // A blurred placeholder section with a lock overlay, for free-tier teasing.

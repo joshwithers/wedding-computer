@@ -130,6 +130,18 @@ export const planning = {
   'analytics.upgrade.feature.response': 'Response-time tracking',
   'analytics.upgrade.feature.insights': 'Actionable insights',
 
+  // ─── Win/loss reporting ───
+  'analytics.winloss.title': 'Win/loss',
+  'analytics.winloss.subtitle': 'Why leads are lost and weddings are cancelled',
+  'analytics.winloss.wonLabel': 'Won this year',
+  'analytics.winloss.lostLabel': 'Lost this year',
+  'analytics.winloss.winRateLabel': 'Win rate',
+  'analytics.winloss.noResolved': 'No resolved contacts yet this year',
+  'analytics.winloss.lostReasons.title': 'Lost enquiry reasons',
+  'analytics.winloss.lostReasons.none': 'No loss reasons recorded yet',
+  'analytics.winloss.cancelled.title': 'Cancelled wedding reasons',
+  'analytics.winloss.cancelled.none': 'No cancelled weddings',
+
   // ─── Dashboard teaser strip ───
   'analytics.teaser.title': 'Performance',
   'analytics.teaser.link': 'View analytics',

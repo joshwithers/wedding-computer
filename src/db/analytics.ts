@@ -376,6 +376,65 @@ export async function getTotalCouples(db: D1Database): Promise<number> {
   return row?.count ?? 0
 }
 
+export async function getWinLossSummary(
+  db: D1Database,
+  vendorId: string,
+  startDate: string,
+  endDate: string
+): Promise<{ won: number; lost: number }> {
+  const rows = await db
+    .prepare(
+      `SELECT status, COUNT(*) as count FROM contacts
+       WHERE vendor_id = ? AND status IN ('booked', 'completed', 'lost')
+       AND created_at >= ? AND created_at < ?
+       GROUP BY status`
+    )
+    .bind(vendorId, startDate, endDate)
+    .all<{ status: string; count: number }>()
+  let won = 0,
+    lost = 0
+  for (const r of rows.results) {
+    if (r.status === 'lost') lost += r.count
+    else won += r.count
+  }
+  return { won, lost }
+}
+
+export async function getCancellationBreakdown(
+  db: D1Database,
+  vendorId: string
+): Promise<{ reason: string; count: number }[]> {
+  const rows = await db
+    .prepare(
+      `SELECT COALESCE(w.cancellation_reason, 'other') as reason, COUNT(*) as count
+       FROM weddings w
+       JOIN wedding_members wm ON wm.wedding_id = w.id
+       WHERE wm.vendor_profile_id = ? AND w.status = 'cancelled'
+       GROUP BY w.cancellation_reason
+       ORDER BY count DESC`
+    )
+    .bind(vendorId)
+    .all<{ reason: string; count: number }>()
+  return rows.results
+}
+
+export async function getLostReasonBreakdown(
+  db: D1Database,
+  vendorId: string
+): Promise<{ reason: string; count: number }[]> {
+  const rows = await db
+    .prepare(
+      `SELECT COALESCE(lost_reason, 'other') as reason, COUNT(*) as count
+       FROM contacts
+       WHERE vendor_id = ? AND status = 'lost'
+       GROUP BY lost_reason
+       ORDER BY count DESC`
+    )
+    .bind(vendorId)
+    .all<{ reason: string; count: number }>()
+  return rows.results
+}
+
 export async function getSignupsByMonth(
   db: D1Database,
   months: number
