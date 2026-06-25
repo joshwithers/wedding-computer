@@ -1,7 +1,9 @@
 import type { Dictionary } from './index'
+import { nlLegal } from './legal-locales'
 
 // Nederlands — see docs/TRANSLATING.md for conventions.
 export const nl: Dictionary = {
+  ...nlLegal,
   'timeline.sun.sunrise': 'Zonsopkomst',
   'timeline.sun.sunset': 'Zonsondergang',
   'timeline.sun.goldenHour': 'Gouden uur',

@@ -1,7 +1,9 @@
 import type { Dictionary } from './index'
+import { zhLegal } from './legal-locales'
 
 // 简体中文 — see docs/TRANSLATING.md for conventions.
 export const zh: Dictionary = {
+  ...zhLegal,
   'timeline.sun.sunrise': '日出',
   'timeline.sun.sunset': '日落',
   'timeline.sun.goldenHour': '黄金时刻',

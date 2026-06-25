@@ -485,14 +485,28 @@ function AboutPage() {
 
 type LegalSection = { title: MessageKey; body: MessageKey[] }
 
-function LegalPage({ metaTitle, title, intro, sections }: { metaTitle: MessageKey; title: MessageKey; intro: MessageKey[]; sections: LegalSection[] }) {
+function LegalPage({
+  metaTitle,
+  title,
+  lastUpdated,
+  intro,
+  sections,
+  showEnglishNotice = true,
+}: {
+  metaTitle: MessageKey
+  title: MessageKey
+  lastUpdated: MessageKey
+  intro: MessageKey[]
+  sections: LegalSection[]
+  showEnglishNotice?: boolean
+}) {
   const isEnglish = getI18n().locale.startsWith('en')
   return (
     <MarketingLayout title={t(metaTitle)}>
       <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
         <h1 class="text-2xl sm:text-4xl font-bold mb-2">{t(title)}</h1>
-        <p class="text-sm text-gray-400 mb-2">{t('legal.lastUpdated')}</p>
-        {!isEnglish && <p class="text-xs text-gray-400 mb-6 italic">{t('legal.englishNotice')}</p>}
+        <p class="text-sm text-gray-400 mb-2">{t(lastUpdated)}</p>
+        {showEnglishNotice && !isEnglish && <p class="text-xs text-gray-400 mb-6 italic">{t('legal.englishNotice')}</p>}
         <div class="space-y-4 text-gray-600 leading-relaxed mb-10">
           {intro.map((k) => <p>{t(k)}</p>)}
         </div>
@@ -509,19 +523,24 @@ function LegalPage({ metaTitle, title, intro, sections }: { metaTitle: MessageKe
 }
 
 const PRIVACY_SECTIONS: LegalSection[] = [
-  { title: 'legal.privacy.collect.title', body: ['legal.privacy.collect.p1', 'legal.privacy.collect.p2', 'legal.privacy.collect.p3', 'legal.privacy.collect.p4', 'legal.privacy.collect.p5'] },
-  { title: 'legal.privacy.use.title', body: ['legal.privacy.use.p1', 'legal.privacy.use.p2', 'legal.privacy.use.p3'] },
-  { title: 'legal.privacy.share.title', body: ['legal.privacy.share.p1', 'legal.privacy.share.p2'] },
-  { title: 'legal.privacy.cookies.title', body: ['legal.privacy.cookies.p1'] },
-  { title: 'legal.privacy.retention.title', body: ['legal.privacy.retention.p1'] },
-  { title: 'legal.privacy.rights.title', body: ['legal.privacy.rights.p1'] },
+  { title: 'legal.privacy.entity.title', body: ['legal.privacy.entity.p1'] },
+  { title: 'legal.privacy.role.title', body: ['legal.privacy.role.p1', 'legal.privacy.role.p2'] },
+  { title: 'legal.privacy.collect.title', body: ['legal.privacy.collect.p1', 'legal.privacy.collect.p2', 'legal.privacy.collect.p3', 'legal.privacy.collect.p4', 'legal.privacy.collect.p5', 'legal.privacy.collect.p6', 'legal.privacy.collect.p7', 'legal.privacy.collect.p8'] },
+  { title: 'legal.privacy.use.title', body: ['legal.privacy.use.p1', 'legal.privacy.use.p2', 'legal.privacy.use.p3', 'legal.privacy.use.p4', 'legal.privacy.use.p5'] },
+  { title: 'legal.privacy.legalBasis.title', body: ['legal.privacy.legalBasis.p1'] },
+  { title: 'legal.privacy.share.title', body: ['legal.privacy.share.p1', 'legal.privacy.share.p2', 'legal.privacy.share.p3', 'legal.privacy.share.p4'] },
+  { title: 'legal.privacy.ai.title', body: ['legal.privacy.ai.p1'] },
+  { title: 'legal.privacy.cookies.title', body: ['legal.privacy.cookies.p1', 'legal.privacy.cookies.p2'] },
+  { title: 'legal.privacy.transfers.title', body: ['legal.privacy.transfers.p1'] },
+  { title: 'legal.privacy.retention.title', body: ['legal.privacy.retention.p1', 'legal.privacy.retention.p2'] },
+  { title: 'legal.privacy.rights.title', body: ['legal.privacy.rights.p1', 'legal.privacy.rights.p2'] },
   { title: 'legal.privacy.security.title', body: ['legal.privacy.security.p1'] },
   { title: 'legal.privacy.children.title', body: ['legal.privacy.children.p1'] },
   { title: 'legal.privacy.changes.title', body: ['legal.privacy.changes.p1'] },
 ]
 
 function PrivacyPage() {
-  return <LegalPage metaTitle="legal.privacy.metaTitle" title="legal.privacy.title" intro={['legal.privacy.intro.p1', 'legal.privacy.intro.p2']} sections={PRIVACY_SECTIONS} />
+  return <LegalPage metaTitle="legal.privacy.metaTitle" title="legal.privacy.title" lastUpdated="legal.privacy.lastUpdated" intro={['legal.privacy.intro.p1', 'legal.privacy.intro.p2', 'legal.privacy.intro.p3']} sections={PRIVACY_SECTIONS} showEnglishNotice={false} />
 }
 
 const TERMS_SECTIONS: LegalSection[] = [
@@ -537,7 +556,7 @@ const TERMS_SECTIONS: LegalSection[] = [
 ]
 
 function TermsPage() {
-  return <LegalPage metaTitle="legal.terms.metaTitle" title="legal.terms.title" intro={['legal.terms.intro.p1']} sections={TERMS_SECTIONS} />
+  return <LegalPage metaTitle="legal.terms.metaTitle" title="legal.terms.title" lastUpdated="legal.terms.lastUpdated" intro={['legal.terms.intro.p1']} sections={TERMS_SECTIONS} />
 }
 
 function PricingPage({ proPrice, currency }: { proPrice: string; currency: CurrencyCode }) {

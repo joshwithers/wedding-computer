@@ -1,7 +1,9 @@
 import type { Dictionary } from './index'
+import { jaLegal } from './legal-locales'
 
 // 日本語 — see docs/TRANSLATING.md for conventions.
 export const ja: Dictionary = {
+  ...jaLegal,
   'timeline.sun.sunrise': '日の出',
   'timeline.sun.sunset': '日の入り',
   'timeline.sun.goldenHour': 'ゴールデンアワー',

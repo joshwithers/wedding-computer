@@ -1,7 +1,9 @@
 import type { Dictionary } from './index'
+import { esLegal } from './legal-locales'
 
 // Español — see docs/TRANSLATING.md for conventions.
 export const es: Dictionary = {
+  ...esLegal,
   'timeline.sun.sunrise': 'Amanecer',
   'timeline.sun.sunset': 'Atardecer',
   'timeline.sun.goldenHour': 'Hora dorada',

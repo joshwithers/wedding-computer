@@ -364,7 +364,7 @@ export function noimFormConfig(): FormConfig {
   return {
     version: 1,
     title: 'Notice of Intended Marriage',
-    subtitle: 'Complete this form to prepare your NOIM for your celebrant. No data is stored — the form generates a PDF for you to print and sign.',
+    subtitle: 'Complete this form to prepare your NOIM for your celebrant. Your answers are saved with the submission so your celebrant can review them and generate the PDF.',
     submitLabel: 'Generate NOIM PDF',
     fields: allFields,
     steps: noimSteps,
