@@ -56,7 +56,7 @@ import { StorageConflictError } from './storage/conflicts'
 import { sendEmailMessage, EmailSendError, broadcastEmail, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail, enquiryConfirmationEmail, bookingContractCopyEmail, referralRewardEmail } from './services/email'
 import { getBroadcast } from './db/broadcast'
 import { handleInboundEmail } from './services/inbound-email'
-import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyBookingConfirmed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, notifyTimelineChangeRequested, notifyTimelineChangeDecided, notifyWeddingFormSubmission, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
+import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyBookingConfirmed, notifyWeddingCancelled, notifyWeddingPostponed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, notifyTimelineChangeRequested, notifyTimelineChangeDecided, notifyWeddingFormSubmission, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
 import { aggregateBusynessScores, aggregateDemandHistory } from './db/busyness'
 import { geocodePendingLocations } from './services/geocode'
 import { runWithI18n, resolveLocale } from './i18n'
@@ -801,6 +801,14 @@ export default {
             JSON.parse(body.payload)
           )
           console.log('[QUEUE] notify_booking_confirmed processed')
+
+        } else if (body.type === 'notify_wedding_cancelled') {
+          await notifyWeddingCancelled(notifyEnv(env), JSON.parse(body.payload))
+          console.log('[QUEUE] notify_wedding_cancelled processed')
+
+        } else if (body.type === 'notify_wedding_postponed') {
+          await notifyWeddingPostponed(notifyEnv(env), JSON.parse(body.payload))
+          console.log('[QUEUE] notify_wedding_postponed processed')
 
         } else if (body.type === 'notify_vendor_removed') {
           await notifyVendorRemoved(

@@ -516,6 +516,39 @@ export function bookingConfirmedEmail(data: {
   `, { preheader: `${data.weddingTitle} is confirmed!` })
 }
 
+// Sent to the couple + every vendor when a wedding is cancelled — so no one
+// faces a silently-changed wedding.
+export function weddingCancelledEmail(data: {
+  weddingTitle: string
+  weddingDate: string | null
+  reason: string | null
+  loginUrl: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Wedding cancelled</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      <strong>${data.weddingTitle}</strong>${data.weddingDate ? ` (${data.weddingDate})` : ''} has been cancelled.
+    </p>
+    ${data.reason ? `<div style="background:#faf5ef;border-radius:12px;padding:16px;margin-bottom:20px;font-size:14px;line-height:1.8;color:#333;"><strong>Note:</strong> ${data.reason}</div>` : ''}
+    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View details</a>
+  `, { preheader: `${data.weddingTitle} has been cancelled` })
+}
+
+// Sent to the couple + every vendor when a wedding is postponed.
+export function weddingPostponedEmail(data: {
+  weddingTitle: string
+  newDate: string | null
+  loginUrl: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Wedding postponed</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      <strong>${data.weddingTitle}</strong> has been postponed. ${data.newDate ? `The new date is <strong>${data.newDate}</strong>.` : 'A new date is still to be confirmed.'}
+    </p>
+    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View details</a>
+  `, { preheader: `${data.weddingTitle} has been postponed` })
+}
+
 // Sent to the couple when they complete a public booking form. Confirms the
 // booking and, when they signed a contract, includes the full signed text plus
 // signature proof so they keep a copy of exactly what they agreed to.

@@ -1506,8 +1506,10 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
         await c.env.EMAIL_QUEUE.send({ type: 'notify_booking_confirmed', payload: JSON.stringify({ weddingId }) }).catch(() => {})
       } else if (statusChoice === 'cancelled') {
         track(c.env.DB, vendor.id, 'wedding_cancelled', { weddingId })
+        c.executionCtx.waitUntil(c.env.EMAIL_QUEUE.send({ type: 'notify_wedding_cancelled', payload: JSON.stringify({ weddingId }) }).catch(() => {}))
       } else if (statusChoice === 'postponed') {
         track(c.env.DB, vendor.id, 'wedding_postponed', { weddingId })
+        c.executionCtx.waitUntil(c.env.EMAIL_QUEUE.send({ type: 'notify_wedding_postponed', payload: JSON.stringify({ weddingId }) }).catch(() => {}))
       }
     }
 

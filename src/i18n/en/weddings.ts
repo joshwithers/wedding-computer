@@ -197,6 +197,11 @@ export const weddings = {
   'lifecycle.cancellation.event_called_off': 'Wedding called off',
   'lifecycle.cancellation.double_booked': 'Double-booked',
   'lifecycle.cancellation.other': 'Other',
+  // Couple-facing lifecycle banners
+  'lifecycle.couple.cancelledTitle': 'This wedding has been cancelled',
+  'lifecycle.couple.postponedTitle': 'This wedding has been postponed',
+  'lifecycle.couple.postponedNewDate': 'New date: {date}',
+  'lifecycle.couple.postponedTbd': 'A new date is still to be confirmed',
 
   // Wedding form
   'weddings.form.title': 'Title',

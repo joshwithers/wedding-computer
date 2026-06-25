@@ -7,6 +7,8 @@ import {
   vendorJoinedWeddingEmail,
   coupleJoinedEmail,
   bookingConfirmedEmail,
+  weddingCancelledEmail,
+  weddingPostponedEmail,
   paymentReceivedEmail,
   paymentReceiptEmail,
   paymentDueSoonEmail,
@@ -528,6 +530,51 @@ export async function notifyBookingConfirmed(env: NotifyEnv, data: {
         ceremonyType: wedding.ceremony_type ?? 'wedding',
         weddingDate: wedding.date ? formatDate(wedding.date) : null,
         weddingLocation: wedding.location,
+        loginUrl,
+      }),
+      vendorId: member.vendor_profile_id,
+    })
+  }
+}
+
+export async function notifyWeddingCancelled(env: NotifyEnv, data: { weddingId: string }): Promise<void> {
+  const wedding = await getWedding(env.db, data.weddingId)
+  if (!wedding) return
+  const members = await getWeddingMembers(env.db, data.weddingId)
+  for (const member of members) {
+    const loginUrl = member.role === 'couple'
+      ? `${env.appUrl}/wedding/${data.weddingId}`
+      : `${env.appUrl}/app/weddings/${data.weddingId}`
+    await deliver(env, {
+      key: 'wedding_updates',
+      recipient: { id: member.user_id, email: member.user_email, name: member.user_name, notification_prefs: member.user_notification_prefs },
+      subject: `${wedding.title} has been cancelled`,
+      html: weddingCancelledEmail({
+        weddingTitle: wedding.title,
+        weddingDate: wedding.date ? formatDate(wedding.date) : null,
+        reason: wedding.cancellation_note,
+        loginUrl,
+      }),
+      vendorId: member.vendor_profile_id,
+    })
+  }
+}
+
+export async function notifyWeddingPostponed(env: NotifyEnv, data: { weddingId: string }): Promise<void> {
+  const wedding = await getWedding(env.db, data.weddingId)
+  if (!wedding) return
+  const members = await getWeddingMembers(env.db, data.weddingId)
+  for (const member of members) {
+    const loginUrl = member.role === 'couple'
+      ? `${env.appUrl}/wedding/${data.weddingId}`
+      : `${env.appUrl}/app/weddings/${data.weddingId}`
+    await deliver(env, {
+      key: 'wedding_updates',
+      recipient: { id: member.user_id, email: member.user_email, name: member.user_name, notification_prefs: member.user_notification_prefs },
+      subject: `${wedding.title} has been postponed`,
+      html: weddingPostponedEmail({
+        weddingTitle: wedding.title,
+        newDate: wedding.date ? formatDate(wedding.date) : null,
         loginUrl,
       }),
       vendorId: member.vendor_profile_id,

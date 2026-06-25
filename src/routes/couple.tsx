@@ -56,6 +56,7 @@ import { consumeRateLimit } from '../middleware/rate-limit'
 import { auditLog } from '../middleware/audit'
 import { listDocumentsForWedding, type DocumentWithUploader } from '../db/documents'
 import { formatDate, formatDateTime, daysUntil } from '../lib/date'
+import { effectiveWeddingStatus } from '../services/wedding-lifecycle'
 
 /** Translated label for a couple-vendor category dropdown option. The celebrant
  *  slug offers both words where the language distinguishes them, since the couple
@@ -225,6 +226,19 @@ couple.get('/wedding/:id', async (c) => {
   return c.html(
     <CoupleLayout title={weddingDisplayTitle(wedding)} user={user} wedding={wedding} csrfToken={c.get('csrfToken')}>
       <div class="max-w-3xl mx-auto space-y-6">
+        {/* Lifecycle banner — the couple should never face a silently-changed wedding */}
+        {effectiveWeddingStatus(wedding) === 'cancelled' && (
+          <div class="rounded-xl bg-grapefruit-50 border border-grapefruit-200 px-4 py-3 text-sm text-grapefruit-800">
+            <span class="font-bold">{t('lifecycle.couple.cancelledTitle')}</span>
+            {wedding.cancellation_note && <span class="block mt-0.5 text-grapefruit-700">{wedding.cancellation_note}</span>}
+          </div>
+        )}
+        {effectiveWeddingStatus(wedding) === 'postponed' && (
+          <div class="rounded-xl bg-papaya-100 border border-papaya-300 px-4 py-3 text-sm text-gray-700">
+            <span class="font-bold">{t('lifecycle.couple.postponedTitle')}</span>{' '}
+            {wedding.date ? t('lifecycle.couple.postponedNewDate', { date: formatDate(wedding.date) }) : t('lifecycle.couple.postponedTbd')}
+          </div>
+        )}
         {/* Hero */}
         <div class="text-center">
           <h1 class="text-2xl sm:text-3xl font-bold">{weddingDisplayTitle(wedding)}</h1>
