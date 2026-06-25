@@ -16,6 +16,7 @@
  */
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
+import { getSessionCookie } from '../lib/session-cookie'
 import type { Env } from '../types'
 import { AuthLayout } from '../views/layouts/auth'
 import { csrf, csrfField } from '../middleware/csrf'
@@ -255,7 +256,7 @@ oauth.get('/oauth/authorize', async (c) => {
   // 1. Require a session first: a URL client_id triggers a CIMD document fetch,
   //    so only authenticated vendors should be able to drive it (and the fetch
   //    cache is then scoped to that vendor).
-  const sessionId = getCookie(c, 'wc_session')
+  const sessionId = getSessionCookie(c)
   const session = sessionId ? await resolveSession(c.env.KV, sessionId) : null
   if (!session) {
     const returnTo = '/oauth/authorize?' + new URLSearchParams(c.req.query()).toString()
@@ -323,7 +324,7 @@ oauth.post('/oauth/authorize', async (c) => {
 
   // Must be a logged-in Pro vendor (this POST is CSRF-bound to the session).
   // Resolve them first so the CIMD client fetch is scoped to this vendor.
-  const sessionId = getCookie(c, 'wc_session')
+  const sessionId = getSessionCookie(c)
   const session = sessionId ? await resolveSession(c.env.KV, sessionId) : null
   const vendor = session ? await getVendorByUserId(c.env.DB, session.userId) : null
   if (!vendor || !(await isProVendor(c.env.DB, vendor.id))) {

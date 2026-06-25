@@ -17,6 +17,7 @@ import { grantFreeMonths, listRecentGrants, FREE_MONTHS_CAP, type GrantRow } fro
 import { redeemBankedMonthsToStripe } from '../services/free-months'
 import { getBroadcastRecipients, getBroadcastCountries, createBroadcast } from '../db/broadcast'
 import { countWaitlist, getWaitlistStats, getWaitlistCountryBreakdown, listWaitlist, listWaitlistForExport } from '../db/waitlist'
+import { getCspNonce } from '../i18n'
 import { makeUnsubscribeToken, unsubscribeUrl } from '../services/notification-prefs'
 import { auditLog } from '../middleware/audit'
 import { listVendorTypes, addVendorType, setVendorTypeActive, vendorTypeLabel } from '../db/vendor-types'
@@ -347,6 +348,7 @@ admin.get('/admin', async (c) => {
           </form>
           <p id="backfill-cc-status" class="text-sm text-gray-600 mt-3" role="status" aria-live="polite"></p>
           <script
+            nonce={getCspNonce()}
             dangerouslySetInnerHTML={{
               __html: `
             (function () {

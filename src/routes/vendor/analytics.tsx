@@ -26,7 +26,7 @@ import { formatVsAverage } from '../../lib/busyness'
 import { aggregateSources } from '../../lib/sources'
 import { buildFunnel, buildInsights, median, formatDuration, type Insight } from '../../lib/analytics-derive'
 import { formatMoneyCents } from '../../lib/money'
-import { t, getI18n } from '../../i18n'
+import { t, getI18n, getCspNonce } from '../../i18n'
 import { todayString, formatDayLabel, firstDayOffset, daysInMonth, toDateString, monthLabel, DAYS_OF_WEEK } from '../../lib/date'
 
 const analytics = new Hono<Env>()
@@ -925,6 +925,7 @@ function DemandSection({ primary, compare, today, badge, footer }: { primary: De
           <HeatmapLegend />
           <CompareStrips levels={compare} />
           <script
+            nonce={getCspNonce()}
             dangerouslySetInnerHTML={{
               __html: `(function(){document.querySelectorAll('[data-demand-root]').forEach(function(r){var o=r.querySelector('[data-demand-readout]');if(!o)return;var d=o.textContent;r.querySelectorAll('[data-demand-cell]').forEach(function(c){var t=c.getAttribute('data-demand-text');c.addEventListener('mouseenter',function(){o.textContent=t});c.addEventListener('focus',function(){o.textContent=t});c.addEventListener('mouseleave',function(){o.textContent=d});c.addEventListener('click',function(e){e.preventDefault();o.textContent=t});});});})();`,
             }}

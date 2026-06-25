@@ -15,9 +15,10 @@ import { trimOrNull, requireString } from '../../lib/validation'
 import { vendorCategories, hasCategory } from '../../lib/categories'
 import { normalizeCelebrantTerm, celebrantTermOf, CELEBRANT_SLUG, OFFICIANT_TERM, celebrantTermsDiffer } from '../../lib/celebrant-term'
 import { isReservedHandle } from '../../lib/reserved-handles'
-import { t } from '../../i18n'
+import { t, getCspNonce } from '../../i18n'
+import { safeErrorMessage } from '../../lib/redaction'
 import { auditLog } from '../../middleware/audit'
-import { deleteCookie } from 'hono/cookie'
+import { clearSessionCookie } from '../../lib/session-cookie'
 import { deleteVendorSecret, putVendorSecret } from '../../services/secrets'
 import { geocodeAddress } from '../../services/geocode'
 import {
@@ -534,7 +535,7 @@ settings.get('/app/settings', async (c) => {
               <span id="logo-status" class="text-xs text-gray-400"></span>
             </div>
           </div>
-          <script dangerouslySetInnerHTML={{ __html: `
+          <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: `
 (function(){
   var root=document.getElementById('logo-section'); if(!root) return;
   var csrf=root.getAttribute('data-csrf');
@@ -662,7 +663,7 @@ settings.get('/app/settings', async (c) => {
               </div>
             )
           })()}
-          <script dangerouslySetInnerHTML={{ __html: `
+          <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: `
 (function(){
   var root=document.getElementById('brand-editor'); if(!root) return;
   var preview=document.getElementById('brand-preview');
@@ -1019,7 +1020,7 @@ settings.post('/app/settings', async (c) => {
     await auditLog(c, 'settings_updated', 'vendor', vendor.id).catch(() => {})
     return c.redirect('/app/settings?saved=1')
   } catch (e: any) {
-    return c.redirect(`/app/settings?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/app/settings?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 
@@ -1385,7 +1386,7 @@ settings.post('/app/settings/stripe/connect', async (c) => {
       const account = (await res.json()) as { id: string; error?: { message: string } }
       if (!account.id || account.error) {
         console.error('[stripe] create account failed:', account)
-        return c.redirect(`/app/settings?error=${encodeURIComponent(account.error?.message || 'Failed to create Stripe account')}`)
+        return c.redirect(`/app/settings?error=${encodeURIComponent(safeErrorMessage(account.error, 'Failed to create Stripe account'))}`)
       }
       accountId = account.id
 
@@ -1409,13 +1410,13 @@ settings.post('/app/settings/stripe/connect', async (c) => {
     const link = (await res.json()) as { url: string; error?: { message: string } }
     if (!link.url || link.error) {
       console.error('[stripe] account_links failed:', link)
-      return c.redirect(`/app/settings?error=${encodeURIComponent(link.error?.message || 'Failed to create Stripe onboarding link')}`)
+      return c.redirect(`/app/settings?error=${encodeURIComponent(safeErrorMessage(link.error, 'Failed to create Stripe onboarding link'))}`)
     }
 
     return c.redirect(link.url)
   } catch (err: any) {
     console.error('[stripe] connect error:', err)
-    return c.redirect(`/app/settings?error=${encodeURIComponent('Stripe connection failed: ' + (err.message || 'unknown error'))}`)
+    return c.redirect(`/app/settings?error=${encodeURIComponent(safeErrorMessage(err, 'Stripe connection failed'))}`)
   }
 })
 
@@ -1437,7 +1438,7 @@ settings.post('/app/settings/delete-account', async (c) => {
   // Soft-delete: 30-day grace, logged out everywhere. Signing back in restores it.
   await softDeleteAccount(c.env, user)
 
-  deleteCookie(c, 'wc_session', { path: '/' })
+  clearSessionCookie(c)
   return c.redirect('/login?deleted=1')
 })
 
@@ -1557,7 +1558,7 @@ function ServiceTemplatesEditor({ vendor, csrfToken }: { vendor: VendorProfile; 
         </div>
       </form>
 
-      <script dangerouslySetInnerHTML={{ __html: `
+      <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: `
         (function() {
           let svcCount = ${Math.max(templates.length, 1)};
           document.getElementById('add-svc-btn').addEventListener('click', function() {

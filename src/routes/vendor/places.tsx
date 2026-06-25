@@ -3,6 +3,7 @@ import type { Env } from '../../types'
 import { requireAuth } from '../../middleware/auth'
 import { csrf } from '../../middleware/csrf'
 import { geocodeAddress } from '../../services/geocode'
+import { safeErrorMessage } from '../../lib/redaction'
 
 const places = new Hono<Env>()
 
@@ -175,7 +176,7 @@ places.get('/api/places/status', async (c) => {
 
     return c.json({ ok: true })
   } catch (err: any) {
-    return c.json({ ok: false, error: err.message })
+    return c.json({ ok: false, error: safeErrorMessage(err) })
   }
 })
 
@@ -192,7 +193,7 @@ places.post('/api/places/geocode', async (c) => {
     return c.json(location)
   } catch (err: any) {
     console.error('[places] geocode error', err.message)
-    return c.json({ error: err.message }, 500)
+    return c.json({ error: safeErrorMessage(err) }, 500)
   }
 })
 

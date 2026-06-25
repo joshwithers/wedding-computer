@@ -18,7 +18,7 @@
 // Intl in the browser. "Today" is computed in the BROWSER's timezone (not the
 // server's) so the min= and the countdown agree for international visitors.
 
-import { getI18n, t } from '../i18n'
+import { getI18n, t, getCspNonce } from '../i18n'
 
 /** Maps loader (only when a key is set) + the inline enhancement script. */
 export function FormEnhancements({ mapsKey }: { mapsKey?: string }) {
@@ -26,12 +26,13 @@ export function FormEnhancements({ mapsKey }: { mapsKey?: string }) {
     <>
       {mapsKey && (
         <script
+          nonce={getCspNonce()}
           src={`https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(mapsKey)}&libraries=places&loading=async`}
           async
           defer
         ></script>
       )}
-      <script dangerouslySetInnerHTML={{ __html: formEnhanceScript() }} />
+      <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: formEnhanceScript() }} />
     </>
   )
 }

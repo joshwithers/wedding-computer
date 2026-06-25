@@ -4,12 +4,14 @@ import { SharedHead } from '../../views/head'
 import { createContact } from '../../storage/contacts'
 import { getStorageWithSecrets } from '../../storage'
 import { getVendorById } from '../../db/vendors'
+import { embedFrameAncestors } from '../../lib/csp'
 import { createActivity } from '../../db/activities'
 import { track } from '../../services/analytics'
 import { rateLimit } from '../../middleware/rate-limit'
 import { sanitize, isValidEmail } from '../../lib/validation'
 import { verifyTurnstile } from '../../services/turnstile'
 import { withDoctype } from '../../views/document'
+import { getCspNonce } from '../../i18n'
 
 const quote = new Hono<Env>()
 
@@ -34,6 +36,12 @@ quote.get('/quote/:token', async (c) => {
   }
 
   const config: QuoteCalculatorConfig = JSON.parse(calc.config)
+
+  // The quote page is always embeddable; scope frame-ancestors to the vendor's
+  // own site when they've configured one (else it stays open, as before).
+  const quoteVendor = await getVendorById(c.env.DB, calc.vendor_id)
+  const fa = embedFrameAncestors(quoteVendor?.website)
+  if (fa) c.set('embedFrameAncestors', fa)
 
   return c.html(
     <QuoteShell title={calc.title}>
@@ -171,7 +179,7 @@ function QuoteShell({ title, children }: { title: string; children: any }) {
     <html lang="en">
       <head>
         <SharedHead title={title} />
-        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+        <script nonce={getCspNonce()} src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
       </head>
       <body class="bg-white text-gray-900 antialiased font-sans">
         <div class="max-w-lg mx-auto px-4 py-6 sm:py-8">
@@ -399,7 +407,7 @@ function Calculator({
       </div>
 
       {/* Client-side total calculation */}
-      <script dangerouslySetInnerHTML={{ __html: `
+      <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: `
         var basePrice = ${Number(config.base_price_cents) || 0};
         var currency = '${String(currency).replace(/[^A-Z]/g, '').slice(0, 3)}';
         function formatCents(cents) {

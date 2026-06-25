@@ -8,6 +8,7 @@ import { isAllowedUpload, uploadExt, ALLOWED_UPLOAD_TYPES, MAX_UPLOAD_BYTES } fr
 
 const FILE_ACCEPT = [...ALLOWED_UPLOAD_TYPES].join(',')
 import { getVendorById } from '../db/vendors'
+import { embedFrameAncestors } from '../lib/csp'
 import { verifyTurnstile } from '../services/turnstile'
 import { rateLimit } from '../middleware/rate-limit'
 import { isValidEmail } from '../lib/validation'
@@ -15,7 +16,7 @@ import { COUNTRIES } from '../forms/countries'
 import type { FormConfig, FormField, FormStep, FormAction, ContactMapping } from '../lib/form-schema'
 import { configHasAddressField, configHasFileField } from '../lib/form-schema'
 import { FormEnhancements } from '../lib/form-enhance'
-import { t } from '../i18n'
+import { t, getCspNonce } from '../i18n'
 import { BrandThemeHead, BrandLogo, parseBrandTheme, formLogoUrl, formOgImage } from '../lib/form-theme'
 import type { BrandTheme } from '../lib/form-theme'
 import { withDoctype } from '../views/document'
@@ -70,6 +71,9 @@ form.get('/form/:token', async (c) => {
 
   const vendor = await getVendorById(c.env.DB, formRecord.vendor_id)
   if (!vendor) return c.html(<FormShell embed={false}><p class="text-gray-600">Form unavailable.</p></FormShell>, 404)
+  // When embedded, scope frame-ancestors to the vendor's own site.
+  const fa = embedFrameAncestors(vendor.website)
+  if (fa) c.set('embedFrameAncestors', fa)
 
   const config = JSON.parse(formRecord.config) as FormConfig
   const embed = c.req.query('embed') === '1'
@@ -619,10 +623,10 @@ function FormRenderer({
       </form>
 
       {/* Turnstile */}
-      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+      <script nonce={getCspNonce()} src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
       {/* Multi-step + conditional logic */}
-      <script dangerouslySetInnerHTML={{ __html: formLogicScript() }} />
+      <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: formLogicScript() }} />
 
       {/* Location autocomplete + future-date/countdown helpers */}
       <FormEnhancements mapsKey={configHasAddressField(config) ? mapsKey : undefined} />

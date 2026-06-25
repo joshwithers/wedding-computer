@@ -6,6 +6,7 @@ import { requireVendor } from '../../middleware/tenant'
 import { requireEmailHandle } from '../../middleware/email-handle'
 import { csrf } from '../../middleware/csrf'
 import { updateVendor } from '../../db/vendors'
+import { safeErrorMessage } from '../../lib/redaction'
 import {
   parseBookingFormConfig,
   validateBookingFormConfig,
@@ -52,7 +53,7 @@ bookingForm.post('/app/booking-form', async (c) => {
 
     return c.redirect('/app/booking-form?saved=1')
   } catch (e: any) {
-    return c.redirect(`/app/booking-form?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/app/booking-form?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 

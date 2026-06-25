@@ -5,6 +5,7 @@ import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
 import { getReferralStats, listReferrals, FREE_MONTHS_CAP } from '../../db/referrals'
+import { getCspNonce } from '../../i18n'
 
 const refer = new Hono<Env>()
 
@@ -89,6 +90,7 @@ refer.get('/app/refer', async (c) => {
       </div>
 
       <script
+        nonce={getCspNonce()}
         dangerouslySetInnerHTML={{
           __html: `
         document.getElementById('refer-copy')?.addEventListener('click', function() {

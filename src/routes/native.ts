@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { setCookie } from 'hono/cookie'
+import { setSessionCookie } from '../lib/session-cookie'
 import type { Env } from '../types'
 import { generateToken } from '../lib/crypto'
 import { getVendorByIcalToken } from '../db/vendors'
@@ -55,10 +55,6 @@ function handoffUrl(requestUrl: string, token: string): string {
   const url = new URL('/native/web-session/consume', requestUrl)
   url.searchParams.set('token', token)
   return url.toString()
-}
-
-function cookieSecure(requestUrl: string): boolean {
-  return new URL(requestUrl).protocol === 'https:'
 }
 
 native.post('/native/web-session', async (c) => {
@@ -131,13 +127,7 @@ native.get('/native/web-session/consume', async (c) => {
   const ua = c.req.header('user-agent') ?? null
   const sessionId = await createUserSession(c.env.DB, c.env.KV, user, ip, ua)
 
-  setCookie(c, 'wc_session', sessionId, {
-    path: '/',
-    httpOnly: true,
-    secure: cookieSecure(c.req.url),
-    sameSite: 'Lax',
-    maxAge: 60 * 60 * 24 * 30,
-  })
+  setSessionCookie(c, sessionId)
 
   c.set('user', user)
   await auditLog(c, 'login', 'user', user.id, {

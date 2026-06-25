@@ -80,7 +80,10 @@ feed.get('/cal/:token', async (c) => {
   return c.body(ical, 200, {
     'Content-Type': 'text/calendar; charset=utf-8',
     'Content-Disposition': `inline; filename="${vendor.business_name.replace(/[^a-zA-Z0-9]/g, '-')}.ics"`,
-    'Cache-Control': 'public, max-age=900',
+    // Token-authed feed of vendor/couple run-sheet data — never a shared-cache
+    // resource. The token is the only credential, so 'private' keeps it to the
+    // subscriber's own client (matches the personal feed above).
+    'Cache-Control': 'private, max-age=900',
   })
 })
 

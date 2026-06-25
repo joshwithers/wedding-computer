@@ -54,7 +54,8 @@ import { ensureCoupleContact } from '../../services/couple-contact'
 import { TIMELINE_FIELDS } from '../../services/timeline-edit'
 import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes } from '../../db/timeline'
 import { lifecycleColumnsForTransition, syncVendorContactToWeddingStatus, CANCELLATION_REASONS, effectiveWeddingStatus, type WeddingStatusChoice } from '../../services/wedding-lifecycle'
-import { t, tp } from '../../i18n'
+import { t, tp, getCspNonce } from '../../i18n'
+import { safeErrorMessage } from '../../lib/redaction'
 import { weddingCapStatus } from '../../services/plan-limits'
 import { markTimelineDirty } from '../../services/timeline-notify'
 import { WeddingDoc } from '../../views/wedding-doc'
@@ -516,7 +517,7 @@ weddings.post('/app/weddings/new', async (c) => {
 
     return c.redirect(`/app/weddings/${wedding.id}`)
   } catch (e: any) {
-    return c.redirect(`/app/weddings/new?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/app/weddings/new?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 
@@ -1523,7 +1524,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     return c.redirect(`/app/weddings/${weddingId}`)
   } catch (e: any) {
     console.error('[weddings] edit failed:', weddingId, e.message, e.stack?.split('\n').slice(0, 3).join(' | '))
-    return c.redirect(`/app/weddings/${weddingId}/edit?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/app/weddings/${weddingId}/edit?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 
@@ -2801,7 +2802,7 @@ function WeddingForm({
               ></div>
             </div>
             <p class="text-xs text-gray-400 mt-1">{t('weddings.emoji.help')}</p>
-            <script dangerouslySetInnerHTML={{ __html: `
+            <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: `
 (function () {
   var field = document.querySelector('[data-emoji-field]');
   if (!field) return;

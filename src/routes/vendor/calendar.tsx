@@ -18,6 +18,7 @@ import {
 } from '../../db/calendar'
 import type { AvailabilityOverride } from '../../db/calendar'
 import { requireString, trimOrNull } from '../../lib/validation'
+import { safeErrorMessage } from '../../lib/redaction'
 import {
   monthLabel,
   prevMonth,
@@ -234,7 +235,7 @@ calendar.post('/app/calendar/new', async (c) => {
 
     return c.redirect(`/app/calendar/day/${date}`)
   } catch (e: any) {
-    return c.redirect(`/app/calendar/new?date=${body.date ?? ''}&error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/app/calendar/new?date=${body.date ?? ''}&error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 
@@ -467,7 +468,7 @@ calendar.post('/app/calendar/:id/edit', async (c) => {
 
     return c.redirect(`/app/calendar/${eventId}`)
   } catch (e: any) {
-    return c.redirect(`/app/calendar/${eventId}/edit?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/app/calendar/${eventId}/edit?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 

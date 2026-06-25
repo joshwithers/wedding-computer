@@ -10,6 +10,7 @@ import { getStorageWithSecrets } from '../storage'
 import { attachVendorToCoupleWedding } from '../services/booking-wedding'
 import { createActivity } from '../db/activities'
 import { getVendorById } from '../db/vendors'
+import { embedFrameAncestors } from '../lib/csp'
 import { celebrantTermLabel } from '../lib/celebrant-term'
 import { getContractByInvoice, signContract, getContractById } from '../db/contracts'
 import { formatDate, formatDateTime } from '../lib/date'
@@ -47,6 +48,9 @@ book.get('/book/:token', async (c) => {
   const confirmed = c.req.query('confirmed') === '1'
 
   const vendor = await getVendorById(c.env.DB, invoice.vendor_id)
+  // When embedded, scope frame-ancestors to the vendor's own site.
+  const fa = embedFrameAncestors(vendor?.website)
+  if (fa) c.set('embedFrameAncestors', fa)
   // Honour the vendor's Celebrant/Officiant term when their profile is in scope;
   // otherwise fall back to the invoice's stored category label.
   const category =

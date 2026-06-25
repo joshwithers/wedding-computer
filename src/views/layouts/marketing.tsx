@@ -1,5 +1,5 @@
 import type { FC, PropsWithChildren } from 'hono/jsx'
-import { getI18n, PUBLIC_LOCALES, t } from '../../i18n'
+import { getCspNonce, getI18n, PUBLIC_LOCALES, t } from '../../i18n'
 import { SharedHead } from '../head'
 import { Logo } from '../logo'
 import { withDoctype } from '../document'
@@ -154,7 +154,7 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => withDoctype(
           </div>
         </div>
       </footer>
-      <script dangerouslySetInnerHTML={{ __html: `
+      <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: `
 (function() {
   if (!navigator.modelContext || !navigator.modelContext.provideContext) return;
   navigator.modelContext.provideContext({
@@ -200,7 +200,7 @@ export const MarketingLayout: FC<Props> = ({ title, children }) => withDoctype(
   });
 })();
       ` }} />
-      <script dangerouslySetInnerHTML={{ __html: `
+      <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: `
 (function() {
   var current = window.location.pathname + window.location.search + window.location.hash;
   document.querySelectorAll('[data-locale-return-to]').forEach(function(input) {

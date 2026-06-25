@@ -17,6 +17,7 @@ import {
   CONTACT_MAPPINGS,
 } from '../../lib/form-schema'
 import type { FormConfig, FormField } from '../../lib/form-schema'
+import { safeErrorMessage } from '../../lib/redaction'
 
 const form = new Hono<Env>()
 
@@ -90,7 +91,7 @@ form.post('/app/form', async (c) => {
 
     return c.redirect('/app/form?saved=1')
   } catch (e: any) {
-    return c.redirect(`/app/form?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/app/form?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 
@@ -226,7 +227,7 @@ form.post('/app/form/import', async (c) => {
 
     return c.redirect('/app/form?saved=1')
   } catch (e: any) {
-    return c.redirect(`/app/form?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/app/form?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 

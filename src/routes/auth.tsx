@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
-import { setCookie, deleteCookie, getCookie } from 'hono/cookie'
+import { setCookie } from 'hono/cookie'
+import { getSessionCookie, setSessionCookie, clearSessionCookie } from '../lib/session-cookie'
 import type { Env } from '../types'
 import { AuthLayout } from '../views/layouts/auth'
 import { isValidEmail } from '../lib/validation'
@@ -14,6 +15,7 @@ import { hasPasskeys } from '../db/passkeys'
 import { rateLimit } from '../middleware/rate-limit'
 import { consumeOAuthReturn } from './oauth'
 import { auditLog } from '../middleware/audit'
+import { getCspNonce } from '../i18n'
 import {
   generateRegistrationOptions,
   verifyRegistration,
@@ -113,13 +115,7 @@ auth.get('/login/verify', async (c) => {
   const ua = c.req.header('user-agent') ?? null
   const sessionId = await createUserSession(c.env.DB, c.env.KV, user, ip, ua)
 
-  setCookie(c, 'wc_session', sessionId, {
-    path: '/',
-    httpOnly: true,
-    secure: true,
-    sameSite: 'Lax',
-    maxAge: 60 * 60 * 24 * 30,
-  })
+  setSessionCookie(c, sessionId)
 
   await auditLog(c, 'login', 'user', user.id, { method: 'magic_link' }).catch(() => {})
 
@@ -150,12 +146,12 @@ auth.get('/login/verify', async (c) => {
 })
 
 auth.post('/logout', async (c) => {
-  const sessionId = getCookie(c, 'wc_session')
+  const sessionId = getSessionCookie(c)
   if (sessionId) {
     await auditLog(c, 'logout').catch(() => {})
     await destroySession(c.env.DB, c.env.KV, sessionId)
   }
-  deleteCookie(c, 'wc_session', { path: '/' })
+  clearSessionCookie(c)
   return c.redirect('/')
 })
 
@@ -170,12 +166,7 @@ auth.get('/dev/login/:email', async (c) => {
   const email = c.req.param('email')
   const user = await findOrCreateUser(c.env.DB, email)
   const sessionId = await createUserSession(c.env.DB, c.env.KV, user, null, null)
-  setCookie(c, 'wc_session', sessionId, {
-    path: '/',
-    httpOnly: true,
-    sameSite: 'Lax',
-    maxAge: 60 * 60 * 24 * 30,
-  })
+  setSessionCookie(c, sessionId)
   const vendor = await getVendorByUserId(c.env.DB, user.id)
   if (vendor) return c.redirect('/app')
   const coupleWedding = await getFirstCoupleWedding(c.env.DB, user.id)
@@ -187,7 +178,7 @@ auth.get('/dev/login/:email', async (c) => {
 
 // Registration: step 1 — get options (requires active session)
 auth.post('/auth/passkey/register/options', async (c) => {
-  const sessionId = getCookie(c, 'wc_session')
+  const sessionId = getSessionCookie(c)
   if (!sessionId) return c.json({ error: 'Not authenticated' }, 401)
   const session = await resolveSession(c.env.KV, sessionId)
   if (!session) return c.json({ error: 'Session expired' }, 401)
@@ -204,7 +195,7 @@ auth.post('/auth/passkey/register/options', async (c) => {
 
 // Registration: step 2 — verify
 auth.post('/auth/passkey/register/verify', async (c) => {
-  const sessionId = getCookie(c, 'wc_session')
+  const sessionId = getSessionCookie(c)
   if (!sessionId) return c.json({ error: 'Not authenticated' }, 401)
   const session = await resolveSession(c.env.KV, sessionId)
   if (!session) return c.json({ error: 'Session expired' }, 401)
@@ -251,13 +242,7 @@ auth.post('/auth/passkey/login/verify', rateLimit(10, 60), async (c) => {
   const ua = c.req.header('user-agent') ?? null
   const sid = await createUserSession(c.env.DB, c.env.KV, user, ip, ua)
 
-  setCookie(c, 'wc_session', sid, {
-    path: '/',
-    httpOnly: true,
-    secure: true,
-    sameSite: 'Lax',
-    maxAge: 60 * 60 * 24 * 30,
-  })
+  setSessionCookie(c, sid)
 
   await auditLog(c, 'login', 'user', user.id, { method: 'passkey' }).catch(() => {})
 
@@ -365,7 +350,7 @@ function renderLoginPage(opts: { error?: string; sent?: boolean; gateOn?: boolea
 
 function PasskeyLoginScript() {
   return (
-    <script dangerouslySetInnerHTML={{ __html: `
+    <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: `
 (function() {
   var btn = document.getElementById('passkey-login-btn');
   var errEl = document.getElementById('passkey-error');

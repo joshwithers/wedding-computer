@@ -10,6 +10,7 @@ import { formatDate } from '../../lib/date'
 import { sanitize, sanitizeHtml } from '../../lib/validation'
 import { auditLog } from '../../middleware/audit'
 import { consumeRateLimit } from '../../middleware/rate-limit'
+import { safeErrorMessage } from '../../lib/redaction'
 
 const emails = new Hono<Env>()
 
@@ -287,7 +288,7 @@ emails.post('/app/emails/send', async (c) => {
     await auditLog(c, 'email_sent', 'email', undefined, { to }).catch(() => {})
     return c.redirect('/app/emails?tab=sent')
   } catch (e: any) {
-    return c.redirect(`/app/emails/compose?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/app/emails/compose?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 

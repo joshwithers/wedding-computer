@@ -73,6 +73,7 @@ export type I18nContext = {
   language: string // primary subtag, picks the dictionary
   timezone: string // IANA zone, drives time-of-day rendering
   currency: string // ISO 4217 presentment currency for prices (e.g. 'AUD')
+  cspNonce: string // per-request CSP nonce stamped on inline <script> tags
 }
 
 export const DEFAULT_LOCALE = 'en-AU'
@@ -84,12 +85,22 @@ const DEFAULT_CONTEXT: I18nContext = {
   language: 'en',
   timezone: DEFAULT_TIMEZONE,
   currency: DEFAULT_CURRENCY,
+  cspNonce: '',
 }
 
 const als = new AsyncLocalStorage<I18nContext>()
 
 export function getI18n(): I18nContext {
   return als.getStore() ?? DEFAULT_CONTEXT
+}
+
+/**
+ * The per-request CSP nonce. Stamp it on every first-party inline <script>:
+ * `<script nonce={getCspNonce()}>…</script>`. Empty string outside a request
+ * (jobs/cron) — harmless, since those never render HTML to a browser.
+ */
+export function getCspNonce(): string {
+  return getI18n().cspNonce
 }
 
 /** Run fn inside an i18n context (requests via middleware; jobs explicitly). */
@@ -101,6 +112,7 @@ export function runWithI18n<T>(ctx: Partial<I18nContext>, fn: () => T): T {
       language: primaryLanguage(locale),
       timezone: ctx.timezone ?? DEFAULT_TIMEZONE,
       currency: ctx.currency ?? DEFAULT_CURRENCY,
+      cspNonce: ctx.cspNonce ?? '',
     },
     fn
   )

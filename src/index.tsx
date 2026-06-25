@@ -59,7 +59,7 @@ import { handleInboundEmail } from './services/inbound-email'
 import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyBookingConfirmed, notifyWeddingCancelled, notifyWeddingPostponed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, notifyTimelineChangeRequested, notifyTimelineChangeDecided, notifyWeddingFormSubmission, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
 import { aggregateBusynessScores, aggregateDemandHistory } from './db/busyness'
 import { geocodePendingLocations } from './services/geocode'
-import { runWithI18n, resolveLocale } from './i18n'
+import { runWithI18n, resolveLocale, getCspNonce } from './i18n'
 import { resolveCurrency, refreshPrices } from './services/pricing'
 import { runRetention } from './db/retention'
 import { sendPendingVendorInviteReminders } from './services/invite-followups'
@@ -109,16 +109,37 @@ function isPrivatePath(path: string): boolean {
     path.startsWith('/admin/') ||
     path.startsWith('/wedding/') ||
     path.startsWith('/files/') ||
-    path.startsWith('/form-file/')
+    path.startsWith('/form-file/') ||
+    // Members-only community, token-authed vendor calendar feeds, and the
+    // vendor vault sync API all serve tenant-private content — keep them out
+    // of any shared/browser cache and out of search indexes.
+    path === '/community' ||
+    path.startsWith('/community/') ||
+    path.startsWith('/cal/') ||
+    path.startsWith('/vault/')
   )
 }
 
-function contentSecurityPolicy(isLocal: boolean, frameAncestors: "'self'" | null): string {
+const SCRIPT_HOSTS = 'https://cdn.jsdelivr.net https://challenges.cloudflare.com https://maps.googleapis.com https://maps.gstatic.com'
+
+function contentSecurityPolicy(isLocal: boolean, frameAncestors: string | null, nonce: string): string {
   const directives = [
     "default-src 'self'",
     "base-uri 'self'",
     "object-src 'none'",
-    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://challenges.cloudflare.com https://maps.googleapis.com https://maps.gstatic.com",
+    // Layered so we get real inline-<script> protection in Chromium/Safari
+    // without breaking Firefox or our ~78 htmx inline event handlers:
+    //  • script-src      — fallback for browsers w/o elem/attr support (Firefox);
+    //                      keeps today's behaviour, no regression.
+    //  • script-src-elem — Chromium/Safari: inline <script> blocks must carry the
+    //                      per-request nonce, so injected <script> is blocked.
+    //                      External hosts are still allowed by allowlist (no nonce
+    //                      needed); we don't use 'strict-dynamic'.
+    //  • script-src-attr — keeps inline on*= handlers working (full removal would
+    //                      need refactoring every handler to addEventListener).
+    `script-src 'self' 'unsafe-inline' ${SCRIPT_HOSTS}`,
+    `script-src-elem 'self' 'nonce-${nonce}' ${SCRIPT_HOSTS}`,
+    "script-src-attr 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
     "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net data:",
     "img-src 'self' data: blob: https:",
@@ -142,10 +163,13 @@ function contentSecurityPolicy(isLocal: boolean, frameAncestors: "'self'" | null
 // cookie wins, else the visitor's country (free from Cloudflare's edge).
 app.use((c, next) => {
   const country = (c.req.raw as { cf?: { country?: string } }).cf?.country
+  // Per-request CSP nonce, stamped on inline <script> tags via getCspNonce().
+  const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))))
   return runWithI18n(
     {
       locale: resolveLocale(getCookie(c, 'wc_locale'), c.req.header('accept-language')),
       currency: resolveCurrency(country, getCookie(c, 'wc_currency')),
+      cspNonce: nonce,
     },
     () => next()
   )
@@ -172,23 +196,49 @@ app.use('*', async (c, next) => {
   }
   if (!headers.has('X-Content-Type-Options')) headers.set('X-Content-Type-Options', 'nosniff')
   if (!headers.has('Referrer-Policy')) headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+  // Block the legacy Flash/Acrobat cross-domain-policy probe surface.
+  if (!headers.has('X-Permitted-Cross-Domain-Policies')) {
+    headers.set('X-Permitted-Cross-Domain-Policies', 'none')
+  }
   if (!headers.has('Permissions-Policy')) {
-    headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()')
+    // Deny every powerful feature we don't use, plus opt out of Topics/FLoC
+    // ad-targeting so the browser never samples our authed pages for cohorts.
+    headers.set(
+      'Permissions-Policy',
+      'camera=(), microphone=(), geolocation=(), payment=(), usb=(), ' +
+        'browsing-topics=(), interest-cohort=(), accelerometer=(), gyroscope=(), ' +
+        'magnetometer=(), serial=(), hid=(), bluetooth=(), midi=(), display-capture=()'
+    )
   }
-  if (isPrivatePath(path) && !headers.has('Cache-Control')) {
-    headers.set('Cache-Control', 'private, no-store')
-  }
-  // Surface where the request's time went (D1/KV round-trips) in DevTools →
-  // Network → Timing. Private paths only, so we don't perturb cached marketing
-  // responses. `total` is the whole request; named marks come from timed().
   if (isPrivatePath(path)) {
+    if (!headers.has('Cache-Control')) headers.set('Cache-Control', 'private, no-store')
+    // Authed/tenant-private surfaces: keep them out of search indexes and stop
+    // other origins pulling them in as no-cors subresources (Spectre-class).
+    if (!headers.has('X-Robots-Tag')) headers.set('X-Robots-Tag', 'noindex, nofollow')
+    if (!headers.has('Cross-Origin-Resource-Policy')) {
+      headers.set('Cross-Origin-Resource-Policy', 'same-origin')
+    }
+    // Surface where the request's time went (D1/KV round-trips) in DevTools →
+    // Network → Timing. Private paths only, so we don't perturb cached marketing
+    // responses. `total` is the whole request; named marks come from timed().
     headers.set('Server-Timing', serverTimingHeader(timing))
   }
   if (isHtml && !headers.has('Content-Security-Policy')) {
-    headers.set('Content-Security-Policy', contentSecurityPolicy(isLocal, isEmbed ? null : "'self'"))
+    // Non-embed pages: same-origin only. Embed pages: the vendor's own site
+    // origin when the handler resolved one (c.set('embedFrameAncestors', …)),
+    // else left open so existing embeds for website-less vendors keep working.
+    const frameAncestors = isEmbed ? (c.get('embedFrameAncestors') ?? null) : "'self'"
+    headers.set('Content-Security-Policy', contentSecurityPolicy(isLocal, frameAncestors, getCspNonce()))
   }
   if (isHtml && !isEmbed && !headers.has('X-Frame-Options')) {
     headers.set('X-Frame-Options', 'SAMEORIGIN')
+  }
+  // Isolate our top-level documents from cross-origin window references
+  // (XS-Leaks / cross-window scripting). 'allow-popups' so any window we open
+  // ourselves (Stripe Connect onboarding, "open in new tab" links) keeps its
+  // opener — the protection is against *incoming* cross-origin openers.
+  if (isHtml && !headers.has('Cross-Origin-Opener-Policy')) {
+    headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups')
   }
 
   c.res = new Response(c.res.body, {

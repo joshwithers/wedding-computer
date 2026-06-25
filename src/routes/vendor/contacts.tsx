@@ -35,6 +35,7 @@ import { auditLog } from '../../middleware/audit'
 import { track } from '../../services/analytics'
 import { resolveSecret } from '../../services/secrets'
 import { LOST_REASONS, isLostReason } from '../../services/wedding-lifecycle'
+import { safeErrorMessage } from '../../lib/redaction'
 
 const STATUSES = [
   { value: 'new', label: 'New' },
@@ -405,7 +406,7 @@ contacts.post('/app/contacts/new', async (c) => {
     return c.redirect(`/app/contacts/${contact.id}`)
   } catch (e: any) {
     console.error('[contacts] Error creating contact:', e)
-    return c.redirect(`/app/contacts/new?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/app/contacts/new?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 
@@ -724,7 +725,7 @@ contacts.post('/app/contacts/:id/edit', async (c) => {
     return c.redirect(`/app/contacts/${contactId}`)
   } catch (e: any) {
     console.error('[contacts] Error updating contact:', e)
-    return c.redirect(`/app/contacts/${contactId}/edit?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/app/contacts/${contactId}/edit?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 
@@ -1080,7 +1081,7 @@ contacts.post('/app/contacts/:id/email/draft', async (c) => {
   } catch (e: any) {
     console.error('[contacts] Error generating email draft:', e)
     return c.redirect(
-      `/app/contacts/${contactId}/email?error=${encodeURIComponent(e.message)}`
+      `/app/contacts/${contactId}/email?error=${encodeURIComponent(safeErrorMessage(e))}`
     )
   }
 })
@@ -1152,7 +1153,7 @@ contacts.post('/app/contacts/:id/email/send', async (c) => {
   } catch (e: any) {
     console.error('[contacts] Error sending email:', e)
     return c.redirect(
-      `/app/contacts/${contactId}/email?error=${encodeURIComponent(e.message)}`
+      `/app/contacts/${contactId}/email?error=${encodeURIComponent(safeErrorMessage(e))}`
     )
   }
 })

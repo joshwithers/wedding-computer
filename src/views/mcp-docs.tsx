@@ -1,4 +1,5 @@
 import { MarketingLayout } from './layouts/marketing'
+import { getCspNonce } from '../i18n'
 
 /**
  * Public, human-facing setup guide served at GET /mcp when opened in a browser
@@ -188,6 +189,7 @@ export function McpDocsPage() {
       </div>
 
       <script
+        nonce={getCspNonce()}
         dangerouslySetInnerHTML={{
           __html: `document.querySelectorAll('[data-copy]').forEach(function(btn){btn.addEventListener('click',function(){var el=document.getElementById(btn.getAttribute('data-copy'));if(!el)return;navigator.clipboard.writeText(el.innerText).then(function(){var t=btn.textContent;btn.textContent='Copied';setTimeout(function(){btn.textContent=t;},1500);});});});`,
         }}

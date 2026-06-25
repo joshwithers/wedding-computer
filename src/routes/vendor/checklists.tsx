@@ -26,6 +26,7 @@ import {
 } from '../../lib/todo-parser'
 import type { ParsedTodoSection } from '../../lib/todo-parser'
 import { vendorCanAccessWedding } from '../../lib/wedding-access'
+import { safeErrorMessage } from '../../lib/redaction'
 
 const checklists = new Hono<Env>()
 
@@ -180,7 +181,7 @@ checklists.post('/app/checklists', async (c) => {
     const template = await createTemplate(c.env.DB, vendor.id, name, content, isDefault)
     return c.redirect(`/app/checklists/${template.id}`)
   } catch (e: any) {
-    return c.redirect(`/app/checklists/new?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/app/checklists/new?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 

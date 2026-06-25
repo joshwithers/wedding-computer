@@ -15,6 +15,7 @@ import { getVendorByEnquiryKey } from '../db/vendors'
 import { isProVendor } from '../db/subscriptions'
 import { parseFormConfig } from '../lib/form-schema'
 import { processJsonSubmission, createEnquiry, type EnquiryJson } from '../services/enquiry'
+import { safeErrorMessage } from '../lib/redaction'
 
 const api = new Hono<Env>()
 
@@ -99,7 +100,7 @@ api.post('/api/v1/enquiries', async (c) => {
       201
     )
   } catch (e: any) {
-    return c.json({ ok: false, error: e.message ?? 'Could not create enquiry' }, 400)
+    return c.json({ ok: false, error: safeErrorMessage(e, 'Could not create enquiry') }, 400)
   }
 })
 

@@ -1,0 +1,6 @@
+# Wedding Computer — security contact and disclosure policy (RFC 9116)
+Contact: mailto:security@wedding.computer
+Contact: mailto:hello@wedding.computer
+Expires: 2027-06-25T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://wedding.computer/.well-known/security.txt

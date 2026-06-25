@@ -7,7 +7,7 @@ import { withDoctype } from '../views/document'
 import { MarketingLayout } from '../views/layouts/marketing'
 import { requireAuth } from '../middleware/auth'
 import { csrf } from '../middleware/csrf'
-import { t, getI18n, SUPPORTED_LOCALES, listTimezones, isValidTimezone, type MessageKey } from '../i18n'
+import { t, getI18n, getCspNonce, SUPPORTED_LOCALES, listTimezones, isValidTimezone, type MessageKey } from '../i18n'
 import { rateLimit } from '../middleware/rate-limit'
 import { updateUser, updateUserEmail, getUserByEmail, getUserById, updateNotificationPrefs, ensureUserFeedToken, rotateUserFeedToken } from '../db/users'
 import { softDeleteAccount } from '../services/account'
@@ -25,7 +25,7 @@ import { trimOrNull, isValidEmail } from '../lib/validation'
 import { generateToken } from '../lib/crypto'
 import { sendEmailMessage, emailChangeVerifyEmail, emailChangeNotifyEmail } from '../services/email'
 import { auditLog } from '../middleware/audit'
-import { deleteCookie } from 'hono/cookie'
+import { clearSessionCookie } from '../lib/session-cookie'
 import { listPasskeys, deletePasskey } from '../db/passkeys'
 import type { PasskeyCredential } from '../types'
 import { redactedVendorProfile } from '../lib/redaction'
@@ -1002,7 +1002,7 @@ account.post('/account/delete', async (c) => {
   // it; the nightly cron hard-purges (R2/KV/D1) after the window.
   await softDeleteAccount(c.env, user)
 
-  deleteCookie(c, 'wc_session', { path: '/' })
+  clearSessionCookie(c)
   return c.redirect('/login?deleted=1')
 })
 
@@ -1087,7 +1087,7 @@ function PasskeySection({ passkeys, csrfToken }: { passkeys: PasskeyCredential[]
       </button>
       <p id="passkey-msg" class="text-sm mt-2 hidden"></p>
 
-      <script dangerouslySetInnerHTML={{ __html: `
+      <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: `
 (function() {
   var btn = document.getElementById('add-passkey-btn');
   var msgEl = document.getElementById('passkey-msg');

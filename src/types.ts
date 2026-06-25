@@ -63,6 +63,10 @@ export type Env = {
     user: User
     vendor?: VendorProfile
     csrfToken: string
+    // Embeddable public pages (booking/quote/form with ?embed=1) set this to the
+    // vendor's own site origin so the global CSP can scope frame-ancestors to that
+    // origin instead of leaving the page framable by any site. See index.tsx.
+    embedFrameAncestors?: string
     // Per-request Server-Timing collector (src/lib/timing.ts), wired in index.tsx.
     timing?: import('./lib/timing').TimingCollector
     // Per-request D1 read session (src/middleware/d1-session.ts). Heavy read-only

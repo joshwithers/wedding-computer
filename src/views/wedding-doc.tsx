@@ -10,7 +10,7 @@
 // server-translated and passed to the client so the controller stays
 // language-agnostic.
 
-import { t } from '../i18n'
+import { getCspNonce, t } from '../i18n'
 import type { MessageKey } from '../i18n'
 import { scopeLabelKey, type DocScope } from '../services/doc-permissions'
 import type { DocTabState } from '../db/wedding-docs'
@@ -123,6 +123,7 @@ export function WeddingDoc({
       />
 
       <script
+        nonce={getCspNonce()}
         dangerouslySetInnerHTML={{
           __html: `
 (function(){

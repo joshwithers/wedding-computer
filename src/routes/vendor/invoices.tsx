@@ -28,6 +28,8 @@ import { formatDate } from '../../lib/date'
 import { auditLog } from '../../middleware/audit'
 import { track } from '../../services/analytics'
 import { vendorCanAccessWedding } from '../../lib/wedding-access'
+import { getCspNonce } from '../../i18n'
+import { safeErrorMessage } from '../../lib/redaction'
 
 const invoices = new Hono<Env>()
 
@@ -310,7 +312,7 @@ invoices.get('/app/invoices/new', async (c) => {
         </form>
       </div>
 
-      <script dangerouslySetInnerHTML={{ __html: `
+      <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: `
         var lineItemCount = 1;
         var serviceTemplates = ${JSON.stringify(serviceTemplates)};
 
@@ -422,7 +424,7 @@ invoices.post('/app/invoices/new', async (c) => {
 
     return c.redirect(`/app/invoices/${invoice.id}`)
   } catch (e: any) {
-    return c.redirect(`/app/invoices/new?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/app/invoices/new?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 
@@ -864,7 +866,7 @@ invoices.get('/app/invoices/:id/edit', async (c) => {
         </form>
       </div>
 
-      <script dangerouslySetInnerHTML={{ __html: `
+      <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: `
         let lineItemCount = ${items.length};
         function addLineItem() {
           const container = document.getElementById('line-items');

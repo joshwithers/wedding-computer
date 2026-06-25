@@ -3,6 +3,7 @@ import { getCookie, deleteCookie } from 'hono/cookie'
 import type { Env } from '../types'
 import { AuthLayout } from '../views/layouts/auth'
 import { requireAuth } from '../middleware/auth'
+import { csrf } from '../middleware/csrf'
 import { getVendorByUserId, createVendor, getVendorByReferralCode, updateVendor } from '../db/vendors'
 import { createReferral } from '../db/referrals'
 import { getFirstCoupleWedding, createWedding, addWeddingMember, listWeddingsForVendor } from '../db/weddings'
@@ -16,11 +17,12 @@ import { t, tp, type MessageKey } from '../i18n'
 import { categorySetup } from '../lib/onboarding'
 import { isReservedHandle } from '../lib/reserved-handles'
 import { celebrantTermsDiffer } from '../lib/celebrant-term'
+import { safeErrorMessage } from '../lib/redaction'
 
 const onboarding = new Hono<Env>()
 
-onboarding.use('/onboarding', requireAuth)
-onboarding.use('/onboarding/*', requireAuth)
+onboarding.use('/onboarding', requireAuth, csrf)
+onboarding.use('/onboarding/*', requireAuth, csrf)
 
 // ─── Step 1: Choose your path ───
 
@@ -49,6 +51,7 @@ onboarding.get('/onboarding', async (c) => {
           <div class="mb-6 pb-6 border-b border-gray-100">
             <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">{t('onboarding.start.namePrompt')}</p>
             <form method="post" action="/onboarding/name" class="flex gap-2">
+              <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
               <input
                 type="text"
                 name="name"
@@ -149,6 +152,7 @@ onboarding.get('/onboarding/business', async (c) => {
         <p class="text-sm text-gray-500 mb-6">{t('onboarding.business.subtitle')}</p>
         {error && <p class="text-sm text-grapefruit-700 font-medium mb-4">{error}</p>}
         <form method="post" action="/onboarding/business">
+          <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
           <div class="space-y-4">
             {needsName && (
               <div>
@@ -333,7 +337,7 @@ onboarding.post('/onboarding/business', async (c) => {
     }).catch((e: any) => console.error('[ONBOARDING] admin signup enqueue failed', e.message))
     return c.redirect('/onboarding/profile')
   } catch (e: any) {
-    return c.redirect(`/onboarding/business?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/onboarding/business?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 
@@ -353,6 +357,7 @@ onboarding.get('/onboarding/profile', async (c) => {
           {t('onboarding.profile.subtitle')}
         </p>
         <form method="post" action="/onboarding/profile">
+          <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
           <div class="space-y-4">
             <div>
               <label class="block text-sm font-bold text-gray-700 mb-1.5" for="phone">{t('onboarding.profile.phone')}</label>
@@ -497,6 +502,7 @@ onboarding.get('/onboarding/wedding', async (c) => {
         <p class="text-sm text-gray-500 mb-6">{t('onboarding.wedding.subtitle')}</p>
         {error && <p class="text-sm text-grapefruit-700 font-medium mb-4">{error}</p>}
         <form method="post" action="/onboarding/wedding">
+          <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
           <div class="space-y-4">
             {needsName && (
               <div>
@@ -613,7 +619,7 @@ onboarding.post('/onboarding/wedding', async (c) => {
 
     return c.redirect(`/wedding/${wedding.id}`)
   } catch (e: any) {
-    return c.redirect(`/onboarding/wedding?error=${encodeURIComponent(e.message)}`)
+    return c.redirect(`/onboarding/wedding?error=${encodeURIComponent(safeErrorMessage(e))}`)
   }
 })
 

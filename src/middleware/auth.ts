@@ -2,11 +2,11 @@ import { createMiddleware } from 'hono/factory'
 import type { Env } from '../types'
 import { resolveSession } from '../services/auth'
 import { getUserById } from '../db/users'
-import { getCookie } from 'hono/cookie'
+import { getSessionCookie } from '../lib/session-cookie'
 import { updateI18n } from '../i18n'
 
 export const requireAuth = createMiddleware<Env>(async (c, next) => {
-  const sessionId = getCookie(c, 'wc_session')
+  const sessionId = getSessionCookie(c)
   if (!sessionId) {
     return c.redirect('/login')
   }

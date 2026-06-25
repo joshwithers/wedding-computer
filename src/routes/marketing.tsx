@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie } from 'hono/cookie'
-import { SUPPORTED_LOCALES, t, getI18n, type MessageKey } from '../i18n'
+import { SUPPORTED_LOCALES, t, getI18n, getCspNonce, type MessageKey } from '../i18n'
 import type { Env } from '../types'
 import { MarketingLayout } from '../views/layouts/marketing'
 import { getProPrice, CURRENCIES, PRESENTMENT_CURRENCIES, isCurrencyCode, type CurrencyCode } from '../services/pricing'
@@ -450,7 +450,7 @@ function AboutPage() {
             </RolePanel>
           ))}
         </div>
-        <script dangerouslySetInnerHTML={{ __html: ROLE_TABS_SCRIPT }} />
+        <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: ROLE_TABS_SCRIPT }} />
         <h2 class="text-xl sm:text-2xl font-bold mb-2">{t('marketing.about.data.title')}</h2>
         <p class="text-gray-500 text-sm mb-6">{t('marketing.about.data.subtitle')}</p>
         <CopyParagraphs keys={ABOUT_DATA_PARAGRAPHS} className="space-y-4 text-gray-600 leading-relaxed mb-6" />

@@ -1,12 +1,12 @@
 import { createMiddleware } from 'hono/factory'
 import type { Env } from '../types'
 import { generateToken, hmacSign, hmacVerify } from '../lib/crypto'
-import { getCookie } from 'hono/cookie'
+import { getSessionCookie } from '../lib/session-cookie'
 
 export const csrf = createMiddleware<Env>(async (c, next) => {
   const secret = c.env.SESSION_SECRET
   if (!secret) throw new Error('SESSION_SECRET is not configured')
-  const sessionId = getCookie(c, 'wc_session') ?? 'anon'
+  const sessionId = getSessionCookie(c) ?? 'anon'
   const token = await hmacSign(secret, `csrf:${sessionId}`)
   c.set('csrfToken', token)
 

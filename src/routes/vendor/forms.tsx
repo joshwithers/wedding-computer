@@ -10,6 +10,7 @@ import { requireEmailHandle } from '../../middleware/email-handle'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
+import { getCspNonce } from '../../i18n'
 
 const forms = new Hono<Env>()
 
@@ -555,8 +556,8 @@ function FormBuilder({ formId, fields, csrfToken }: { formId: string; fields: Fo
         <button type="submit" id="fb-save" class="bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700 transition-colors">Save fields</button>
       </form>
 
-      <script type="application/json" id="fb-data" dangerouslySetInnerHTML={{ __html: JSON.stringify(data).replace(/</g, '\\u003c') }} />
-      <script dangerouslySetInnerHTML={{ __html: formBuilderScript() }} />
+      <script nonce={getCspNonce()} type="application/json" id="fb-data" dangerouslySetInnerHTML={{ __html: JSON.stringify(data).replace(/</g, '\\u003c') }} />
+      <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: formBuilderScript() }} />
     </div>
   )
 }

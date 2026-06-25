@@ -10,7 +10,7 @@ import type { FC, PropsWithChildren } from 'hono/jsx'
 import type { User } from '../types'
 import { SharedHead } from './head'
 import { Logo } from './logo'
-import { t, tp } from '../i18n'
+import { getCspNonce, t, tp } from '../i18n'
 import { formatDateTime } from '../lib/date'
 import { HTMX_SCRIPT_SRC } from '../lib/assets'
 import { cohortLabel, seasonWord } from '../lib/season'
@@ -34,7 +34,7 @@ export const CommunityLayout: FC<PropsWithChildren<{ title?: string; user: User;
   <html lang="en">
     <head>
       <SharedHead title={title ?? t('community.title')} />
-      <script src={HTMX_SCRIPT_SRC} defer></script>
+      <script nonce={getCspNonce()} src={HTMX_SCRIPT_SRC} defer></script>
       <meta name="csrf-token" content={csrfToken} />
     </head>
     <body
@@ -79,6 +79,7 @@ export const CommunityLayout: FC<PropsWithChildren<{ title?: string; user: User;
  *  (escaped in the HTML source, so no server-side HTML is ever emitted). */
 const CommunityMarkdownScript: FC = () => (
   <script
+    nonce={getCspNonce()}
     dangerouslySetInnerHTML={{
       __html: `
 (function(){
