@@ -1,4 +1,5 @@
 import type { AnalyticsEvent, D1Like } from '../types'
+import { SQL_WEDDING_NOT_CANCELLED } from './weddings'
 
 export async function trackEvent(
   db: D1Database,
@@ -202,6 +203,7 @@ export async function getLocationBreakdown(
          FROM weddings w
          JOIN wedding_members wm ON wm.wedding_id = w.id
          WHERE wm.vendor_profile_id = ? AND w.date >= ? AND w.date < ?
+           AND ${SQL_WEDDING_NOT_CANCELLED('w')}
          GROUP BY w.location
          ORDER BY count DESC`
       )
@@ -215,6 +217,7 @@ export async function getLocationBreakdown(
       `SELECT COALESCE(w.location, 'Unknown') as location, COUNT(*) as count
        FROM weddings w
        WHERE w.date >= ? AND w.date < ?
+         AND ${SQL_WEDDING_NOT_CANCELLED('w')}
        GROUP BY w.location
        ORDER BY count DESC`
     )
@@ -244,7 +247,7 @@ export async function getAverageSpendPerWedding(
        FROM invoice_payments ip
        JOIN invoices i ON i.id = ip.invoice_id
        WHERE ip.vendor_id = ? AND ip.status = 'paid' AND ip.paid_at >= ? AND ip.paid_at < ?
-         AND i.wedding_id IS NOT NULL`
+         AND i.wedding_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM weddings cw WHERE cw.id = i.wedding_id AND cw.status = 'cancelled')`
     params.push(vendorId, startDate, endDate)
   } else if (opts?.category) {
     query = `SELECT ${avgExpr}
@@ -252,14 +255,14 @@ export async function getAverageSpendPerWedding(
        JOIN invoices i ON i.id = ip.invoice_id
        JOIN vendor_profiles vp ON vp.id = ip.vendor_id
        WHERE ip.status = 'paid' AND ip.paid_at >= ? AND ip.paid_at < ?
-         AND i.wedding_id IS NOT NULL AND vp.category = ?`
+         AND i.wedding_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM weddings cw WHERE cw.id = i.wedding_id AND cw.status = 'cancelled') AND vp.category = ?`
     params.push(startDate, endDate, opts.category)
   } else {
     query = `SELECT ${avgExpr}
        FROM invoice_payments ip
        JOIN invoices i ON i.id = ip.invoice_id
        WHERE ip.status = 'paid' AND ip.paid_at >= ? AND ip.paid_at < ?
-         AND i.wedding_id IS NOT NULL`
+         AND i.wedding_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM weddings cw WHERE cw.id = i.wedding_id AND cw.status = 'cancelled')`
     params.push(startDate, endDate)
   }
 
