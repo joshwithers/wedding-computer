@@ -1352,7 +1352,7 @@ weddings.get('/app/weddings/:id/edit', async (c) => {
         </p>
         {error && (
           <div class="bg-grapefruit-50 border border-grapefruit-200 text-grapefruit-700 text-sm rounded-xl p-3 mb-4">
-            {error}
+            {error === 'completed_guard' ? t('weddings.edit.error.completedGuard') : error}
           </div>
         )}
         <WeddingForm
@@ -1488,6 +1488,13 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     // Stamp it, capture the cancellation reason, flag/clear postponed_at, and
     // propagate to the linked CRM contact so the funnel and the wedding agree.
     const prevEffective = oldWedding ? effectiveWeddingStatus(oldWedding) : undefined
+
+    // Guard: a completed wedding can only be cancelled (retroactive correction).
+    // Planning/confirmed/postponed would imply un-happening a real wedding.
+    if (statusChoice && prevEffective === 'completed' && statusChoice !== 'completed' && statusChoice !== 'cancelled') {
+      return c.redirect(`/app/weddings/${weddingId}/edit?error=completed_guard`)
+    }
+
     if (statusChoice && statusChoice !== prevEffective) {
       const reason = trimOrNull(body.cancellation_reason)
       const note = trimOrNull(body.cancellation_note)

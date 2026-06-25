@@ -537,6 +537,8 @@ export async function updateContact(
       | 'notes'
       | 'tags'
       | 'last_contacted_at'
+      | 'lost_reason'
+      | 'lost_note'
     >
   >
 ): Promise<void> {
@@ -694,10 +696,13 @@ export async function updateContactStatus(
   db: D1Database,
   vendorId: string,
   contactId: string,
-  status: string
+  status: string,
+  opts?: { lost_reason?: string | null; lost_note?: string | null }
 ): Promise<void> {
   await updateContact(storage, db, vendorId, contactId, {
     status: status as Contact['status'],
+    ...(opts?.lost_reason !== undefined ? { lost_reason: opts.lost_reason } : {}),
+    ...(opts?.lost_note !== undefined ? { lost_note: opts.lost_note } : {}),
   })
 }
 

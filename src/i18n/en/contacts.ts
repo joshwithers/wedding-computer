@@ -17,4 +17,10 @@ export const contacts = {
   'contacts.import.options.createWeddingsHelp':
     'Each contact imported with a booked or completed status and a wedding date also gets a wedding, a calendar booking, and a link back to the contact. No invitations are sent — your past clients will not be emailed.',
   'contacts.import.weddingsCreated': 'Weddings created',
+
+  // Lost-reason inline form
+  'contacts.lost.reason': 'Reason for losing',
+  'contacts.lost.reasonPrompt': 'Select a reason…',
+  'contacts.lost.notePlaceholder': 'Add a note (optional)',
+  'contacts.lost.confirm': 'Mark as lost',
 } as const

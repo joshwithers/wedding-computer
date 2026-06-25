@@ -26,6 +26,7 @@ import { describeDemand, formatVsAverage, MONTH_NAMES, SEASON_LABELS, ordinal } 
 import { requireString, trimOrNull, sanitize } from '../../lib/validation'
 import { ENQUIRY_SOURCES, normalizeSource, sourceLabel } from '../../lib/sources'
 import { formatDate } from '../../lib/date'
+import { t } from '../../i18n'
 import { socialUrl, socialDisplay } from '../../lib/social'
 import { CopyButton } from '../../views/icons'
 import { draftEmail } from '../../services/ai'
@@ -33,6 +34,7 @@ import { sendEmailMessage } from '../../services/email'
 import { auditLog } from '../../middleware/audit'
 import { track } from '../../services/analytics'
 import { resolveSecret } from '../../services/secrets'
+import { LOST_REASONS, isLostReason } from '../../services/wedding-lifecycle'
 
 const STATUSES = [
   { value: 'new', label: 'New' },
@@ -84,24 +86,83 @@ async function ensureContactsIndexed(
   return resolvedStorage
 }
 
+function lostReasonForm(contactId: string) {
+  return (
+    <form
+      class="mt-3 bg-grapefruit-50 border border-grapefruit-200 rounded-xl p-4 space-y-3"
+      hx-post={`/app/contacts/${contactId}/status`}
+      hx-target="#status-buttons"
+      hx-swap="outerHTML"
+    >
+      <input type="hidden" name="status" value="lost" />
+      <div>
+        <label class="block text-xs font-bold text-gray-700 mb-1.5">{t('contacts.lost.reason')}</label>
+        <select name="lost_reason" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-grapefruit-500">
+          <option value="">{t('contacts.lost.reasonPrompt')}</option>
+          {LOST_REASONS.map((r) => (
+            <option value={r}>{t(`lifecycle.lost.${r}` as any)}</option>
+          ))}
+        </select>
+      </div>
+      <textarea
+        name="lost_note"
+        placeholder={t('contacts.lost.notePlaceholder')}
+        rows={2}
+        class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-grapefruit-500"
+      />
+      <div class="flex items-center gap-3">
+        <button type="submit" class="bg-grapefruit-600 text-white rounded-xl px-3 py-1.5 text-sm font-bold hover:bg-grapefruit-700 transition-colors">
+          {t('contacts.lost.confirm')}
+        </button>
+        <button
+          type="button"
+          class="text-sm text-gray-500 hover:text-gray-700"
+          onclick="document.getElementById('lost-reason-form').innerHTML=''"
+        >
+          {t('common.cancel')}
+        </button>
+      </div>
+    </form>
+  )
+}
+
 function statusButtons(contactId: string, activeStatus: string) {
   return (
-    <div class="flex flex-wrap gap-2" id="status-buttons">
-      {STATUSES.map((s) => (
-        <button
-          hx-post={`/app/contacts/${contactId}/status`}
-          hx-vals={JSON.stringify({ status: s.value })}
-          hx-target="#status-buttons"
-          hx-swap="outerHTML"
-          class={`px-3 py-1 rounded-full text-xs font-medium border ${
-            activeStatus === s.value
+    <div id="status-buttons">
+      <div class="flex flex-wrap gap-2">
+        {STATUSES.map((s) => {
+          const isActive = activeStatus === s.value
+          const cls = `px-3 py-1 rounded-full text-xs font-medium border ${
+            isActive
               ? 'bg-horizon-600 text-white border-horizon-600'
               : 'bg-white text-gray-600 border-gray-200 hover:bg-papaya-50'
-          }`}
-        >
-          {s.label}
-        </button>
-      ))}
+          }`
+          if (s.value === 'lost') {
+            return (
+              <button
+                hx-get={`/app/contacts/${contactId}/status/lost-form`}
+                hx-target="#lost-reason-form"
+                hx-swap="innerHTML"
+                class={cls}
+              >
+                {s.label}
+              </button>
+            )
+          }
+          return (
+            <button
+              hx-post={`/app/contacts/${contactId}/status`}
+              hx-vals={JSON.stringify({ status: s.value })}
+              hx-target="#status-buttons"
+              hx-swap="outerHTML"
+              class={cls}
+            >
+              {s.label}
+            </button>
+          )
+        })}
+      </div>
+      <div id="lost-reason-form" />
     </div>
   )
 }
@@ -699,6 +760,12 @@ contacts.get('/app/contacts/:id/demand', async (c) => {
   return c.html(<DemandCard contactId={contactId} view={view} />)
 })
 
+contacts.get('/app/contacts/:id/status/lost-form', async (c) => {
+  const vendor = c.get('vendor')!
+  const contactId = c.req.param('id')
+  return c.html(lostReasonForm(contactId))
+})
+
 contacts.post('/app/contacts/:id/status', async (c) => {
   const vendor = c.get('vendor')!
   const contactId = c.req.param('id')
@@ -725,16 +792,24 @@ contacts.post('/app/contacts/:id/status', async (c) => {
     }
     if (!oldContact) return c.text('Not found', 404)
 
+    const lostReason = status === 'lost' ? (body.lost_reason as string | undefined) ?? null : undefined
+    const lostNote = status === 'lost' ? (body.lost_note as string | undefined) ?? null : undefined
+    const lostOpts = lostReason !== undefined ? {
+      lost_reason: lostReason && isLostReason(lostReason) ? lostReason : null,
+      lost_note: lostNote || null,
+    } : undefined
+
     // No-op: clicking the already-active status must not log an activity
     // or re-fire booking_confirmed (which would inflate analytics).
-    if (oldContact.status === status) {
+    // Exception: allow re-submitting 'lost' to update the reason.
+    if (oldContact.status === status && status !== 'lost') {
       return c.html(statusButtons(contactId, status))
     }
 
     // Update status
     if (!storage) return c.text('Failed to update status', 500)
     await ensureContactsIndexed(c, vendor, storage)
-    await updateContactStatus(storage, c.env.DB, vendor.id, contactId, status)
+    await updateContactStatus(storage, c.env.DB, vendor.id, contactId, status, lostOpts)
 
     await createActivity(
       c.env.DB,

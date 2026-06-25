@@ -70,6 +70,7 @@ export const weddings = {
 
   // Edit page
   'weddings.edit.breadcrumbSuffix': 'Edit',
+  'weddings.edit.error.completedGuard': 'A completed wedding can only be cancelled, not moved back to an earlier status.',
 
   // Promote contact
   'weddings.promote.fromContact': 'Creating wedding from contact:',
