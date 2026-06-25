@@ -1,11 +1,14 @@
 import { Hono } from 'hono'
-import { setCookie } from 'hono/cookie'
+import { getCookie, setCookie } from 'hono/cookie'
 import { SUPPORTED_LOCALES, t, getI18n, type MessageKey } from '../i18n'
 import type { Env } from '../types'
 import { MarketingLayout } from '../views/layouts/marketing'
 import { getProPrice, CURRENCIES, PRESENTMENT_CURRENCIES, isCurrencyCode, type CurrencyCode } from '../services/pricing'
 
 const marketing = new Hono<Env>()
+const PUBLIC_MARKETING_CACHE = 'public, max-age=300, s-maxage=3600'
+const PRIVATE_MARKETING_VARIANT_CACHE = 'private, max-age=300'
+const PUBLIC_MARKETING_VARY = 'Accept, Accept-Language, CF-IPCountry'
 
 // Persist a referral code (?ref=) so it survives signup → onboarding.
 function captureReferral(c: any) {
@@ -211,6 +214,10 @@ Upgrade for unlimited weddings, plus analytics and AI. Prices are shown and char
 // explicit allowlist; everything else is left untouched (private by default).
 const CACHEABLE_PUBLIC_PATHS = new Set(['/', '/about', '/pricing', '/standard', '/docs/plain-text', '/docs/import'])
 
+function hasCookieVariant(c: any): boolean {
+  return !!getCookie(c, 'wc_locale') || !!getCookie(c, 'wc_currency')
+}
+
 // Cache marketing pages at the edge — content rarely changes
 marketing.use('*', async (c, next) => {
   // Check for markdown content negotiation before processing
@@ -223,7 +230,7 @@ marketing.use('*', async (c, next) => {
         headers: {
           'Content-Type': 'text/markdown; charset=utf-8',
           'Content-Length': String(body.byteLength),
-          'Cache-Control': 'public, max-age=300, s-maxage=3600',
+          'Cache-Control': PUBLIC_MARKETING_CACHE,
           'Vary': 'Accept',
         },
       })
@@ -238,10 +245,16 @@ marketing.use('*', async (c, next) => {
     c.req.method === 'GET' &&
     c.res.status === 200 &&
     CACHEABLE_PUBLIC_PATHS.has(c.req.path) &&
-    !c.res.headers.has('Cache-Control')
+    !c.res.headers.has('Cache-Control') &&
+    !c.res.headers.has('Set-Cookie')
   ) {
-    c.res.headers.set('Cache-Control', 'public, max-age=300, s-maxage=3600')
-    c.res.headers.set('Vary', 'Accept')
+    if (hasCookieVariant(c)) {
+      c.res.headers.set('Cache-Control', PRIVATE_MARKETING_VARIANT_CACHE)
+      c.res.headers.set('Vary', 'Accept')
+    } else {
+      c.res.headers.set('Cache-Control', PUBLIC_MARKETING_CACHE)
+      c.res.headers.set('Vary', PUBLIC_MARKETING_VARY)
+    }
   }
 })
 

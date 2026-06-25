@@ -134,7 +134,8 @@ export function WeddingDoc({
   var state={};
   DATA.forEach(function(t){ state[t.scope]={content:t.content,token:t.token,canWrite:t.canWrite,hint:t.hint,solo:t.solo,holds:false,dirty:false}; });
   var active=DATA.length?DATA[0].scope:null;
-  var mde=null, editor=null, editable=false, mounting=false, fallback=false, saveTimer=null, pollTimer=null;
+  var mde=null, editor=null, editable=false, mounting=false, fallback=false, saveTimer=null, pollTimer=null, pollInFlight=false, lastHeartbeatAt=0;
+  var POLL_ACTIVE_MS=5000, POLL_IDLE_MS=15000, MIN_HEARTBEAT_MS=4500;
 
   var elEditor=document.getElementById('wdoc-editor');
   var elStatus=document.getElementById('wdoc-status');
@@ -230,12 +231,27 @@ export function WeddingDoc({
     renderLock(scope,sum);
   }
 
-  function poll(){
-    var scope=active; if(!scope||state[scope].solo) return;
+  function pollDelay(){
+    var scope=active; if(!scope||state[scope].solo||document.hidden) return 0;
+    return state[scope].dirty || editable ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+  }
+
+  function schedulePoll(delay){
+    clearTimeout(pollTimer); pollTimer=null;
+    if(delay>0) pollTimer=setTimeout(function(){ poll(false); },delay);
+  }
+
+  function poll(force){
+    var scope=active; if(!scope||state[scope].solo||document.hidden){ schedulePoll(pollDelay()); return; }
+    if(pollInFlight) return;
+    var now=Date.now();
+    if(!force && now-lastHeartbeatAt<MIN_HEARTBEAT_MS){ schedulePoll(MIN_HEARTBEAT_MS-(now-lastHeartbeatAt)); return; }
+    pollInFlight=true; lastHeartbeatAt=now;
     fetch(BASE+'/'+scope+'/heartbeat',{method:'POST',headers:headers(false)})
       .then(function(r){ return r.json(); })
       .then(function(sum){ if(active!==scope) return; renderPresence(sum); applyLockState(scope,sum); })
-      .catch(function(){});
+      .catch(function(){})
+      .then(function(){ pollInFlight=false; schedulePoll(pollDelay()); });
   }
 
   function takeover(scope){
@@ -263,14 +279,14 @@ export function WeddingDoc({
       // doesn't look disabled while the lock resolves. The first poll claims
       // the soft-lock (or downgrades to read-only if someone else holds it).
       mount(scope,state[scope].canWrite);
-      poll();
+      poll(true);
     }
   }
 
   function openTab(scope){
     if(active===scope) return;
     if(active){ if(state[active].dirty) save(); releaseActive(); }
-    active=scope;
+    active=scope; lastHeartbeatAt=0;
     DATA.forEach(function(t){ var b=document.getElementById('wdoc-tab-'+t.scope); if(!b) return; b.className=(t.scope===scope)?'wdoc-tab px-3 py-1 font-bold bg-horizon-50 text-horizon-700':'wdoc-tab px-3 py-1 font-bold text-gray-400 hover:text-gray-600'; });
     setStatus('');
     enter(scope);
@@ -281,7 +297,6 @@ export function WeddingDoc({
   function start(){
     if(!active) return;
     enter(active);
-    pollTimer=setInterval(poll,5000);
   }
 
   // EasyMDE's toolbar buttons are Font Awesome glyphs. We load FA ourselves from
@@ -311,6 +326,16 @@ export function WeddingDoc({
   }
 
   ensureLibs(start);
+  document.addEventListener('visibilitychange',function(){
+    if(document.hidden){
+      clearTimeout(pollTimer); pollTimer=null;
+      if(active&&state[active].dirty) save();
+      releaseActive();
+    } else if(active&&!state[active].solo){
+      lastHeartbeatAt=0;
+      poll(true);
+    }
+  });
   window.addEventListener('beforeunload',function(){ if(active&&state[active].dirty) save(); releaseActive(); });
 })();
 `,

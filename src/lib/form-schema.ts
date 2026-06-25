@@ -377,3 +377,10 @@ export function configHasFileField(config: FormConfig): boolean {
   const all = config.steps ? config.steps.flatMap((s) => s.fields) : config.fields
   return all.some((f) => f.type === 'file')
 }
+
+// Does any field need Google Places autocomplete? Used so public custom forms
+// with dates/text/uploads don't pay for the Maps JavaScript payload.
+export function configHasAddressField(config: FormConfig): boolean {
+  const all = config.steps ? config.steps.flatMap((s) => s.fields) : config.fields
+  return all.some((f) => f.type === 'address')
+}

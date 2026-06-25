@@ -67,6 +67,7 @@ import { flushTimelineNotifications } from './services/timeline-notify'
 import { purgeExpiredAccounts } from './services/account'
 import { logEvent } from './lib/log'
 import { syncVendorStorage } from './services/storage-sync'
+import { IMMUTABLE_ASSET_CACHE, sourcePathForVersionedAsset } from './lib/assets'
 
 const app = new Hono<Env>()
 
@@ -115,7 +116,7 @@ function contentSecurityPolicy(isLocal: boolean, frameAncestors: "'self'" | null
     "default-src 'self'",
     "base-uri 'self'",
     "object-src 'none'",
-    "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://challenges.cloudflare.com https://maps.googleapis.com https://maps.gstatic.com",
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://challenges.cloudflare.com https://maps.googleapis.com https://maps.gstatic.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
     "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net data:",
     "img-src 'self' data: blob: https:",
@@ -181,25 +182,6 @@ app.use('*', async (c, next) => {
   }
 
   c.res = new Response(c.res.body, {
-    status: c.res.status,
-    statusText: c.res.statusText,
-    headers,
-  })
-})
-
-app.use('*', async (c, next) => {
-  await next()
-
-  const contentType = c.res.headers.get('Content-Type') ?? ''
-  const isHtmx = c.req.header('hx-request') === 'true'
-  if (!contentType.includes('text/html') || isHtmx) return
-
-  const body = await c.res.clone().text()
-  if (!body.startsWith('<html')) return
-
-  const headers = new Headers(c.res.headers)
-  headers.delete('Content-Length')
-  c.res = new Response(`<!DOCTYPE html>${body}`, {
     status: c.res.status,
     statusText: c.res.statusText,
     headers,
@@ -278,6 +260,26 @@ app.onError((err, c) => {
 
 // Health check
 app.get('/health', (c) => c.json({ ok: true }))
+
+app.get('/assets/*', async (c) => {
+  const sourcePath = sourcePathForVersionedAsset(c.req.path)
+  if (!sourcePath || !c.env.ASSETS) return c.notFound()
+
+  const assetUrl = new URL(c.req.url)
+  assetUrl.pathname = sourcePath
+  assetUrl.search = ''
+  const assetResponse = await c.env.ASSETS.fetch(new Request(assetUrl, c.req.raw))
+  const headers = new Headers(assetResponse.headers)
+  if (assetResponse.ok) {
+    headers.set('Cache-Control', IMMUTABLE_ASSET_CACHE)
+  }
+
+  return new Response(assetResponse.body, {
+    status: assetResponse.status,
+    statusText: assetResponse.statusText,
+    headers,
+  })
+})
 
 // Agent Skills Discovery (RFC v0.2.0)
 app.get('/.well-known/agent-skills/index.json', (c) =>

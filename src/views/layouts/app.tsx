@@ -3,6 +3,8 @@ import type { User, VendorProfile } from '../../types'
 import { SharedHead } from '../head'
 import { Logo } from '../logo'
 import { t, getI18n, type MessageKey } from '../../i18n'
+import { HTMX_SCRIPT_SRC } from '../../lib/assets'
+import { withDoctype } from '../document'
 
 type Props = PropsWithChildren<{
   title?: string
@@ -53,11 +55,11 @@ const FOOTER_ITEMS: Array<{ href: string; label: MessageKey }> = [
   { href: '/app/settings', label: 'nav.settings' },
 ]
 
-export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children }) => (
+export const AppLayout: FC<Props> = ({ title, user, vendor, csrfToken, children }) => withDoctype(
   <html lang={getI18n().language}>
     <head>
       <SharedHead title={title} />
-      <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+      <script src={HTMX_SCRIPT_SRC} defer></script>
       <meta name="csrf-token" content={csrfToken} />
     </head>
     <body class="bg-papaya-50 text-gray-900 antialiased font-sans" hx-headers={`{"X-CSRF-Token": "${csrfToken}"}`}>

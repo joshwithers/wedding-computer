@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   sanitizeBuilderFields,
   validateBuilderFields,
+  configHasAddressField,
   configHasFileField,
   BUILDER_FIELD_TYPES,
   type FormConfig,
@@ -96,6 +97,17 @@ describe('configHasFileField', () => {
   })
   it('detects file fields inside steps', () => {
     expect(configHasFileField({ ...base, steps: [{ id: 's', title: 'S', fields: [{ id: 'f', type: 'file', label: 'Upload' }] }] })).toBe(true)
+  })
+})
+
+describe('configHasAddressField', () => {
+  const base: FormConfig = { version: 1, title: 'T', submitLabel: 'Go', fields: [], actions: { notifyVendor: true, confirmationEmail: { enabled: false, mode: 'ai' } } }
+  it('keeps Maps off forms without address autocomplete', () => {
+    expect(configHasAddressField({ ...base, fields: [{ id: 'a', type: 'text', label: 'Name' }] })).toBe(false)
+  })
+  it('detects address fields in flat and stepped configs', () => {
+    expect(configHasAddressField({ ...base, fields: [{ id: 'a', type: 'address', label: 'Venue' }] })).toBe(true)
+    expect(configHasAddressField({ ...base, steps: [{ id: 's', title: 'S', fields: [{ id: 'a', type: 'address', label: 'Venue' }] }] })).toBe(true)
   })
 })
 

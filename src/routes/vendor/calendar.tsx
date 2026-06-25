@@ -51,8 +51,10 @@ calendar.get('/app/calendar', async (c) => {
   const year = parseInt(c.req.query('year') ?? String(now.getFullYear()))
   const month = parseInt(c.req.query('month') ?? String(now.getMonth() + 1))
 
-  const events = await listEventsByMonth(c.env.DB, vendor.id, year, month)
-  const overrides = await getOverridesForMonth(c.env.DB, vendor.id, year, month)
+  const [events, overrides] = await Promise.all([
+    listEventsByMonth(c.env.DB, vendor.id, year, month),
+    getOverridesForMonth(c.env.DB, vendor.id, year, month),
+  ])
   const defaultDays = parseDefaultDays(vendor.availability_default)
 
   const calendarHtml = (

@@ -67,7 +67,6 @@ import {
   RUNSHEET_W,
   RUNSHEET_H,
 } from '../services/timeline-export'
-import { renderPng, renderPdf } from '../services/og-render'
 
 type Ctx = Context<Env>
 
@@ -721,6 +720,7 @@ export async function wallpaperPng(c: Ctx, weddingId: string, _member: WeddingMe
     items: selectKeyMoments(d.items),
     palette: d.palette,
   })
+  const { renderPng } = await import('../services/og-render')
   const png = await renderPng(c.env, html, WALLPAPER_W, WALLPAPER_H, d.display)
   return new Response(png, {
     headers: {
@@ -747,6 +747,7 @@ export async function runSheetPdf(c: Ctx, weddingId: string, _member: WeddingMem
     items: selectRunSheetMoments(d.items),
     palette: d.palette,
   })
+  const { renderPdf } = await import('../services/og-render')
   const pdf = await renderPdf(c.env, pages, RUNSHEET_W, RUNSHEET_H, d.display)
   return new Response(pdf, {
     headers: {

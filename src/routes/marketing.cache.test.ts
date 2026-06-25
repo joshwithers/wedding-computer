@@ -3,6 +3,8 @@ import { Hono } from 'hono'
 import marketing from './marketing'
 
 const PUBLIC_CACHE = 'public, max-age=300, s-maxage=3600'
+const PRIVATE_VARIANT_CACHE = 'private, max-age=300'
+const PUBLIC_VARY = 'Accept, Accept-Language, CF-IPCountry'
 
 // Mirrors the production mount order in index.tsx: the marketing router — which carries the
 // edge-cache middleware as a use('*') — is mounted first at the root, and authenticated/tenant
@@ -37,7 +39,26 @@ describe('marketing edge-cache middleware', () => {
       const res = await app.request(path)
       expect(res.status, path).toBe(200)
       expect(res.headers.get('Cache-Control'), path).toBe(PUBLIC_CACHE)
+      expect(res.headers.get('Vary'), path).toBe(PUBLIC_VARY)
     }
+  })
+
+  it('does not put cookie-localised marketing variants in shared caches', async () => {
+    const app = buildApp()
+    for (const cookie of ['wc_locale=de-DE', 'wc_currency=EUR']) {
+      const res = await app.request('/pricing', { headers: { Cookie: cookie } })
+      expect(res.status, cookie).toBe(200)
+      expect(res.headers.get('Cache-Control'), cookie).toBe(PRIVATE_VARIANT_CACHE)
+      expect(res.headers.get('Vary'), cookie).toBe('Accept')
+    }
+  })
+
+  it('does not shared-cache referral responses that set cookies', async () => {
+    const app = buildApp()
+    const res = await app.request('/?ref=abc123')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Set-Cookie')).toContain('wc_ref=')
+    expect(res.headers.get('Cache-Control')).toBeNull()
   })
 
   it('serves markdown with a shared-cache header on content negotiation', async () => {
@@ -46,6 +67,7 @@ describe('marketing edge-cache middleware', () => {
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toContain('text/markdown')
     expect(res.headers.get('Cache-Control')).toBe(PUBLIC_CACHE)
+    expect(res.headers.get('Vary')).toBe('Accept')
   })
 
   it('never attaches a shared-cache header to authenticated/tenant pages', async () => {

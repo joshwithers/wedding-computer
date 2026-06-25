@@ -1,9 +1,10 @@
 import type { FC, PropsWithChildren } from 'hono/jsx'
 import { SharedHead } from '../head'
+import { withDoctype } from '../document'
 
 type Props = PropsWithChildren<{ title?: string }>
 
-export const AuthLayout: FC<Props> = ({ title, children }) => (
+export const AuthLayout: FC<Props> = ({ title, children }) => withDoctype(
   <html lang="en">
     <head>
       <SharedHead title={title} />

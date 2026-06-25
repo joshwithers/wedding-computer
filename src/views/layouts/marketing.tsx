@@ -2,6 +2,7 @@ import type { FC, PropsWithChildren } from 'hono/jsx'
 import { getI18n, PUBLIC_LOCALES, t } from '../../i18n'
 import { SharedHead } from '../head'
 import { Logo } from '../logo'
+import { withDoctype } from '../document'
 
 type Props = PropsWithChildren<{ title?: string }>
 
@@ -109,7 +110,7 @@ const LanguageSwitcher: FC<{ placement: 'nav' | 'mobile' | 'footer' }> = ({ plac
   )
 }
 
-export const MarketingLayout: FC<Props> = ({ title, children }) => (
+export const MarketingLayout: FC<Props> = ({ title, children }) => withDoctype(
   <html lang={getI18n().locale}>
     <head>
       <SharedHead title={title} />

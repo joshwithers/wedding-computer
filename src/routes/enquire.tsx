@@ -7,12 +7,13 @@ import { categoriesLabel } from '../lib/categories'
 import { verifyTurnstile } from '../services/turnstile'
 import { rateLimit } from '../middleware/rate-limit'
 import { parseFormConfig } from '../lib/form-schema'
-import type { FormConfig, FormField } from '../lib/form-schema'
+import { configHasAddressField, type FormConfig, type FormField } from '../lib/form-schema'
 import { FormEnhancements } from '../lib/form-enhance'
 import { t } from '../i18n'
 import { processSubmission, createEnquiry } from '../services/enquiry'
 import { BrandThemeHead, BrandLogo, parseBrandTheme, formLogoUrl, formOgImage } from '../lib/form-theme'
 import type { BrandTheme } from '../lib/form-theme'
+import { withDoctype } from '../views/document'
 
 const enquire = new Hono<Env>()
 
@@ -153,7 +154,7 @@ function isValidRedirect(url: string): boolean {
 // ─── Components ───
 
 function EnquiryShell({ embed, children, theme, meta }: { embed?: boolean; children: any; theme?: BrandTheme; meta?: HeadMeta }) {
-  return (
+  return withDoctype(
     <html lang="en">
       <head>
         <SharedHead title="Enquiry" {...meta} />
@@ -232,7 +233,7 @@ function EnquiryForm({
         Powered by <a href="/" target="_blank" class="underline hover:text-gray-600">Wedding Computer</a>
       </p>
 
-      <FormEnhancements mapsKey={mapsKey} />
+      <FormEnhancements mapsKey={configHasAddressField(config) ? mapsKey : undefined} />
     </div>
     </>
   )

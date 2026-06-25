@@ -759,6 +759,7 @@ CREATE INDEX IF NOT EXISTS idx_email_queue_status ON email_queue(status, schedul
 CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice ON invoice_payments(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_invoice_payments_vendor ON invoice_payments(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_invoice_payments_status ON invoice_payments(status, due_date);
+CREATE INDEX IF NOT EXISTS idx_invoice_payments_vendor_status_paid ON invoice_payments(vendor_id, status, paid_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_vendor_profiles_ical_token ON vendor_profiles(ical_token);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_vendor_profiles_enquiry_key ON vendor_profiles(enquiry_key);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_vendor_email_handle ON vendor_profiles(email_handle);
@@ -779,6 +780,7 @@ CREATE INDEX IF NOT EXISTS idx_analytics_events_type ON analytics_events(event_t
 CREATE INDEX IF NOT EXISTS idx_analytics_events_created ON analytics_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_analytics_events_vendor_created ON analytics_events(vendor_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_analytics_events_vendor_type ON analytics_events(vendor_id, event_type);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_vendor_type_created ON analytics_events(vendor_id, event_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_business_goals_vendor ON business_goals(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_vendor ON subscriptions(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe ON subscriptions(stripe_subscription_id);
@@ -819,6 +821,10 @@ CREATE TABLE IF NOT EXISTS file_conflicts (
 CREATE INDEX IF NOT EXISTS idx_file_index_vendor ON file_index(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_file_index_vendor_type ON file_index(vendor_id, entity_type);
 CREATE INDEX IF NOT EXISTS idx_file_index_entity ON file_index(vendor_id, entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_file_index_contact_status
+  ON file_index(vendor_id, entity_type, json_extract(cached_data, '$.status'));
+CREATE INDEX IF NOT EXISTS idx_file_index_contact_created
+  ON file_index(vendor_id, entity_type, json_extract(cached_data, '$.created_at'));
 CREATE INDEX IF NOT EXISTS idx_file_conflicts_vendor ON file_conflicts(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_file_conflicts_pending ON file_conflicts(vendor_id, status);
 
@@ -862,6 +868,8 @@ CREATE INDEX IF NOT EXISTS idx_wedding_todos_wedding ON wedding_todos(wedding_id
 
 -- Performance composite indexes
 CREATE INDEX IF NOT EXISTS idx_contacts_vendor_status ON contacts(vendor_id, status);
+CREATE INDEX IF NOT EXISTS idx_contacts_vendor_created ON contacts(vendor_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_contacts_vendor_source ON contacts(vendor_id, source);
 
 -- Team members belonging to an agency vendor
 CREATE TABLE IF NOT EXISTS team_members (
@@ -958,6 +966,7 @@ CREATE TABLE IF NOT EXISTS busyness_scores (
 CREATE INDEX IF NOT EXISTS idx_busyness_scores_date ON busyness_scores(date);
 CREATE INDEX IF NOT EXISTS idx_busyness_scores_level ON busyness_scores(level, level_value);
 CREATE INDEX IF NOT EXISTS idx_busyness_scores_lookup ON busyness_scores(date, level, level_value);
+CREATE INDEX IF NOT EXISTS idx_busyness_scores_level_value_date ON busyness_scores(level, level_value, date);
 
 -- Historical demand patterns: past activity bucketed by month ('09'),
 -- season ('spring'), and Nth-weekend-of-month ('09-w3') per location level,

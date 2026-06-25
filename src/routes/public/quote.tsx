@@ -9,6 +9,7 @@ import { track } from '../../services/analytics'
 import { rateLimit } from '../../middleware/rate-limit'
 import { sanitize, isValidEmail } from '../../lib/validation'
 import { verifyTurnstile } from '../../services/turnstile'
+import { withDoctype } from '../../views/document'
 
 const quote = new Hono<Env>()
 
@@ -166,7 +167,7 @@ export default quote
 // ─── Components ───
 
 function QuoteShell({ title, children }: { title: string; children: any }) {
-  return (
+  return withDoctype(
     <html lang="en">
       <head>
         <SharedHead title={title} />

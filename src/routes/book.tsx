@@ -14,7 +14,7 @@ import { celebrantTermLabel } from '../lib/celebrant-term'
 import { getContractByInvoice, signContract, getContractById } from '../db/contracts'
 import { formatDate, formatDateTime } from '../lib/date'
 import { isValidEmail } from '../lib/validation'
-import { parseBookingFormConfig } from '../lib/form-schema'
+import { configHasAddressField, parseBookingFormConfig } from '../lib/form-schema'
 import type { FormConfig, FormField } from '../lib/form-schema'
 import { FormEnhancements } from '../lib/form-enhance'
 import { t } from '../i18n'
@@ -22,6 +22,7 @@ import { verifyTurnstile } from '../services/turnstile'
 import { rateLimit } from '../middleware/rate-limit'
 import { BrandThemeHead, BrandLogo, parseBrandTheme, formLogoUrl, formOgImage } from '../lib/form-theme'
 import type { BrandTheme } from '../lib/form-theme'
+import { withDoctype } from '../views/document'
 
 const book = new Hono<Env>()
 
@@ -496,7 +497,7 @@ async function createStripeCheckoutSession(
 // ─── Components ───
 
 function FormShell({ embed, children, theme, meta }: { embed: boolean; children: any; theme?: BrandTheme; meta?: HeadMeta }) {
-  return (
+  return withDoctype(
     <html lang="en">
       <head>
         <SharedHead title="Booking" {...meta} />
@@ -624,7 +625,7 @@ function BookingForm({
         </p>
       </form>
 
-      <FormEnhancements mapsKey={mapsKey} />
+      <FormEnhancements mapsKey={config && configHasAddressField(config) ? mapsKey : undefined} />
     </div>
   )
 }

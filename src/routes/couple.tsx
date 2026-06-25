@@ -4,6 +4,8 @@ import type { Env, User, Wedding, InvoicePayment, Email, CoupleVendor } from '..
 import { COUPLE_VENDOR_CATEGORIES } from '../types'
 import { SharedHead } from '../views/head'
 import { Logo } from '../views/logo'
+import { HTMX_SCRIPT_SRC } from '../lib/assets'
+import { withDoctype } from '../views/document'
 import { requireAuth } from '../middleware/auth'
 import { csrf } from '../middleware/csrf'
 import { getWedding, getWeddingMembers, getMembership, getAnyMembership, addWeddingMember, updateWedding } from '../db/weddings'
@@ -2221,11 +2223,11 @@ type LayoutProps = PropsWithChildren<{
   csrfToken: string
 }>
 
-const CoupleLayout: FC<LayoutProps> = ({ title, user, wedding, csrfToken, children }) => (
+const CoupleLayout: FC<LayoutProps> = ({ title, user, wedding, csrfToken, children }) => withDoctype(
   <html lang="en">
     <head>
       <SharedHead title={title} />
-      <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+      <script src={HTMX_SCRIPT_SRC} defer></script>
       <meta name="csrf-token" content={csrfToken} />
     </head>
     <body class="bg-papaya-50 text-gray-900 antialiased font-sans" hx-headers={`{"X-CSRF-Token": "${csrfToken}"}`}>

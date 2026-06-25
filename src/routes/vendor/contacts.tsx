@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import type { Env, Contact, Bindings, VendorProfile } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
 import { requireAuth } from '../../middleware/auth'
@@ -44,6 +44,45 @@ const STATUSES = [
   { value: 'lost', label: 'Lost' },
   { value: 'archived', label: 'Archived' },
 ]
+
+const CONTACT_MIGRATION_CLEAR_TTL = 60 * 60 * 6
+
+function contactMigrationClearKey(vendorId: string): string {
+  return `contacts:migration-clear:${vendorId}`
+}
+
+function markContactsMigrationClear(c: Context<Env>, vendorId: string) {
+  c.executionCtx.waitUntil(
+    c.env.KV
+      .put(contactMigrationClearKey(vendorId), '1', { expirationTtl: CONTACT_MIGRATION_CLEAR_TTL })
+      .catch((err) => console.error('[contacts] failed to cache migration-clear flag:', err))
+  )
+}
+
+async function ensureContactsIndexed(
+  c: Context<Env>,
+  vendor: VendorProfile,
+  storage?: StorageBackend | null
+): Promise<StorageBackend | null> {
+  if ((await c.env.KV.get(contactMigrationClearKey(vendor.id))) === '1') return storage ?? null
+  if (!(await needsMigration(c.env.DB, vendor.id))) {
+    markContactsMigrationClear(c, vendor.id)
+    return storage ?? null
+  }
+
+  const resolvedStorage = storage ?? await tryGetStorage(c.env, vendor)
+  if (!resolvedStorage) {
+    console.error('[contacts] R2 unavailable, skipping lazy migration')
+    return null
+  }
+
+  const migrationResult = await repairContacts(resolvedStorage, c.env.DB, vendor.id)
+  console.log(
+    `[migrate] Vendor ${vendor.id}: migrated ${migrationResult.migrated}, rewritten ${migrationResult.rewritten}, skipped ${migrationResult.skipped}, errors ${migrationResult.errors}`
+  )
+  if (migrationResult.errors === 0) markContactsMigrationClear(c, vendor.id)
+  return resolvedStorage
+}
 
 function statusButtons(contactId: string, activeStatus: string) {
   return (
@@ -147,22 +186,10 @@ contacts.get('/app/contacts', async (c) => {
   const vendor = c.get('vendor')!
 
   try {
-    // Lazy migration: if vendor has D1 contacts but no file index,
-    // export them to markdown files before showing the list.
-    // If migration fails, fall through -- the old contacts table
-    // data still exists and the page can still render.
+    // Lazy migration is retained for any straggler vendors, but a KV guard keeps
+    // clean vendors from paying the migration check on every contacts request.
     try {
-      if (await needsMigration(c.env.DB, vendor.id)) {
-        const storage = await tryGetStorage(c.env, vendor)
-        if (storage) {
-          const migrationResult = await repairContacts(storage, c.env.DB, vendor.id)
-          console.log(
-            `[migrate] Vendor ${vendor.id}: migrated ${migrationResult.migrated}, rewritten ${migrationResult.rewritten}, skipped ${migrationResult.skipped}, errors ${migrationResult.errors}`
-          )
-        } else {
-          console.error('[contacts] R2 unavailable, skipping lazy migration')
-        }
-      }
+      await ensureContactsIndexed(c, vendor)
     } catch (err) {
       console.error(`[migrate] Lazy migration failed for vendor ${vendor.id}:`, err)
     }
@@ -353,30 +380,30 @@ contacts.get('/app/contacts/:id', async (c) => {
 
     if (!contact) return c.text('Contact not found', 404)
 
-    const activities = await listActivities(c.env.DB, contact.id)
-    const bookingFormRows = await c.env.DB
-      .prepare(
-        'SELECT title, booking_form_data FROM invoices WHERE vendor_id = ? AND contact_id = ? AND booking_form_data IS NOT NULL'
-      )
-      .bind(vendor.id, contact.id)
-      .all<{ title: string; booking_form_data: string }>()
-      .then((r) => r.results)
-
-    const isPro = await isProVendor(c.env.DB, vendor.id)
-
     // Date demand for the contact's wedding date (only meaningful for an
     // upcoming date): relative score plus year-on-year history for the
     // matching weekend, month, and season, at the most location-specific
     // level with data. The card's pills re-fetch at other levels.
-    let demandView: DemandView | null = null
     const today = new Date().toISOString().slice(0, 10)
-    if (contact.wedding_date && contact.wedding_date >= today) {
-      try {
-        demandView = await resolveDemandView(c.env.DB, contact.wedding_date, vendor)
-      } catch (err) {
-        console.error('[contacts] demand lookup failed:', err)
-      }
-    }
+    const demandViewPromise: Promise<DemandView | null> =
+      contact.wedding_date && contact.wedding_date >= today
+        ? resolveDemandView(c.env.DB, contact.wedding_date, vendor).catch((err) => {
+            console.error('[contacts] demand lookup failed:', err)
+            return null
+          })
+        : Promise.resolve(null)
+    const [activities, bookingFormRows, isPro, demandView] = await Promise.all([
+      listActivities(c.env.DB, contact.id),
+      c.env.DB
+        .prepare(
+          'SELECT title, booking_form_data FROM invoices WHERE vendor_id = ? AND contact_id = ? AND booking_form_data IS NOT NULL'
+        )
+        .bind(vendor.id, contact.id)
+        .all<{ title: string; booking_form_data: string }>()
+        .then((r) => r.results),
+      isProVendor(c.env.DB, vendor.id),
+      demandViewPromise,
+    ])
 
     const error = c.req.query('error')
 
@@ -627,9 +654,7 @@ contacts.post('/app/contacts/:id/edit', async (c) => {
     }
 
     const storage = await getStorageWithSecrets(c.env, vendor)
-    if (await needsMigration(c.env.DB, vendor.id)) {
-      await repairContacts(storage, c.env.DB, vendor.id)
-    }
+    await ensureContactsIndexed(c, vendor, storage)
     await updateContact(storage, c.env.DB, vendor.id, contactId, updateData)
 
     c.executionCtx.waitUntil(
@@ -651,8 +676,10 @@ contacts.get('/app/contacts/:id/demand', async (c) => {
   const contactId = c.req.param('id')
 
   let contact: Contact | null = null
-  const storage = await tryGetStorage(c.env, vendor)
-  if (storage) {
+  const cached = await getContactCached(c.env.DB, vendor.id, contactId)
+  if (cached) contact = cached.contact
+  const storage = contact ? null : await tryGetStorage(c.env, vendor)
+  if (!contact && storage) {
     try {
       const result = await getContact(storage, c.env.DB, vendor.id, contactId)
       if (result) contact = result.contact
@@ -682,8 +709,10 @@ contacts.post('/app/contacts/:id/status', async (c) => {
 
     // Load the contact to get the old status for the activity log
     let oldContact: Contact | null = null
+    const cached = await getContactCached(c.env.DB, vendor.id, contactId)
+    if (cached) oldContact = cached.contact
     const storage = await tryGetStorage(c.env, vendor)
-    if (storage) {
+    if (!oldContact && storage) {
       try {
         const result = await getContact(storage, c.env.DB, vendor.id, contactId)
         if (result) oldContact = result.contact
@@ -704,9 +733,7 @@ contacts.post('/app/contacts/:id/status', async (c) => {
 
     // Update status
     if (!storage) return c.text('Failed to update status', 500)
-    if (await needsMigration(c.env.DB, vendor.id)) {
-      await repairContacts(storage, c.env.DB, vendor.id)
-    }
+    await ensureContactsIndexed(c, vendor, storage)
     await updateContactStatus(storage, c.env.DB, vendor.id, contactId, status)
 
     await createActivity(
@@ -785,9 +812,7 @@ contacts.post('/app/contacts/:id/delete', async (c) => {
     await auditLog(c, 'contact_deleted', 'contact', contactId).catch(() => {})
 
     const storage = await getStorageWithSecrets(c.env, vendor)
-    if (await needsMigration(c.env.DB, vendor.id)) {
-      await repairContacts(storage, c.env.DB, vendor.id)
-    }
+    await ensureContactsIndexed(c, vendor, storage)
     await deleteContact(storage, c.env.DB, vendor.id, contactId)
 
     return c.redirect('/app/contacts')

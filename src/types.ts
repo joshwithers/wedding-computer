@@ -1,4 +1,5 @@
 export type Bindings = {
+  ASSETS?: Fetcher
   DB: D1Database
   KV: KVNamespace
   STORAGE?: R2Bucket

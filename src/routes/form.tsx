@@ -13,11 +13,12 @@ import { rateLimit } from '../middleware/rate-limit'
 import { isValidEmail } from '../lib/validation'
 import { COUNTRIES } from '../forms/countries'
 import type { FormConfig, FormField, FormStep, FormAction, ContactMapping } from '../lib/form-schema'
-import { configHasFileField } from '../lib/form-schema'
+import { configHasAddressField, configHasFileField } from '../lib/form-schema'
 import { FormEnhancements } from '../lib/form-enhance'
 import { t } from '../i18n'
 import { BrandThemeHead, BrandLogo, parseBrandTheme, formLogoUrl, formOgImage } from '../lib/form-theme'
 import type { BrandTheme } from '../lib/form-theme'
+import { withDoctype } from '../views/document'
 
 const form = new Hono<Env>()
 
@@ -499,7 +500,7 @@ async function handleCreateContact(
 
 function FormShell({ children, embed, theme, logoUrl, meta }: { children: any; embed?: boolean; theme?: BrandTheme; logoUrl?: string | null; meta?: HeadMeta }) {
   if (embed) {
-    return (
+    return withDoctype(
       <html>
         <head>
           <SharedHead title="Form" {...meta} />
@@ -515,7 +516,7 @@ function FormShell({ children, embed, theme, logoUrl, meta }: { children: any; e
     )
   }
 
-  return (
+  return withDoctype(
     <html>
       <head>
         <SharedHead title="Form" {...meta} />
@@ -624,7 +625,7 @@ function FormRenderer({
       <script dangerouslySetInnerHTML={{ __html: formLogicScript() }} />
 
       {/* Location autocomplete + future-date/countdown helpers */}
-      <FormEnhancements mapsKey={mapsKey} />
+      <FormEnhancements mapsKey={configHasAddressField(config) ? mapsKey : undefined} />
     </div>
   )
 }

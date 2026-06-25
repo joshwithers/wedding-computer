@@ -12,7 +12,9 @@ import { SharedHead } from './head'
 import { Logo } from './logo'
 import { t, tp } from '../i18n'
 import { formatDateTime } from '../lib/date'
+import { HTMX_SCRIPT_SRC } from '../lib/assets'
 import { cohortLabel, seasonWord } from '../lib/season'
+import { withDoctype } from './document'
 import { COUNTRIES } from '../forms/countries'
 import type { Season } from '../types'
 import type { CommunityCohort, CommunityMember, CommunityThreadRow, CommunityPost } from '../db/community'
@@ -28,11 +30,11 @@ export const CommunityLayout: FC<PropsWithChildren<{ title?: string; user: User;
   user,
   csrfToken,
   children,
-}) => (
+}) => withDoctype(
   <html lang="en">
     <head>
       <SharedHead title={title ?? t('community.title')} />
-      <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+      <script src={HTMX_SCRIPT_SRC} defer></script>
       <meta name="csrf-token" content={csrfToken} />
     </head>
     <body

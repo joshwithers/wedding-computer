@@ -8,6 +8,8 @@ workers_dev = true
 
 [assets]
 directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/assets/*"]
 
 [ai]
 binding = "AI"

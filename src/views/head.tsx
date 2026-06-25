@@ -1,4 +1,5 @@
 import type { FC } from 'hono/jsx'
+import { STYLESHEET_HREF } from '../lib/assets'
 
 // Per-page <head> overrides. Everything is optional; omitting a field falls
 // back to the platform default, so existing callers that pass only `title`
@@ -57,8 +58,8 @@ export const SharedHead: FC<HeadMeta> = ({
       <link rel="icon" href="/favicon-16x16.png" sizes="16x16" type="image/png" />
       <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       <link rel="manifest" href="/site.webmanifest" />
-      <link rel="preload" href="/styles.css" as="style" />
-      <link rel="stylesheet" href="/styles.css" />
+      <link rel="preload" href={STYLESHEET_HREF} as="style" />
+      <link rel="stylesheet" href={STYLESHEET_HREF} />
       <meta name="theme-color" content="#C53030" />
       <meta property="og:type" content={oType} />
       <meta property="og:site_name" content="Wedding Computer" />

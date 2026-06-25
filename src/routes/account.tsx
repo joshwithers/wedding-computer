@@ -3,6 +3,7 @@ import type { FC, PropsWithChildren } from 'hono/jsx'
 import type { Contact, Env, User, Wedding } from '../types'
 import { SharedHead } from '../views/head'
 import { Logo } from '../views/logo'
+import { withDoctype } from '../views/document'
 import { MarketingLayout } from '../views/layouts/marketing'
 import { requireAuth } from '../middleware/auth'
 import { csrf } from '../middleware/csrf'
@@ -51,7 +52,7 @@ const AccountLayout: FC<PropsWithChildren<{ title?: string; user: User; csrfToke
   csrfToken,
   backUrl,
   children,
-}) => (
+}) => withDoctype(
   <html lang={getI18n().language}>
     <head>
       <SharedHead title={title} />

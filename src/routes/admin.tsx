@@ -3,6 +3,7 @@ import type { FC, PropsWithChildren } from 'hono/jsx'
 import type { Env, User } from '../types'
 import { SharedHead } from '../views/head'
 import { Logo } from '../views/logo'
+import { withDoctype } from '../views/document'
 import { requireAuth } from '../middleware/auth'
 import { requireAdmin } from '../middleware/admin'
 import { csrf } from '../middleware/csrf'
@@ -30,7 +31,7 @@ admin.use('/admin/*', requireAuth, requireAdmin, csrf)
 
 // ─── Layout ───
 
-const AdminLayout: FC<PropsWithChildren<{ title?: string; user: User; csrfToken: string }>> = ({ title, user, csrfToken, children }) => (
+const AdminLayout: FC<PropsWithChildren<{ title?: string; user: User; csrfToken: string }>> = ({ title, user, csrfToken, children }) => withDoctype(
   <html lang="en">
     <head>
       <SharedHead title={title ? `Admin — ${title}` : 'Admin'} />
