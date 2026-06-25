@@ -3,7 +3,7 @@
 // services/timeline-permissions. Reuses updateWedding for the projection shim
 // that keeps the legacy weddings.* slot columns in step during phases 1-3.
 
-import type { TimelineItem, TimelineItemAssignee, TimelineCategory, TimelineVisibility, TimelineSlot, TimelineMarker, RunSheetItem, Wedding } from '../types'
+import type { TimelineItem, TimelineItemAssignee, TimelineCategory, TimelineVisibility, TimelineSlot, TimelineMarker, RunSheetItem, Wedding, D1Like } from '../types'
 import { updateWedding, getWedding } from './weddings'
 import { solveTimeline, minToHhmm, type SolverItem, type SunMinutes } from '../lib/timeline-solver'
 import { sunMinutesFor } from '../lib/sun'
@@ -428,7 +428,7 @@ export async function listUserCalendarRows(db: D1Database, userId: string): Prom
 // every wedding any of its memberships are on.
 
 /** Every shared-timeline section this vendor may see, across all its weddings. */
-export async function listVendorCalendarRows(db: D1Database, vendorId: string): Promise<UserCalendarRow[]> {
+export async function listVendorCalendarRows(db: D1Like, vendorId: string): Promise<UserCalendarRow[]> {
   return db
     .prepare(`${VENDOR_CALENDAR_SELECT}
        ORDER BY w.date ASC, (ti.start_time IS NULL), ti.start_time ASC`)

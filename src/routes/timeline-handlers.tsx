@@ -48,6 +48,7 @@ import { getWedding } from '../db/weddings'
 import { daylightStrip, sunMinutesFor, resolveLocationTimezone } from '../lib/sun'
 import { solveTimeline, minToHhmm, hhmmToMin } from '../lib/timeline-solver'
 import { nowTimeString, formatDate } from '../lib/date'
+import { timed } from '../lib/timing'
 import { t, getI18n } from '../i18n'
 import { getCouplePartners } from '../services/couple-contact'
 import {
@@ -176,6 +177,9 @@ async function buildProps(
     // read-only GET render path, which self-fetches.
     lead?: Awaited<ReturnType<typeof getTimelineLead>>
     wedding?: Awaited<ReturnType<typeof getWedding>>
+    // The roster (people available to assign) is invariant across an assignee
+    // add/remove, so those handlers pass theirs through to skip the re-fetch.
+    roster?: RosterEntry[]
     // Re-populate the add form after a validation failure (so typed input isn't
     // lost) + an inline error. When omitted, the add form defaults its location
     // to the last item's location.
@@ -187,13 +191,13 @@ async function buildProps(
   // Resolve the lead before the batch so leadLabel can run inside it (instead of
   // a trailing serial round-trip). Reuse the handler's lead when provided.
   const lead = opts?.lead ?? (await getTimelineLead(c.env.DB, weddingId))
-  const [allItems, roster, pendingRaw, wedding, leadLbl] = await Promise.all([
+  const [allItems, roster, pendingRaw, wedding, leadLbl] = await timed(c, 'tl_render_q', () => Promise.all([
     listTimeline(c.env.DB, weddingId),
-    resolveWeddingRoster(c.env.DB, weddingId),
+    opts?.roster ? Promise.resolve(opts.roster) : resolveWeddingRoster(c.env.DB, weddingId),
     listPendingTimelineRequests(c.env.DB, weddingId),
     opts?.wedding ?? getWedding(c.env.DB, weddingId),
     leadLabel(c, weddingId, lead.leadUserIds),
-  ])
+  ]))
   const i18n = getI18n()
   const sun = wedding
     ? daylightStrip({
@@ -338,28 +342,17 @@ function body(c: Ctx, props: TimelineProps) {
  *  so the re-render can reuse it instead of fetching it again. Pass `log` to
  *  record the change in the wedding's activity log (written off the response
  *  path, alongside the dirty flag / projection / push). */
-async function afterWrite(
+/** Deferred side effects shared by every applied timeline write — none of these
+ *  block the re-render. Activity log, the debounced "run sheet updated" dirty
+ *  flag, the legacy slot-column projection, and the markdown/vault push. */
+function deferTimelineSideEffects(
   c: Ctx,
   weddingId: string,
-  log?: { action: string; detail?: string | null },
-  preWedding?: Awaited<ReturnType<typeof getWedding>>
+  log?: { action: string; detail?: string | null }
 ) {
   const env = c.env
   const vendor = c.get('vendor')
   const userId = c.get('user')?.id ?? ''
-  // Re-solve the liquid timeline and persist concrete start/end times BEFORE we
-  // render + project, so display, the legacy slot columns, calendars and
-  // markdown all reflect the recomputed clock. The view renders the persisted
-  // start_time, so this MUST stay awaited before the re-render (a deferral here
-  // would show new/anchored rows as "—"). One getWedding feeds both this and
-  // the re-render. Everything else (dirty flag, projection, calendars, vault
-  // push) is deferred so the edit feels instant.
-  const wedding = preWedding ?? (await getWedding(env.DB, weddingId))
-  try {
-    await resolveAndMaterialize(env.DB, weddingId, wedding ? sunMinutesForWedding(wedding) : {})
-  } catch (err) {
-    console.error('[timeline] materialize failed', err)
-  }
   c.executionCtx.waitUntil(
     (async () => {
       try {
@@ -376,6 +369,31 @@ async function afterWrite(
       }
     })()
   )
+}
+
+async function afterWrite(
+  c: Ctx,
+  weddingId: string,
+  log?: { action: string; detail?: string | null },
+  preWedding?: Awaited<ReturnType<typeof getWedding>>
+) {
+  const env = c.env
+  // Re-solve the liquid timeline and persist concrete start/end times BEFORE we
+  // render + project, so display, the legacy slot columns, calendars and
+  // markdown all reflect the recomputed clock. The view renders the persisted
+  // start_time, so this MUST stay awaited before the re-render (a deferral here
+  // would show new/anchored rows as "—"). One getWedding feeds both this and
+  // the re-render. Everything else (dirty flag, projection, calendars, vault
+  // push) is deferred so the edit feels instant. NOTE: only call afterWrite for
+  // writes that can move the clock — assignee add/remove uses
+  // deferTimelineSideEffects directly to skip this SELECT-all-items + re-solve.
+  const wedding = preWedding ?? (await getWedding(env.DB, weddingId))
+  try {
+    await timed(c, 'tl_materialize', () => resolveAndMaterialize(env.DB, weddingId, wedding ? sunMinutesForWedding(wedding) : {}))
+  } catch (err) {
+    console.error('[timeline] materialize failed', err)
+  }
+  deferTimelineSideEffects(c, weddingId, log)
   return wedding
 }
 
@@ -390,6 +408,7 @@ export async function renderTimeline(
     flash?: string
     lead?: Awaited<ReturnType<typeof getTimelineLead>>
     wedding?: Awaited<ReturnType<typeof getWedding>>
+    roster?: RosterEntry[]
     addValues?: Partial<RowFields>
     addError?: string
   }
@@ -579,33 +598,41 @@ export async function endLiveTimeline(c: Ctx, weddingId: string, member: Wedding
 }
 
 export async function addTimelineAssignee(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string, itemId: string) {
-  const item = await getItem(c.env.DB, weddingId, itemId)
-  const lead = await getTimelineLead(c.env.DB, weddingId)
-  let wedding: Awaited<ReturnType<typeof afterWrite>> | undefined
+  // item + lead are independent — fetch together instead of two serial waves.
+  const [item, lead] = await Promise.all([
+    getItem(c.env.DB, weddingId, itemId),
+    getTimelineLead(c.env.DB, weddingId),
+  ])
+  // Reuse the matched roster on the re-render (it's invariant across the write).
+  let roster: RosterEntry[] | undefined
   if (item && canManageAssignees(item, viewerOf(user, member), lead)) {
     const f = await c.req.parseBody()
     const who = str(f.who)
     if (who) {
-      const roster: RosterEntry[] = await resolveWeddingRoster(c.env.DB, weddingId)
+      roster = await resolveWeddingRoster(c.env.DB, weddingId)
       const match = roster.find((r) => r.name.toLowerCase() === who.toLowerCase())
       if (match?.kind === 'member') await addAssignee(c.env.DB, itemId, { wedding_member_id: match.id })
       else if (match?.kind === 'team') await addAssignee(c.env.DB, itemId, { team_member_id: match.id })
       else await addAssignee(c.env.DB, itemId, { label: who })
-      wedding = await afterWrite(c, weddingId)
+      // Assignees never move the clock, so skip afterWrite's SELECT-all + re-solve
+      // (resolveAndMaterialize) — just run the deferred log/dirty/projection/push.
+      deferTimelineSideEffects(c, weddingId)
     }
   }
-  return renderTimeline(c, weddingId, member, user, basePath, { lead, wedding })
+  return renderTimeline(c, weddingId, member, user, basePath, { lead, roster })
 }
 
 export async function removeTimelineAssignee(c: Ctx, weddingId: string, member: WeddingMember, user: User, basePath: string, itemId: string, assigneeId: string) {
-  const item = await getItem(c.env.DB, weddingId, itemId)
-  const lead = await getTimelineLead(c.env.DB, weddingId)
-  let wedding: Awaited<ReturnType<typeof afterWrite>> | undefined
+  const [item, lead] = await Promise.all([
+    getItem(c.env.DB, weddingId, itemId),
+    getTimelineLead(c.env.DB, weddingId),
+  ])
   if (item && canManageAssignees(item, viewerOf(user, member), lead)) {
     await removeAssignee(c.env.DB, itemId, assigneeId)
-    wedding = await afterWrite(c, weddingId)
+    // Same as add: no clock change, so skip materialize.
+    deferTimelineSideEffects(c, weddingId)
   }
-  return renderTimeline(c, weddingId, member, user, basePath, { lead, wedding })
+  return renderTimeline(c, weddingId, member, user, basePath, { lead })
 }
 
 // ── Approvals (lead only) ──

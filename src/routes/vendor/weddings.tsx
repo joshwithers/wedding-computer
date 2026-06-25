@@ -23,7 +23,9 @@ import { getContact, updateContact } from '../../storage/contacts'
 import { getStorageWithSecrets } from '../../storage'
 import { pushAllWeddingFiles } from '../../services/storage-push'
 import { createActivity } from '../../db/activities'
-import type { Bindings, VendorProfile, Wedding, Form } from '../../types'
+import type { Bindings, VendorProfile, Wedding, Form, WeddingMember } from '../../types'
+import { timed } from '../../lib/timing'
+import { dbOf } from '../../middleware/d1-session'
 import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { getUserByEmail } from '../../db/users'
 import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
@@ -549,30 +551,38 @@ weddings.post('/app/weddings/:id/invite', rateLimit(20, 60), async (c) => {
   c.executionCtx.waitUntil(appendWeddingLog(c.env.DB, weddingId, user.id, 'Couple added', name).catch((e) => console.error('[wedding-log] append failed', e)))
 
   const wedding = await getWedding(c.env.DB, weddingId)
-  sendCoupleInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
-    email,
-    coupleName: name.split(' ')[0],
-    vendorName: vendor.business_name,
-    weddingTitle: wedding?.title ?? 'Your wedding',
-    weddingDate: wedding?.date ? formatDate(wedding.date) : null,
-  }).catch((e) => console.error('[INVITE]', e.message))
-
-  // Other vendors on this wedding learn the couple has been added
-  await c.env.EMAIL_QUEUE.send({
-    type: 'notify_couple_joined',
-    payload: JSON.stringify({ weddingId, coupleName: name, excludeVendorProfileId: vendor.id }),
-  }).catch((e) => console.error('[INVITE] couple_joined enqueue failed', e.message))
-
+  // Everything past the membership write is BACKGROUND (waitUntil): the invite
+  // email (a live Resend call), the "couple joined" fan-out to other vendors,
+  // and the admin ping. None of it blocks the htmx re-render. (These were
+  // floating/awaited before — floating promises can be cancelled once the
+  // response returns, so the invite email wasn't even reliably delivered.)
+  c.executionCtx.waitUntil(
+    sendCoupleInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
+      email,
+      coupleName: name.split(' ')[0],
+      vendorName: vendor.business_name,
+      weddingTitle: wedding?.title ?? 'Your wedding',
+      weddingDate: wedding?.date ? formatDate(wedding.date) : null,
+    }).catch((e) => console.error('[INVITE]', e.message))
+  )
+  c.executionCtx.waitUntil(
+    c.env.EMAIL_QUEUE.send({
+      type: 'notify_couple_joined',
+      payload: JSON.stringify({ weddingId, coupleName: name, excludeVendorProfileId: vendor.id }),
+    }).catch((e) => console.error('[INVITE] couple_joined enqueue failed', e.message))
+  )
   if (isNewUser) {
-    await c.env.EMAIL_QUEUE.send({
-      type: 'notify_admin_signup',
-      payload: JSON.stringify({ kind: 'couple', name, email }),
-    }).catch((e) => console.error('[INVITE] admin signup enqueue failed', e.message))
+    c.executionCtx.waitUntil(
+      c.env.EMAIL_QUEUE.send({
+        type: 'notify_admin_signup',
+        payload: JSON.stringify({ kind: 'couple', name, email }),
+      }).catch((e) => console.error('[INVITE] admin signup enqueue failed', e.message))
+    )
   }
 
   track(c.env.DB, vendor.id, 'couple_invited', { weddingId })
 
-  return peopleResult(c, weddingId, { invited: true })
+  return peopleResult(c, weddingId, { invited: true, membership, wedding })
 })
 
 // ─── Add guest / other person to wedding ───
@@ -611,17 +621,21 @@ weddings.post('/app/weddings/:id/add-guest', rateLimit(60, 60), async (c) => {
 
   c.executionCtx.waitUntil(appendWeddingLog(c.env.DB, weddingId, user.id, 'Guest added', name).catch((e) => console.error('[wedding-log] append failed', e)))
 
-  // Send them the same invite email so they can access the wedding
+  // Send them the same invite email so they can access the wedding — backgrounded
+  // (waitUntil) so the live Resend call doesn't gate the re-render, and so it's
+  // actually delivered (a floating promise can be cancelled with the response).
   const wedding = await getWedding(c.env.DB, weddingId)
-  sendCoupleInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
-    email,
-    coupleName: name.split(' ')[0],
-    vendorName: vendor.business_name,
-    weddingTitle: wedding?.title ?? 'Your wedding',
-    weddingDate: wedding?.date ? formatDate(wedding.date) : null,
-  }).catch((e) => console.error('[INVITE]', e.message))
+  c.executionCtx.waitUntil(
+    sendCoupleInvite(c.env.DB, c.env.KV, c.env.RESEND_API_KEY, c.env.APP_URL, {
+      email,
+      coupleName: name.split(' ')[0],
+      vendorName: vendor.business_name,
+      weddingTitle: wedding?.title ?? 'Your wedding',
+      weddingDate: wedding?.date ? formatDate(wedding.date) : null,
+    }).catch((e) => console.error('[INVITE]', e.message))
+  )
 
-  return peopleResult(c, weddingId, { invited: true })
+  return peopleResult(c, weddingId, { invited: true, membership, wedding })
 })
 
 // ─── Autolookup: typeahead of existing Wedding Computer vendors ───
@@ -639,7 +653,10 @@ weddings.get('/app/weddings/:id/vendor-search', rateLimit(60, 60), async (c) => 
 
   const q = (c.req.query('q') ?? '').trim()
   if (q.length < 2) return c.html('')
-  const matches = await searchVendorsForWedding(c.env.DB, weddingId, q)
+  // Heavy LIKE scan over the vendor directory — a read replica is fine here
+  // (a vendor added in the last second not yet appearing in a typeahead is
+  // harmless), and it keeps the directory scan off the write primary.
+  const matches = await timed(c, 'vendor_search', () => searchVendorsForWedding(dbOf(c), weddingId, q))
   if (matches.length === 0) return c.html('')
 
   const csrfToken = c.get('csrfToken')
@@ -711,7 +728,7 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
     c.executionCtx.waitUntil(ensureCoupleContact(c.env, vp, weddingId))
     c.executionCtx.waitUntil(appendWeddingLog(c.env.DB, weddingId, user.id, 'Vendor added', vp.business_name).catch((e) => console.error('[wedding-log] append failed', e)))
     track(c.env.DB, vendor.id, 'vendor_added', { weddingId, metadata: { vendorId: vp.id } })
-    return peopleResult(c, weddingId, { invited: true })
+    return peopleResult(c, weddingId, { invited: true, membership })
   }
 
   const email = String(body.email).trim().toLowerCase()
@@ -797,7 +814,7 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
 
   track(c.env.DB, vendor.id, 'vendor_added', { weddingId, metadata: { vendorEmail: email } })
 
-  return peopleResult(c, weddingId, { invited: true })
+  return peopleResult(c, weddingId, { invited: true, membership })
 })
 
 // ─── Set a vendor member's type(s) for this wedding ───
@@ -2032,14 +2049,21 @@ function wantsPartial(c: Context<Env>): boolean {
 async function renderPeopleSection(
   c: Context<Env>,
   weddingId: string,
-  opts?: { invited?: string; error?: string }
+  opts?: {
+    invited?: string
+    error?: string
+    // The mutation handler already loaded these — reuse them on the re-render
+    // instead of re-querying (membership + wedding are invariant across the add).
+    membership?: WeddingMember | null
+    wedding?: Awaited<ReturnType<typeof getWedding>>
+  }
 ): Promise<Response> {
   const user = c.get('user')
-  const [membership, wedding, allMembers] = await Promise.all([
-    getMembership(c.env.DB, weddingId, user.id),
-    getWedding(c.env.DB, weddingId),
+  const [membership, wedding, allMembers] = await timed(c, 'people_render_q', () => Promise.all([
+    opts?.membership !== undefined ? Promise.resolve(opts.membership) : getMembership(c.env.DB, weddingId, user.id),
+    opts?.wedding !== undefined ? Promise.resolve(opts.wedding) : getWedding(c.env.DB, weddingId),
     getWeddingMembers(c.env.DB, weddingId),
-  ])
+  ]))
   if (!membership || !wedding) return c.text('Wedding not found', 404)
   const canManage = !!membership.can_manage
   const members = allMembers // everyone on a wedding sees the full team
@@ -2064,12 +2088,21 @@ async function renderPeopleSection(
 async function peopleResult(
   c: Context<Env>,
   weddingId: string,
-  opts: { errorCode?: string; invited?: boolean }
+  opts: {
+    errorCode?: string
+    invited?: boolean
+    // Pass through data the handler already fetched so the htmx re-render skips
+    // the duplicate membership/wedding reads.
+    membership?: WeddingMember | null
+    wedding?: Awaited<ReturnType<typeof getWedding>>
+  }
 ): Promise<Response> {
   if (wantsPartial(c)) {
     return renderPeopleSection(c, weddingId, {
       invited: opts.invited ? '1' : undefined,
       error: opts.errorCode ? (peopleErrorMessage(opts.errorCode) ?? undefined) : undefined,
+      membership: opts.membership,
+      wedding: opts.wedding,
     })
   }
   const qs = opts.errorCode ? `?error=${opts.errorCode}` : opts.invited ? '?invited=1' : ''

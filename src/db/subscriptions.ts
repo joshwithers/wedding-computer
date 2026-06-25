@@ -1,4 +1,4 @@
-import type { Subscription } from '../types'
+import type { Subscription, D1Like } from '../types'
 
 export async function getSubscription(
   db: D1Database,
@@ -97,7 +97,7 @@ export async function updateSubscription(
 }
 
 export async function isProVendor(
-  db: D1Database,
+  db: D1Like,
   vendorId: string
 ): Promise<boolean> {
   const row = await db

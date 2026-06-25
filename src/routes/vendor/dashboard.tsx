@@ -16,6 +16,8 @@ import { buildSetupChecklist, categorySetup, type SetupChecklist, type CategoryS
 import { dismissSetup, dismissDemo } from '../../db/vendors'
 import { seedDemoData, teardownDemoData, hasDemoData, isNewVendor } from '../../services/demo-data'
 import { auditLog } from '../../middleware/audit'
+import { dbOf } from '../../middleware/d1-session'
+import { timed } from '../../lib/timing'
 
 const dashboard = new Hono<Env>()
 
@@ -27,7 +29,10 @@ dashboard.get('/app', async (c) => {
   if (!user) return c.redirect('/login')
   const vendor = c.get('vendor')
   if (!vendor) return c.redirect('/onboarding')
-  const db = c.env.DB
+  // Read-only landing page: route its query batch through the replica session so
+  // the dashboard fan-out doesn't load the write primary. dbOf falls back to the
+  // primary binding, and the "wrote-recently" window keeps it self-consistent.
+  const db = dbOf(c)
 
   const today = new Date().toISOString().slice(0, 10)
 
@@ -50,7 +55,7 @@ dashboard.get('/app', async (c) => {
 
   try {
     const [weddings, contacts, overdue, revenueRow, contactCounts, events, todos, eventsCountRow, enq30, book30, pro, demoLoaded, newVendor, tlRows] =
-      await Promise.all([
+      await timed(c, 'dash_q', () => Promise.all([
         db
           .prepare(
             `SELECT w.id, w.title, w.emoji, w.date, w.location
@@ -133,7 +138,7 @@ dashboard.get('/app', async (c) => {
         // dashboard "coming up" shows the whole shared timeline, not just the
         // legacy ceremony anchor in calendar_events.
         listVendorCalendarRows(db, vendor.id),
-      ])
+      ]))
 
     upcomingWeddings = weddings
     recentContacts = contacts

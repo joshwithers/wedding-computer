@@ -1,4 +1,4 @@
-import type { VendorProfile } from '../types'
+import type { VendorProfile, D1Like } from '../types'
 import { generateToken } from '../lib/crypto'
 import { sanitizeInstagramHandle } from '../lib/instagram'
 
@@ -36,7 +36,7 @@ export type VendorSearchHit = {
  *  (the invite resolves that server-side), so this can't be used to harvest
  *  contact details. Prefix matches rank first. */
 export async function searchVendorsForWedding(
-  db: D1Database,
+  db: D1Like,
   weddingId: string,
   q: string,
   limit = 8

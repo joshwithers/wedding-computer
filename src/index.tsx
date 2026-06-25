@@ -66,6 +66,8 @@ import { sendPendingVendorInviteReminders } from './services/invite-followups'
 import { flushTimelineNotifications } from './services/timeline-notify'
 import { purgeExpiredAccounts } from './services/account'
 import { logEvent } from './lib/log'
+import { newTiming, serverTimingHeader } from './lib/timing'
+import { d1Session } from './middleware/d1-session'
 import { syncVendorStorage } from './services/storage-sync'
 import { IMMUTABLE_ASSET_CACHE, sourcePathForVersionedAsset } from './lib/assets'
 
@@ -153,6 +155,8 @@ app.use((c, next) => {
 app.use(trimTrailingSlash())
 
 app.use('*', async (c, next) => {
+  const timing = newTiming()
+  c.set('timing', timing)
   await next()
 
   const headers = new Headers(c.res.headers)
@@ -174,6 +178,12 @@ app.use('*', async (c, next) => {
   if (isPrivatePath(path) && !headers.has('Cache-Control')) {
     headers.set('Cache-Control', 'private, no-store')
   }
+  // Surface where the request's time went (D1/KV round-trips) in DevTools →
+  // Network → Timing. Private paths only, so we don't perturb cached marketing
+  // responses. `total` is the whole request; named marks come from timed().
+  if (isPrivatePath(path)) {
+    headers.set('Server-Timing', serverTimingHeader(timing))
+  }
   if (isHtml && !headers.has('Content-Security-Policy')) {
     headers.set('Content-Security-Policy', contentSecurityPolicy(isLocal, isEmbed ? null : "'self'"))
   }
@@ -187,6 +197,11 @@ app.use('*', async (c, next) => {
     headers,
   })
 })
+
+// Opens a per-request D1 read session (replica-aware) exposed via dbOf(c). Runs
+// inside the security middleware so any Set-Cookie it adds survives the header
+// rebuild above. Safe everywhere: handlers that don't opt in keep using c.env.DB.
+app.use('*', d1Session)
 
 app.onError((err, c) => {
   const url = c.req.url

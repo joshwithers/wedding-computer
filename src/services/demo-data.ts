@@ -7,7 +7,7 @@
 // This calls the low-level db/storage creators directly (never the route flows),
 // so it fires NO emails, analytics, geocode, or couple invites.
 
-import type { Bindings, User, VendorProfile } from '../types'
+import type { Bindings, User, VendorProfile, D1Like } from '../types'
 import { createWedding, addWeddingMember } from '../db/weddings'
 import { findOrCreateUser } from './auth'
 import { createCoupleVendor } from '../db/couple-vendors'
@@ -352,7 +352,7 @@ export async function teardownDemoData(env: Bindings, vendor: VendorProfile, use
 
 // ─────────────────────────── status ───────────────────────────
 
-export async function hasDemoData(db: D1Database, vendorId: string, userId: string): Promise<boolean> {
+export async function hasDemoData(db: D1Like, vendorId: string, userId: string): Promise<boolean> {
   const row = await db
     .prepare('SELECT (SELECT COUNT(*) FROM weddings WHERE created_by_user_id = ? AND is_demo = 1) + (SELECT COUNT(*) FROM contacts WHERE vendor_id = ? AND is_demo = 1) AS c')
     .bind(userId, vendorId)
@@ -362,7 +362,7 @@ export async function hasDemoData(db: D1Database, vendorId: string, userId: stri
 
 // "New/empty" = no REAL (non-demo) weddings AND no REAL contacts. Gates the
 // first-run "Load sample data" invite — an experienced vendor never sees it.
-export async function isNewVendor(db: D1Database, vendorId: string, userId: string): Promise<boolean> {
+export async function isNewVendor(db: D1Like, vendorId: string, userId: string): Promise<boolean> {
   const row = await db
     .prepare(
       `SELECT (SELECT COUNT(*) FROM wedding_members wm JOIN weddings w ON w.id = wm.wedding_id

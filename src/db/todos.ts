@@ -1,4 +1,4 @@
-import type { TodoTemplate, WeddingTodo } from '../types'
+import type { TodoTemplate, WeddingTodo, D1Like } from '../types'
 
 // ─── Templates ───
 
@@ -174,7 +174,7 @@ export async function deleteWeddingTodo(
 
 /** List all wedding todos for a vendor with wedding titles (for dashboard). */
 export async function listWeddingTodosWithProgress(
-  db: D1Database,
+  db: D1Like,
   vendorId: string
 ): Promise<
   Array<{

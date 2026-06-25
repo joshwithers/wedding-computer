@@ -1,4 +1,4 @@
-import type { AnalyticsEvent } from '../types'
+import type { AnalyticsEvent, D1Like } from '../types'
 
 export async function trackEvent(
   db: D1Database,
@@ -28,7 +28,7 @@ export async function trackEvent(
 }
 
 export async function countEvents(
-  db: D1Database,
+  db: D1Like,
   vendorId: string,
   eventType: string,
   startDate: string,

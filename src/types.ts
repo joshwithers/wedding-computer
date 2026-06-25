@@ -63,8 +63,23 @@ export type Env = {
     user: User
     vendor?: VendorProfile
     csrfToken: string
+    // Per-request Server-Timing collector (src/lib/timing.ts), wired in index.tsx.
+    timing?: import('./lib/timing').TimingCollector
+    // Per-request D1 read session (src/middleware/d1-session.ts). Heavy read-only
+    // GET queries route through this (via dbOf) so they can use a read replica;
+    // auth + writes stay on the primary binding. Undefined outside the app.
+    db?: D1DatabaseSession
   }
 }
+
+/**
+ * The subset of D1 that both the primary binding (`D1Database`) and a read
+ * replica session (`D1DatabaseSession`) satisfy. DB functions that should be
+ * able to run against either accept this instead of the concrete `D1Database`,
+ * so passing a session is a non-breaking widening (every existing `c.env.DB`
+ * caller still type-checks).
+ */
+export type D1Like = Pick<D1Database, 'prepare' | 'batch'>
 
 export type User = {
   id: string
