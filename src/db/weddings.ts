@@ -5,6 +5,31 @@ export type WeddingWithRole = Wedding & {
   vendor_role: string | null
 }
 
+// ── Wedding-status predicates ──
+// Cancelling a wedding sets weddings.status='cancelled' but leaves its members,
+// timeline and calendar rows intact, so every "upcoming/active/calendar" listing
+// must filter on the wedding's own status — otherwise a cancelled wedding keeps
+// showing up. Filtering at READ time (rather than cascading deletes) keeps it
+// fully reversible: un-cancel and it returns everywhere. Reuse these so the rule
+// stays consistent across the dashboard, feeds, digest and MCP. `a` = the
+// weddings-table alias used in the surrounding query. Static SQL, no user input.
+
+/** Still on the books — not cancelled and not completed. For "upcoming"/"active"
+ *  lists (dashboard, digest) and the free-plan cap. */
+export const SQL_WEDDING_ACTIVE = (a = 'w') =>
+  `(${a}.status IS NULL OR ${a}.status NOT IN ('cancelled','completed'))`
+
+/** Not cancelled — completed weddings stay on as calendar history. For
+ *  calendar/feed timeline rows (iCal, CalDAV, dashboard "coming up"). */
+export const SQL_WEDDING_NOT_CANCELLED = (a = 'w') =>
+  `(${a}.status IS NULL OR ${a}.status != 'cancelled')`
+
+/** For a query over `calendar_events`: drop rows whose wedding was cancelled,
+ *  while keeping personal/blocked events that have no wedding. `ce` = the
+ *  calendar_events alias (or table name). */
+export const SQL_CALENDAR_EVENT_NOT_CANCELLED = (ce = 'calendar_events') =>
+  `NOT EXISTS (SELECT 1 FROM weddings w WHERE w.id = ${ce}.wedding_id AND w.status = 'cancelled')`
+
 export async function listWeddingsForVendor(
   db: D1Database,
   userId: string
@@ -39,7 +64,7 @@ export async function countActiveOwnWeddings(
        WHERE wm.user_id = ? AND wm.role = 'vendor' AND wm.status = 'active'
          AND w.created_by_user_id = ?
          AND w.is_demo = 0
-         AND (w.status IS NULL OR w.status NOT IN ('completed', 'cancelled'))
+         AND ${SQL_WEDDING_ACTIVE('w')}
          AND (w.date IS NULL OR w.date >= ?)`
     )
     .bind(userId, userId, today)
@@ -93,7 +118,7 @@ export async function createWedding(
 export async function updateWedding(
   db: D1Database,
   weddingId: string,
-  data: Partial<Pick<Wedding, 'title' | 'date' | 'time' | 'duration_hours' | 'location' | 'status' | 'notes' | 'ceremony_type' | 'vendor_visibility' | 'ceremony_location' | 'reception_location' | 'reception_time' | 'getting_ready_location' | 'getting_ready_time' | 'getting_ready_1_label' | 'getting_ready_2_location' | 'getting_ready_2_label' | 'getting_ready_2_time' | 'portrait_location' | 'portrait_time' | 'emoji' | 'reception_duration_hours' | 'timeline_notes' | 'dress_code' | 'guest_count'>>
+  data: Partial<Pick<Wedding, 'title' | 'date' | 'time' | 'duration_hours' | 'location' | 'status' | 'notes' | 'ceremony_type' | 'vendor_visibility' | 'ceremony_location' | 'reception_location' | 'reception_time' | 'getting_ready_location' | 'getting_ready_time' | 'getting_ready_1_label' | 'getting_ready_2_location' | 'getting_ready_2_label' | 'getting_ready_2_time' | 'portrait_location' | 'portrait_time' | 'emoji' | 'reception_duration_hours' | 'timeline_notes' | 'dress_code' | 'guest_count' | 'confirmed_at' | 'completed_at' | 'cancelled_at' | 'postponed_at' | 'cancellation_reason' | 'cancellation_note' | 'original_date'>>
 ): Promise<void> {
   const sets: string[] = []
   const values: unknown[] = []

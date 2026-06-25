@@ -62,6 +62,8 @@ function rowToContact(row: FileIndexRow, vendorId: string): Contact {
     last_contacted_at: c.last_contacted_at ?? null,
     created_at: c.created_at ?? '',
     updated_at: c.updated_at ?? '',
+    lost_reason: c.lost_reason ?? null,
+    lost_note: c.lost_note ?? null,
   }
 }
 

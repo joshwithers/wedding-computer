@@ -168,6 +168,14 @@ export function markdownToWedding(
     created_by_user_id: fm.created_by_user_id ?? '',
     created_at: fm.created_at ?? new Date().toISOString(),
     updated_at: fm.updated_at ?? new Date().toISOString(),
+    // Lifecycle state is operational (D1), not vault markdown — defaults here.
+    confirmed_at: null,
+    completed_at: null,
+    cancelled_at: null,
+    postponed_at: null,
+    cancellation_reason: null,
+    cancellation_note: null,
+    original_date: null,
   }
 }
 

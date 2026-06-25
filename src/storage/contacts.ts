@@ -173,6 +173,8 @@ export function markdownToContact(
     last_contacted_at: str(fm.last_contacted_at),
     created_at: str(fm.created_at) ?? new Date().toISOString(),
     updated_at: str(fm.updated_at) ?? new Date().toISOString(),
+    lost_reason: null,
+    lost_note: null,
   }
 }
 
@@ -207,6 +209,8 @@ export function contactCachedData(contact: Contact): string {
     tags: contact.tags,
     form_data: contact.form_data,
     last_contacted_at: contact.last_contacted_at,
+    lost_reason: contact.lost_reason,
+    lost_note: contact.lost_note,
     created_at: contact.created_at,
     updated_at: contact.updated_at,
   })
@@ -242,6 +246,8 @@ export function contactFromCache(cached: Record<string, unknown>, contactId: str
     last_contacted_at: s(cached.last_contacted_at),
     created_at: s(cached.created_at) ?? new Date().toISOString(),
     updated_at: s(cached.updated_at) ?? new Date().toISOString(),
+    lost_reason: s(cached.lost_reason),
+    lost_note: s(cached.lost_note),
   }
 }
 
@@ -457,6 +463,8 @@ export async function createContact(
     last_contacted_at: null,
     created_at: now,
     updated_at: now,
+    lost_reason: null,
+    lost_note: null,
   }
 
   // Generate a human-readable filename, deduplicating if needed

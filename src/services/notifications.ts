@@ -21,7 +21,7 @@ import {
   timelineChangeDecidedEmail,
   weddingFormResponseEmail,
 } from './email'
-import { getWedding, getWeddingMembers } from '../db/weddings'
+import { getWedding, getWeddingMembers, SQL_WEDDING_ACTIVE, SQL_CALENDAR_EVENT_NOT_CANCELLED } from '../db/weddings'
 import { getVendorWithEmail } from '../db/vendors'
 import { formSubmissionFields } from '../db/forms'
 import { formatDate } from '../lib/date'
@@ -304,6 +304,7 @@ export async function sendPaymentReminders(env: NotifyEnv, vendorId?: string): P
        JOIN invoices i ON i.id = ip.invoice_id
        WHERE ip.status IN ('pending', 'overdue')
          AND i.status NOT IN ('draft', 'paid', 'cancelled', 'refunded')
+         AND NOT EXISTS (SELECT 1 FROM weddings w WHERE w.id = i.wedding_id AND w.status = 'cancelled')
          AND (ip.due_date = date('now', '+3 days') OR ip.due_date = date('now', '-1 day'))
          ${vendorId ? 'AND i.vendor_id = ?' : ''}`
     )
@@ -815,6 +816,7 @@ export async function digestForVendor(env: NotifyEnv, vendor: DigestVendorRow): 
          JOIN wedding_members wm ON wm.wedding_id = w.id
          WHERE wm.vendor_profile_id = ? AND wm.status = 'active'
            AND w.date >= ? AND w.date <= ?
+           AND ${SQL_WEDDING_ACTIVE('w')}
          ORDER BY w.date ASC`
       )
       .bind(vendor.id, today, weekFromNow)
@@ -854,6 +856,7 @@ export async function digestForVendor(env: NotifyEnv, vendor: DigestVendorRow): 
         `SELECT title, date, start_time
          FROM calendar_events
          WHERE vendor_id = ? AND date >= ? AND date <= ?
+           AND ${SQL_CALENDAR_EVENT_NOT_CANCELLED('calendar_events')}
          ORDER BY date ASC, start_time ASC`
       )
       .bind(vendor.id, today, weekFromNow)

@@ -1,4 +1,5 @@
 import type { CalendarEvent, EnrichedCalendarEvent } from '../types'
+import { SQL_CALENDAR_EVENT_NOT_CANCELLED } from './weddings'
 
 const ENRICHED_SELECT = `
   SELECT
@@ -71,6 +72,7 @@ export async function listEventsByMonth(
     .prepare(
       `SELECT * FROM calendar_events
        WHERE vendor_id = ? AND date >= ? AND date < ?
+         AND ${SQL_CALENDAR_EVENT_NOT_CANCELLED('calendar_events')}
        ORDER BY date, start_time`
     )
     .bind(vendorId, start, end)
@@ -88,6 +90,7 @@ export async function listEventsByRange(
     .prepare(
       `SELECT * FROM calendar_events
        WHERE vendor_id = ? AND date >= ? AND date <= ?
+         AND ${SQL_CALENDAR_EVENT_NOT_CANCELLED('calendar_events')}
        ORDER BY date, start_time`
     )
     .bind(vendorId, startDate, endDate)

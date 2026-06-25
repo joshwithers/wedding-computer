@@ -6,6 +6,7 @@ import { track } from '../services/analytics'
 import { draftEnquiryReply } from '../services/ai'
 import { resolveSecret } from '../services/secrets'
 import { getScoreForDate } from '../db/busyness'
+import { SQL_CALENDAR_EVENT_NOT_CANCELLED } from '../db/weddings'
 import { geocodeContactLocation } from '../services/geocode'
 import { isProVendor } from '../db/subscriptions'
 import { isValidEmail } from '../lib/validation'
@@ -318,7 +319,7 @@ async function draftAvailabilityReply(
 
   if (weddingDate) {
     const events = await env.DB
-      .prepare("SELECT COUNT(*) as count FROM calendar_events WHERE vendor_id = ? AND date = ? AND type IN ('booking', 'blocked')")
+      .prepare(`SELECT COUNT(*) as count FROM calendar_events WHERE vendor_id = ? AND date = ? AND type IN ('booking', 'blocked') AND ${SQL_CALENDAR_EVENT_NOT_CANCELLED('calendar_events')}`)
       .bind(vendor.id, weddingDate)
       .first<{ count: number }>()
     isAvailable = (events?.count ?? 0) === 0

@@ -183,8 +183,20 @@ export const weddings = {
   // Wedding statuses
   'weddings.status.planning': 'Planning',
   'weddings.status.confirmed': 'Confirmed',
+  'weddings.status.postponed': 'Postponed',
   'weddings.status.completed': 'Completed',
   'weddings.status.cancelled': 'Cancelled',
+
+  // Lifecycle: cancellation reason capture
+  'weddings.form.cancellationReason': 'Reason for cancelling',
+  'weddings.form.cancellationReasonPrompt': 'Select a reason…',
+  'weddings.form.cancellationNotePlaceholder': 'Add a note (optional)',
+  'lifecycle.cancellation.couple_cancelled': 'Couple cancelled',
+  'lifecycle.cancellation.changed_vendor': 'Couple changed vendor',
+  'lifecycle.cancellation.budget': 'Budget',
+  'lifecycle.cancellation.event_called_off': 'Wedding called off',
+  'lifecycle.cancellation.double_booked': 'Double-booked',
+  'lifecycle.cancellation.other': 'Other',
 
   // Wedding form
   'weddings.form.title': 'Title',

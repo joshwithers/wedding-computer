@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { Env, VendorProfile, CalendarEvent } from '../../types'
+import { SQL_CALENDAR_EVENT_NOT_CANCELLED } from '../../db/weddings'
 import { MarketingLayout } from '../../views/layouts/marketing'
 import { categoriesLabel } from '../../lib/categories'
 import {
@@ -60,7 +61,7 @@ availability.get('/v/:vendorId/availability', async (c) => {
   // Fetch calendar events and availability overrides for the month
   const [eventsResult, overridesResult] = await Promise.all([
     c.env.DB
-      .prepare('SELECT * FROM calendar_events WHERE vendor_id = ? AND date >= ? AND date <= ?')
+      .prepare(`SELECT * FROM calendar_events WHERE vendor_id = ? AND date >= ? AND date <= ? AND ${SQL_CALENDAR_EVENT_NOT_CANCELLED('calendar_events')}`)
       .bind(vendorId, firstDay, lastDay)
       .all<CalendarEvent>(),
     c.env.DB

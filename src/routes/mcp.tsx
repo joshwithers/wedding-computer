@@ -25,7 +25,7 @@ import { isOAuthAccessToken, accessTokenKey, grantRevokedKey, type AccessTokenRe
 import { isProVendor } from '../db/subscriptions'
 import { processJsonSubmission, createEnquiry } from '../services/enquiry'
 import { clientIp, isAuthThrottled, recordAuthFailure, consumeRateLimit } from '../middleware/rate-limit'
-import { getMembership } from '../db/weddings'
+import { getMembership, SQL_CALENDAR_EVENT_NOT_CANCELLED } from '../db/weddings'
 import { isDocScope, canReadDoc, canWriteDoc } from '../services/doc-permissions'
 import { getDoc, appendToDoc } from '../db/wedding-docs'
 import { McpDocsPage } from '../views/mcp-docs'
@@ -1174,6 +1174,7 @@ async function handleTool(
           `SELECT id, title, date, start_time, end_time, type, notes
            FROM calendar_events
            WHERE vendor_id = ? AND date >= ? AND date <= ?
+             AND ${SQL_CALENDAR_EVENT_NOT_CANCELLED('calendar_events')}
            ORDER BY date, start_time`
         )
         .bind(vendor.id, today, future)

@@ -1,5 +1,6 @@
 import type { BusynessScore } from '../types'
 import { seasonOf, weekendBucketOf } from '../lib/busyness'
+import { SQL_CALENDAR_EVENT_NOT_CANCELLED } from './weddings'
 
 export async function getScoresForDateRange(
   db: D1Database,
@@ -137,6 +138,7 @@ export async function aggregateBusynessScores(db: D1Database): Promise<void> {
        JOIN vendor_profiles vp ON vp.id = ce.vendor_id
        LEFT JOIN weddings w ON w.id = ce.wedding_id
        WHERE ce.type = 'booking' AND ce.date >= date('now') AND ce.date <= date('now', '+365 days')
+         AND ${SQL_CALENDAR_EVENT_NOT_CANCELLED('ce')}
        GROUP BY 1, 2, 3, 4`
     )
     .all<DateLocationCounts>()

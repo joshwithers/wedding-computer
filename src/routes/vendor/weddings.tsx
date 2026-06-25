@@ -53,6 +53,7 @@ import { sendVendorWelcomeInvite } from '../../services/auth'
 import { ensureCoupleContact } from '../../services/couple-contact'
 import { TIMELINE_FIELDS } from '../../services/timeline-edit'
 import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes } from '../../db/timeline'
+import { lifecycleColumnsForTransition, syncVendorContactToWeddingStatus, CANCELLATION_REASONS, effectiveWeddingStatus, type WeddingStatusChoice } from '../../services/wedding-lifecycle'
 import { t, tp } from '../../i18n'
 import { weddingCapStatus } from '../../services/plan-limits'
 import { markTimelineDirty } from '../../services/timeline-notify'
@@ -248,6 +249,7 @@ function diffWeddingChanges(
 const WEDDING_STATUSES = [
   { value: 'planning', label: 'Planning' },
   { value: 'confirmed', label: 'Confirmed' },
+  { value: 'postponed', label: 'Postponed' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' },
 ]
@@ -257,10 +259,16 @@ function weddingStatusLabel(value: string): string {
   switch (value) {
     case 'planning': return t('weddings.status.planning')
     case 'confirmed': return t('weddings.status.confirmed')
+    case 'postponed': return t('weddings.status.postponed')
     case 'completed': return t('weddings.status.completed')
     case 'cancelled': return t('weddings.status.cancelled')
     default: return value.charAt(0).toUpperCase() + value.slice(1)
   }
+}
+
+/** Viewer-localised label for a cancellation-reason slug. */
+function cancellationReasonLabel(slug: string): string {
+  return t(`lifecycle.cancellation.${slug}` as Parameters<typeof t>[0])
 }
 
 const weddings = new Hono<Env>()
@@ -1369,7 +1377,11 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
   try {
     const title = requireString(body.title, 'Title')
     const oldWedding = await getWedding(c.env.DB, weddingId)
-    const newStatus = (body.status as Wedding['status']) || undefined
+    // The form's status select includes the derived 'postponed' choice. Only a
+    // real status value is written to the column; 'postponed' is a postponed_at
+    // flag handled in the lifecycle block below.
+    const statusChoice = (body.status as WeddingStatusChoice) || undefined
+    const newStatus = statusChoice && statusChoice !== 'postponed' ? statusChoice : undefined
     const emoji = trimOrNull(body.emoji)
 
     // The trimmed edit form only submits these. Ceremony/reception/getting-ready/
@@ -1472,12 +1484,31 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     // push alive after the redirect is sent
     c.executionCtx.waitUntil(pushAllWeddingFiles(c.env, vendor, weddingId))
 
-    if (newStatus === 'confirmed' && oldWedding?.status !== 'confirmed') {
-      track(c.env.DB, c.get('vendor')!.id, 'booking_confirmed', { weddingId })
-      await c.env.EMAIL_QUEUE.send({
-        type: 'notify_booking_confirmed',
-        payload: JSON.stringify({ weddingId }),
-      })
+    // Lifecycle: a status transition is a relationship event, not just a column.
+    // Stamp it, capture the cancellation reason, flag/clear postponed_at, and
+    // propagate to the linked CRM contact so the funnel and the wedding agree.
+    const prevEffective = oldWedding ? effectiveWeddingStatus(oldWedding) : undefined
+    if (statusChoice && statusChoice !== prevEffective) {
+      const reason = trimOrNull(body.cancellation_reason)
+      const note = trimOrNull(body.cancellation_note)
+      const lifecycleCols = lifecycleColumnsForTransition(statusChoice, oldWedding, reason, note, new Date().toISOString())
+      if (Object.keys(lifecycleCols).length > 0) {
+        await updateWedding(c.env.DB, weddingId, lifecycleCols)
+      }
+      // One source of truth — move this vendor's linked contact in step, through
+      // the storage layer (awaited so the funnel is consistent by the redirect).
+      const storage = await getStorageWithSecrets(c.env, vendor)
+      await syncVendorContactToWeddingStatus(storage, c.env.DB, vendor.id, weddingId, statusChoice).catch((e: any) =>
+        console.error('[lifecycle] contact sync failed', e?.message)
+      )
+      if (statusChoice === 'confirmed') {
+        track(c.env.DB, vendor.id, 'booking_confirmed', { weddingId })
+        await c.env.EMAIL_QUEUE.send({ type: 'notify_booking_confirmed', payload: JSON.stringify({ weddingId }) }).catch(() => {})
+      } else if (statusChoice === 'cancelled') {
+        track(c.env.DB, vendor.id, 'wedding_cancelled', { weddingId })
+      } else if (statusChoice === 'postponed') {
+        track(c.env.DB, vendor.id, 'wedding_postponed', { weddingId })
+      }
     }
 
     return c.redirect(`/app/weddings/${weddingId}`)
@@ -2837,12 +2868,35 @@ function WeddingForm({
           <select
             id="status"
             name="status"
+            onchange="var r=document.getElementById('cancel-reason'); if(r) r.style.display = this.value==='cancelled' ? 'block' : 'none'"
             class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
           >
             {WEDDING_STATUSES.map((s) => (
-              <option value={s.value} selected={s.value === wedding.status}>{weddingStatusLabel(s.value)}</option>
+              <option value={s.value} selected={s.value === effectiveWeddingStatus(wedding)}>{weddingStatusLabel(s.value)}</option>
             ))}
           </select>
+        </div>
+      )}
+
+      {wedding && (
+        <div id="cancel-reason" style={wedding.status === 'cancelled' ? '' : 'display:none'}>
+          <label class="block text-sm font-bold text-gray-700 mb-1.5" for="cancellation_reason">{t('weddings.form.cancellationReason')}</label>
+          <select
+            id="cancellation_reason"
+            name="cancellation_reason"
+            class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent mb-2"
+          >
+            <option value="">{t('weddings.form.cancellationReasonPrompt')}</option>
+            {CANCELLATION_REASONS.map((r) => (
+              <option value={r} selected={wedding.cancellation_reason === r}>{cancellationReasonLabel(r)}</option>
+            ))}
+          </select>
+          <textarea
+            name="cancellation_note"
+            rows={2}
+            placeholder={t('weddings.form.cancellationNotePlaceholder')}
+            class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+          >{wedding.cancellation_note ?? ''}</textarea>
         </div>
       )}
 

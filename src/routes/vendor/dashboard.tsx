@@ -14,6 +14,7 @@ import { listVendorCalendarRows } from '../../db/timeline'
 import { todoStats } from '../../lib/todo-parser'
 import { buildSetupChecklist, categorySetup, type SetupChecklist, type CategorySetup } from '../../lib/onboarding'
 import { dismissSetup, dismissDemo } from '../../db/vendors'
+import { SQL_WEDDING_ACTIVE, SQL_CALENDAR_EVENT_NOT_CANCELLED } from '../../db/weddings'
 import { seedDemoData, teardownDemoData, hasDemoData, isNewVendor } from '../../services/demo-data'
 import { auditLog } from '../../middleware/audit'
 import { dbOf } from '../../middleware/d1-session'
@@ -62,6 +63,7 @@ dashboard.get('/app', async (c) => {
              FROM weddings w
              JOIN wedding_members wm ON wm.wedding_id = w.id
              WHERE wm.user_id = ? AND wm.status = 'active' AND w.date >= ?
+               AND ${SQL_WEDDING_ACTIVE('w')}
              ORDER BY w.date ASC LIMIT 5`
           )
           .bind(user.id, today)
@@ -115,6 +117,7 @@ dashboard.get('/app', async (c) => {
             `SELECT id, title, date, start_time, type
              FROM calendar_events
              WHERE vendor_id = ? AND date >= ?
+               AND ${SQL_CALENDAR_EVENT_NOT_CANCELLED('calendar_events')}
              ORDER BY date ASC, start_time ASC LIMIT 5`
           )
           .bind(vendor.id, today)

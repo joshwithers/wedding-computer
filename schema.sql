@@ -160,7 +160,16 @@ CREATE TABLE IF NOT EXISTS weddings (
   -- Sample/onboarding data (migration 060); scoped per vendor via created_by_user_id.
   is_demo INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- Lifecycle (migration 074): when each state was entered, why a wedding was
+  -- cancelled, and (for postponements) the date it moved from.
+  confirmed_at TEXT,
+  completed_at TEXT,
+  cancelled_at TEXT,
+  postponed_at TEXT,
+  cancellation_reason TEXT,
+  cancellation_note TEXT,
+  original_date TEXT
 );
 
 -- Wedding permissions (who can access a wedding and in what role)
@@ -330,7 +339,10 @@ CREATE TABLE IF NOT EXISTS contacts (
   form_data TEXT,
   last_contacted_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- Why a lead was lost or its booking cancelled (migration 074).
+  lost_reason TEXT,
+  lost_note TEXT
 );
 
 -- Contact activity log

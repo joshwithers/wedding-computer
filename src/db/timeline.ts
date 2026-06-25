@@ -4,7 +4,7 @@
 // that keeps the legacy weddings.* slot columns in step during phases 1-3.
 
 import type { TimelineItem, TimelineItemAssignee, TimelineCategory, TimelineVisibility, TimelineSlot, TimelineMarker, RunSheetItem, Wedding, D1Like } from '../types'
-import { updateWedding, getWedding } from './weddings'
+import { updateWedding, getWedding, SQL_WEDDING_NOT_CANCELLED } from './weddings'
 import { solveTimeline, minToHhmm, type SolverItem, type SunMinutes } from '../lib/timeline-solver'
 import { sunMinutesFor } from '../lib/sun'
 import { DEFAULT_TIMEZONE } from '../i18n'
@@ -400,6 +400,9 @@ const CALENDAR_ROW_SELECT = (scopeCol: string, visClause: string) =>
        JOIN timeline_items ti ON ti.wedding_id = wm.wedding_id
        JOIN weddings w ON w.id = ti.wedding_id
        WHERE wm.${scopeCol} = ? AND wm.status = 'active' AND w.date IS NOT NULL
+         -- A cancelled wedding's run sheet should drop off every calendar
+         -- (completed ones stay as history).
+         AND ${SQL_WEDDING_NOT_CANCELLED('w')}
          -- markers (sun rows) aren't events; respect timeline visibility so a
          -- private/vendors-only item never leaks onto the wrong calendar.
          AND ti.marker IS NULL AND (${visClause})`

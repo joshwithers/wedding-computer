@@ -250,6 +250,14 @@ export type Wedding = {
   created_by_user_id: string
   created_at: string
   updated_at: string
+  // Lifecycle (migration 074)
+  confirmed_at: string | null
+  completed_at: string | null
+  cancelled_at: string | null
+  postponed_at: string | null
+  cancellation_reason: string | null
+  cancellation_note: string | null
+  original_date: string | null
 }
 
 export type WeddingLogEntry = {
@@ -343,6 +351,9 @@ export type Contact = {
   last_contacted_at: string | null
   created_at: string
   updated_at: string
+  // Why a lead was lost or its booking cancelled (migration 074)
+  lost_reason: string | null
+  lost_note: string | null
 }
 
 export type Invoice = {
