@@ -10,6 +10,11 @@ const MAGIC_LINK_TTL = 60 * 15 // 15 minutes
 const INVITE_LINK_TTL = 60 * 60 * 24 * 7 // 7 days — invites go to cold recipients who open them later
 const SESSION_TTL = 60 * 60 * 24 * 30 // 30 days
 
+// Per-email cooldown: at most one magic link sent per address per 2 minutes.
+// Prevents inbox flooding from attackers rotating IPs to bypass the per-IP
+// rate limit on POST /login. The key is keyed by email hash, not plaintext.
+const MAGIC_LINK_EMAIL_COOLDOWN = 120
+
 export async function sendMagicLink(
   db: D1Database,
   kv: KVNamespace,
@@ -17,12 +22,24 @@ export async function sendMagicLink(
   appUrl: string,
   email: string
 ): Promise<void> {
+  const throttleKey = `magic:throttle:${await hashSession(email.toLowerCase())}`
+  const recentlySent = await kv.get(throttleKey)
+  if (recentlySent) {
+    // Silently succeed — caller shows "Check your email" regardless, so the
+    // attacker learns nothing and the recipient's inbox isn't flooded.
+    return
+  }
+
   const token = await generateToken(32)
   await kv.put(
     await magicKey(token),
     JSON.stringify({ email: email.toLowerCase() }),
     { expirationTtl: MAGIC_LINK_TTL }
   )
+  // Set the cooldown after the token is stored, so a KV write failure on the
+  // throttle key doesn't prevent delivery.
+  await kv.put(throttleKey, '1', { expirationTtl: MAGIC_LINK_EMAIL_COOLDOWN })
+
   const url = `${appUrl}/login/verify?token=${token}`
   await sendEmailMessage({
     db,

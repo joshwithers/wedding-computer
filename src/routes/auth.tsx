@@ -99,6 +99,8 @@ auth.get('/login/verify', rateLimit(10, 60), async (c) => {
 
   const email = await verifyMagicLink(c.env.KV, token)
   if (!email) {
+    const ip = c.req.header('cf-connecting-ip') ?? 'unknown'
+    console.warn('[auth] magic link verify failed', { ip, tokenPrefix: token.slice(0, 8) })
     return c.redirect('/login?error=Invalid+or+expired+link')
   }
 
