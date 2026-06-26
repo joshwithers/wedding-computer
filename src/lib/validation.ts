@@ -36,6 +36,29 @@ const SAFE_ATTRS: Record<string, Set<string>> = {
   img: new Set(['src', 'alt', 'title', 'width', 'height']),
 }
 
+// True only for href/src values that resolve to a safe scheme. We must mirror
+// how a browser normalises a URL before picking the scheme: it ignores ASCII
+// whitespace and C0 control characters anywhere in the value (so "java\tscript:"
+// becomes "javascript:"), and HTML entities in the attribute are decoded first.
+// A blocklist of "javascript:"/"vbscript:"/"data:" is therefore bypassable —
+// we strip-then-allowlist instead. Relative URLs, anchors and query-only refs
+// (no scheme) are allowed; any explicit scheme must be on the allowlist.
+const SAFE_URL_SCHEMES = new Set(['http', 'https', 'mailto', 'tel'])
+function isSafeUrlAttr(value: string): boolean {
+  const decoded = value
+    .replace(/&#x([0-9a-f]+);?/gi, (_, h: string) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);?/g, (_, d: string) => String.fromCharCode(parseInt(d, 10)))
+    .replace(/&(tab|newline);/gi, ' ')
+  // Strip everything the URL parser ignores: all ASCII whitespace + C0 controls.
+  const stripped = decoded.replace(/[\u0000-\u0020]+/g, '').toLowerCase()
+  if (stripped === '' || stripped.startsWith('/') || stripped.startsWith('#') || stripped.startsWith('?')) {
+    return true
+  }
+  const scheme = stripped.match(/^([a-z][a-z0-9+.-]*):/)
+  if (!scheme) return true // no scheme → relative reference, safe
+  return SAFE_URL_SCHEMES.has(scheme[1])
+}
+
 export function sanitizeHtml(html: string): string {
   let result = html
     .replace(/<script[\s>][\s\S]*?<\/script>/gi, '')
@@ -58,10 +81,7 @@ export function sanitizeHtml(html: string): string {
       const name = m[1].toLowerCase()
       const value = m[2] ?? m[3] ?? m[4] ?? ''
       if (!allowed.has(name)) continue
-      if (name === 'href' || name === 'src') {
-        const v = value.trim().toLowerCase()
-        if (v.startsWith('javascript:') || v.startsWith('vbscript:') || v.startsWith('data:')) continue
-      }
+      if ((name === 'href' || name === 'src') && !isSafeUrlAttr(value)) continue
       cleanAttrs.push(`${name}="${sanitize(value)}"`)
     }
     const isClosing = match.startsWith('</')
