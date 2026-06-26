@@ -544,19 +544,31 @@ function PrivacyPage() {
 }
 
 const TERMS_SECTIONS: LegalSection[] = [
-  { title: 'legal.terms.service.title', body: ['legal.terms.service.p1'] },
-  { title: 'legal.terms.accounts.title', body: ['legal.terms.accounts.p1'] },
-  { title: 'legal.terms.plans.title', body: ['legal.terms.plans.p1'] },
-  { title: 'legal.terms.acceptable.title', body: ['legal.terms.acceptable.p1'] },
-  { title: 'legal.terms.data.title', body: ['legal.terms.data.p1'] },
-  { title: 'legal.terms.thirdparty.title', body: ['legal.terms.thirdparty.p1'] },
-  { title: 'legal.terms.warranty.title', body: ['legal.terms.warranty.p1'] },
-  { title: 'legal.terms.termination.title', body: ['legal.terms.termination.p1'] },
-  { title: 'legal.terms.law.title', body: ['legal.terms.law.p1'] },
+  { title: 'legal.terms.contract.title', body: ['legal.terms.contract.p1', 'legal.terms.contract.p2', 'legal.terms.contract.p3'] },
+  { title: 'legal.terms.service.title', body: ['legal.terms.service.p1', 'legal.terms.service.p2', 'legal.terms.service.p3'] },
+  { title: 'legal.terms.accounts.title', body: ['legal.terms.accounts.p1', 'legal.terms.accounts.p2', 'legal.terms.accounts.p3'] },
+  { title: 'legal.terms.vendors.title', body: ['legal.terms.vendors.p1', 'legal.terms.vendors.p2', 'legal.terms.vendors.p3'] },
+  { title: 'legal.terms.couples.title', body: ['legal.terms.couples.p1', 'legal.terms.couples.p2'] },
+  { title: 'legal.terms.paperwork.title', body: ['legal.terms.paperwork.p1', 'legal.terms.paperwork.p2', 'legal.terms.paperwork.p3'] },
+  { title: 'legal.terms.plans.title', body: ['legal.terms.plans.p1', 'legal.terms.plans.p2', 'legal.terms.plans.p3', 'legal.terms.plans.p4'] },
+  { title: 'legal.terms.payments.title', body: ['legal.terms.payments.p1', 'legal.terms.payments.p2'] },
+  { title: 'legal.terms.acceptable.title', body: ['legal.terms.acceptable.p1', 'legal.terms.acceptable.p2'] },
+  { title: 'legal.terms.data.title', body: ['legal.terms.data.p1', 'legal.terms.data.p2', 'legal.terms.data.p3'] },
+  { title: 'legal.terms.privacy.title', body: ['legal.terms.privacy.p1', 'legal.terms.privacy.p2'] },
+  { title: 'legal.terms.thirdparty.title', body: ['legal.terms.thirdparty.p1', 'legal.terms.thirdparty.p2', 'legal.terms.thirdparty.p3'] },
+  { title: 'legal.terms.ai.title', body: ['legal.terms.ai.p1', 'legal.terms.ai.p2'] },
+  { title: 'legal.terms.availability.title', body: ['legal.terms.availability.p1', 'legal.terms.availability.p2'] },
+  { title: 'legal.terms.consumer.title', body: ['legal.terms.consumer.p1', 'legal.terms.consumer.p2'] },
+  { title: 'legal.terms.warranty.title', body: ['legal.terms.warranty.p1', 'legal.terms.warranty.p2', 'legal.terms.warranty.p3'] },
+  { title: 'legal.terms.indemnity.title', body: ['legal.terms.indemnity.p1', 'legal.terms.indemnity.p2'] },
+  { title: 'legal.terms.ip.title', body: ['legal.terms.ip.p1', 'legal.terms.ip.p2'] },
+  { title: 'legal.terms.termination.title', body: ['legal.terms.termination.p1', 'legal.terms.termination.p2', 'legal.terms.termination.p3'] },
+  { title: 'legal.terms.disputes.title', body: ['legal.terms.disputes.p1', 'legal.terms.disputes.p2', 'legal.terms.disputes.p3'] },
+  { title: 'legal.terms.law.title', body: ['legal.terms.law.p1', 'legal.terms.law.p2'] },
 ]
 
 function TermsPage() {
-  return <LegalPage metaTitle="legal.terms.metaTitle" title="legal.terms.title" lastUpdated="legal.terms.lastUpdated" intro={['legal.terms.intro.p1']} sections={TERMS_SECTIONS} />
+  return <LegalPage metaTitle="legal.terms.metaTitle" title="legal.terms.title" lastUpdated="legal.terms.lastUpdated" intro={['legal.terms.intro.p1', 'legal.terms.intro.p2', 'legal.terms.intro.p3', 'legal.terms.intro.p4']} sections={TERMS_SECTIONS} />
 }
 
 function PricingPage({ proPrice, currency }: { proPrice: string; currency: CurrencyCode }) {
