@@ -265,6 +265,11 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
   const config = parseBookingFormConfig(vendor.booking_form)
   const body = await c.req.parseBody()
 
+  // Honeypot: bots fill hidden fields that humans never see.
+  if (typeof body.website_url === 'string' && body.website_url !== '') {
+    return c.redirect(`/book/${token}?confirmed=1`)
+  }
+
   const turnstileToken = typeof body['cf-turnstile-response'] === 'string'
     ? body['cf-turnstile-response']
     : ''
@@ -567,6 +572,8 @@ function BookingForm({
       )}
 
       <form method="post">
+        {/* Honeypot — hidden from humans, bots fill it and get silently rejected */}
+        <input type="text" name="website_url" tabindex={-1} autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden" aria-hidden="true" />
         <div class="space-y-4">
           {hasFields && <FieldRenderer fields={config!.fields} />}
 

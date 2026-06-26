@@ -7,7 +7,6 @@
  */
 
 import {
-  listPasskeys,
   getPasskeyByCredentialId,
   createPasskey,
   updatePasskeyCounter,
@@ -632,28 +631,17 @@ export async function generateAuthenticationOptions(
   const challengeB64 = base64urlEncode(challenge)
 
   let userId: string | undefined
-  let allowCredentials: { id: string; type: 'public-key'; transports?: string[] }[] = []
 
   if (email) {
-    // Scope to this user's credentials if email is provided
+    // Bind the challenge to this user so verifyAuthentication can confirm the
+    // returned credential belongs to them — but do NOT echo back their credential
+    // IDs in allowCredentials. A populated allowCredentials list reveals both that
+    // the email is registered and which credential IDs the account holds. Returning
+    // [] uses WebAuthn discoverable-credential (passkey) mode instead; the browser
+    // selects from its own store and the relying-party ID scopes it correctly.
     const user = await getUserByEmail(db, email)
     if (user) {
       userId = user.id
-      const passkeys = await listPasskeys(db, user.id)
-      allowCredentials = passkeys.map((p) => {
-        const cred: { id: string; type: 'public-key'; transports?: string[] } = {
-          id: p.credential_id,
-          type: 'public-key',
-        }
-        if (p.transports) {
-          try {
-            cred.transports = JSON.parse(p.transports) as string[]
-          } catch {
-            // Ignore malformed transports
-          }
-        }
-        return cred
-      })
     }
   }
 
@@ -666,7 +654,7 @@ export async function generateAuthenticationOptions(
     challenge: challengeB64,
     timeout: 60000,
     rpId: getRpId(appUrl),
-    allowCredentials,
+    allowCredentials: [],
     userVerification: 'preferred',
   }
 }

@@ -19,7 +19,7 @@ export async function sendMagicLink(
 ): Promise<void> {
   const token = await generateToken(32)
   await kv.put(
-    `magic:${token}`,
+    await magicKey(token),
     JSON.stringify({ email: email.toLowerCase() }),
     { expirationTtl: MAGIC_LINK_TTL }
   )
@@ -41,9 +41,16 @@ export async function verifyMagicLink(
   kv: KVNamespace,
   token: string
 ): Promise<string | null> {
-  const data = await kv.get(`magic:${token}`)
+  const hashedKey = await magicKey(token)
+  // Legacy fallback for links issued before hashing (consumed within their TTL).
+  let key = hashedKey
+  let data = await kv.get(hashedKey)
+  if (!data) {
+    key = `magic:${token}`
+    data = await kv.get(key)
+  }
   if (!data) return null
-  await kv.delete(`magic:${token}`)
+  await kv.delete(key)
   const { email } = JSON.parse(data) as { email: string }
   return email
 }
@@ -54,6 +61,13 @@ export async function verifyMagicLink(
 async function hashSession(token: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+// Magic-link / invite tokens grant a full sign-in, so — like sessions — we key
+// the KV entry by the token's SHA-256, never the raw token. The raw value only
+// ever lives in the emailed URL; a KV leak then yields hashes, not login links.
+async function magicKey(token: string): Promise<string> {
+  return `magic:${await hashSession(token)}`
 }
 
 export async function createUserSession(
@@ -150,7 +164,7 @@ export async function sendVendorWelcomeInvite(
 ): Promise<void> {
   const token = await generateToken(32)
   await kv.put(
-    `magic:${token}`,
+    await magicKey(token),
     JSON.stringify({ email: data.email.toLowerCase() }),
     { expirationTtl: 60 * 60 * 24 * 7 }
   )
@@ -210,7 +224,7 @@ export async function sendCoupleInvite(
 ): Promise<void> {
   const token = await generateToken(32)
   await kv.put(
-    `magic:${token}`,
+    await magicKey(token),
     JSON.stringify({ email: data.email.toLowerCase() }),
     { expirationTtl: INVITE_LINK_TTL }
   )

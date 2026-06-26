@@ -448,17 +448,17 @@ export function invoiceSentEmail(data: {
   loginUrl: string
 }): string {
   return emailWrapper(`
-    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">New invoice from ${data.vendorName}</h1>
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">New invoice from ${esc(data.vendorName)}</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      Hi ${data.coupleName}, ${data.vendorName} has sent you an invoice.
+      Hi ${esc(data.coupleName)}, ${esc(data.vendorName)} has sent you an invoice.
     </p>
     <div style="background:#faf5ef;border-radius:12px;padding:16px;margin-bottom:20px;">
-      <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#1a1a1a;">${data.invoiceTitle}</p>
+      <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#1a1a1a;">${esc(data.invoiceTitle)}</p>
       <p style="margin:0;font-size:24px;font-weight:700;color:#1a1a1a;">${data.amountFormatted}</p>
       ${data.dueDate ? `<p style="margin:8px 0 0;font-size:13px;color:#666;">Due ${data.dueDate}</p>` : ''}
     </div>
     <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View invoice</a>
-  `, { preheader: `Invoice for ${data.amountFormatted} from ${data.vendorName}` })
+  `, { preheader: `Invoice for ${data.amountFormatted} from ${esc(data.vendorName)}` })
 }
 
 export function vendorAddedEmail(data: {
@@ -471,12 +471,12 @@ export function vendorAddedEmail(data: {
 }): string {
   const typeLabel = data.ceremonyType.charAt(0).toUpperCase() + data.ceremonyType.slice(1)
   return emailWrapper(`
-    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">You've been added to a ${data.ceremonyType}</h1>
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">You've been added to a ${esc(data.ceremonyType)}</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      Hi ${data.vendorName}, ${data.addedByName} has added you to <strong>${data.weddingTitle}</strong>${data.weddingDate ? ` on ${data.weddingDate}` : ''}.
+      Hi ${esc(data.vendorName)}, ${esc(data.addedByName)} has added you to <strong>${esc(data.weddingTitle)}</strong>${data.weddingDate ? ` on ${esc(data.weddingDate)}` : ''}.
     </p>
-    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View ${data.ceremonyType}</a>
-  `, { preheader: `${data.addedByName} added you to ${data.weddingTitle}` })
+    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View ${esc(data.ceremonyType)}</a>
+  `, { preheader: `${esc(data.addedByName)} added you to ${esc(data.weddingTitle)}` })
 }
 
 export function coupleJoinedEmail(data: {
@@ -487,12 +487,12 @@ export function coupleJoinedEmail(data: {
   weddingId: string
 }): string {
   return emailWrapper(`
-    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">${data.coupleName} has joined</h1>
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">${esc(data.coupleName)} has joined</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      Hi ${data.vendorName}, ${data.coupleName} has accepted the invitation and joined <strong>${data.weddingTitle}</strong> on Wedding Computer.
+      Hi ${esc(data.vendorName)}, ${esc(data.coupleName)} has accepted the invitation and joined <strong>${esc(data.weddingTitle)}</strong> on Wedding Computer.
     </p>
     <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View wedding</a>
-  `, { preheader: `${data.coupleName} joined ${data.weddingTitle}` })
+  `, { preheader: `${esc(data.coupleName)} joined ${esc(data.weddingTitle)}` })
 }
 
 export function bookingConfirmedEmail(data: {
@@ -504,16 +504,16 @@ export function bookingConfirmedEmail(data: {
   loginUrl: string
 }): string {
   return emailWrapper(`
-    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">${data.ceremonyType.charAt(0).toUpperCase() + data.ceremonyType.slice(1)} confirmed</h1>
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">${esc(data.ceremonyType.charAt(0).toUpperCase() + data.ceremonyType.slice(1))} confirmed</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      Great news! <strong>${data.weddingTitle}</strong> has been confirmed.
+      Great news! <strong>${esc(data.weddingTitle)}</strong> has been confirmed.
     </p>
     <div style="background:#faf5ef;border-radius:12px;padding:16px;margin-bottom:20px;font-size:14px;line-height:1.8;color:#333;">
-      ${data.weddingDate ? `<strong>Date:</strong> ${data.weddingDate}<br>` : ''}
-      ${data.weddingLocation ? `<strong>Location:</strong> ${data.weddingLocation}` : ''}
+      ${data.weddingDate ? `<strong>Date:</strong> ${esc(data.weddingDate)}<br>` : ''}
+      ${data.weddingLocation ? `<strong>Location:</strong> ${esc(data.weddingLocation)}` : ''}
     </div>
     <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View details</a>
-  `, { preheader: `${data.weddingTitle} is confirmed!` })
+  `, { preheader: `${esc(data.weddingTitle)} is confirmed!` })
 }
 
 // Sent to the couple + every vendor when a wedding is cancelled — so no one
@@ -527,11 +527,11 @@ export function weddingCancelledEmail(data: {
   return emailWrapper(`
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Wedding cancelled</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      <strong>${data.weddingTitle}</strong>${data.weddingDate ? ` (${data.weddingDate})` : ''} has been cancelled.
+      <strong>${esc(data.weddingTitle)}</strong>${data.weddingDate ? ` (${esc(data.weddingDate)})` : ''} has been cancelled.
     </p>
-    ${data.reason ? `<div style="background:#faf5ef;border-radius:12px;padding:16px;margin-bottom:20px;font-size:14px;line-height:1.8;color:#333;"><strong>Note:</strong> ${data.reason}</div>` : ''}
+    ${data.reason ? `<div style="background:#faf5ef;border-radius:12px;padding:16px;margin-bottom:20px;font-size:14px;line-height:1.8;color:#333;"><strong>Note:</strong> ${esc(data.reason)}</div>` : ''}
     <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View details</a>
-  `, { preheader: `${data.weddingTitle} has been cancelled` })
+  `, { preheader: `${esc(data.weddingTitle)} has been cancelled` })
 }
 
 // Sent to the couple + every vendor when a wedding is postponed.
@@ -543,10 +543,10 @@ export function weddingPostponedEmail(data: {
   return emailWrapper(`
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Wedding postponed</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      <strong>${data.weddingTitle}</strong> has been postponed. ${data.newDate ? `The new date is <strong>${data.newDate}</strong>.` : 'A new date is still to be confirmed.'}
+      <strong>${esc(data.weddingTitle)}</strong> has been postponed. ${data.newDate ? `The new date is <strong>${esc(data.newDate)}</strong>.` : 'A new date is still to be confirmed.'}
     </p>
     <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View details</a>
-  `, { preheader: `${data.weddingTitle} has been postponed` })
+  `, { preheader: `${esc(data.weddingTitle)} has been postponed` })
 }
 
 // Sent to the couple when they complete a public booking form. Confirms the
@@ -597,17 +597,17 @@ export function vendorRemovedAdminEmail(data: {
       A couple has removed a vendor from their wedding. This may indicate a safety concern.
     </p>
     <div style="background:#faf5ef;border-radius:12px;padding:16px;margin-bottom:20px;font-size:14px;line-height:1.8;color:#333;">
-      <strong>Couple:</strong> ${data.coupleName} (${data.coupleEmail})<br>
-      <strong>Vendor removed:</strong> ${data.vendorName} (${data.vendorCategory})<br>
-      <strong>Wedding:</strong> ${data.weddingTitle}<br>
-      ${data.weddingDate ? `<strong>Date:</strong> ${data.weddingDate}<br>` : ''}
+      <strong>Couple:</strong> ${esc(data.coupleName)} (${esc(data.coupleEmail)})<br>
+      <strong>Vendor removed:</strong> ${esc(data.vendorName)} (${esc(data.vendorCategory)})<br>
+      <strong>Wedding:</strong> ${esc(data.weddingTitle)}<br>
+      ${data.weddingDate ? `<strong>Date:</strong> ${esc(data.weddingDate)}<br>` : ''}
       <strong>Wedding ID:</strong> ${data.weddingId}
     </div>
     <p style="font-size:13px;color:#999;line-height:1.5;">
       The vendor has not been notified. The couple's contact record with this vendor has been marked as lost.
       Please review if follow-up is needed.
     </p>
-  `, { preheader: `${data.coupleName} removed ${data.vendorName} from ${data.weddingTitle}` })
+  `, { preheader: `${esc(data.coupleName)} removed ${esc(data.vendorName)} from ${esc(data.weddingTitle)}` })
 }
 
 export function paymentReceivedEmail(data: {
@@ -663,10 +663,10 @@ export function vendorBookedEmail(data: {
   return emailWrapper(`
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">New vendor booked</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      Hi ${data.recipientVendorName}, ${data.coupleName} has just booked <strong>${data.bookedVendorName}</strong> as their ${cat} for <strong>${data.weddingTitle}</strong>.
+      Hi ${esc(data.recipientVendorName)}, ${esc(data.coupleName)} has just booked <strong>${esc(data.bookedVendorName)}</strong> as their ${esc(cat)} for <strong>${esc(data.weddingTitle)}</strong>.
     </p>
     <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View wedding</a>
-  `, { preheader: `${data.coupleName} booked ${data.bookedVendorName} for ${data.weddingTitle}` })
+  `, { preheader: `${esc(data.coupleName)} booked ${esc(data.bookedVendorName)} for ${esc(data.weddingTitle)}` })
 }
 
 export function weddingDetailsUpdatedEmail(data: {
@@ -679,11 +679,11 @@ export function weddingDetailsUpdatedEmail(data: {
   return emailWrapper(`
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Wedding details updated</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      Hi ${data.vendorName}, ${data.coupleName} has updated the details for <strong>${data.weddingTitle}</strong>.
+      Hi ${esc(data.vendorName)}, ${esc(data.coupleName)} has updated the details for <strong>${esc(data.weddingTitle)}</strong>.
       Log in to see what changed.
     </p>
     <a href="${data.appUrl}/app/weddings/${data.weddingId}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View details</a>
-  `, { preheader: `${data.coupleName} updated details for ${data.weddingTitle}` })
+  `, { preheader: `${esc(data.coupleName)} updated details for ${esc(data.weddingTitle)}` })
 }
 
 export function paymentDueSoonEmail(data: {
@@ -805,7 +805,7 @@ export function dailyDigestEmail(data: {
   if (data.upcomingWeddings.length > 0) {
     const items = data.upcomingWeddings.map((w) =>
       `<tr><td style="padding:8px 0;font-size:14px;color:#333;border-bottom:1px solid #f0f0f0;">
-        <strong>${w.title}</strong><br>
+        <strong>${esc(w.title)}</strong><br>
         <span style="color:#666;font-size:13px;">${w.date} — ${w.daysUntil} day${w.daysUntil !== 1 ? 's' : ''} away</span>
       </td></tr>`
     ).join('')
@@ -817,7 +817,7 @@ export function dailyDigestEmail(data: {
   if (data.newContacts.length > 0) {
     const items = data.newContacts.map((c) =>
       `<tr><td style="padding:8px 0;font-size:14px;color:#333;border-bottom:1px solid #f0f0f0;">
-        <strong>${c.name}</strong>${c.source ? ` <span style="color:#999;font-size:12px;">via ${c.source}</span>` : ''}
+        <strong>${esc(c.name)}</strong>${c.source ? ` <span style="color:#999;font-size:12px;">via ${esc(c.source)}</span>` : ''}
       </td></tr>`
     ).join('')
     sections += `
@@ -828,8 +828,8 @@ export function dailyDigestEmail(data: {
   if (data.duePayments.length > 0) {
     const items = data.duePayments.map((p) =>
       `<tr><td style="padding:8px 0;font-size:14px;color:#333;border-bottom:1px solid #f0f0f0;">
-        <strong>${p.label}</strong> — ${p.amount}<br>
-        <span style="color:#666;font-size:13px;">${p.weddingTitle} · Due ${p.dueDate}</span>
+        <strong>${esc(p.label)}</strong> — ${p.amount}<br>
+        <span style="color:#666;font-size:13px;">${esc(p.weddingTitle)} · Due ${p.dueDate}</span>
       </td></tr>`
     ).join('')
     sections += `
@@ -840,7 +840,7 @@ export function dailyDigestEmail(data: {
   if (data.upcomingEvents.length > 0) {
     const items = data.upcomingEvents.map((e) =>
       `<tr><td style="padding:8px 0;font-size:14px;color:#333;border-bottom:1px solid #f0f0f0;">
-        <strong>${e.title}</strong><br>
+        <strong>${esc(e.title)}</strong><br>
         <span style="color:#666;font-size:13px;">${e.date}${e.time ? ` at ${e.time}` : ''}</span>
       </td></tr>`
     ).join('')
@@ -852,20 +852,20 @@ export function dailyDigestEmail(data: {
   return emailWrapper(`
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Your daily summary</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 16px;">
-      Hi ${data.vendorName}, here's what's happening today.
+      Hi ${esc(data.vendorName)}, here's what's happening today.
     </p>
     ${sections}
     <div style="margin-top:24px;">
       <a href="${data.appUrl}/app" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">Open dashboard</a>
     </div>
-  `, { preheader: `Your daily summary for ${data.vendorName}` })
+  `, { preheader: `Your daily summary for ${esc(data.vendorName)}` })
 }
 
 export function emailChangeVerifyEmail(verifyUrl: string, name: string): string {
   return emailWrapper(`
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">Verify your new email</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
-      Hi ${name}, click the link below to confirm this as your new email address on Wedding Computer.
+      Hi ${esc(name)}, click the link below to confirm this as your new email address on Wedding Computer.
     </p>
     <div style="margin:24px 0;">
       <a href="${verifyUrl}" style="display:inline-block;background:#0066E6;color:#fff;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:700;font-size:14px;">Verify email address</a>

@@ -66,15 +66,12 @@ auth.post('/login', rateLimit(5, 60), async (c) => {
   // this entirely. Unset/empty SIGNUP_INVITE_CODE = open signups.
   if (gateOn) {
     const existing = await getUserByEmail(c.env.DB, email)
-    if (!existing) {
-      const valid = inviteCode.toLowerCase() === requiredCode!.toLowerCase()
-      if (!valid) {
-        console.warn('[AUTH] signup blocked: invalid/missing invite code')
-        const msg = inviteCode
-          ? 'That invite code isn’t valid.'
-          : 'Wedding Computer is invite-only right now — enter your invite code to create an account.'
-        return c.html(renderLoginPage({ error: msg, gateOn, email }), 400)
-      }
+    const validCode = inviteCode.toLowerCase() === requiredCode!.toLowerCase()
+    if (!existing && !validCode) {
+      // Return a neutral response — don't reveal whether the email is registered
+      // (divergent errors here would let an attacker enumerate existing accounts).
+      console.warn('[AUTH] signup blocked: invalid/missing invite code')
+      return c.redirect('/login?sent=1')
     }
   }
 
@@ -86,7 +83,7 @@ auth.post('/login', rateLimit(5, 60), async (c) => {
     // launch-day delivery outage is visible rather than silent.
     console.error('[AUTH] magic link send failed', e)
     return c.html(
-      renderLoginPage({ error: 'We couldn’t send your sign-in link right now. Please try again in a moment.', gateOn, email }),
+      renderLoginPage({ error: "We couldn't send your sign-in link right now. Please try again in a moment.", gateOn, email }),
       500
     )
   }
@@ -94,7 +91,7 @@ auth.post('/login', rateLimit(5, 60), async (c) => {
   return c.redirect('/login?sent=1')
 })
 
-auth.get('/login/verify', async (c) => {
+auth.get('/login/verify', rateLimit(10, 60), async (c) => {
   const token = c.req.query('token')
   if (!token) {
     return c.redirect('/login?error=Invalid+or+expired+link')
@@ -338,7 +335,7 @@ function renderLoginPage(opts: { error?: string; sent?: boolean; gateOn?: boolea
           <p id="passkey-error" class="text-sm text-grapefruit-700 font-medium mt-2 hidden"></p>
         </div>
         <p class="text-center text-xs text-gray-500 mt-5">
-          New here? Just enter your email above — we’ll create your account automatically.
+          New here? Just enter your email above — we'll create your account automatically.
         </p>
         {PasskeyLoginScript()}
       </div>

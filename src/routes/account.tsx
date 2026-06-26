@@ -450,7 +450,7 @@ account.post('/account/feed-token/regenerate', async (c) => {
 
 // ─── Request email change ───
 
-account.post('/account/email', async (c) => {
+account.post('/account/email', rateLimit(5, 60), async (c) => {
   const user = c.get('user')
   const body = await c.req.parseBody()
   const newEmail = typeof body.new_email === 'string' ? body.new_email.trim().toLowerCase() : ''
@@ -463,10 +463,11 @@ account.post('/account/email', async (c) => {
     return c.redirect('/account?error=That%27s+already+your+email')
   }
 
-  // Check if email is already taken
+  // Check if email is already taken — silent drop if so (neutral response avoids
+  // turning this endpoint into a registered-email oracle).
   const existing = await getUserByEmail(c.env.DB, newEmail)
   if (existing) {
-    return c.redirect('/account?error=That+email+is+already+in+use')
+    return c.redirect('/account?email_sent=1')
   }
 
   // Store email change request in KV (15 min TTL)

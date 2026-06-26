@@ -78,11 +78,20 @@ export async function clearDocumentShares(
 
 export async function getDocument(
   db: D1Database,
-  documentId: string
+  documentId: string,
+  userId: string
 ): Promise<Document | null> {
+  // Scope the initial fetch to weddings the user is an active member of.
+  // This prevents a 403-vs-404 oracle for documents on unrelated weddings;
+  // the caller still runs canUserAccessDocument for fine-grained visibility.
   return db
-    .prepare('SELECT * FROM documents WHERE id = ?')
-    .bind(documentId)
+    .prepare(
+      `SELECT d.* FROM documents d
+       JOIN wedding_members wm ON wm.wedding_id = d.wedding_id
+       WHERE d.id = ? AND wm.user_id = ? AND wm.status = 'active'
+       LIMIT 1`
+    )
+    .bind(documentId, userId)
     .first<Document>()
 }
 

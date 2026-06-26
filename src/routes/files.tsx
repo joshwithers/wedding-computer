@@ -211,7 +211,7 @@ files.get('/files/:id', async (c) => {
   const user = c.get('user')
   const docId = c.req.param('id')
 
-  const doc = await getDocument(c.env.DB, docId)
+  const doc = await getDocument(c.env.DB, docId, user.id)
   if (!doc || !doc.wedding_id) return c.text('Not found', 404)
 
   // Check access
@@ -281,7 +281,7 @@ files.get('/files/:id/download', async (c) => {
   const user = c.get('user')
   const docId = c.req.param('id')
 
-  const doc = await getDocument(c.env.DB, docId)
+  const doc = await getDocument(c.env.DB, docId, user.id)
   if (!doc || !doc.wedding_id) return c.text('Not found', 404)
 
   const hasAccess = await canUserAccessDocument(c.env.DB, docId, user.id, doc.wedding_id)
@@ -307,7 +307,7 @@ files.post('/files/:id/delete', csrf, async (c) => {
   const user = c.get('user')
   const docId = c.req.param('id')
 
-  const doc = await getDocument(c.env.DB, docId)
+  const doc = await getDocument(c.env.DB, docId, user.id)
   if (!doc || !doc.wedding_id) return c.text('Not found', 404)
 
   // Only the uploader can delete
@@ -361,7 +361,7 @@ files.post('/files/:id/share', csrf, async (c) => {
   const user = c.get('user')
   const docId = c.req.param('id')
 
-  const doc = await getDocument(c.env.DB, docId)
+  const doc = await getDocument(c.env.DB, docId, user.id)
   if (!doc || !doc.wedding_id) return c.text('Not found', 404)
 
   // Only the uploader can change sharing

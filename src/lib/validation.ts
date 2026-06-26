@@ -17,6 +17,14 @@ export function trimOrNull(val: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
+/** Returns the value only if it matches YYYY-MM-DD, otherwise null.
+ *  Used on every date write path to prevent arbitrary strings from being stored
+ *  in weddings.date and later echoed unescaped into email templates. */
+export function validDateOrNull(val: unknown): string | null {
+  const s = trimOrNull(val)
+  return s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null
+}
+
 export function requireString(val: unknown, name: string): string {
   if (typeof val !== 'string' || val.trim().length === 0) {
     throw new Error(`${name} is required`)

@@ -22,6 +22,7 @@ import { parseMarkdown, serializeMarkdown } from './markdown'
 import { weddingFolderName, slugify } from './slug'
 import { recordWriteConflict } from './conflicts'
 import { gitBlobSha } from './etag'
+import { validDateOrNull } from '../lib/validation'
 
 /** Frontmatter fields for a wedding markdown file */
 type WeddingFrontmatter = {
@@ -135,7 +136,7 @@ export function markdownToWedding(
   return {
     id: fm.id,
     title: fm.title ?? '',
-    date: fm.date ?? null,
+    date: validDateOrNull(fm.date),
     time: fm.time ?? null,
     duration_hours: fm.duration_hours ?? null,
     location: fm.location ?? null,

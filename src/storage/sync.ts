@@ -156,6 +156,23 @@ export async function applyPulledFile(
   if (path.startsWith('contacts/')) {
     const doc = parseMarkdown(content)
     const contact = markdownToContact(doc, vendorId)
+
+    // SECURITY: the contact id comes from vendor-controlled frontmatter and the
+    // contacts table is shared across all tenants. syncToContactsTable upserts
+    // ON CONFLICT(id), so a crafted contacts/x.md whose frontmatter id matches
+    // another vendor's contact would clobber that contact's PII. Mirror the
+    // wedding branch's weddingWriteAccess gate: if the id already belongs to a
+    // different account, reject without writing. (The upsert's
+    // `WHERE contacts.vendor_id = excluded.vendor_id` is a second line of
+    // defence, but stopping here also avoids writing a bogus file_index row.)
+    const owner = await db
+      .prepare('SELECT vendor_id FROM contacts WHERE id = ?')
+      .bind(contact.id)
+      .first<{ vendor_id: string }>()
+    if (owner && owner.vendor_id !== vendorId) {
+      return { applied: 'ignored', reason: 'contact belongs to another account' }
+    }
+
     await syncToContactsTable(db, contact)
     await upsertIndexRow(db, vendorId, 'contact', contact.id, path, etag, contactCachedData(contact))
     return { applied: 'contact', entityId: contact.id }

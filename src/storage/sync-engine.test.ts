@@ -223,6 +223,81 @@ describe('applyPulledFile — cross-tenant wedding guard (C1)', () => {
   })
 })
 
+describe('applyPulledFile — cross-tenant contact guard (C1)', () => {
+  const VICTIM_CONTACT = 'cccccccccccccccccccccccc'
+  const contactMd = (id: string, firstName: string) =>
+    serializeMarkdown({ frontmatter: { id, first_name: firstName }, body: '' })
+
+  function seedVictimContact(db: MockD1Database) {
+    db.seed('contacts', [
+      {
+        id: VICTIM_CONTACT,
+        vendor_id: 'vendor-a',
+        first_name: 'Real',
+        last_name: 'Couple',
+        email: 'real@example.com',
+      },
+    ])
+  }
+
+  it("rejects a foreign contact id — no overwrite of another vendor's PII", async () => {
+    const db = new MockD1Database()
+    seedVictimContact(db)
+
+    const outcome = await applyPulledFile(
+      db as any,
+      'vendor-b',
+      'contacts/hacked.md',
+      contactMd(VICTIM_CONTACT, 'Hacked'),
+      'etag-1'
+    )
+
+    expect(outcome).toEqual({ applied: 'ignored', reason: 'contact belongs to another account' })
+    const victim = db.getTable('contacts').find((c) => c.id === VICTIM_CONTACT)
+    expect(victim?.vendor_id).toBe('vendor-a')
+    expect(victim?.first_name).toBe('Real')
+    expect(victim?.email).toBe('real@example.com')
+    // No index row leaked into the attacker's namespace either.
+    expect(db.getTable('file_index').length).toBe(0)
+  })
+
+  it('lets the owning vendor update their own contact', async () => {
+    const db = new MockD1Database()
+    seedVictimContact(db)
+
+    const outcome = await applyPulledFile(
+      db as any,
+      'vendor-a',
+      'contacts/real.md',
+      contactMd(VICTIM_CONTACT, 'Updated'),
+      'etag-2'
+    )
+
+    expect(outcome).toEqual({ applied: 'contact', entityId: VICTIM_CONTACT })
+    const contact = db.getTable('contacts').find((c) => c.id === VICTIM_CONTACT)
+    expect(contact?.first_name).toBe('Updated')
+    expect(contact?.vendor_id).toBe('vendor-a')
+  })
+
+  it('creates a brand-new contact from a vendor file', async () => {
+    const db = new MockD1Database()
+    db.seed('contacts', [])
+
+    const outcome = await applyPulledFile(
+      db as any,
+      'vendor-c',
+      'contacts/new.md',
+      contactMd('dddddddddddddddddddddddd', 'Fresh'),
+      'etag-3'
+    )
+
+    expect(outcome).toEqual({ applied: 'contact', entityId: 'dddddddddddddddddddddddd' })
+    const created = db.getTable('contacts').find((c) => c.id === 'dddddddddddddddddddddddd')
+    expect(created?.vendor_id).toBe('vendor-c')
+    expect(created?.first_name).toBe('Fresh')
+  })
+})
+
 describe('safeToPruneIndex (H8 mass-delete guard)', () => {
   it('allows when there is nothing to remove', () => {
     expect(safeToPruneIndex(0, 0, 5)).toBe(true)

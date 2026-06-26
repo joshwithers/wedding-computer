@@ -225,10 +225,42 @@ export async function getVendorByEnquiryKey(
   key: string
 ): Promise<VendorProfile | null> {
   if (!key || key.length < 16) return null
-  return db
+
+  const { sha256Hex } = await import('../lib/crypto')
+  const hashed = `sha256:${await sha256Hex(key)}`
+
+  const byHash = await db
+    .prepare('SELECT * FROM vendor_profiles WHERE enquiry_key = ?')
+    .bind(hashed)
+    .first<VendorProfile>()
+  if (byHash) return byHash
+
+  // Legacy plaintext row — accept and upgrade to the hashed form. A value
+  // carrying a hash prefix must never match here, or a leaked column value
+  // would itself become a usable credential.
+  if (key.includes(':')) return null
+  const legacy = await db
     .prepare('SELECT * FROM vendor_profiles WHERE enquiry_key = ?')
     .bind(key)
     .first<VendorProfile>()
+  if (legacy) {
+    try {
+      await db
+        .prepare('UPDATE vendor_profiles SET enquiry_key = ? WHERE id = ?')
+        .bind(hashed, legacy.id)
+        .run()
+      legacy.enquiry_key = hashed
+    } catch (err) {
+      console.error('[vendors] Failed to upgrade legacy enquiry key:', err)
+    }
+  }
+  return legacy
+}
+
+/** Hash an enquiry key for storage (write the hash, show the raw key once). */
+export async function hashEnquiryKey(rawKey: string): Promise<string> {
+  const { sha256Hex } = await import('../lib/crypto')
+  return `sha256:${await sha256Hex(rawKey)}`
 }
 
 export async function updateVendor(

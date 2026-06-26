@@ -1219,7 +1219,11 @@ admin.post('/admin/backfill-couple-contacts', async (c) => {
 // ─── Waitlist ───
 
 function csvCell(v: string | null | undefined): string {
-  const s = v == null ? '' : String(v)
+  let s = v == null ? '' : String(v)
+  // Neutralise spreadsheet formula injection: a cell that a spreadsheet would
+  // evaluate (leading = + - @, or tab/CR before one of those) is prefixed with a
+  // single quote so it's treated as text. Then apply RFC-4180 quoting.
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
 }
 
