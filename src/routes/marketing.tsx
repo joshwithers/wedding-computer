@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie } from 'hono/cookie'
-import { SUPPORTED_LOCALES, t, getI18n, getCspNonce, type MessageKey } from '../i18n'
+import { SUPPORTED_LOCALES, PUBLIC_LOCALES, t, getI18n, getCspNonce, type MessageKey } from '../i18n'
+import { legal as englishLegal } from '../i18n/en/legal'
+import { clientIp, consumeRateLimit } from '../middleware/rate-limit'
 import type { Env } from '../types'
 import { MarketingLayout } from '../views/layouts/marketing'
 import { getProPrice, CURRENCIES, PRESENTMENT_CURRENCIES, isCurrencyCode, type CurrencyCode } from '../services/pricing'
@@ -9,6 +11,8 @@ const marketing = new Hono<Env>()
 const PUBLIC_MARKETING_CACHE = 'public, max-age=300, s-maxage=3600'
 const PRIVATE_MARKETING_VARIANT_CACHE = 'private, max-age=300'
 const PUBLIC_MARKETING_VARY = 'Accept, Accept-Language, CF-IPCountry'
+const TERMS_TRANSLATION_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+const TERMS_TRANSLATION_LOCALES = PUBLIC_LOCALES.filter((locale) => !locale.tag.startsWith('en'))
 
 // Persist a referral code (?ref=) so it survives signup → onboarding.
 function captureReferral(c: any) {
@@ -301,6 +305,69 @@ marketing.get('/terms', (c) => {
   return c.html(<TermsPage />)
 })
 
+marketing.post('/terms/translate', async (c) => {
+  const body = await c.req.json().catch(() => null)
+  const requestedLocale = typeof body === 'object' && body && 'locale' in body && typeof body.locale === 'string'
+    ? body.locale.trim()
+    : ''
+  const target = findTermsTranslationLocale(requestedLocale)
+  if (!target) {
+    c.header('Cache-Control', 'no-store')
+    return c.json({ error: 'Unsupported language' }, 400)
+  }
+
+  const source = buildTermsPlainText()
+  const cacheKey = termsTranslationCacheKey(target.tag, source)
+  const cached = await c.env.KV.get(cacheKey)
+  if (cached) {
+    c.header('Cache-Control', 'no-store')
+    return c.json({
+      locale: target.tag,
+      language: target.label,
+      translation: cached,
+    })
+  }
+
+  const ip = clientIp(c)
+  const burstOk = await consumeRateLimit(c.env.KV, `terms-translate:${ip}`, 3, 3600)
+  const dayOk = burstOk && (await consumeRateLimit(c.env.KV, `terms-translate-day:${ip}`, 8, 86400))
+  if (!burstOk || !dayOk) {
+    c.header('Cache-Control', 'no-store')
+    return c.json({ error: t('legal.terms.translate.rateLimited') }, 429)
+  }
+
+  try {
+    const result = await c.env.AI.run(TERMS_TRANSLATION_MODEL, {
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a careful legal-document translator. Translate faithfully without adding, removing, softening, or strengthening any terms. Keep names, email addresses, URLs, ABNs, currency amounts, and legal references unchanged. The translation is for convenience only; the English text remains legally controlling.',
+        },
+        {
+          role: 'user',
+          content: `Translate the following Wedding Computer Terms and Conditions into ${target.label}. Keep the Markdown headings and paragraph spacing. Do not include commentary, code fences, or notes outside the translation.\n\n${source}`,
+        },
+      ],
+      max_tokens: 8192,
+    }) as { response?: string }
+
+    const translation = cleanAiTranslation(result.response ?? '')
+    if (!translation) throw new Error('empty AI translation')
+    await c.env.KV.put(cacheKey, translation, { expirationTtl: 60 * 60 * 24 * 30 })
+
+    c.header('Cache-Control', 'no-store')
+    return c.json({
+      locale: target.tag,
+      language: target.label,
+      translation,
+    })
+  } catch (error) {
+    console.error('[terms] AI translation failed', error instanceof Error ? error.message : error)
+    c.header('Cache-Control', 'no-store')
+    return c.json({ error: t('legal.terms.translate.error') }, 502)
+  }
+})
+
 function HomePage() {
   return (
     <MarketingLayout>
@@ -491,6 +558,7 @@ function LegalPage({
   lastUpdated,
   intro,
   sections,
+  afterIntro,
   showEnglishNotice = true,
 }: {
   metaTitle: MessageKey
@@ -498,6 +566,7 @@ function LegalPage({
   lastUpdated: MessageKey
   intro: MessageKey[]
   sections: LegalSection[]
+  afterIntro?: any
   showEnglishNotice?: boolean
 }) {
   const isEnglish = getI18n().locale.startsWith('en')
@@ -510,6 +579,7 @@ function LegalPage({
         <div class="space-y-4 text-gray-600 leading-relaxed mb-10">
           {intro.map((k) => <p>{t(k)}</p>)}
         </div>
+        {afterIntro}
         {sections.map((s) => (
           <section class="mb-8">
             <h2 class="text-lg sm:text-xl font-bold mb-3 text-gray-900">{t(s.title)}</h2>
@@ -543,6 +613,8 @@ function PrivacyPage() {
   return <LegalPage metaTitle="legal.privacy.metaTitle" title="legal.privacy.title" lastUpdated="legal.privacy.lastUpdated" intro={['legal.privacy.intro.p1', 'legal.privacy.intro.p2', 'legal.privacy.intro.p3']} sections={PRIVACY_SECTIONS} showEnglishNotice={false} />
 }
 
+const TERMS_INTRO: MessageKey[] = ['legal.terms.intro.p1', 'legal.terms.intro.p1b', 'legal.terms.intro.p2', 'legal.terms.intro.p3', 'legal.terms.intro.p4']
+
 const TERMS_SECTIONS: LegalSection[] = [
   { title: 'legal.terms.contract.title', body: ['legal.terms.contract.p1', 'legal.terms.contract.p2', 'legal.terms.contract.p3'] },
   { title: 'legal.terms.service.title', body: ['legal.terms.service.p1', 'legal.terms.service.p2', 'legal.terms.service.p3'] },
@@ -568,8 +640,156 @@ const TERMS_SECTIONS: LegalSection[] = [
 ]
 
 function TermsPage() {
-  return <LegalPage metaTitle="legal.terms.metaTitle" title="legal.terms.title" lastUpdated="legal.terms.lastUpdated" intro={['legal.terms.intro.p1', 'legal.terms.intro.p2', 'legal.terms.intro.p3', 'legal.terms.intro.p4']} sections={TERMS_SECTIONS} />
+  return <LegalPage metaTitle="legal.terms.metaTitle" title="legal.terms.title" lastUpdated="legal.terms.lastUpdated" intro={TERMS_INTRO} sections={TERMS_SECTIONS} afterIntro={<TermsTranslationWidget />} />
 }
+
+function TermsTranslationWidget() {
+  const current = getI18n().locale
+  const currentLanguage = current.split('-')[0]
+  const defaultLocale = TERMS_TRANSLATION_LOCALES.find((locale) => locale.tag === current)
+    ?? TERMS_TRANSLATION_LOCALES.find((locale) => locale.tag.split('-')[0] === currentLanguage)
+    ?? TERMS_TRANSLATION_LOCALES[0]
+
+  return (
+    <section class="mb-10 rounded-2xl border border-horizon-600/20 bg-white p-5 sm:p-6 shadow-sm">
+      <div class="flex flex-col gap-4">
+        <div>
+          <h2 class="text-base sm:text-lg font-bold text-gray-900 mb-2">{t('legal.terms.translate.title')}</h2>
+          <p class="text-sm text-gray-600 leading-relaxed">{t('legal.terms.translate.body')}</p>
+          <p class="text-xs text-gray-500 leading-relaxed mt-2">{t('legal.terms.translate.legalNotice')}</p>
+        </div>
+        <form
+          id="terms-translate-form"
+          class="flex flex-col sm:flex-row gap-3 sm:items-end"
+          data-loading={t('legal.terms.translate.loading')}
+          data-error={t('legal.terms.translate.error')}
+          data-output-title={t('legal.terms.translate.outputTitle')}
+        >
+          <label class="flex-1 text-sm font-semibold text-gray-700" for="terms-translate-locale">
+            {t('legal.terms.translate.label')}
+            <select id="terms-translate-locale" name="locale" class="mt-1 block w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-horizon-500">
+              {TERMS_TRANSLATION_LOCALES.map((locale) => (
+                <option value={locale.tag} selected={locale.tag === defaultLocale.tag}>{locale.label}</option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" class="rounded-xl bg-horizon-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-horizon-700 disabled:opacity-90">
+            {t('legal.terms.translate.button')}
+          </button>
+        </form>
+        <p id="terms-translate-status" class="text-sm text-gray-500" role="status" aria-live="polite"></p>
+        <div id="terms-translation-panel" class="hidden rounded-xl border border-gray-200 bg-papaya-50 p-4">
+          <h3 id="terms-translation-heading" class="text-sm font-bold text-gray-900 mb-2"></h3>
+          <p class="text-xs text-gray-500 mb-3">{t('legal.terms.translate.outputNotice')}</p>
+          <pre id="terms-translation-output" class="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700 font-sans"></pre>
+        </div>
+      </div>
+      <script nonce={getCspNonce()} dangerouslySetInnerHTML={{ __html: TERMS_TRANSLATION_SCRIPT }} />
+    </section>
+  )
+}
+
+function findTermsTranslationLocale(locale: string): (typeof TERMS_TRANSLATION_LOCALES)[number] | null {
+  if (!locale) return null
+  const exact = TERMS_TRANSLATION_LOCALES.find((candidate) => candidate.tag.toLowerCase() === locale.toLowerCase())
+  if (exact) return exact
+  const language = locale.split('-')[0].toLowerCase()
+  return TERMS_TRANSLATION_LOCALES.find((candidate) => candidate.tag.split('-')[0].toLowerCase() === language) ?? null
+}
+
+function buildTermsPlainText(): string {
+  const lines: string[] = [
+    `# ${englishLegalText('legal.terms.title')}`,
+    englishLegalText('legal.terms.lastUpdated'),
+    '',
+  ]
+
+  for (const key of TERMS_INTRO) {
+    lines.push(englishLegalText(key), '')
+  }
+
+  for (const section of TERMS_SECTIONS) {
+    lines.push(`## ${englishLegalText(section.title)}`, '')
+    for (const key of section.body) {
+      lines.push(englishLegalText(key), '')
+    }
+  }
+
+  return lines.join('\n').trim()
+}
+
+function englishLegalText(key: MessageKey): string {
+  return (englishLegal as Partial<Record<MessageKey, string>>)[key] ?? key
+}
+
+function cleanAiTranslation(raw: string): string {
+  let text = raw.trim()
+  const fence = text.match(/^```(?:markdown|md|text)?\s*([\s\S]*?)\s*```$/i)
+  if (fence) text = fence[1].trim()
+  return text
+}
+
+function termsTranslationCacheKey(locale: string, source: string): string {
+  let hash = 5381
+  for (let i = 0; i < source.length; i += 1) {
+    hash = ((hash << 5) + hash) ^ source.charCodeAt(i)
+  }
+  return `terms-translation:${locale}:${(hash >>> 0).toString(36)}`
+}
+
+const TERMS_TRANSLATION_SCRIPT = `
+(function() {
+  var form = document.getElementById('terms-translate-form');
+  if (!form) return;
+  var select = document.getElementById('terms-translate-locale');
+  var button = form.querySelector('button[type="submit"]');
+  var status = document.getElementById('terms-translate-status');
+  var panel = document.getElementById('terms-translation-panel');
+  var heading = document.getElementById('terms-translation-heading');
+  var output = document.getElementById('terms-translation-output');
+
+  function setStatus(message) {
+    if (status) status.textContent = message || '';
+  }
+
+  form.addEventListener('submit', function(event) {
+    event.preventDefault();
+    if (!select || !button || !panel || !heading || !output) return;
+
+    button.disabled = true;
+    panel.classList.add('hidden');
+    output.textContent = '';
+    setStatus(form.getAttribute('data-loading') || 'Translating...');
+
+    fetch('/terms/translate', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ locale: select.value })
+    })
+      .then(function(response) {
+        return response.json().catch(function() { return {}; }).then(function(data) {
+          if (!response.ok) throw new Error(data.error || form.getAttribute('data-error') || 'Translation failed');
+          return data;
+        });
+      })
+      .then(function(data) {
+        heading.textContent = (form.getAttribute('data-output-title') || 'AI translation') + ': ' + data.language;
+        output.textContent = data.translation || '';
+        panel.classList.remove('hidden');
+        setStatus('');
+      })
+      .catch(function(error) {
+        setStatus(error && error.message ? error.message : (form.getAttribute('data-error') || 'Translation failed'));
+      })
+      .finally(function() {
+        button.disabled = false;
+      });
+  });
+})();
+`
 
 function PricingPage({ proPrice, currency }: { proPrice: string; currency: CurrencyCode }) {
   return (
