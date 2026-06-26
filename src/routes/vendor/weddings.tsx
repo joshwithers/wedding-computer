@@ -28,7 +28,7 @@ import { timed } from '../../lib/timing'
 import { dbOf } from '../../middleware/d1-session'
 import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { getUserByEmail } from '../../db/users'
-import { requireString, trimOrNull, isValidEmail } from '../../lib/validation'
+import { requireString, trimOrNull, validDateOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, formatDateTime, formatTime, daysUntil, addHoursToTime } from '../../lib/date'
 import { createEvent } from '../../db/calendar'
 import { track } from '../../services/analytics'
@@ -398,7 +398,7 @@ weddings.post('/app/weddings/new', async (c) => {
     const durationHours = durationRaw ? parseFloat(durationRaw) : null
     const wedding = await createWedding(c.env.DB, {
       title,
-      date: trimOrNull(body.date),
+      date: validDateOrNull(body.date),
       time: trimOrNull(body.time),
       duration_hours: durationHours && !isNaN(durationHours) ? durationHours : null,
       location: trimOrNull(body.location),
@@ -424,7 +424,7 @@ weddings.post('/app/weddings/new', async (c) => {
     }
 
     // Auto-create calendar event if wedding has a date
-    const weddingDate = trimOrNull(body.date)
+    const weddingDate = validDateOrNull(body.date)
     const startTime = trimOrNull(body.time)
     if (weddingDate) {
       const endTime = startTime && durationHours ? addHoursToTime(startTime, durationHours) : null
@@ -478,7 +478,7 @@ weddings.post('/app/weddings/new', async (c) => {
         const inviteData = {
           vendorName: vendor.business_name,
           weddingTitle: title,
-          weddingDate: trimOrNull(body.date) ? formatDate(String(body.date)) : null,
+          weddingDate: validDateOrNull(body.date) ? formatDate(validDateOrNull(body.date)!) : null,
         }
 
         if (contact.email) {
@@ -1392,7 +1392,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     // from this form.
     const updateData: Record<string, unknown> = {
       title,
-      date: trimOrNull(body.date),
+      date: validDateOrNull(body.date),
       location: trimOrNull(body.location),
       ceremony_type: trimOrNull(body.ceremony_type),
       emoji,
@@ -1467,7 +1467,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     // Log changes
     if (oldWedding) {
       const changes = diffWeddingChanges(oldWedding, {
-        title, date: trimOrNull(body.date),
+        title, date: validDateOrNull(body.date),
         location: trimOrNull(body.location), status: newStatus as string | undefined,
         ceremony_type: trimOrNull(body.ceremony_type),
         emoji,

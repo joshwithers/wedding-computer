@@ -363,6 +363,66 @@ export async function listContacts(
 }
 
 /**
+ * Look up a contact by email (or partner email) from the D1 index cache.
+ * Used for dedup on new enquiries: same person enquiring again should update
+ * the existing record, not create a second profile.
+ * Checks both email and partner_email columns so re-enquiries from either
+ * member of a couple always resolve to the same contact.
+ */
+export async function findContactByEmail(
+  db: D1Database,
+  vendorId: string,
+  email: string
+): Promise<Contact | null> {
+  const clean = email.toLowerCase()
+  const row = await db
+    .prepare(
+      `SELECT entity_id, cached_data FROM file_index
+       WHERE vendor_id = ? AND entity_type = 'contact'
+         AND (LOWER(json_extract(cached_data, '$.email')) = ?
+           OR LOWER(json_extract(cached_data, '$.partner_email')) = ?)
+       LIMIT 1`
+    )
+    .bind(vendorId, clean, clean)
+    .first<{ entity_id: string; cached_data: string }>()
+  if (!row) return null
+  try {
+    const c = JSON.parse(row.cached_data) as Record<string, unknown>
+    const s = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
+    return {
+      id: row.entity_id,
+      vendor_id: vendorId,
+      first_name: String(c.first_name ?? ''),
+      last_name: String(c.last_name ?? ''),
+      email: s(c.email),
+      phone: s(c.phone),
+      partner_first_name: s(c.partner_first_name),
+      partner_last_name: s(c.partner_last_name),
+      partner_email: s(c.partner_email),
+      partner_phone: s(c.partner_phone),
+      address: s(c.address),
+      instagram: s(c.instagram),
+      facebook: s(c.facebook),
+      tiktok: s(c.tiktok),
+      website: s(c.website),
+      source: s(c.source),
+      status: s(c.status) ?? 'new',
+      wedding_id: s(c.wedding_id),
+      wedding_date: s(c.wedding_date),
+      wedding_location: s(c.wedding_location),
+      notes: s(c.notes),
+      tags: s(c.tags),
+      form_data: s(c.form_data),
+      last_contacted_at: s(c.last_contacted_at),
+      created_at: String(c.created_at ?? ''),
+      updated_at: String(c.updated_at ?? ''),
+    } as Contact
+  } catch {
+    return null
+  }
+}
+
+/**
  * Get a single contact by reading its markdown file.
  * Looks up the file path from the D1 index, then reads from storage.
  */

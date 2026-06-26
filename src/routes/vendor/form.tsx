@@ -5,7 +5,7 @@ import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { requireEmailHandle } from '../../middleware/email-handle'
 import { csrf } from '../../middleware/csrf'
-import { updateVendor } from '../../db/vendors'
+import { updateVendor, hashEnquiryKey } from '../../db/vendors'
 import { isProVendor } from '../../db/subscriptions'
 import { generateToken } from '../../lib/crypto'
 import {
@@ -36,9 +36,19 @@ form.get('/app/form', async (c) => {
   const error = c.req.query('error')
   const isPro = await isProVendor(c.env.DB, vendor.id)
 
+  // One-time reveal of a freshly generated/rotated intake key. The key is hashed
+  // at rest, so this KV flash is the only chance to show the raw value.
+  let revealedKey: string | null = null
+  const flashId = enqKeyFlashId(vendor.id)
+  const flashed = await c.env.KV.get(flashId)
+  if (flashed) {
+    revealedKey = flashed
+    await c.env.KV.delete(flashId)
+  }
+
   return c.html(
     <AppLayout title="Enquiry Form" user={user} vendor={vendor} csrfToken={c.get('csrfToken')}>
-      <FormEditor config={config} vendor={vendor} appUrl={c.env.APP_URL} siteKey={c.env.TURNSTILE_SITE_KEY} isPro={isPro} csrfToken={c.get('csrfToken')} saved={!!saved} error={error} />
+      <FormEditor config={config} vendor={vendor} appUrl={c.env.APP_URL} siteKey={c.env.TURNSTILE_SITE_KEY} isPro={isPro} csrfToken={c.get('csrfToken')} saved={!!saved} error={error} revealedKey={revealedKey} />
     </AppLayout>
   )
 })
@@ -49,14 +59,25 @@ function newEnquiryKey(token: string): string {
   return `wc_intake_${token}`
 }
 
+const ENQ_KEY_FLASH_TTL = 600 // 10 min one-time reveal window
+function enqKeyFlashId(vendorId: string): string {
+  return `enqkey_flash:${vendorId}`
+}
+
+// Generate a fresh intake key: store only its hash, and stash the raw value in
+// KV for a single post-redirect reveal (it's never recoverable after that).
+async function issueEnquiryKey(env: Env['Bindings'], vendorId: string): Promise<void> {
+  const raw = newEnquiryKey(await generateToken(24))
+  await updateVendor(env.DB, vendorId, { enquiry_key: await hashEnquiryKey(raw) })
+  await env.KV.put(enqKeyFlashId(vendorId), raw, { expirationTtl: ENQ_KEY_FLASH_TTL })
+}
+
 form.post('/app/form/generate-key', async (c) => {
   const vendor = c.get('vendor')!
   const isPro = await isProVendor(c.env.DB, vendor.id)
   if (!isPro) return c.redirect('/app/form?error=' + encodeURIComponent('The API requires a Pro subscription'))
   // Don't clobber an existing key.
-  if (!vendor.enquiry_key) {
-    await updateVendor(c.env.DB, vendor.id, { enquiry_key: newEnquiryKey(await generateToken(24)) })
-  }
+  if (!vendor.enquiry_key) await issueEnquiryKey(c.env, vendor.id)
   return c.redirect('/app/form#api')
 })
 
@@ -64,7 +85,7 @@ form.post('/app/form/rotate-key', async (c) => {
   const vendor = c.get('vendor')!
   const isPro = await isProVendor(c.env.DB, vendor.id)
   if (!isPro) return c.redirect('/app/form?error=' + encodeURIComponent('The API requires a Pro subscription'))
-  await updateVendor(c.env.DB, vendor.id, { enquiry_key: newEnquiryKey(await generateToken(24)) })
+  await issueEnquiryKey(c.env, vendor.id)
   return c.redirect('/app/form#api')
 })
 
@@ -261,6 +282,9 @@ function buildConfigFromBody(body: Record<string, string>): FormConfig {
       const mapTo = body[`field_mapto_${id}`]
       if (mapTo && mapTo !== '') field.mapTo = mapTo as FormField['mapTo']
 
+      const helpText = (body[`field_help_${id}`] ?? '').trim()
+      if (helpText) field.helpText = helpText
+
       if (type === 'select' || type === 'radio') {
         const opts = (body[`field_options_${id}`] ?? '')
           .split('\n')
@@ -303,6 +327,7 @@ function FormEditor({
   csrfToken,
   saved,
   error,
+  revealedKey,
 }: {
   config: FormConfig
   vendor: VendorProfile
@@ -312,6 +337,7 @@ function FormEditor({
   csrfToken: string
   saved: boolean
   error?: string | null
+  revealedKey?: string | null
 }) {
   const vendorId = vendor.id
   const formUrl = `/enquire/${vendorId}`
@@ -427,7 +453,7 @@ function FormEditor({
         </details>
       </div>
 
-      <ShareChannels vendor={vendor} config={config} appUrl={appUrl} siteKey={siteKey} isPro={isPro} csrfToken={csrfToken} />
+      <ShareChannels vendor={vendor} config={config} appUrl={appUrl} siteKey={siteKey} isPro={isPro} csrfToken={csrfToken} revealedKey={revealedKey} />
 
       {/* Main form editor */}
       <form method="post" action="/app/form">
@@ -491,6 +517,16 @@ function FormEditor({
           <div class="flex items-center justify-between">
             <h2 class="text-base font-bold">Fields</h2>
             <span class="text-xs text-gray-400">{config.fields.length} fields</span>
+          </div>
+
+          {/* CRM mapping callout — explains what "Save answer to" does */}
+          <div class="flex gap-2.5 bg-horizon-50 border border-horizon-600/20 rounded-xl p-3 text-xs text-horizon-700">
+            <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>
+              <strong>Three fields are required for enquiries to be saved as contacts:</strong> one field each mapped to <strong>First name</strong>, <strong>Last name</strong>, and <strong>Email</strong>. Use the <strong>Save answer to</strong> dropdown on each field to link it to the right contact field.
+            </span>
           </div>
 
           {config.fields.map((field, idx) => (
@@ -660,6 +696,7 @@ function ShareChannels({
   siteKey,
   isPro,
   csrfToken,
+  revealedKey,
 }: {
   vendor: VendorProfile
   config: FormConfig
@@ -667,13 +704,17 @@ function ShareChannels({
   siteKey: string
   isPro: boolean
   csrfToken: string
+  revealedKey?: string | null
 }) {
   const postUrl = `${appUrl}/enquire/${vendor.id}`
   const apiUrl = `${appUrl}/api/v1/enquiries`
   const htmlSnippet = buildHtmlSnippet(config, postUrl, siteKey)
-  const key = vendor.enquiry_key
+  // The stored key is a hash; `revealed` is the raw value shown once, right
+  // after generate/rotate. hasKey just means "a key is configured".
+  const hasKey = !!vendor.enquiry_key
+  const revealed = revealedKey ?? null
   const curl = `curl -X POST ${apiUrl} \\
-  -H "Authorization: Bearer ${key ?? 'YOUR_INTAKE_KEY'}" \\
+  -H "Authorization: Bearer ${revealed ?? 'YOUR_INTAKE_KEY'}" \\
   -H "Content-Type: application/json" \\
   -d '{"first_name":"Sam","last_name":"Rivera","email":"sam@example.com","wedding_date":"2027-03-14","notes":"Beach elopement"}'`
   const mcpConfig = `{
@@ -726,7 +767,7 @@ function ShareChannels({
       </details>
 
       {/* API & webhooks — Pro */}
-      <details class="border border-gray-100 rounded-xl p-4" id="api" open={!!key}>
+      <details class="border border-gray-100 rounded-xl p-4" id="api" open={hasKey || !!revealed}>
         <summary class="flex items-center justify-between cursor-pointer text-sm font-bold text-gray-700">
           <span>API &amp; webhooks (Zapier)</span>
           <span class="text-xs font-normal text-horizon-600">Pro</span>
@@ -746,9 +787,25 @@ function ShareChannels({
               <p class="font-bold text-gray-700 mb-1">
                 Your intake key <span class="font-normal text-gray-400">— keep it secret; rotate if it leaks</span>
               </p>
-              {key ? (
+              {revealed ? (
                 <div>
-                  <code class="block bg-gray-50 rounded-lg px-3 py-2 text-gray-700 break-all select-all">{key}</code>
+                  <code class="block bg-gray-50 rounded-lg px-3 py-2 text-gray-700 break-all select-all">{revealed}</code>
+                  <p class="text-xs text-grapefruit-700 mt-1">Copy this now — for your security we store only a hash and won't show it again. Rotate to get a new one.</p>
+                  <div class="flex gap-3 mt-2">
+                    <form method="post" action="/app/form/rotate-key">
+                      <input type="hidden" name="_csrf" value={csrfToken} />
+                      <button type="submit" class="text-xs text-gray-500 hover:text-horizon-700" onclick="return confirm('Rotate key? Integrations using the old key will stop working.')">Rotate</button>
+                    </form>
+                    <form method="post" action="/app/form/revoke-key">
+                      <input type="hidden" name="_csrf" value={csrfToken} />
+                      <button type="submit" class="text-xs text-gray-500 hover:text-grapefruit-700" onclick="return confirm('Revoke key? The API will stop accepting leads until you generate a new one.')">Revoke</button>
+                    </form>
+                  </div>
+                </div>
+              ) : hasKey ? (
+                <div>
+                  <code class="block bg-gray-50 rounded-lg px-3 py-2 text-gray-400 break-all">wc_intake_••••••••••••  (hidden)</code>
+                  <p class="text-xs text-gray-400 mt-1">Your key is set. We store only a hash, so it can't be shown again — rotate if you've lost it.</p>
                   <div class="flex gap-3 mt-2">
                     <form method="post" action="/app/form/rotate-key">
                       <input type="hidden" name="_csrf" value={csrfToken} />
@@ -783,11 +840,11 @@ function ShareChannels({
               <ol class="list-decimal list-inside space-y-1">
                 <li>Add a <strong>Webhooks by Zapier → POST</strong> action (or an HTTP module in Make).</li>
                 <li>URL: <code class="bg-gray-50 px-1 rounded break-all">{apiUrl}</code></li>
-                <li>Header <code class="bg-gray-50 px-1 rounded">Authorization</code> = <code class="bg-gray-50 px-1 rounded">Bearer {key ?? 'your-key'}</code></li>
+                <li>Header <code class="bg-gray-50 px-1 rounded">Authorization</code> = <code class="bg-gray-50 px-1 rounded">Bearer {revealed ?? 'YOUR_INTAKE_KEY'}</code></li>
                 <li>Payload type <strong>JSON</strong>; map your trigger's fields onto the field names above.</li>
               </ol>
             </div>
-            {key && (
+            {(hasKey || revealed) && (
               <div>
                 <p class="font-bold text-gray-700 mb-1">Test from a terminal</p>
                 <textarea readonly rows={5} onclick="this.select()" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-gray-600 bg-gray-50 font-mono">{curl}</textarea>
@@ -972,31 +1029,53 @@ function FieldCard({
                   type="text"
                   name={`field_placeholder_${field.id}`}
                   value={field.placeholder ?? ''}
+                  placeholder="Grey hint inside the field"
                   class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
                 />
               </div>
               <div>
-                <label class="block text-xs font-bold text-gray-500 mb-1">Width</label>
+                <label class="block text-xs font-bold text-gray-500 mb-1">
+                  Width
+                  <span class="font-normal text-gray-400 ml-1">— half fields sit side-by-side</span>
+                </label>
                 <select
                   name={`field_width_${field.id}`}
                   class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
                 >
-                  <option value="full" selected={field.width !== 'half'}>Full</option>
-                  <option value="half" selected={field.width === 'half'}>Half</option>
+                  <option value="full" selected={field.width !== 'half'}>Full width</option>
+                  <option value="half" selected={field.width === 'half'}>Half width</option>
                 </select>
               </div>
               <div>
-                <label class="block text-xs font-bold text-gray-500 mb-1">Maps to</label>
+                <label class="block text-xs font-bold text-gray-500 mb-1">
+                  Save answer to
+                  <span class="font-normal text-gray-400 ml-1">— stores in contact record</span>
+                </label>
                 <select
                   name={`field_mapto_${field.id}`}
-                  class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+                  class={`w-full border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent ${field.mapTo ? 'border-horizon-300' : 'border-gray-200'}`}
                 >
-                  <option value="">Custom data</option>
+                  <option value="">Don't save (custom data)</option>
                   {CONTACT_MAPPINGS.map((m) => (
                     <option value={m.value} selected={m.value === field.mapTo}>{m.label}</option>
                   ))}
                 </select>
               </div>
+            </div>
+          )}
+
+          {!isHeading && (
+            <div>
+              <label class="block text-xs font-bold text-gray-500 mb-1">
+                Help text <span class="font-normal text-gray-400">— shown below the field on your form</span>
+              </label>
+              <input
+                type="text"
+                name={`field_help_${field.id}`}
+                value={field.helpText ?? ''}
+                placeholder="e.g. We won't share your number with anyone"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
+              />
             </div>
           )}
 
@@ -1009,14 +1088,14 @@ function FieldCard({
                   checked={field.required}
                   class="accent-grapefruit-700"
                 />
-                <span class="text-gray-600">Required</span>
+                <span class="text-gray-600">Required <span class="text-gray-400 text-xs">(enquirer must fill this in)</span></span>
               </label>
             </div>
           )}
 
           {hasOptions && (
             <div>
-              <label class="block text-xs font-bold text-gray-500 mb-1">Options (one per line)</label>
+              <label class="block text-xs font-bold text-gray-500 mb-1">Options <span class="font-normal text-gray-400">(one per line)</span></label>
               <textarea
                 name={`field_options_${field.id}`}
                 rows={3}

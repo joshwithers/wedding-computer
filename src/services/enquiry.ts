@@ -1,5 +1,5 @@
 import type { Bindings, VendorProfile, Contact } from '../types'
-import { createContact } from '../storage/contacts'
+import { createContact, findContactByEmail, updateContact } from '../storage/contacts'
 import { getStorageWithSecrets } from '../storage'
 import { createActivity } from '../db/activities'
 import { track } from '../services/analytics'
@@ -172,11 +172,37 @@ export async function createEnquiry(
   const { contactData, formData, source } = input
 
   const storage = await getStorageWithSecrets(env, vendor)
-  const contact = await createContact(storage, env.DB, vendor.id, {
-    ...contactData,
-    source,
-    form_data: Object.keys(formData).length > 0 ? JSON.stringify(formData) : null,
-  })
+
+  // Dedup: if we already have a contact with this email (or partner email),
+  // update the existing record rather than creating a duplicate. Wedding date
+  // and location are always refreshed (couple may have changed them); other
+  // fields only fill in blanks so existing CRM data isn't clobbered.
+  let contact = contactData.email
+    ? await findContactByEmail(env.DB, vendor.id, contactData.email)
+    : null
+
+  if (contact) {
+    const updates: Parameters<typeof updateContact>[4] = {}
+    if (!contact.phone && contactData.phone) updates.phone = contactData.phone
+    if (!contact.partner_first_name && contactData.partner_first_name) updates.partner_first_name = contactData.partner_first_name
+    if (!contact.partner_last_name && contactData.partner_last_name) updates.partner_last_name = contactData.partner_last_name
+    if (contactData.wedding_date) updates.wedding_date = contactData.wedding_date
+    if (contactData.wedding_location) updates.wedding_location = contactData.wedding_location
+    if (Object.keys(updates).length > 0) {
+      try {
+        await updateContact(storage, env.DB, vendor.id, contact.id, updates)
+        Object.assign(contact, updates)
+      } catch (e: any) {
+        console.error('[enquiry] dedup contact update failed:', e.message)
+      }
+    }
+  } else {
+    contact = await createContact(storage, env.DB, vendor.id, {
+      ...contactData,
+      source,
+      form_data: Object.keys(formData).length > 0 ? JSON.stringify(formData) : null,
+    })
+  }
 
   // Canonicalise the wedding's region so demand data buckets by where the
   // wedding happens, not just where the vendor is based.

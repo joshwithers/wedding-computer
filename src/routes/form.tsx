@@ -477,22 +477,48 @@ async function handleCreateContact(
   const firstName = mapped.first_name?.trim()
   if (!firstName) return null
 
-  const { createContact } = await import('../storage/contacts')
+  const { createContact, findContactByEmail, updateContact } = await import('../storage/contacts')
   const { getStorageWithSecrets } = await import('../storage')
   const storage = await getStorageWithSecrets(env, vendor)
-  const contact = await createContact(storage, env.DB, vendor.id, {
-    first_name: firstName,
-    last_name: mapped.last_name ?? '',
-    email: mapped.email ?? null,
-    phone: mapped.phone ?? null,
-    partner_first_name: mapped.partner_first_name ?? null,
-    partner_last_name: mapped.partner_last_name ?? null,
-    wedding_date: mapped.wedding_date ?? null,
-    wedding_location: mapped.wedding_location ?? null,
-    notes: mapped.notes ?? null,
-    source: 'form',
-    form_data: Object.keys(extra).length > 0 ? JSON.stringify(extra) : null,
-  })
+
+  const email = mapped.email ?? null
+
+  // Dedup by email: same approach as the enquiry form — update the existing
+  // contact rather than creating a duplicate for the same person.
+  let existing = email ? await findContactByEmail(env.DB, vendor.id, email) : null
+  let contact
+
+  if (existing) {
+    const updates: Parameters<typeof updateContact>[4] = {}
+    if (!existing.phone && mapped.phone) updates.phone = mapped.phone
+    if (!existing.partner_first_name && mapped.partner_first_name) updates.partner_first_name = mapped.partner_first_name
+    if (!existing.partner_last_name && mapped.partner_last_name) updates.partner_last_name = mapped.partner_last_name
+    if (mapped.wedding_date) updates.wedding_date = mapped.wedding_date
+    if (mapped.wedding_location) updates.wedding_location = mapped.wedding_location
+    if (Object.keys(updates).length > 0) {
+      try {
+        await updateContact(storage, env.DB, vendor.id, existing.id, updates)
+        Object.assign(existing, updates)
+      } catch (e: any) {
+        console.error('[form] dedup contact update failed:', e.message)
+      }
+    }
+    contact = existing
+  } else {
+    contact = await createContact(storage, env.DB, vendor.id, {
+      first_name: firstName,
+      last_name: mapped.last_name ?? '',
+      email,
+      phone: mapped.phone ?? null,
+      partner_first_name: mapped.partner_first_name ?? null,
+      partner_last_name: mapped.partner_last_name ?? null,
+      wedding_date: mapped.wedding_date ?? null,
+      wedding_location: mapped.wedding_location ?? null,
+      notes: mapped.notes ?? null,
+      source: 'form',
+      form_data: Object.keys(extra).length > 0 ? JSON.stringify(extra) : null,
+    })
+  }
 
   const { createActivity } = await import('../db/activities')
   await createActivity(env.DB, contact.id, 'lead', `Submitted form: ${config.title}`)
