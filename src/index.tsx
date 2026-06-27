@@ -70,6 +70,7 @@ import { newTiming, serverTimingHeader } from './lib/timing'
 import { d1Session } from './middleware/d1-session'
 import { syncVendorStorage } from './services/storage-sync'
 import { IMMUTABLE_ASSET_CACHE, sourcePathForVersionedAsset } from './lib/assets'
+import { oauthAuthorizationServerMetadata, oauthProtectedResourceMetadata } from './lib/agent-auth'
 
 const app = new Hono<Env>()
 
@@ -438,35 +439,14 @@ app.get('/.well-known/api-catalog', (c) => {
 // which Authorization Server protects it.
 app.get('/.well-known/oauth-protected-resource', (c) => {
   c.header('Access-Control-Allow-Origin', '*')
-  return c.json({
-    resource: `${c.env.APP_URL}/mcp`,
-    authorization_servers: [c.env.APP_URL],
-    bearer_methods_supported: ['header'],
-    scopes_supported: ['mcp'],
-    resource_documentation: `${c.env.APP_URL}/mcp`,
-  })
+  return c.json(oauthProtectedResourceMetadata(c.env.APP_URL))
 })
 
 // OAuth 2.1 Authorization Server metadata (RFC 8414) — Authorization Code +
 // PKCE + Dynamic Client Registration. Implemented in src/routes/oauth.tsx.
 app.get('/.well-known/oauth-authorization-server', (c) => {
   c.header('Access-Control-Allow-Origin', '*')
-  return c.json({
-    issuer: c.env.APP_URL,
-    authorization_endpoint: `${c.env.APP_URL}/oauth/authorize`,
-    token_endpoint: `${c.env.APP_URL}/oauth/token`,
-    registration_endpoint: `${c.env.APP_URL}/oauth/register`,
-    revocation_endpoint: `${c.env.APP_URL}/oauth/revoke`,
-    scopes_supported: ['mcp'],
-    response_types_supported: ['code'],
-    grant_types_supported: ['authorization_code', 'refresh_token'],
-    code_challenge_methods_supported: ['S256'],
-    token_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
-    // Client ID Metadata Documents (MCP 2025-11-25) — Claude's default. A client
-    // may use an https URL as its client_id and we fetch the metadata document.
-    client_id_metadata_document_supported: true,
-    service_documentation: `${c.env.APP_URL}/mcp`,
-  })
+  return c.json(oauthAuthorizationServerMetadata(c.env.APP_URL))
 })
 
 // MCP Server Card (SEP-1649)
