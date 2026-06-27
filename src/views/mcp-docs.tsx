@@ -1,5 +1,6 @@
 import { MarketingLayout } from './layouts/marketing'
-import { getCspNonce } from '../i18n'
+import { getCspNonce, t } from '../i18n'
+import type { MessageKey } from '../i18n'
 
 /**
  * Public, human-facing setup guide served at GET /mcp when opened in a browser
@@ -23,9 +24,9 @@ function CodeBlock({ id, code }: { id: string; code: string }) {
         type="button"
         data-copy={id}
         class="absolute top-2.5 right-2.5 text-xs font-medium text-gray-300 bg-white/10 hover:bg-white/20 rounded-md px-2 py-1 transition-colors"
-        aria-label="Copy to clipboard"
+        aria-label={t('marketing.mcpDocs.copy.aria')}
       >
-        Copy
+        {t('marketing.mcpDocs.copy.idle')}
       </button>
     </div>
   )
@@ -72,126 +73,128 @@ export function McpDocsPage() {
   }
 }`
 
-  const capabilities = [
-    ['Contacts & leads', 'List, search, and read your contacts; log a new enquiry.'],
-    ['Weddings', 'Read a wedding’s details, team, credits, and activity log.'],
-    ['Run sheets', 'Read and edit the timeline — add, move, or remove items; start and end live mode on the day.'],
-    ['Checklists', 'Read and tick off a wedding’s to-do list.'],
-    ['Notes', 'Read and append to shared notes; read and update your private notes.'],
-    ['Weather & sun', 'Pull the forecast and add sunrise/sunset times for a wedding date and place.'],
+  const capabilities: Array<[MessageKey, MessageKey]> = [
+    ['marketing.mcpDocs.capabilities.contacts.title', 'marketing.mcpDocs.capabilities.contacts.desc'],
+    ['marketing.mcpDocs.capabilities.weddings.title', 'marketing.mcpDocs.capabilities.weddings.desc'],
+    ['marketing.mcpDocs.capabilities.runSheets.title', 'marketing.mcpDocs.capabilities.runSheets.desc'],
+    ['marketing.mcpDocs.capabilities.checklists.title', 'marketing.mcpDocs.capabilities.checklists.desc'],
+    ['marketing.mcpDocs.capabilities.notes.title', 'marketing.mcpDocs.capabilities.notes.desc'],
+    ['marketing.mcpDocs.capabilities.weather.title', 'marketing.mcpDocs.capabilities.weather.desc'],
   ]
 
   return (
-    <MarketingLayout title="Connect your AI · Wedding Computer MCP">
+    <MarketingLayout title={t('marketing.mcpDocs.metaTitle')}>
       <div class="max-w-3xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
-        <p class="text-xs font-bold uppercase tracking-wide text-horizon-700 mb-2">MCP server</p>
-        <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-3">Connect your AI to Wedding Computer</h1>
+        <p class="text-xs font-bold uppercase tracking-wide text-horizon-700 mb-2">{t('marketing.mcpDocs.eyebrow')}</p>
+        <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-3">{t('marketing.mcpDocs.title')}</h1>
         <p class="text-lg text-gray-600 mb-8">
-          Use Claude, Cursor, or any AI assistant that speaks the{' '}
+          {t('marketing.mcpDocs.intro.beforeProtocol')}{' '}
           <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener" class="text-horizon-600 font-medium hover:underline">
             Model Context Protocol
           </a>{' '}
-          to read and update your contacts, weddings, run sheets, checklists, and notes — in plain language.
+          {t('marketing.mcpDocs.intro.afterProtocol')}
         </p>
 
         {/* Prerequisites */}
         <div class="bg-papaya-50 border border-grapefruit-600/20 rounded-2xl p-5 mb-8">
-          <h2 class="font-bold text-gray-900 mb-2">Before you start</h2>
+          <h2 class="font-bold text-gray-900 mb-2">{t('marketing.mcpDocs.before.title')}</h2>
           <ul class="text-sm text-gray-700 space-y-1.5 list-disc pl-5">
             <li>
-              The MCP server is a <strong>Pro</strong> feature.{' '}
-              <a href="/pricing" class="text-horizon-600 font-medium hover:underline">See pricing →</a>
+              {t('marketing.mcpDocs.before.proFeature')}{' '}
+              <a href="/pricing" class="text-horizon-600 font-medium hover:underline">{t('marketing.mcpDocs.before.pricingLink')}</a>
             </li>
             <li>
-              <strong>Connecting Claude needs no token</strong> — you sign in and approve (step 1). Only the
-              token-based methods (Claude Code, Cursor, scripts) need a <strong>sync token</strong> from{' '}
+              {t('marketing.mcpDocs.before.tokenPrefix')}{' '}
               <a href="/app/settings#device-sync" class="text-horizon-600 font-medium hover:underline">
-                Settings → Calendar &amp; Sync
+                {t('marketing.mcpDocs.settingsPath')}
               </a>{' '}
-              — shown once; paste it in place of <code class="bg-white/70 px-1 rounded">YOUR_SYNC_TOKEN</code>.
+              {t('marketing.mcpDocs.before.tokenSuffix')}{' '}
+              <code class="bg-white/70 px-1 rounded">YOUR_SYNC_TOKEN</code>.
             </li>
           </ul>
         </div>
 
         {/* Connection facts */}
-        <h2 class="text-xl font-bold text-gray-900 mb-3">Connection details</h2>
+        <h2 class="text-xl font-bold text-gray-900 mb-3">{t('marketing.mcpDocs.connection.title')}</h2>
         <dl class="border border-gray-200 rounded-2xl divide-y divide-gray-100 mb-10 text-sm">
           <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 p-4">
-            <dt class="w-32 shrink-0 font-medium text-gray-500">Endpoint</dt>
+            <dt class="w-32 shrink-0 font-medium text-gray-500">{t('marketing.mcpDocs.connection.endpoint')}</dt>
             <dd class="font-mono text-gray-900 break-all">{ENDPOINT}</dd>
           </div>
           <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 p-4">
-            <dt class="w-32 shrink-0 font-medium text-gray-500">Transport</dt>
-            <dd class="text-gray-900">Streamable HTTP (JSON-RPC 2.0)</dd>
+            <dt class="w-32 shrink-0 font-medium text-gray-500">{t('marketing.mcpDocs.connection.transport')}</dt>
+            <dd class="text-gray-900">{t('marketing.mcpDocs.connection.transportValue')}</dd>
           </div>
           <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 p-4">
-            <dt class="w-32 shrink-0 font-medium text-gray-500">Authentication</dt>
-            <dd class="text-gray-900">OAuth 2.1 sign-in (PKCE), or a Bearer sync token</dd>
+            <dt class="w-32 shrink-0 font-medium text-gray-500">{t('marketing.mcpDocs.connection.authentication')}</dt>
+            <dd class="text-gray-900">{t('marketing.mcpDocs.connection.authenticationValue')}</dd>
           </div>
         </dl>
 
         {/* Setup */}
-        <h2 class="text-xl font-bold text-gray-900 mb-4">Set it up</h2>
+        <h2 class="text-xl font-bold text-gray-900 mb-4">{t('marketing.mcpDocs.setup.title')}</h2>
         <div class="space-y-5">
-          <Step n={1} title="Claude — web, desktop & mobile (recommended)">
-            <p>No token needed — just sign in and approve:</p>
+          <Step n={1} title={t('marketing.mcpDocs.setup.claude.title')}>
+            <p>{t('marketing.mcpDocs.setup.claude.intro')}</p>
             <ol class="list-decimal pl-5 space-y-1">
-              <li>In Claude, open <strong>Settings → Connectors → Add custom connector</strong>.</li>
+              <li>{t('marketing.mcpDocs.setup.claude.step1')}</li>
               <li>
-                Paste <code class="bg-gray-100 px-1 rounded select-all">{ENDPOINT}</code> as the URL and add it.
+                {t('marketing.mcpDocs.setup.claude.step2Prefix')}{' '}
+                <code class="bg-gray-100 px-1 rounded select-all">{ENDPOINT}</code>{' '}
+                {t('marketing.mcpDocs.setup.claude.step2Suffix')}
               </li>
-              <li>Claude sends you to Wedding Computer to <strong>sign in and approve</strong> — then you’re connected on every Claude surface.</li>
+              <li>{t('marketing.mcpDocs.setup.claude.step3')}</li>
             </ol>
-            <p class="text-gray-500">Manage or disconnect it anytime under Settings → Calendar &amp; Sync → “Connected apps”.</p>
+            <p class="text-gray-500">{t('marketing.mcpDocs.setup.claude.manage')}</p>
           </Step>
 
-          <Step n={2} title="Claude Code (CLI)">
-            <p>Sign-in flow — run this and approve in the browser when prompted:</p>
+          <Step n={2} title={t('marketing.mcpDocs.setup.claudeCode.title')}>
+            <p>{t('marketing.mcpDocs.setup.claudeCode.signIn')}</p>
             <CodeBlock id="cmd-claude-code-oauth" code={`claude mcp add --transport http wedding-computer ${ENDPOINT}`} />
-            <p class="text-gray-500">Prefer a token instead of signing in? Add a header:</p>
+            <p class="text-gray-500">{t('marketing.mcpDocs.setup.claudeCode.token')}</p>
             <CodeBlock id="cmd-claude-code" code={claudeCode} />
           </Step>
 
-          <Step n={3} title="Cursor, Windsurf & other MCP clients">
+          <Step n={3} title={t('marketing.mcpDocs.setup.clients.title')}>
             <p>
-              Most clients accept a remote URL with a header. For Cursor, add this to <code class="bg-gray-100 px-1 rounded">~/.cursor/mcp.json</code> (others use the same shape):
+              {t('marketing.mcpDocs.setup.clients.body', { path: '~/.cursor/mcp.json' })}
             </p>
             <CodeBlock id="cmd-cursor" code={cursor} />
           </Step>
 
-          <Step n={4} title="Older clients (manual bridge)">
+          <Step n={4} title={t('marketing.mcpDocs.setup.bridge.title')}>
             <p>
-              A client that only speaks stdio can reach the server through the <code class="bg-gray-100 px-1 rounded">mcp-remote</code> bridge — e.g. in <code class="bg-gray-100 px-1 rounded">claude_desktop_config.json</code>:
+              {t('marketing.mcpDocs.setup.bridge.body', { bridge: 'mcp-remote', config: 'claude_desktop_config.json' })}
             </p>
             <CodeBlock id="cmd-claude-desktop" code={claudeDesktop} />
-            <p class="text-gray-500">Requires Node.js. The token is kept in <code class="bg-gray-100 px-1 rounded">env</code> so it isn’t split on the space.</p>
+            <p class="text-gray-500">{t('marketing.mcpDocs.setup.bridge.note', { env: 'env' })}</p>
           </Step>
         </div>
 
         {/* Capabilities */}
-        <h2 class="text-xl font-bold text-gray-900 mb-4 mt-12">What your assistant can do</h2>
+        <h2 class="text-xl font-bold text-gray-900 mb-4 mt-12">{t('marketing.mcpDocs.capabilities.title')}</h2>
         <div class="grid sm:grid-cols-2 gap-3">
-          {capabilities.map(([title, desc]) => (
+          {capabilities.map(([titleKey, descKey]) => (
             <div class="border border-gray-200 rounded-xl p-4">
-              <p class="font-bold text-gray-900 text-sm mb-1">{title}</p>
-              <p class="text-sm text-gray-600">{desc}</p>
+              <p class="font-bold text-gray-900 text-sm mb-1">{t(titleKey)}</p>
+              <p class="text-sm text-gray-600">{t(descKey)}</p>
             </div>
           ))}
         </div>
         <p class="text-xs text-gray-400 mt-4">
-          Everything is scoped to your account and the weddings you’re a member of. Machine-readable details live in the{' '}
-          <a href="/.well-known/mcp/server-card.json" class="text-horizon-600 hover:underline">server card</a>.
+          {t('marketing.mcpDocs.scope.prefix')}{' '}
+          <a href="/.well-known/mcp/server-card.json" class="text-horizon-600 hover:underline">{t('marketing.mcpDocs.scope.serverCard')}</a>.
         </p>
 
         <div class="mt-12 pt-6 border-t border-gray-200 text-sm">
-          <a href="/app/settings#device-sync" class="text-horizon-600 font-bold hover:underline">Get your sync token →</a>
+          <a href="/app/settings#device-sync" class="text-horizon-600 font-bold hover:underline">{t('marketing.mcpDocs.cta.syncToken')}</a>
         </div>
       </div>
 
       <script
         nonce={getCspNonce()}
         dangerouslySetInnerHTML={{
-          __html: `document.querySelectorAll('[data-copy]').forEach(function(btn){btn.addEventListener('click',function(){var el=document.getElementById(btn.getAttribute('data-copy'));if(!el)return;navigator.clipboard.writeText(el.innerText).then(function(){var t=btn.textContent;btn.textContent='Copied';setTimeout(function(){btn.textContent=t;},1500);});});});`,
+          __html: `document.querySelectorAll('[data-copy]').forEach(function(btn){btn.addEventListener('click',function(){var el=document.getElementById(btn.getAttribute('data-copy'));if(!el)return;navigator.clipboard.writeText(el.innerText).then(function(){var originalText=btn.textContent;btn.textContent=${JSON.stringify(t('marketing.mcpDocs.copy.done'))};setTimeout(function(){btn.textContent=originalText;},1500);});});});`,
         }}
       />
     </MarketingLayout>
