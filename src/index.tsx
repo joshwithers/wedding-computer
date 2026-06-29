@@ -924,6 +924,7 @@ export default {
             formTitle: body.formTitle,
             vendorName: body.vendorName,
             fields: (body.fields as unknown as { label: string; value: string }[]) ?? [],
+            hideBranding: !!body.hideBranding,
           })
           await sendEmailMessage({
             db: env.DB,
@@ -960,6 +961,7 @@ export default {
             vendorName: body.vendorName,
             contactName: body.contactName,
             bodyText: body.bodyText,
+            hideBranding: !!body.hideBranding,
           })
           await sendEmailMessage({
             db: env.DB,
@@ -987,6 +989,7 @@ export default {
               signedByName: string | null
               signedAt: string | null
             } | null) ?? null,
+            hideBranding: !!body.hideBranding,
           })
           await sendEmailMessage({
             db: env.DB,

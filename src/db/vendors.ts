@@ -310,6 +310,7 @@ export async function updateVendor(
       | 'location_place_id'
       | 'logo_r2_key'
       | 'brand_theme'
+      | 'hide_branding'
       | 'availability_sharing'
       | 'directory_listed'
       | 'celebrant_term'

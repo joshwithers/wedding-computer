@@ -97,7 +97,7 @@ function EnquiryShell({ embed, children, theme, meta }: { embed?: boolean; child
 function EnquiryCard({
   vendor, config, siteKey, mapsKey, logoUrl, error, values,
 }: {
-  vendor: { id: string; business_name: string; category: string; categories?: string | null; celebrant_term?: string | null }
+  vendor: { id: string; business_name: string; category: string; categories?: string | null; celebrant_term?: string | null; hide_branding?: number }
   config: FormConfig
   siteKey: string
   mapsKey?: string
@@ -129,9 +129,11 @@ function EnquiryCard({
           values={values}
         />
 
-        <p class="text-xs text-gray-400 text-center mt-4">
-          {t('forms.public.poweredBy')} <a href="/" target="_blank" class="underline hover:text-gray-600">Wedding Computer</a>
-        </p>
+        {vendor.hide_branding !== 1 && (
+          <p class="text-xs text-gray-400 text-center mt-4">
+            {t('forms.public.poweredBy')} <a href="/" target="_blank" class="underline hover:text-gray-600">Wedding Computer</a>
+          </p>
+        )}
       </div>
     </>
   )

@@ -90,6 +90,9 @@ CREATE TABLE IF NOT EXISTS vendor_profiles (
   location_place_id TEXT,
   logo_r2_key TEXT,
   brand_theme TEXT,
+  -- Pro white-label: hide the "Wedding Computer" branding on public forms +
+  -- couple-facing emails (migration 076). Pro-gated at the settings toggle.
+  hide_branding INTEGER NOT NULL DEFAULT 0,
   availability_sharing TEXT NOT NULL DEFAULT 'private',
   directory_listed INTEGER NOT NULL DEFAULT 0,
   referral_code TEXT,

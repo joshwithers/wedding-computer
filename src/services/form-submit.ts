@@ -303,7 +303,7 @@ async function notifyAndConfirm(
       try {
         await c.env.EMAIL_QUEUE.send({
           type: 'form_notification', to, formTitle: config.title, vendorName: vendor.business_name,
-          submissionId, fields: submittedFields,
+          submissionId, fields: submittedFields, hideBranding: vendor.hide_branding === 1,
         })
       } catch (e: any) { console.error('[form-submit] email_recipient failed', e?.message) }
     }

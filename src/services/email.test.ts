@@ -15,6 +15,20 @@ describe('enquiryConfirmationEmail', () => {
     expect(html).toContain('We will be in touch soon.')
   })
 
+  it('keeps Wedding Computer branding by default', () => {
+    const html = enquiryConfirmationEmail({ vendorName: 'V', contactName: 'A', bodyText: 'Hi.' })
+    expect(html).toContain('wedding.computer')
+    expect(html).toContain('Wedding Computer')
+  })
+
+  it('hides Wedding Computer branding when white-labelled (Pro)', () => {
+    const html = enquiryConfirmationEmail({ vendorName: 'V', contactName: 'A', bodyText: 'Hi.', hideBranding: true })
+    // The email body still names the vendor, but the WC logo + footer are gone.
+    expect(html).not.toContain('>Wedding Computer<')
+    expect(html).not.toContain('wedding.computer</a>')
+    expect(html).toContain('Hi A,')
+  })
+
   it('splits double-newlines into separate paragraphs', () => {
     const html = enquiryConfirmationEmail({ vendorName: 'V', contactName: 'A', bodyText: 'One.\n\nTwo.' })
     expect((html.match(/<p /g) || []).length).toBeGreaterThanOrEqual(2)

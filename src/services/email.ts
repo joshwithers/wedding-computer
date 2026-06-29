@@ -200,7 +200,12 @@ export async function sendEmailMessage(params: SendEmailParams): Promise<string>
   return record.id
 }
 
-function emailWrapper(content: string, options?: { preheader?: string }): string {
+// `hideBranding` is the Pro white-label flag: it drops the "Wedding Computer"
+// logo + footer for couple-facing emails sent on a vendor's behalf. Only pass it
+// for those emails — platform/account emails (magic links, vendor notifications)
+// always keep the branding.
+function emailWrapper(content: string, options?: { preheader?: string; hideBranding?: boolean }): string {
+  const hide = options?.hideBranding === true
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -214,20 +219,20 @@ function emailWrapper(content: string, options?: { preheader?: string }): string
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#faf5ef;">
     <tr><td align="center" style="padding:32px 16px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
-        <!-- Logo -->
+        ${hide ? '' : `<!-- Logo -->
         <tr><td style="padding-bottom:24px;text-align:center;">
           <a href="https://wedding.computer" style="text-decoration:none;color:#be2f2f;font-size:16px;font-weight:700;letter-spacing:-0.3px;">Wedding Computer</a>
-        </td></tr>
+        </td></tr>`}
         <!-- Card -->
         <tr><td style="background:#ffffff;border-radius:16px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
           ${content}
         </td></tr>
-        <!-- Footer -->
+        ${hide ? '' : `<!-- Footer -->
         <tr><td style="padding-top:24px;text-align:center;">
           <p style="margin:0;font-size:12px;color:#999;line-height:1.5;">
             <a href="https://wedding.computer" style="color:#999;text-decoration:none;">wedding.computer</a>
           </p>
-        </td></tr>
+        </td></tr>`}
       </table>
     </td></tr>
   </table>
@@ -558,6 +563,7 @@ export function bookingContractCopyEmail(data: {
   bookingTitle: string | null
   viewUrl: string
   contract: { title: string; body: string; signedByName: string | null; signedAt: string | null } | null
+  hideBranding?: boolean
 }): string {
   const greeting = data.coupleName ? `Hi ${esc(data.coupleName)},` : 'Hi there,'
   const contractBlock = data.contract
@@ -579,7 +585,7 @@ export function bookingContractCopyEmail(data: {
     </p>
     <a href="${data.viewUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View your booking</a>
     ${contractBlock}
-  `, { preheader: `Your booking with ${esc(data.vendorName)} is confirmed` })
+  `, { preheader: `Your booking with ${esc(data.vendorName)} is confirmed`, hideBranding: data.hideBranding })
 }
 
 export function vendorRemovedAdminEmail(data: {
@@ -942,12 +948,13 @@ export function formNotificationEmail(data: {
   formTitle: string
   vendorName: string
   fields: { label: string; value: string }[]
+  hideBranding?: boolean
 }): string {
   return emailWrapper(`
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">New submission: ${esc(data.formTitle)}</h1>
     <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">A new response was submitted via ${esc(data.vendorName)}.</p>
     ${fieldsTable(data.fields)}
-  `, { preheader: `New submission to ${esc(data.formTitle)}` })
+  `, { preheader: `New submission to ${esc(data.formTitle)}`, hideBranding: data.hideBranding })
 }
 
 // Confirmation back to the person who submitted the form
@@ -958,6 +965,7 @@ export function enquiryConfirmationEmail(data: {
   vendorName: string
   contactName: string
   bodyText: string
+  hideBranding?: boolean
 }): string {
   const paras = data.bodyText
     .split(/\n\n+/)
@@ -970,7 +978,7 @@ export function enquiryConfirmationEmail(data: {
     <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#1a1a1a;">Hi ${esc(data.contactName)},</h1>
     ${paras}
     <p style="margin:24px 0 0;font-size:15px;color:#333;line-height:1.6;">— ${esc(data.vendorName)}</p>
-  `, { preheader: `Thanks for your enquiry with ${esc(data.vendorName)}` })
+  `, { preheader: `Thanks for your enquiry with ${esc(data.vendorName)}`, hideBranding: data.hideBranding })
 }
 
 export function formConfirmationEmail(data: {

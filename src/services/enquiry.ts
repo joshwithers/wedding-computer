@@ -328,6 +328,8 @@ export async function sendEnquiryConfirmation(
     vendorName: vendor.business_name,
     contactName: contactData.first_name,
     bodyText,
+    // Pro white-label: drop the Wedding Computer logo/footer for this vendor.
+    hideBranding: vendor.hide_branding === 1,
     // Replies go to the vendor's inbox so "just hit reply" actually reaches them.
     replyTo: vendor.email_handle ? `${vendor.email_handle}@wedding.computer` : null,
   })

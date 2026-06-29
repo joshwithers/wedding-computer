@@ -634,6 +634,15 @@ settings.get('/app/settings', async (c) => {
                   ) : (
                     <p class="text-xs text-gray-400">{t('settings.brand.noLogo')}</p>
                   )}
+                  <label class={`flex items-center gap-3 ${isPro ? 'cursor-pointer' : 'opacity-60'}`}>
+                    <input type="checkbox" name="hide_branding" value="1" checked={vendor.hide_branding === 1} disabled={!isPro}
+                      class="w-4 h-4 rounded border-gray-300 text-horizon-600 focus:ring-horizon-600" />
+                    <span class="text-sm text-gray-700">
+                      {t('settings.brand.hideBranding')}
+                      {!isPro && <span class="ml-1 text-xs font-bold text-horizon-700">{t('settings.brand.proBadge')}</span>}
+                      <span class="block text-xs text-gray-400">{t('settings.brand.hideBrandingHelp')}</span>
+                    </span>
+                  </label>
                   <div class="flex items-center gap-2 pt-1">
                     <button type="submit"
                       class="bg-horizon-600 text-white py-2.5 px-5 rounded-xl text-sm font-bold hover:bg-horizon-700 transition-colors">
@@ -1222,7 +1231,14 @@ settings.post('/app/settings/brand', async (c) => {
   if (body.brand_show_logo === '1') theme.logo = true
 
   const brand_theme = Object.keys(theme).length > 0 ? JSON.stringify(theme) : null
-  await updateVendor(c.env.DB, vendor.id, { brand_theme })
+
+  // White-label is a Pro feature — only let Pro vendors toggle it. Non-Pro POSTs
+  // keep whatever's stored (the checkbox is disabled in their UI anyway).
+  const updates: Parameters<typeof updateVendor>[2] = { brand_theme }
+  if (await isProVendor(c.env.DB, vendor.id)) {
+    updates.hide_branding = body.hide_branding === '1' ? 1 : 0
+  }
+  await updateVendor(c.env.DB, vendor.id, updates)
   return c.redirect('/app/settings?saved=1#brand')
 })
 

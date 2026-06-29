@@ -268,9 +268,11 @@ async function renderBookingPage(
           </div>
         )}
 
-        <p class="text-xs text-gray-400 text-center mt-6">
-          {t('forms.public.poweredBy')} <a href="/" target="_blank" class="underline hover:text-gray-600">Wedding Computer</a>
-        </p>
+        {vendor?.hide_branding !== 1 && (
+          <p class="text-xs text-gray-400 text-center mt-6">
+            {t('forms.public.poweredBy')} <a href="/" target="_blank" class="underline hover:text-gray-600">Wedding Computer</a>
+          </p>
+        )}
       </div>
     </FormShell>
   )
@@ -452,6 +454,7 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
       viewUrl: `${c.env.APP_URL}/book/${token}?confirmed=1`,
       replyTo: vendor.email_handle ? `${vendor.email_handle}@wedding.computer` : null,
       contract: signedContract,
+      hideBranding: vendor.hide_branding === 1,
     })
   }
 
@@ -530,9 +533,11 @@ async function renderStandaloneBooking(
           error={opts.error}
           values={opts.values}
         />
-        <p class="text-xs text-gray-400 text-center mt-4">
-          {t('forms.public.poweredBy')} <a href="/" target="_blank" class="underline hover:text-gray-600">Wedding Computer</a>
-        </p>
+        {vendor.hide_branding !== 1 && (
+          <p class="text-xs text-gray-400 text-center mt-4">
+            {t('forms.public.poweredBy')} <a href="/" target="_blank" class="underline hover:text-gray-600">Wedding Computer</a>
+          </p>
+        )}
       </div>
     </FormShell>
   )
