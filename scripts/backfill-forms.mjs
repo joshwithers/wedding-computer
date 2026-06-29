@@ -12,20 +12,42 @@
 // it's safe to re-run. enquiry → slug 'enquiry' (kind enquiry); booking →
 // slug 'booking' (kind booking). type stays 'custom' (the CHECK is never
 // widened — intent lives in `kind`).
+//
+// INSERTs are written to a temp .sql file and applied with --file (NOT
+// --command) so config JSON containing quotes/backslashes can't break shell
+// escaping.
 
 import { execSync } from 'node:child_process'
+import { writeFileSync, unlinkSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const DB = 'wedding-computer-db'
 const flag = process.argv.includes('--remote') ? '--remote' : '--local'
 
+// SQLite string-literal escaping: double single quotes. Backslashes are literal
+// in SQLite, so no other escaping is needed when applied via --file.
 const esc = (v) => (v == null ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`)
 
-function exec(sql) {
+function query(sql) {
   const out = execSync(`wrangler d1 execute ${DB} ${flag} --json --command ${JSON.stringify(sql)}`, {
     encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'inherit'],
+    stdio: ['ignore', 'pipe', 'pipe'],
   })
   return JSON.parse(out)[0].results
+}
+
+function execFile(sql) {
+  const path = join(tmpdir(), `wc-backfill-forms-${Date.now()}.sql`)
+  writeFileSync(path, sql)
+  try {
+    execSync(`wrangler d1 execute ${DB} ${flag} --file=${JSON.stringify(path)}`, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'inherit'],
+    })
+  } finally {
+    try { unlinkSync(path) } catch { /* ignore */ }
+  }
 }
 
 function titleFromConfig(json, fallback) {
@@ -55,27 +77,31 @@ const PLAN = [
 
 console.log(`Backfilling forms rows on ${flag === '--remote' ? 'PRODUCTION' : 'local'} D1…`)
 
-const vendors = exec('SELECT id, enquiry_form, booking_form FROM vendor_profiles')
+const vendors = query('SELECT id, enquiry_form, booking_form FROM vendor_profiles')
 console.log(`  ${vendors.length} vendors to scan.`)
 
-let created = 0
+// One query for all existing singleton rows → a Set of "vendorId:slug".
+const existing = new Set(
+  query("SELECT vendor_id, slug FROM forms WHERE slug IN ('enquiry','booking')").map((r) => `${r.vendor_id}:${r.slug}`)
+)
+
+const inserts = []
 let skipped = 0
 for (const v of vendors) {
   for (const p of PLAN) {
     const blob = v[p.col]
     if (!blob || !hasFields(blob)) continue
-
-    const exists = exec(`SELECT id FROM forms WHERE vendor_id = ${esc(v.id)} AND slug = ${esc(p.slug)} LIMIT 1`)
-    if (exists.length > 0) { skipped++; continue }
-
+    if (existing.has(`${v.id}:${p.slug}`)) { skipped++; continue }
     const title = titleFromConfig(blob, p.fallbackTitle)
-    exec(
-      `INSERT INTO forms (vendor_id, title, slug, type, kind, config)
-       VALUES (${esc(v.id)}, ${esc(title)}, ${esc(p.slug)}, 'custom', ${esc(p.kind)}, ${esc(blob)})`
+    inserts.push(
+      `INSERT INTO forms (vendor_id, title, slug, type, kind, config) VALUES (${esc(v.id)}, ${esc(title)}, ${esc(p.slug)}, 'custom', ${esc(p.kind)}, ${esc(blob)});`
     )
-    created++
-    console.log(`  + ${v.id} ${p.slug} (“${title}”)`)
   }
 }
 
-console.log(`Done. Created ${created}, skipped ${skipped} (already present).`)
+if (inserts.length === 0) {
+  console.log(`Done. Created 0, skipped ${skipped} (already present).`)
+} else {
+  execFile(inserts.join('\n'))
+  console.log(`Done. Created ${inserts.length}, skipped ${skipped} (already present).`)
+}
