@@ -1100,6 +1100,7 @@ export default {
             content: body.content,
             expectedEtag: body.expectedEtag,
           })
+          console.log('[QUEUE] push_contact_file flushed', body.contactId, body.filePath)
 
         } else {
           console.log('[QUEUE] unknown message type', body.type)
