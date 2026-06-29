@@ -94,6 +94,21 @@ export async function updateSubscription(
     .prepare(`UPDATE subscriptions SET ${sets.join(', ')} WHERE vendor_id = ?`)
     .bind(...values)
     .run()
+
+  // Pro-loss complement (migration 076 white-label): hide_branding is gated on
+  // Pro at write time but read WITHOUT a Pro check on public forms/emails, so a
+  // lapsed vendor would otherwise stay un-branded forever. updateSubscription is
+  // the single chokepoint for every downgrade (all Stripe webhook paths), so
+  // when a status update drops the vendor out of Pro (anything other than
+  // active/trialing — the exact inverse of isProVendor) we re-show branding.
+  // Guarded on `status` being explicitly set: bare cancel_at_period_end toggles
+  // (the in-app "cancel at period end") retain Pro and must not reset it.
+  if (data.status !== undefined && data.status !== 'active' && data.status !== 'trialing') {
+    await db
+      .prepare('UPDATE vendor_profiles SET hide_branding = 0 WHERE id = ?')
+      .bind(vendorId)
+      .run()
+  }
 }
 
 export async function isProVendor(
