@@ -56,12 +56,12 @@ forms.get('/app/forms', async (c) => {
   return c.html(
     <AppLayout title="Forms" user={c.get('user')} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-4xl mx-auto">
-        <div class="flex items-center justify-between mb-6">
-          <div>
+        <div class="flex items-start justify-between gap-3 mb-6">
+          <div class="min-w-0">
             <h1 class="text-2xl font-bold text-gray-900">Forms</h1>
             <p class="text-sm text-gray-600 mt-1">Your enquiry &amp; booking forms, plus any forms you build to collect information</p>
           </div>
-          <a href="/app/forms/new" class="bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700 transition-colors">
+          <a href="/app/forms/new" class="shrink-0 whitespace-nowrap bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700 transition active:scale-[0.97]">
             New form
           </a>
         </div>
@@ -97,9 +97,9 @@ forms.get('/app/forms', async (c) => {
         ) : (
           <div class="space-y-3">
             {otherForms.map((form) => (
-              <div class="bg-white border border-papaya-300/30 rounded-xl p-4 flex items-center justify-between">
-                <div>
-                  <div class="flex items-center gap-2">
+              <div class={FORM_ROW}>
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
                     <h3 class="font-bold text-gray-900">{form.title}</h3>
                     <TypeBadge type={form.type} kind={form.kind} />
                     {!form.is_active && <span class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">Inactive</span>}
@@ -110,13 +110,9 @@ forms.get('/app/forms', async (c) => {
                     Created {formatDate(form.created_at)}
                   </p>
                 </div>
-                <div class="flex items-center gap-2">
-                  <a href={`/app/forms/${form.id}/submissions`} class="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg">
-                    Submissions
-                  </a>
-                  <a href={`/app/forms/${form.id}`} class="text-xs text-horizon-600 hover:text-horizon-700 px-3 py-1.5 border border-horizon-200 rounded-lg">
-                    Edit
-                  </a>
+                <div class={ROW_ACTIONS}>
+                  <a href={`/app/forms/${form.id}/submissions`} class={BTN_SECONDARY}>Submissions</a>
+                  <a href={`/app/forms/${form.id}`} class={BTN_EDIT}>Edit</a>
                 </div>
               </div>
             ))}
@@ -127,13 +123,21 @@ forms.get('/app/forms', async (c) => {
   )
 })
 
+// Shared row styling — mobile-first: the title/meta block stacks above the
+// action buttons on narrow screens, then sits inline on sm+. Buttons stretch to
+// equal widths on mobile (easy tap targets) and shrink to content on desktop.
+const FORM_ROW = 'bg-white border border-papaya-300/30 rounded-xl p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'
+const ROW_ACTIONS = 'flex items-center gap-2 shrink-0'
+const BTN_SECONDARY = 'inline-flex items-center justify-center flex-1 sm:flex-none text-xs font-semibold text-gray-600 hover:text-gray-900 px-3.5 py-2 border border-gray-200 rounded-lg transition active:scale-[0.97]'
+const BTN_EDIT = 'inline-flex items-center justify-center flex-1 sm:flex-none text-xs font-semibold text-horizon-700 hover:text-horizon-800 hover:bg-horizon-50 px-3.5 py-2 border border-horizon-200 rounded-lg transition active:scale-[0.97]'
+
 function PrimaryFormRow({ title, badge, badgeClass, description, editHref, publicHref, count }: {
   title: string; badge: string; badgeClass: string; description: string; editHref: string; publicHref?: string; count: number
 }) {
   return (
-    <div class="bg-white border border-papaya-300/30 rounded-xl p-4 flex items-center justify-between">
-      <div>
-        <div class="flex items-center gap-2">
+    <div class={FORM_ROW}>
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
           <h3 class="font-bold text-gray-900">{title}</h3>
           <span class={`text-xs px-2 py-0.5 rounded-full ${badgeClass}`}>{badge}</span>
         </div>
@@ -141,15 +145,11 @@ function PrimaryFormRow({ title, badge, badgeClass, description, editHref, publi
           {description}{count > 0 ? ` · ${count} submission${count !== 1 ? 's' : ''}` : ''}
         </p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class={ROW_ACTIONS}>
         {publicHref && (
-          <a href={publicHref} target="_blank" class="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg">
-            View
-          </a>
+          <a href={publicHref} target="_blank" class={BTN_SECONDARY}>View</a>
         )}
-        <a href={editHref} class="text-xs text-horizon-600 hover:text-horizon-700 px-3 py-1.5 border border-horizon-200 rounded-lg">
-          Edit
-        </a>
+        <a href={editHref} class={BTN_EDIT}>Edit</a>
       </div>
     </div>
   )
@@ -455,23 +455,19 @@ forms.get('/app/forms/:id', async (c) => {
   return c.html(
     <AppLayout title={`Edit: ${form.title}`} user={c.get('user')} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-3xl mx-auto">
-        <div class="flex items-center justify-between mb-6">
-          <div>
-            <a href="/app/forms" class="text-sm text-gray-500 hover:text-gray-700">&larr; All forms</a>
-            <div class="flex items-center gap-2 mt-1">
+        <div class="mb-6">
+          <a href="/app/forms" class="text-sm text-gray-500 hover:text-gray-700">&larr; All forms</a>
+          <div class="flex flex-col gap-3 mt-1 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex flex-wrap items-center gap-2 min-w-0">
               <h1 class="text-2xl font-bold text-gray-900">{form.title}</h1>
               <TypeBadge type={form.type} kind={form.kind} />
             </div>
-          </div>
-          <div class="flex items-center gap-2">
-            {publicPath && (
-              <a href={publicPath} target="_blank" class="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg">
-                Preview
-              </a>
-            )}
-            <a href={`/app/forms/${form.id}/submissions`} class="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg">
-              Submissions ({form.submission_count})
-            </a>
+            <div class={ROW_ACTIONS}>
+              {publicPath && (
+                <a href={publicPath} target="_blank" class={BTN_SECONDARY}>Preview</a>
+              )}
+              <a href={`/app/forms/${form.id}/submissions`} class={BTN_SECONDARY}>Submissions ({form.submission_count})</a>
+            </div>
           </div>
         </div>
 
