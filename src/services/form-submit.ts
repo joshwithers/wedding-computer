@@ -45,6 +45,39 @@ export async function resolveEnquiryFormConfig(
   return { config: parseFormConfig(json), configJson: json ?? JSON.stringify(defaultFormConfig()) }
 }
 
+// Record an immutable form_submissions row for a JSON-channel enquiry (the
+// public JSON API + MCP agent tool). Those channels reduce to createEnquiry
+// directly, so this gives them the same B3 durable record the hosted form gets.
+// Best-effort: a failure here never fails the enquiry (the contact still exists).
+export async function recordJsonEnquiry(
+  db: D1Database,
+  vendor: VendorProfile,
+  contactData: ContactData,
+  formData: Record<string, string>,
+  contactId: string | null,
+  ipAddress?: string | null,
+  userAgent?: string | null,
+): Promise<void> {
+  try {
+    const { config, configJson } = await resolveEnquiryFormConfig(db, vendor)
+    const form = await ensureSingletonForm(db, vendor, 'enquiry', 'enquiry', config.title, configJson)
+    const data: Record<string, string> = {}
+    for (const [k, v] of Object.entries(contactData)) if (v != null) data[k] = String(v)
+    Object.assign(data, formData)
+    await createFormSubmission(db, vendor.id, {
+      form_id: form.id,
+      data: JSON.stringify(data),
+      kind: 'enquiry',
+      contact_id: contactId,
+      ip_address: ipAddress ?? null,
+      user_agent: userAgent ?? null,
+    })
+    await incrementSubmissionCount(db, form.id)
+  } catch (e: any) {
+    console.error('[form-submit] recordJsonEnquiry failed', e?.message)
+  }
+}
+
 // Read-both resolver for a vendor's singleton standalone booking form.
 export async function resolveBookingFormConfig(
   db: D1Database,

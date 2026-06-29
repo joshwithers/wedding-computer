@@ -14,7 +14,7 @@ import type { Env, VendorProfile } from '../types'
 import { getVendorByEnquiryKey } from '../db/vendors'
 import { isProVendor } from '../db/subscriptions'
 import { processJsonSubmission, createEnquiry, type EnquiryJson } from '../services/enquiry'
-import { resolveEnquiryFormConfig } from '../services/form-submit'
+import { resolveEnquiryFormConfig, recordJsonEnquiry } from '../services/form-submit'
 import { safeErrorMessage } from '../lib/redaction'
 
 const api = new Hono<Env>()
@@ -90,6 +90,8 @@ api.post('/api/v1/enquiries', async (c) => {
   try {
     const { contactData, formData } = processJsonSubmission(payload)
     const contact = await createEnquiry(c.env, vendor, { contactData, formData, source: 'api' })
+    // B3: durable submission record for the API channel too.
+    await recordJsonEnquiry(c.env.DB, vendor, contactData, formData, contact.id, c.req.header('cf-connecting-ip') ?? null, c.req.header('user-agent') ?? null)
     return c.json(
       {
         ok: true,

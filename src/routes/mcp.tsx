@@ -24,6 +24,7 @@ import { getVendorByIcalToken, getVendorById } from '../db/vendors'
 import { isOAuthAccessToken, accessTokenKey, grantRevokedKey, type AccessTokenRecord } from '../lib/oauth'
 import { isProVendor } from '../db/subscriptions'
 import { processJsonSubmission, createEnquiry } from '../services/enquiry'
+import { recordJsonEnquiry } from '../services/form-submit'
 import { clientIp, isAuthThrottled, recordAuthFailure, consumeRateLimit } from '../middleware/rate-limit'
 import { getMembership, SQL_CALENDAR_EVENT_NOT_CANCELLED } from '../db/weddings'
 import { isDocScope, canReadDoc, canWriteDoc } from '../services/doc-permissions'
@@ -1185,6 +1186,8 @@ async function handleTool(
     case 'submit_enquiry': {
       const { contactData, formData } = processJsonSubmission(args as Record<string, unknown>)
       const contact = await createEnquiry(env, vendor, { contactData, formData, source: 'agent' })
+      // B3: durable submission record for the MCP agent channel too.
+      await recordJsonEnquiry(env.DB, vendor, contactData, formData, contact.id)
       return {
         content: [{
           type: 'text',
