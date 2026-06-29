@@ -43,17 +43,23 @@ const SLOT_ORDER: Record<TimelineSlot, number> = {
 // ── Items ──
 
 export async function listTimeline(db: D1Database, weddingId: string): Promise<TimelineItemView[]> {
-  const items = await db
-    .prepare(
-      `SELECT * FROM timeline_items WHERE wedding_id = ?
-       ORDER BY (start_time IS NULL), start_time ASC, sort_order ASC, created_at ASC`
-    )
-    .bind(weddingId)
-    .all<TimelineItem>()
-    .then((r) => r.results)
+  // Items and assignees are independent — assignees are scoped by wedding, not by
+  // item id — so fetch them together instead of in two serial round-trips. (For an
+  // empty timeline this issues one assignee query that resolves to nothing, which
+  // is cheaper than the round-trip it replaces on every non-empty load.)
+  const [items, assignees] = await Promise.all([
+    db
+      .prepare(
+        `SELECT * FROM timeline_items WHERE wedding_id = ?
+         ORDER BY (start_time IS NULL), start_time ASC, sort_order ASC, created_at ASC`
+      )
+      .bind(weddingId)
+      .all<TimelineItem>()
+      .then((r) => r.results),
+    listAssigneesForWedding(db, weddingId),
+  ])
   if (items.length === 0) return []
 
-  const assignees = await listAssigneesForWedding(db, weddingId)
   const byItem = new Map<string, AssigneeView[]>()
   for (const a of assignees) {
     const arr = byItem.get(a.itemId) ?? []
@@ -430,12 +436,34 @@ export async function listUserCalendarRows(db: D1Database, userId: string): Prom
 // is not always the profile owner, and a vendor wants the shared timeline for
 // every wedding any of its memberships are on.
 
-/** Every shared-timeline section this vendor may see, across all its weddings. */
-export async function listVendorCalendarRows(db: D1Like, vendorId: string): Promise<UserCalendarRow[]> {
+/**
+ * Every shared-timeline section this vendor may see, across all its weddings.
+ *
+ * `opts` lets a caller that only needs a slice (e.g. the dashboard's "coming up"
+ * tile) push a date lower-bound + row cap into SQL instead of fetching the whole
+ * cross-wedding run sheet and discarding most of it in JS. When `opts` is omitted
+ * the generated SQL is identical to before — the iCal feed and CalDAV sync rely
+ * on that, since their windows reach into the past and need every row.
+ */
+export async function listVendorCalendarRows(
+  db: D1Like,
+  vendorId: string,
+  opts?: { sinceDate?: string; limit?: number },
+): Promise<UserCalendarRow[]> {
+  const clauses = [VENDOR_CALENDAR_SELECT]
+  const binds: (string | number)[] = [vendorId]
+  if (opts?.sinceDate) {
+    clauses.push('AND w.date >= ?')
+    binds.push(opts.sinceDate)
+  }
+  clauses.push('ORDER BY w.date ASC, (ti.start_time IS NULL), ti.start_time ASC')
+  if (opts?.limit != null) {
+    clauses.push('LIMIT ?')
+    binds.push(opts.limit)
+  }
   return db
-    .prepare(`${VENDOR_CALENDAR_SELECT}
-       ORDER BY w.date ASC, (ti.start_time IS NULL), ti.start_time ASC`)
-    .bind(vendorId)
+    .prepare(clauses.join('\n'))
+    .bind(...binds)
     .all<UserCalendarRow>()
     .then((r) => r.results)
 }

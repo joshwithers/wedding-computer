@@ -139,8 +139,10 @@ dashboard.get('/app', async (c) => {
         isNewVendor(db, vendor.id, user.id),
         // The shared run sheet across every wedding this vendor is on — so the
         // dashboard "coming up" shows the whole shared timeline, not just the
-        // legacy ceremony anchor in calendar_events.
-        listVendorCalendarRows(db, vendor.id),
+        // legacy ceremony anchor in calendar_events. Bounded to upcoming rows
+        // (the JS below only keeps date >= today then slices to 5); the limit
+        // leaves headroom for the dedup-against-legacy-events merge before slice.
+        listVendorCalendarRows(db, vendor.id, { sinceDate: today, limit: 20 }),
       ]))
 
     upcomingWeddings = weddings

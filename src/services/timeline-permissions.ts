@@ -26,20 +26,25 @@ export type TimelineLead = {
  *   3. else the creating vendor, else the earliest active member
  */
 export async function getTimelineLead(db: D1Database, weddingId: string): Promise<TimelineLead> {
-  const controllers = await getTimelineControllers(db, weddingId)
+  // Tiers 1 (planner/venue controllers) and 2 (the couple) are the common cases
+  // and are independent reads — run them together and pick by precedence, so the
+  // usual path costs one round-trip instead of two serial ones. (The eager couple
+  // query is wasted work when controllers exist, but harmless and rarely so.)
+  const [controllers, couple] = await Promise.all([
+    getTimelineControllers(db, weddingId),
+    db
+      .prepare(
+        `SELECT user_id FROM wedding_members
+         WHERE wedding_id = ? AND status = 'active' AND role = 'couple'
+         ORDER BY created_at ASC`
+      )
+      .bind(weddingId)
+      .all<{ user_id: string }>()
+      .then((r) => r.results),
+  ])
   if (controllers.length > 0) {
     return { leadUserIds: controllers.map((c) => c.user_id), source: 'planner_venue' }
   }
-
-  const couple = await db
-    .prepare(
-      `SELECT user_id FROM wedding_members
-       WHERE wedding_id = ? AND status = 'active' AND role = 'couple'
-       ORDER BY created_at ASC`
-    )
-    .bind(weddingId)
-    .all<{ user_id: string }>()
-    .then((r) => r.results)
   if (couple.length > 0) {
     return { leadUserIds: couple.map((m) => m.user_id), source: 'couple' }
   }

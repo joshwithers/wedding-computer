@@ -699,17 +699,21 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
   const vendor = c.get('vendor')!
   const weddingId = c.req.param('id')
 
-  const membership = await getMembership(c.env.DB, weddingId, user.id)
-  if (!membership || !membership.can_manage) return c.text('Not found', 404)
-
   const body = await c.req.parseBody()
+
+  // Resolve the caller's membership (the can_manage permission gate) concurrently
+  // with the picked-vendor lookup below — they're independent, so the one-click
+  // "add an existing vendor" path pays one round-trip here instead of two serial
+  // ones. The 404 gate is still enforced before any write in both branches.
+  const membershipP = getMembership(c.env.DB, weddingId, user.id)
 
   // Autolookup path: an existing Wedding Computer vendor was picked. Resolve the
   // email server-side (never exposed to the searcher) and add them by id, with
   // their own profile category as the role.
   const pickedId = String(body.vendor_profile_id ?? '').trim()
   if (pickedId) {
-    const vp = await getVendorWithEmail(c.env.DB, pickedId)
+    const [membership, vp] = await Promise.all([membershipP, getVendorWithEmail(c.env.DB, pickedId)])
+    if (!membership || !membership.can_manage) return c.text('Not found', 404)
     if (!vp?.user_email) return peopleResult(c, weddingId, { errorCode: 'vendor_not_found' })
     // getAnyMembership (not active-only) + explicit checks, identical to the email
     // branch: never demote an existing couple/guest or resurrect a removed member.
@@ -741,6 +745,9 @@ weddings.post('/app/weddings/:id/add-vendor', rateLimit(30, 60), async (c) => {
     track(c.env.DB, vendor.id, 'vendor_added', { weddingId, metadata: { vendorId: vp.id } })
     return peopleResult(c, weddingId, { invited: true, membership })
   }
+
+  const membership = await membershipP
+  if (!membership || !membership.can_manage) return c.text('Not found', 404)
 
   const email = String(body.email).trim().toLowerCase()
   const name = String(body.name).trim()
