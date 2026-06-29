@@ -80,6 +80,12 @@ export type FormAction = {
 
 export type FormActions = {
   notifyVendor: boolean
+  // Create/update a CRM contact from the submission. Optional in the unified
+  // model (forced on for enquiry/booking kinds at resolve time). Information
+  // forms opt in.
+  createContact?: boolean
+  // Forward each submission to another address (a field name or a literal email).
+  emailRecipient?: string
   confirmationEmail: {
     enabled: boolean
     mode: 'ai' | 'template'
@@ -92,7 +98,38 @@ export type FormActions = {
     // placeholders — see src/services/ai-prompts.ts. Ignored for mode 'template'.
     aiPrompt?: string
   }
+  // Legacy granular action list (pre-migration-075 custom forms). Still READ as
+  // a fallback by resolveFormActions so old configs keep working; the unified
+  // editor writes the flat fields above instead.
   actions?: FormAction[]
+}
+
+export type ResolvedActions = {
+  notifyVendor: boolean
+  createContact: boolean
+  emailRecipient?: string
+  confirmationEmail: FormActions['confirmationEmail']
+  generatePdf: boolean
+}
+
+// Resolve the effective actions for a submission, reading the unified fields
+// with a fallback to the legacy actions[] list, and forcing contact-creation
+// for the lead-generating kinds. One place so every channel behaves identically.
+export function resolveFormActions(
+  config: FormConfig,
+  kind: 'information' | 'enquiry' | 'booking',
+  formType: string,
+): ResolvedActions {
+  const a = config.actions
+  const legacy = a.actions ?? []
+  const hasLegacy = (tp: FormAction['type']) => legacy.some((x) => x.type === tp && x.enabled)
+  return {
+    notifyVendor: a.notifyVendor !== false,
+    createContact: kind === 'enquiry' || kind === 'booking' || a.createContact === true || hasLegacy('create_contact'),
+    emailRecipient: a.emailRecipient?.trim() || legacy.find((x) => x.type === 'email_recipient' && x.enabled)?.recipientEmail,
+    confirmationEmail: a.confirmationEmail,
+    generatePdf: formType === 'noim',
+  }
 }
 
 export type FormConfig = {

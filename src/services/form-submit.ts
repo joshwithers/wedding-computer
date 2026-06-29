@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Env, Bindings, VendorProfile, Contact, Form, FormSend, FormKind } from '../types'
 import type { FormConfig, FormField, ContactMapping } from '../lib/form-schema'
-import { parseFormConfig, parseBookingFormConfig, defaultFormConfig } from '../lib/form-schema'
+import { parseFormConfig, parseBookingFormConfig, defaultFormConfig, resolveFormActions } from '../lib/form-schema'
 import { verifyTurnstile } from './turnstile'
 import {
   createFormSubmission,
@@ -10,6 +10,7 @@ import {
   getFormByVendorSlug,
   createForm,
   updateForm,
+  formSubmissionFields,
 } from '../db/forms'
 import { createEnquiry, sendEnquiryConfirmation, type ContactData } from './enquiry'
 import { getStorageWithSecrets } from '../storage'
@@ -20,91 +21,35 @@ import { isAllowedUpload, uploadExt } from '../lib/upload'
 import { isValidEmail } from '../lib/validation'
 import { t } from '../i18n'
 
-// The single public-submission funnel. Every intake (enquiry, standalone
-// booking) flows through here so it ALWAYS persists an immutable form_submissions
-// row first — the trustworthiness keystone: even if a downstream side effect
-// (contact create, wedding attach, email) fails, the couple's input is never
-// lost. Per-kind side effects then run; only the booking arm can grant wedding
-// membership, keeping the enquiry "no wedding" security boundary structural.
+// The single public-submission funnel. EVERY hosted intake (information /
+// enquiry / standalone booking) flows through createSubmission, which:
+//   1. guards (honeypot + Turnstile),
+//   2. maps fields through the config,
+//   3. ALWAYS persists an immutable form_submissions row (the B3 keystone),
+//   4. runs a per-kind side-effect policy.
+// Only the booking arm can grant wedding membership, so the enquiry "no wedding"
+// boundary is structural. Returns a discriminated union so callers re-render
+// with {error, values} on failure (no redirect-and-lose-data).
 
 export type SubmitResult =
-  | { ok: true; redirectUrl?: string }
+  | { ok: true; redirectUrl?: string; submissionId?: string }
   | { ok: false; error: string; values: Record<string, string> }
-
-// Read-both resolver for a vendor's singleton enquiry form. The legacy editor
-// (/app/form) still writes vendor_profiles.enquiry_form, so the blob is the
-// source of truth during this transition; the forms row is the submission
-// anchor and is kept in sync by the funnel. Falls back to the row, then the
-// default. Shared by /enquire, the JSON API and MCP so all resolve identically.
-export async function resolveEnquiryFormConfig(
-  db: D1Database,
-  vendor: VendorProfile,
-): Promise<{ config: FormConfig; configJson: string }> {
-  const row = await getFormByVendorSlug(db, vendor.id, 'enquiry')
-  const json = vendor.enquiry_form ?? row?.config ?? null
-  return { config: parseFormConfig(json), configJson: json ?? JSON.stringify(defaultFormConfig()) }
-}
-
-// Record an immutable form_submissions row for a JSON-channel enquiry (the
-// public JSON API + MCP agent tool). Those channels reduce to createEnquiry
-// directly, so this gives them the same B3 durable record the hosted form gets.
-// Best-effort: a failure here never fails the enquiry (the contact still exists).
-export async function recordJsonEnquiry(
-  db: D1Database,
-  vendor: VendorProfile,
-  contactData: ContactData,
-  formData: Record<string, string>,
-  contactId: string | null,
-  ipAddress?: string | null,
-  userAgent?: string | null,
-): Promise<void> {
-  try {
-    const { config, configJson } = await resolveEnquiryFormConfig(db, vendor)
-    const form = await ensureSingletonForm(db, vendor, 'enquiry', 'enquiry', config.title, configJson)
-    const data: Record<string, string> = {}
-    for (const [k, v] of Object.entries(contactData)) if (v != null) data[k] = String(v)
-    Object.assign(data, formData)
-    await createFormSubmission(db, vendor.id, {
-      form_id: form.id,
-      data: JSON.stringify(data),
-      kind: 'enquiry',
-      contact_id: contactId,
-      ip_address: ipAddress ?? null,
-      user_agent: userAgent ?? null,
-    })
-    await incrementSubmissionCount(db, form.id)
-  } catch (e: any) {
-    console.error('[form-submit] recordJsonEnquiry failed', e?.message)
-  }
-}
-
-// Read-both resolver for a vendor's singleton standalone booking form.
-export async function resolveBookingFormConfig(
-  db: D1Database,
-  vendor: VendorProfile,
-): Promise<{ config: FormConfig; configJson: string } | null> {
-  const row = await getFormByVendorSlug(db, vendor.id, 'booking-form')
-  const json = row?.config ?? null
-  if (!json) return null
-  const config = parseBookingFormConfig(json)
-  if (!config.fields || config.fields.length === 0) return null
-  return { config, configJson: json }
-}
 
 export type SubmitContext = {
   vendor: VendorProfile
-  // The form's intent. The funnel handles enquiry + booking; information/custom
-  // forms keep their own handler in routes/form.tsx for now.
-  kind: Extract<FormKind, 'enquiry' | 'booking'>
+  kind: FormKind
   config: FormConfig
   // Reserved slug for the vendor's singleton form of this kind ('enquiry' |
-  // 'booking'). Used to get-or-create the backing forms row.
+  // 'booking'); used to get-or-create the backing forms row when `form` is absent.
   slug: string
   // Raw config JSON to seed the forms row on first submission (read-both bridge).
   configJson: string
-  // A pre-resolved forms row (e.g. a standalone /book-form resolved by token).
-  // When present it's used directly instead of get-or-create by slug.
+  // A pre-resolved forms row (e.g. /form/:token or /book-form/:token resolved by
+  // token). When present it's used directly instead of get-or-create by slug.
   form?: Form
+  // The form.type discriminator (for NOIM, etc.).
+  formType?: string
+  // A "send to a couple" context (wedding-scoped submission).
   send?: FormSend | null
 }
 
@@ -117,9 +62,6 @@ type Mapped = {
   fileFields: FormField[]
 }
 
-// Normalise a posted body through the form config: a by-id map for the stored
-// submission row, the contact-mapped fields, and the unmapped extras (by label)
-// for the contact's form_data. Returns an error string on validation failure.
 function mapFields(config: FormConfig, body: Record<string, unknown>): { ok: true; value: Mapped } | { ok: false; error: string } {
   const allFields = config.steps ? config.steps.flatMap((s) => s.fields) : config.fields
   const dataById: Record<string, string> = {}
@@ -168,8 +110,6 @@ function mapFields(config: FormConfig, body: Record<string, unknown>): { ok: tru
   return { ok: true, value: { dataById, mapped, extraByLabel, fileFields } }
 }
 
-// Coerce a parsed body to plain strings so a failed submission can re-render
-// with the entered values (file inputs re-prompt). Mirrors form.tsx.
 function toStringValues(body: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [k, v] of Object.entries(body)) {
@@ -179,28 +119,18 @@ function toStringValues(body: Record<string, unknown>): Record<string, string> {
   return out
 }
 
-// Get-or-create the vendor's singleton forms row for a kind (read-both bridge):
-// the backfill creates these ahead of time, but a submission that arrives first
-// lazily creates one so the form_submissions FK always resolves.
-export async function ensureSingletonForm(
-  db: D1Database,
-  vendor: VendorProfile,
-  kind: FormKind,
-  slug: string,
-  title: string,
-  configJson: string,
-): Promise<Form> {
-  const existing = await getFormByVendorSlug(db, vendor.id, slug)
-  if (existing) {
-    // Keep the anchor row's config in sync with the (blob-sourced) config the
-    // form was rendered from, so submission field labels stay accurate.
-    if (existing.config !== configJson) {
-      await updateForm(db, vendor.id, existing.id, { config: configJson })
-      existing.config = configJson
-    }
-    return existing
+function contactDataFrom(mapped: Partial<Record<ContactMapping, string>>): ContactData {
+  return {
+    first_name: mapped.first_name ?? '',
+    last_name: mapped.last_name ?? '',
+    email: mapped.email ?? null,
+    phone: mapped.phone ?? null,
+    partner_first_name: mapped.partner_first_name ?? null,
+    partner_last_name: mapped.partner_last_name ?? null,
+    wedding_date: mapped.wedding_date ?? null,
+    wedding_location: mapped.wedding_location ?? null,
+    notes: mapped.notes ?? null,
   }
-  return createForm(db, vendor.id, { title, slug, type: 'custom', kind, config: configJson })
 }
 
 function isValidRedirect(url: string | undefined): url is string {
@@ -215,10 +145,11 @@ function isValidRedirect(url: string | undefined): url is string {
 
 export async function createSubmission(c: Context<Env>, ctx: SubmitContext): Promise<SubmitResult> {
   const { vendor, kind, config } = ctx
+  const formType = ctx.formType ?? 'custom'
   const body = await c.req.parseBody({ all: true })
   const ip = c.req.header('cf-connecting-ip') ?? null
 
-  // Honeypot — a filled hidden field means a bot; show success without doing work.
+  // Honeypot — a filled hidden field means a bot; show success without work.
   if (body.website_url) return { ok: true }
 
   const turnstileToken = typeof body['cf-turnstile-response'] === 'string' ? body['cf-turnstile-response'] : ''
@@ -243,26 +174,16 @@ export async function createSubmission(c: Context<Env>, ctx: SubmitContext): Pro
     }
   }
 
-  // enquiry + booking both create/update a contact, so they need name + email.
-  if (!mapped.email || !mapped.first_name) {
+  const actions = resolveFormActions(config, kind, formType)
+
+  // Lead-generating kinds need a contact, so they require name + email.
+  if ((kind === 'enquiry' || kind === 'booking') && (!mapped.email || !mapped.first_name)) {
     return { ok: false, error: t('forms.public.invalidEmail'), values: toStringValues(body) }
   }
 
-  const contactData: ContactData = {
-    first_name: mapped.first_name,
-    last_name: mapped.last_name ?? '',
-    email: mapped.email,
-    phone: mapped.phone ?? null,
-    partner_first_name: mapped.partner_first_name ?? null,
-    partner_last_name: mapped.partner_last_name ?? null,
-    wedding_date: mapped.wedding_date ?? null,
-    wedding_location: mapped.wedding_location ?? null,
-    notes: mapped.notes ?? null,
-  }
+  const contactData = contactDataFrom(mapped)
 
-  // Always persist an immutable submission row (B3). Use the pre-resolved form
-  // when given (standalone forms resolved by token), else lazily ensure the
-  // singleton backing row exists (read-both bridge).
+  // Always persist an immutable submission row (B3).
   const form = ctx.form ?? await ensureSingletonForm(c.env.DB, vendor, kind, ctx.slug, config.title, ctx.configJson)
   const submission = await createFormSubmission(c.env.DB, vendor.id, {
     form_id: form.id,
@@ -275,7 +196,7 @@ export async function createSubmission(c: Context<Env>, ctx: SubmitContext): Pro
   })
   await incrementSubmissionCount(c.env.DB, form.id)
 
-  // Upload validated files now that the submission id exists to scope them.
+  // Upload validated files now that the submission id exists.
   if (validFiles.size > 0 && c.env.STORAGE) {
     for (const [fieldId, file] of validFiles) {
       const r2Key = `form-uploads/${submission.id}/${crypto.randomUUID()}.${uploadExt(file.name)}`
@@ -303,21 +224,18 @@ export async function createSubmission(c: Context<Env>, ctx: SubmitContext): Pro
     if (kind === 'enquiry') {
       // Reuse the enquiry pipeline verbatim: contact (NO wedding), new-lead
       // notify, geocode, AI draft, confirmation. The no-wedding boundary lives
-      // here structurally — this arm never calls attachVendorToCoupleWedding.
+      // here — this arm never calls attachVendorToCoupleWedding.
       const contact = await createEnquiry(c.env, vendor, {
         contactData,
         formData: extraByLabel,
         source: 'website',
-        confirmation: config.actions.confirmationEmail,
+        confirmation: actions.confirmationEmail,
       })
       contactId = contact.id
-    } else {
-      // booking (standalone /book-form): create/update the contact AND make the
-      // vendor a member of the couple's wedding (creating it if needed). This is
-      // the deliberate, couple-initiated membership grant.
-      const contact = await createOrUpdateBookingContact(c.env, vendor, contactData, extraByLabel)
+    } else if (kind === 'booking') {
+      const contact = await createOrUpdateContact(c.env, vendor, contactData, extraByLabel, 'booking', 'Booking form submitted')
       contactId = contact.id
-      // Background attach — observable on failure (B5), never blocks the response.
+      // Deliberate, couple-initiated wedding membership grant (backgrounded).
       c.executionCtx.waitUntil(
         (async () => {
           const storage = await getStorageWithSecrets(c.env, vendor)
@@ -325,31 +243,87 @@ export async function createSubmission(c: Context<Env>, ctx: SubmitContext): Pro
           if (res) await attachVendorToCoupleWedding(c.env, vendor, res.contact, { createIfMissing: true })
         })().catch((e: any) => console.error('[form-submit] booking wedding attach failed', e?.message)),
       )
-      // Optional confirmation email to the couple, shared with the enquiry path.
-      if (config.actions.confirmationEmail?.enabled && contactData.email) {
-        try { await sendEnquiryConfirmation(c.env, vendor, contactData, config.actions.confirmationEmail) }
-        catch (e: any) { console.error('[form-submit] booking confirmation failed', e?.message) }
+      await notifyAndConfirm(c, vendor, form, config, kind, actions, submission.id, contactData, extraByLabel)
+    } else {
+      // information: optional contact creation + notify + confirmation.
+      if (actions.createContact && mapped.first_name) {
+        const contact = await createOrUpdateContact(c.env, vendor, contactData, extraByLabel, 'form', `Submitted form: ${config.title}`)
+        contactId = contact.id
       }
+      await notifyAndConfirm(c, vendor, form, config, kind, actions, submission.id, contactData, extraByLabel)
     }
     if (contactId) {
       await c.env.DB.prepare('UPDATE form_submissions SET contact_id = ? WHERE id = ?').bind(contactId, submission.id).run()
     }
   } catch (e: any) {
     // The submission row already captured their input; a side-effect failure is
-    // logged, not surfaced as a failure to the couple.
+    // logged, not surfaced to the couple.
     console.error(`[form-submit] ${kind} side effect failed`, e?.message)
   }
 
-  return isValidRedirect(config.redirectUrl) ? { ok: true, redirectUrl: config.redirectUrl } : { ok: true }
+  return isValidRedirect(config.redirectUrl)
+    ? { ok: true, redirectUrl: config.redirectUrl, submissionId: submission.id }
+    : { ok: true, submissionId: submission.id }
 }
 
-// Booking contact: dedup by email like the enquiry pipeline. The caller does
-// the (backgrounded) wedding attach so it has the request's executionCtx.
-async function createOrUpdateBookingContact(
+// Vendor notification + submitter confirmation + email-forward, shared by the
+// information and booking arms (enquiry handles these inside createEnquiry).
+async function notifyAndConfirm(
+  c: Context<Env>,
+  vendor: VendorProfile,
+  form: Form,
+  config: FormConfig,
+  kind: FormKind,
+  actions: ReturnType<typeof resolveFormActions>,
+  submissionId: string,
+  contactData: ContactData,
+  extra: Record<string, string>,
+): Promise<void> {
+  const submittedFields = formSubmissionFields(form.config, JSON.stringify({
+    ...Object.fromEntries(Object.entries(contactData).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])),
+    ...extra,
+  }))
+
+  // A wedding-scoped send notifies via the richer wedding flow elsewhere.
+  if (form.wedding_id) {
+    try { await c.env.EMAIL_QUEUE.send({ type: 'wedding_form_submission', submissionId }) }
+    catch (e: any) { console.error('[form-submit] wedding notify failed', e?.message) }
+  } else if (actions.notifyVendor) {
+    try {
+      await c.env.EMAIL_QUEUE.send({
+        type: 'form_submission', vendorId: vendor.id, formId: form.id, submissionId,
+        formTitle: config.title, fields: submittedFields,
+      })
+    } catch (e: any) { console.error('[form-submit] vendor notify failed', e?.message) }
+  }
+
+  if (actions.emailRecipient) {
+    const to = isValidEmail(actions.emailRecipient) ? actions.emailRecipient : extra[actions.emailRecipient]
+    if (to && isValidEmail(to)) {
+      try {
+        await c.env.EMAIL_QUEUE.send({
+          type: 'form_notification', to, formTitle: config.title, vendorName: vendor.business_name,
+          submissionId, fields: submittedFields,
+        })
+      } catch (e: any) { console.error('[form-submit] email_recipient failed', e?.message) }
+    }
+  }
+
+  if (actions.confirmationEmail?.enabled && contactData.email) {
+    try { await sendEnquiryConfirmation(c.env, vendor, contactData, actions.confirmationEmail) }
+    catch (e: any) { console.error(`[form-submit] ${kind} confirmation failed`, e?.message) }
+  }
+}
+
+// Dedup by email, fill blanks, refresh date/location — the shared contact write
+// used by the information + booking arms (enquiry uses createEnquiry's own copy).
+async function createOrUpdateContact(
   env: Bindings,
   vendor: VendorProfile,
   contactData: ContactData,
   extra: Record<string, string>,
+  source: string,
+  activity: string,
 ): Promise<Contact> {
   const storage = await getStorageWithSecrets(env, vendor)
   let contact = contactData.email ? await findContactByEmail(env.DB, vendor.id, contactData.email) : null
@@ -362,15 +336,90 @@ async function createOrUpdateBookingContact(
     if (contactData.wedding_location) updates.wedding_location = contactData.wedding_location
     if (Object.keys(updates).length > 0) {
       try { await updateContact(storage, env.DB, vendor.id, contact.id, updates); Object.assign(contact, updates) }
-      catch (e: any) { console.error('[form-submit] booking dedup update failed', e?.message) }
+      catch (e: any) { console.error('[form-submit] contact dedup update failed', e?.message) }
     }
   } else {
     contact = await createContact(storage, env.DB, vendor.id, {
       ...contactData,
-      source: 'booking',
+      source,
       form_data: Object.keys(extra).length > 0 ? JSON.stringify(extra) : null,
     })
   }
-  await createActivity(env.DB, contact.id, 'note', 'Booking form submitted')
+  await createActivity(env.DB, contact.id, source === 'form' ? 'lead' : 'note', activity)
   return contact
+}
+
+// Get-or-create a vendor's singleton forms row for a kind (read-both bridge),
+// keeping its config in sync with the (blob-sourced) config it was rendered from.
+export async function ensureSingletonForm(
+  db: D1Database,
+  vendor: VendorProfile,
+  kind: FormKind,
+  slug: string,
+  title: string,
+  configJson: string,
+): Promise<Form> {
+  const existing = await getFormByVendorSlug(db, vendor.id, slug)
+  if (existing) {
+    if (existing.config !== configJson) {
+      await updateForm(db, vendor.id, existing.id, { config: configJson })
+      existing.config = configJson
+    }
+    return existing
+  }
+  return createForm(db, vendor.id, { title, slug, type: 'custom', kind, config: configJson })
+}
+
+// Read-both resolver for a vendor's singleton enquiry form. The legacy editor
+// still writes vendor_profiles.enquiry_form, so the blob is the source of truth
+// during the transition; the forms row is the submission anchor, kept in sync by
+// the funnel. Shared by /enquire, the JSON API and MCP so all resolve identically.
+export async function resolveEnquiryFormConfig(
+  db: D1Database,
+  vendor: VendorProfile,
+): Promise<{ config: FormConfig; configJson: string }> {
+  const row = await getFormByVendorSlug(db, vendor.id, 'enquiry')
+  const json = vendor.enquiry_form ?? row?.config ?? null
+  return { config: parseFormConfig(json), configJson: json ?? JSON.stringify(defaultFormConfig()) }
+}
+
+// Read-both resolver for a vendor's singleton standalone booking form.
+export async function resolveBookingFormConfig(
+  db: D1Database,
+  vendor: VendorProfile,
+): Promise<{ config: FormConfig; configJson: string } | null> {
+  const row = await getFormByVendorSlug(db, vendor.id, 'booking-form')
+  const json = row?.config ?? null
+  if (!json) return null
+  const config = parseBookingFormConfig(json)
+  if (!config.fields || config.fields.length === 0) return null
+  return { config, configJson: json }
+}
+
+// Record an immutable form_submissions row for a JSON-channel enquiry (the
+// public JSON API + MCP agent tool), which reduce to createEnquiry directly, so
+// they get the same B3 durable record. Best-effort.
+export async function recordJsonEnquiry(
+  db: D1Database,
+  vendor: VendorProfile,
+  contactData: ContactData,
+  formData: Record<string, string>,
+  contactId: string | null,
+  ipAddress?: string | null,
+  userAgent?: string | null,
+): Promise<void> {
+  try {
+    const { config, configJson } = await resolveEnquiryFormConfig(db, vendor)
+    const form = await ensureSingletonForm(db, vendor, 'enquiry', 'enquiry', config.title, configJson)
+    const data: Record<string, string> = {}
+    for (const [k, v] of Object.entries(contactData)) if (v != null) data[k] = String(v)
+    Object.assign(data, formData)
+    await createFormSubmission(db, vendor.id, {
+      form_id: form.id, data: JSON.stringify(data), kind: 'enquiry',
+      contact_id: contactId, ip_address: ipAddress ?? null, user_agent: userAgent ?? null,
+    })
+    await incrementSubmissionCount(db, form.id)
+  } catch (e: any) {
+    console.error('[form-submit] recordJsonEnquiry failed', e?.message)
+  }
 }
