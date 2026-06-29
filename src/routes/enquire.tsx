@@ -4,13 +4,11 @@ import { SharedHead } from '../views/head'
 import type { HeadMeta } from '../views/head'
 import { getVendorById } from '../db/vendors'
 import { categoriesLabel } from '../lib/categories'
-import { verifyTurnstile } from '../services/turnstile'
 import { rateLimit } from '../middleware/rate-limit'
-import { parseFormConfig } from '../lib/form-schema'
-import { configHasAddressField, type FormConfig, type FormField } from '../lib/form-schema'
-import { FormEnhancements } from '../lib/form-enhance'
+import type { FormConfig } from '../lib/form-schema'
 import { t } from '../i18n'
-import { processSubmission, createEnquiry } from '../services/enquiry'
+import { resolveEnquiryFormConfig, createSubmission } from '../services/form-submit'
+import { PublicFormBody, ThankYou } from '../lib/form-render'
 import { BrandThemeHead, BrandLogo, parseBrandTheme, formLogoUrl, formOgImage } from '../lib/form-theme'
 import type { BrandTheme } from '../lib/form-theme'
 import { withDoctype } from '../views/document'
@@ -23,13 +21,13 @@ enquire.get('/enquire/:vendorId', async (c) => {
   if (!vendor) {
     return c.html(
       <EnquiryShell embed={embed}>
-        <p class="text-gray-600">This enquiry form is no longer available.</p>
+        <p class="text-gray-600">{t('forms.public.unavailable')}</p>
       </EnquiryShell>,
       404
     )
   }
 
-  const config = parseFormConfig(vendor.enquiry_form)
+  const { config } = await resolveEnquiryFormConfig(c.env.DB, vendor)
   const theme = parseBrandTheme(vendor.brand_theme)
   const logoUrl = formLogoUrl(vendor)
   const category = categoriesLabel(vendor)
@@ -44,112 +42,39 @@ enquire.get('/enquire/:vendorId', async (c) => {
 
   return c.html(
     <EnquiryShell embed={embed} theme={theme} meta={meta}>
-      <EnquiryForm
-        vendor={vendor}
-        config={config}
-        siteKey={c.env.TURNSTILE_SITE_KEY}
-        mapsKey={c.env.GOOGLE_MAPS_API_KEY}
-        logoUrl={logoUrl}
-      />
+      <EnquiryCard vendor={vendor} config={config} siteKey={c.env.TURNSTILE_SITE_KEY} mapsKey={c.env.GOOGLE_MAPS_API_KEY} logoUrl={logoUrl} />
     </EnquiryShell>
   )
 })
 
 enquire.post('/enquire/:vendorId', rateLimit(10, 60), async (c) => {
-  const vendorId = c.req.param('vendorId')
-  const vendor = await getVendorById(c.env.DB, vendorId)
+  const vendor = await getVendorById(c.env.DB, c.req.param('vendorId'))
   if (!vendor) return c.text('Not found', 404)
 
-  const config = parseFormConfig(vendor.enquiry_form)
+  const { config, configJson } = await resolveEnquiryFormConfig(c.env.DB, vendor)
   const theme = parseBrandTheme(vendor.brand_theme)
   const logoUrl = formLogoUrl(vendor)
-  const body = await c.req.parseBody()
   const embed = c.req.query('embed') === '1'
 
-  if (body.website_url) {
+  const result = await createSubmission(c, { vendor, kind: 'enquiry', config, slug: 'enquiry', configJson })
+
+  if (result.ok) {
+    if (result.redirectUrl) return c.redirect(result.redirectUrl)
     return c.html(
       <EnquiryShell embed={embed} theme={theme}>
-        <ThankYou businessName={vendor.business_name} />
+        <ThankYou title={t('forms.public.enquirySent')} message={t('forms.public.enquirySentBody', { vendor: vendor.business_name })} />
       </EnquiryShell>
     )
   }
 
-  const turnstileToken = typeof body['cf-turnstile-response'] === 'string'
-    ? body['cf-turnstile-response']
-    : ''
-  const ip = c.req.header('cf-connecting-ip') ?? null
-
-  const turnstileOk = await verifyTurnstile(
-    c.env.TURNSTILE_SECRET_KEY,
-    turnstileToken,
-    ip
+  return c.html(
+    <EnquiryShell embed={embed} theme={theme}>
+      <EnquiryCard vendor={vendor} config={config} siteKey={c.env.TURNSTILE_SITE_KEY} mapsKey={c.env.GOOGLE_MAPS_API_KEY} logoUrl={logoUrl} error={result.error} values={result.values} />
+    </EnquiryShell>
   )
-
-  if (!turnstileOk) {
-    return c.html(
-      <EnquiryShell embed={embed} theme={theme}>
-        <EnquiryForm
-          vendor={vendor}
-          config={config}
-          siteKey={c.env.TURNSTILE_SITE_KEY}
-          error="Verification failed. Please try again."
-          values={body as Record<string, string>}
-          mapsKey={c.env.GOOGLE_MAPS_API_KEY}
-          logoUrl={logoUrl}
-        />
-      </EnquiryShell>
-    )
-  }
-
-  try {
-    const { contactData, formData } = processSubmission(config, body as Record<string, string>)
-    await createEnquiry(c.env, vendor, {
-      contactData,
-      formData,
-      source: 'website',
-      confirmation: config.actions.confirmationEmail,
-    })
-
-    // Vendor-configured success URL (used by raw HTML forms on their own site).
-    if (config.redirectUrl && isValidRedirect(config.redirectUrl)) {
-      return c.redirect(config.redirectUrl)
-    }
-
-    return c.html(
-      <EnquiryShell embed={embed} theme={theme}>
-        <ThankYou businessName={vendor.business_name} />
-      </EnquiryShell>
-    )
-  } catch (e: any) {
-    return c.html(
-      <EnquiryShell embed={embed} theme={theme}>
-        <EnquiryForm
-          vendor={vendor}
-          config={config}
-          siteKey={c.env.TURNSTILE_SITE_KEY}
-          error={e.message}
-          values={body as Record<string, string>}
-          mapsKey={c.env.GOOGLE_MAPS_API_KEY}
-          logoUrl={logoUrl}
-        />
-      </EnquiryShell>
-    )
-  }
 })
 
 export default enquire
-
-// Only allow http(s) absolute URLs as the post-submit redirect target. The URL
-// is vendor-configured (stored in their form config), never read from the
-// request, so this is just a sanity guard, not open-redirect protection.
-function isValidRedirect(url: string): boolean {
-  try {
-    const u = new URL(url)
-    return u.protocol === 'https:' || u.protocol === 'http:'
-  } catch {
-    return false
-  }
-}
 
 // ─── Components ───
 
@@ -159,7 +84,6 @@ function EnquiryShell({ embed, children, theme, meta }: { embed?: boolean; child
       <head>
         <SharedHead title="Enquiry" {...meta} />
         <BrandThemeHead theme={theme} />
-        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
       </head>
       <body class={`antialiased ${embed ? 'bg-transparent' : 'bg-[var(--form-bg)] min-h-screen flex items-center justify-center'}`}>
         <div class={`w-full max-w-lg mx-auto ${embed ? 'p-0' : 'px-4 py-8 sm:py-12'}`}>
@@ -170,257 +94,45 @@ function EnquiryShell({ embed, children, theme, meta }: { embed?: boolean; child
   )
 }
 
-function EnquiryForm({
-  vendor,
-  config,
-  siteKey,
-  error,
-  values,
-  mapsKey,
-  logoUrl,
+function EnquiryCard({
+  vendor, config, siteKey, mapsKey, logoUrl, error, values,
 }: {
-  vendor: { business_name: string; category: string; categories?: string | null; celebrant_term?: string | null }
+  vendor: { id: string; business_name: string; category: string; categories?: string | null; celebrant_term?: string | null }
   config: FormConfig
   siteKey: string
-  error?: string
-  values?: Record<string, string>
   mapsKey?: string
   logoUrl?: string | null
+  error?: string
+  values?: Record<string, string>
 }) {
-  const v = (name: string) => (values?.[name] as string) ?? ''
   const category = categoriesLabel(vendor)
-
   return (
     <>
-    <BrandLogo logoUrl={logoUrl} />
-    <div class="bg-[var(--form-surface)] rounded-2xl shadow-lg shadow-gray-900/5 p-5 sm:p-8">
-      <div class="mb-6">
-        <h1 class="text-xl font-bold mb-1">{config.title}</h1>
-        <p class="text-sm text-gray-500">
-          {config.subtitle ?? (
-            <>Send an enquiry to <strong class="text-gray-900">{vendor.business_name}</strong>
-            <span class="text-gray-400"> · {category}</span></>
-          )}
+      <BrandLogo logoUrl={logoUrl} />
+      <div class="bg-[var(--form-surface)] rounded-2xl shadow-lg shadow-gray-900/5 p-5 sm:p-8">
+        <div class="mb-6">
+          <h1 class="text-xl font-bold mb-1">{config.title}</h1>
+          <p class="text-sm text-gray-500">
+            {config.subtitle ?? (
+              <>Send an enquiry to <strong class="text-gray-900">{vendor.business_name}</strong>
+              <span class="text-gray-400"> · {category}</span></>
+            )}
+          </p>
+        </div>
+
+        <PublicFormBody
+          config={config}
+          action={`/enquire/${vendor.id}`}
+          siteKey={siteKey}
+          mapsKey={mapsKey}
+          error={error}
+          values={values}
+        />
+
+        <p class="text-xs text-gray-400 text-center mt-4">
+          {t('forms.public.poweredBy')} <a href="/" target="_blank" class="underline hover:text-gray-600">Wedding Computer</a>
         </p>
       </div>
-
-      {error && (
-        <div class="bg-grapefruit-50 text-grapefruit-700 text-sm font-medium rounded-xl p-3 mb-4">
-          {error}
-        </div>
-      )}
-
-      <form method="post">
-        {/* Honeypot */}
-        <div style="position:absolute;left:-9999px" aria-hidden="true">
-          <input type="text" name="website_url" tabindex={-1} autocomplete="off" />
-        </div>
-
-        <div class="space-y-4">
-          <FieldRenderer fields={config.fields} values={v} />
-          <div class="cf-turnstile" data-sitekey={siteKey} data-theme="light"></div>
-        </div>
-
-        <button
-          type="submit"
-          class="mt-6 w-full bg-[var(--form-accent)] text-[var(--form-accent-ink)] py-3 px-4 rounded-xl text-sm font-bold hover:bg-[var(--form-accent-hover)] transition-colors"
-        >
-          {config.submitLabel}
-        </button>
-      </form>
-
-      <p class="text-xs text-gray-400 text-center mt-4">
-        Powered by <a href="/" target="_blank" class="underline hover:text-gray-600">Wedding Computer</a>
-      </p>
-
-      <FormEnhancements mapsKey={configHasAddressField(config) ? mapsKey : undefined} />
-    </div>
     </>
-  )
-}
-
-function FieldRenderer({
-  fields,
-  values,
-}: {
-  fields: FormField[]
-  values: (name: string) => string
-}) {
-  const elements: any[] = []
-  let halfBuffer: FormField[] = []
-
-  const flushHalves = () => {
-    if (halfBuffer.length === 0) return
-    elements.push(
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {halfBuffer.map((f) => (
-          <RenderField field={f} value={values(f.id)} />
-        ))}
-      </div>
-    )
-    halfBuffer = []
-  }
-
-  for (const field of fields) {
-    if (field.type === 'heading') {
-      flushHalves()
-      elements.push(
-        <h2 class="text-base font-bold text-gray-900 pt-2">{field.label}</h2>
-      )
-      continue
-    }
-
-    if (field.width === 'half') {
-      halfBuffer.push(field)
-      if (halfBuffer.length === 2) flushHalves()
-    } else {
-      flushHalves()
-      elements.push(<RenderField field={field} value={values(field.id)} />)
-    }
-  }
-
-  flushHalves()
-  return <>{elements}</>
-}
-
-function RenderField({ field, value }: { field: FormField; value: string }) {
-  const labelEl = (
-    <label class="block text-sm font-bold text-gray-700 mb-1.5" for={field.id}>
-      {field.label}
-      {field.required && <span class="text-grapefruit-700 ml-0.5">*</span>}
-    </label>
-  )
-
-  const inputClass = 'w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent'
-
-  if (field.type === 'textarea') {
-    return (
-      <div>
-        {labelEl}
-        <textarea
-          id={field.id}
-          name={field.id}
-          rows={4}
-          maxlength={2000}
-          required={field.required}
-          placeholder={field.placeholder}
-          class={inputClass}
-        >{value}</textarea>
-      </div>
-    )
-  }
-
-  if (field.type === 'select') {
-    return (
-      <div>
-        {labelEl}
-        <select
-          id={field.id}
-          name={field.id}
-          required={field.required}
-          class={`${inputClass} bg-white`}
-        >
-          <option value="">{field.placeholder ?? 'Select...'}</option>
-          {field.options?.map((opt) => {
-            const optVal = typeof opt === 'string' ? opt : opt.value
-            const optLabel = typeof opt === 'string' ? opt : opt.label
-            return <option value={optVal} selected={value === optVal}>{optLabel}</option>
-          })}
-        </select>
-      </div>
-    )
-  }
-
-  if (field.type === 'radio') {
-    return (
-      <div>
-        {labelEl}
-        <div class="space-y-2 mt-1">
-          {field.options?.map((opt) => {
-            const optVal = typeof opt === 'string' ? opt : opt.value
-            const optLabel = typeof opt === 'string' ? opt : opt.label
-            return (
-            <label class="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="radio"
-                name={field.id}
-                value={optVal}
-                checked={value === optVal}
-                required={field.required}
-                class="accent-grapefruit-700"
-              />
-              {optLabel}
-            </label>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
-
-  if (field.type === 'checkbox') {
-    return (
-      <label class="flex items-start gap-2 text-sm cursor-pointer">
-        <input
-          type="checkbox"
-          name={field.id}
-          value="yes"
-          checked={value === 'yes'}
-          class="accent-grapefruit-700 mt-0.5"
-        />
-        <span>{field.label}</span>
-      </label>
-    )
-  }
-
-  if (field.type === 'address') {
-    return (
-      <div>
-        {labelEl}
-        <input
-          type="text"
-          id={field.id}
-          name={field.id}
-          value={value}
-          required={field.required}
-          placeholder={field.placeholder || t('forms.address.placeholder')}
-          autocomplete="off"
-          class={`${inputClass} address-autocomplete`}
-        />
-      </div>
-    )
-  }
-
-  return (
-    <div>
-      {labelEl}
-      <input
-        type={field.type}
-        id={field.id}
-        name={field.id}
-        value={value}
-        required={field.required}
-        placeholder={field.placeholder}
-        class={inputClass}
-        data-future-date={field.type === 'date' && field.mapTo === 'wedding_date' ? 'true' : undefined}
-      />
-    </div>
-  )
-}
-
-function ThankYou({ businessName }: { businessName: string }) {
-  return (
-    <div class="bg-[var(--form-surface)] rounded-2xl shadow-lg shadow-gray-900/5 p-5 sm:p-8 text-center">
-      <div class="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
-        <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-        </svg>
-      </div>
-      <h1 class="text-xl font-bold mb-2">Enquiry sent</h1>
-      <p class="text-sm text-gray-600">
-        Your enquiry has been sent to <strong>{businessName}</strong>.
-        They'll be in touch soon.
-      </p>
-    </div>
   )
 }

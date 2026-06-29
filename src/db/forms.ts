@@ -1,4 +1,4 @@
-import type { Form, FormSubmission, FormSend, FormFile } from '../types'
+import type { Form, FormKind, FormSubmission, FormSend, FormFile } from '../types'
 
 export type WeddingSubmission = FormSubmission & { form_title: string; vendor_name: string; form_config: string }
 export type WeddingFormSend = FormSend & { form_title: string; form_type: string; vendor_name: string | null; response_count: number }
@@ -87,6 +87,7 @@ export async function createForm(
     title: string
     slug?: string | null
     type?: 'custom' | 'noim' | 'contact'
+    kind?: FormKind
     config: string
     wedding_id?: string | null
     contact_id?: string | null
@@ -94,8 +95,8 @@ export async function createForm(
 ): Promise<Form> {
   const result = await db
     .prepare(
-      `INSERT INTO forms (vendor_id, title, slug, type, config, wedding_id, contact_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO forms (vendor_id, title, slug, type, kind, config, wedding_id, contact_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
@@ -103,6 +104,7 @@ export async function createForm(
       data.title,
       data.slug ?? null,
       data.type ?? 'custom',
+      data.kind ?? 'information',
       data.config,
       data.wedding_id ?? null,
       data.contact_id ?? null
@@ -132,6 +134,19 @@ export async function getFormByToken(
     .first<Form>()
 }
 
+// Resolve a vendor's singleton form by its reserved slug (e.g. 'enquiry',
+// 'booking'). Used by the read-both resolvers and the editor's mirror.
+export async function getFormByVendorSlug(
+  db: D1Database,
+  vendorId: string,
+  slug: string
+): Promise<Form | null> {
+  return db
+    .prepare('SELECT * FROM forms WHERE vendor_id = ? AND slug = ? ORDER BY created_at ASC LIMIT 1')
+    .bind(vendorId, slug)
+    .first<Form>()
+}
+
 export async function listForms(
   db: D1Database,
   vendorId: string
@@ -143,11 +158,23 @@ export async function listForms(
     .then((r) => r.results)
 }
 
+export async function listFormsByKind(
+  db: D1Database,
+  vendorId: string,
+  kind: FormKind
+): Promise<Form[]> {
+  return db
+    .prepare('SELECT * FROM forms WHERE vendor_id = ? AND kind = ? ORDER BY created_at DESC')
+    .bind(vendorId, kind)
+    .all<Form>()
+    .then((r) => r.results)
+}
+
 export async function updateForm(
   db: D1Database,
   vendorId: string,
   formId: string,
-  data: Partial<Pick<Form, 'title' | 'slug' | 'config' | 'is_active' | 'wedding_id' | 'contact_id'>>
+  data: Partial<Pick<Form, 'title' | 'slug' | 'config' | 'kind' | 'is_active' | 'wedding_id' | 'contact_id'>>
 ): Promise<void> {
   const sets: string[] = []
   const values: unknown[] = []
@@ -194,6 +221,8 @@ export async function createFormSubmission(
     form_id: string
     data: string
     contact_id?: string | null
+    kind?: string | null
+    invoice_id?: string | null
     ip_address?: string | null
     user_agent?: string | null
     wedding_id?: string | null
@@ -202,8 +231,8 @@ export async function createFormSubmission(
 ): Promise<FormSubmission> {
   const result = await db
     .prepare(
-      `INSERT INTO form_submissions (form_id, vendor_id, data, contact_id, ip_address, user_agent, wedding_id, form_send_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO form_submissions (form_id, vendor_id, data, contact_id, kind, invoice_id, ip_address, user_agent, wedding_id, form_send_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
@@ -211,6 +240,8 @@ export async function createFormSubmission(
       vendorId,
       data.data,
       data.contact_id ?? null,
+      data.kind ?? null,
+      data.invoice_id ?? null,
       data.ip_address ?? null,
       data.user_agent ?? null,
       data.wedding_id ?? null,
@@ -249,7 +280,7 @@ export async function getFormSendByToken(
       `SELECT fs.id, fs.form_id, fs.wedding_id, fs.vendor_id, fs.token,
               fs.created_by_user_id, fs.created_at,
               f.id AS f_id, f.vendor_id AS f_vendor_id, f.title AS f_title, f.slug AS f_slug,
-              f.type AS f_type, f.config AS f_config, f.is_active AS f_is_active,
+              f.type AS f_type, f.kind AS f_kind, f.config AS f_config, f.is_active AS f_is_active,
               f.public_token AS f_public_token, f.wedding_id AS f_wedding_id,
               f.contact_id AS f_contact_id, f.submission_count AS f_submission_count,
               f.created_at AS f_created_at, f.updated_at AS f_updated_at
@@ -267,7 +298,7 @@ export async function getFormSendByToken(
     },
     form: {
       id: row.f_id, vendor_id: row.f_vendor_id, title: row.f_title, slug: row.f_slug, type: row.f_type,
-      config: row.f_config, is_active: row.f_is_active, public_token: row.f_public_token,
+      kind: row.f_kind, config: row.f_config, is_active: row.f_is_active, public_token: row.f_public_token,
       wedding_id: row.f_wedding_id, contact_id: row.f_contact_id, submission_count: row.f_submission_count,
       created_at: row.f_created_at, updated_at: row.f_updated_at,
     },

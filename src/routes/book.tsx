@@ -1,23 +1,27 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { Env } from '../types'
 import type { LineItem } from '../types'
 import { SharedHead } from '../views/head'
 import type { HeadMeta } from '../views/head'
 import { getInvoiceByToken } from '../db/invoices'
 import { listPayments, claimBookingSubmission } from '../db/invoices'
-import { updateContact, getContact } from '../storage/contacts'
+import { updateContact } from '../storage/contacts'
 import { getStorageWithSecrets } from '../storage'
 import { attachVendorToCoupleWedding } from '../services/booking-wedding'
 import { createActivity } from '../db/activities'
 import { getVendorById } from '../db/vendors'
+import { createFormSubmission, incrementSubmissionCount, getFormByToken } from '../db/forms'
+import { ensureSingletonForm, createSubmission } from '../services/form-submit'
 import { embedFrameAncestors } from '../lib/csp'
 import { celebrantTermLabel } from '../lib/celebrant-term'
 import { getContractByInvoice, signContract, getContractById } from '../db/contracts'
 import { formatDate, formatDateTime } from '../lib/date'
 import { isValidEmail } from '../lib/validation'
-import { configHasAddressField, parseBookingFormConfig } from '../lib/form-schema'
+import { configHasAddressField, parseBookingFormConfig, parseFormConfig } from '../lib/form-schema'
 import type { FormConfig, FormField } from '../lib/form-schema'
 import { FormEnhancements } from '../lib/form-enhance'
+import { RenderField, PublicFormBody, ThankYou } from '../lib/form-render'
 import { t } from '../i18n'
 import { verifyTurnstile } from '../services/turnstile'
 import { rateLimit } from '../middleware/rate-limit'
@@ -26,6 +30,21 @@ import type { BrandTheme } from '../lib/form-theme'
 import { withDoctype } from '../views/document'
 
 const book = new Hono<Env>()
+
+// getInvoiceByToken returns a row joined with vendor/contact display fields —
+// wider than the base Invoice type.
+type BookingInvoice = NonNullable<Awaited<ReturnType<typeof getInvoiceByToken>>>
+
+// Coerce a parsed body to plain strings so a failed submission re-renders with
+// the entered values (B4 — never redirect-and-lose-data).
+function toStringValues(body: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(body)) {
+    if (typeof v === 'string') out[k] = v
+    else if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === 'string').join(', ')
+  }
+  return out
+}
 
 book.get('/book/:token', async (c) => {
   const invoice = await getInvoiceByToken(c.env.DB, c.req.param('token'))
@@ -39,7 +58,18 @@ book.get('/book/:token', async (c) => {
       404
     )
   }
+  return renderBookingPage(c, invoice, {})
+})
 
+// Render the invoice/booking page. Shared by GET and the POST error paths so a
+// validation/turnstile/contract failure re-renders with the couple's values and
+// an inline error instead of redirecting to a blank form (B4).
+async function renderBookingPage(
+  c: Context<Env>,
+  invoice: BookingInvoice,
+  opts: { error?: string; values?: Record<string, string> },
+) {
+  const token = c.req.param('token') ?? ''
   const payments = await listPayments(c.env.DB, invoice.id)
   const lineItems: LineItem[] = invoice.line_items ? JSON.parse(invoice.line_items) : []
   const embed = c.req.query('embed') === '1'
@@ -48,11 +78,8 @@ book.get('/book/:token', async (c) => {
   const confirmed = c.req.query('confirmed') === '1'
 
   const vendor = await getVendorById(c.env.DB, invoice.vendor_id)
-  // When embedded, scope frame-ancestors to the vendor's own site.
   const fa = embedFrameAncestors(vendor?.website)
   if (fa) c.set('embedFrameAncestors', fa)
-  // Honour the vendor's Celebrant/Officiant term when their profile is in scope;
-  // otherwise fall back to the invoice's stored category label.
   const category =
     vendor && vendor.category === 'celebrant'
       ? celebrantTermLabel(vendor)
@@ -60,9 +87,8 @@ book.get('/book/:token', async (c) => {
   const bookingConfig = vendor ? parseBookingFormConfig(vendor.booking_form) : null
   const hasBookingForm = bookingConfig && bookingConfig.fields.length > 0
   const alreadySubmitted = !!invoice.booking_form_data
-  const showForm = hasBookingForm && !isPaid && !alreadySubmitted && totalPaid === 0 && !confirmed
+  const showForm = (hasBookingForm && !isPaid && !alreadySubmitted && totalPaid === 0 && !confirmed) || !!opts.error
 
-  // Load contract
   const contract = await getContractByInvoice(c.env.DB, invoice.id)
   const contractSigned = contract?.signed_at != null
   const showContract = contract && !contractSigned && showForm
@@ -73,7 +99,7 @@ book.get('/book/:token', async (c) => {
     title: 'Booking',
     ogTitle: `${invoice.title} · ${invoice.vendor_name}`,
     ogDescription: `Review and confirm your booking with ${invoice.vendor_name}.`,
-    ogUrl: `${c.env.APP_URL}/book/${c.req.param('token')}`,
+    ogUrl: `${c.env.APP_URL}/book/${token}`,
     ogImageAlt: invoice.vendor_name,
     noindex: true,
     ...(vendor ? formOgImage(vendor, c.env.APP_URL) : {}),
@@ -214,11 +240,13 @@ book.get('/book/:token', async (c) => {
         ) : showForm ? (
           <BookingForm
             config={hasBookingForm ? bookingConfig! : null}
-            token={c.req.param('token')}
+            token={token}
             siteKey={c.env.TURNSTILE_SITE_KEY}
             contactName={invoice.contact_name}
             contract={showContract ? contract : null}
             mapsKey={c.env.GOOGLE_MAPS_API_KEY}
+            error={opts.error}
+            values={opts.values}
           />
         ) : (
           <div class="text-center mt-6">
@@ -241,12 +269,12 @@ book.get('/book/:token', async (c) => {
         )}
 
         <p class="text-xs text-gray-400 text-center mt-6">
-          Powered by <a href="/" target="_blank" class="underline hover:text-gray-600">Wedding Computer</a>
+          {t('forms.public.poweredBy')} <a href="/" target="_blank" class="underline hover:text-gray-600">Wedding Computer</a>
         </p>
       </div>
     </FormShell>
   )
-})
+}
 
 // ─── Booking form submission ───
 
@@ -264,67 +292,52 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
 
   const config = parseBookingFormConfig(vendor.booking_form)
   const body = await c.req.parseBody()
+  const values = toStringValues(body)
 
   // Honeypot: bots fill hidden fields that humans never see.
   if (typeof body.website_url === 'string' && body.website_url !== '') {
     return c.redirect(`/book/${token}?confirmed=1`)
   }
 
-  const turnstileToken = typeof body['cf-turnstile-response'] === 'string'
-    ? body['cf-turnstile-response']
-    : ''
+  const turnstileToken = typeof body['cf-turnstile-response'] === 'string' ? body['cf-turnstile-response'] : ''
   const ip = c.req.header('cf-connecting-ip') ?? null
 
-  const turnstileOk = await verifyTurnstile(
-    c.env.TURNSTILE_SECRET_KEY,
-    turnstileToken,
-    ip
-  )
-
-  if (!turnstileOk) {
-    return c.redirect(`/book/${token}`)
+  if (!(await verifyTurnstile(c.env.TURNSTILE_SECRET_KEY, turnstileToken, ip))) {
+    return renderBookingPage(c, invoice, { error: t('forms.public.verificationFailed'), values })
   }
 
-  // Process booking form fields
+  // Process booking form fields. dataById feeds the immutable submission row;
+  // formData (by label) feeds the legacy invoices.booking_form_data; contactUpdates
+  // (by mapTo) updates the couple's contact.
+  const dataById: Record<string, string> = {}
   const formData: Record<string, string> = {}
   const contactUpdates: Record<string, string> = {}
 
   if (config.fields.length > 0) {
     for (const field of config.fields) {
       if (field.type === 'heading') continue
-
       const raw = body[field.id]
       const value = typeof raw === 'string' ? raw.trim() : ''
-
       if (field.required && !value) {
-        return c.redirect(`/book/${token}`)
+        return renderBookingPage(c, invoice, { error: t('forms.public.required', { label: field.label }), values })
       }
-
       if (!value) continue
-
-      // Store raw text (trimmed). Escaped at render time by JSX / email templates.
-      const clean = value
-
-      if (field.mapTo) {
-        contactUpdates[field.mapTo] = clean
-      }
-
-      formData[field.label] = clean
+      dataById[field.id] = value
+      if (field.mapTo) contactUpdates[field.mapTo] = value
+      formData[field.label] = value
     }
   }
 
-  // Sign contract if present
+  // Sign contract if present (B4: re-render with values instead of redirecting).
   const contract = await getContractByInvoice(c.env.DB, invoice.id)
   let sigEmail = ''
   if (contract && !contract.signed_at) {
     const sigName = typeof body.contract_signature === 'string' ? body.contract_signature.trim() : ''
     sigEmail = typeof body.contract_email === 'string' ? body.contract_email.trim() : ''
     const agreed = body.contract_agree === 'yes'
-
     if (!sigName || !agreed) {
-      return c.redirect(`/book/${token}`)
+      return renderBookingPage(c, invoice, { error: 'Please type your name and agree to the contract to confirm.', values })
     }
-
     await signContract(c.env.DB, contract.id, {
       signed_by_name: sigName,
       signed_by_email: sigEmail,
@@ -332,10 +345,9 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
     })
   }
 
-  // Atomically claim the submission (also saves the form data). Only the
-  // request that flips booking_form_data from empty proceeds; a concurrent
-  // double-submit loses the race here and just lands on the confirmed page,
-  // so the notifications and confirmation email fire exactly once.
+  // Atomically claim the submission (also saves the form data). Only the request
+  // that flips booking_form_data from empty proceeds; a concurrent double-submit
+  // loses the race here and just lands on the confirmed page.
   const claimed = await claimBookingSubmission(
     c.env.DB,
     invoice.vendor_id,
@@ -347,14 +359,35 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
     return c.redirect(`/book/${token}?confirmed=1${embed ? '&embed=1' : ''}`)
   }
 
+  // B3: persist an immutable form_submissions row anchored to the vendor's
+  // booking form, linked to the invoice + wedding. The legacy booking_form_data
+  // stays authoritative for the once-only claim; this is the durable record + a
+  // row for the unified submissions inbox.
+  try {
+    const bookingForm = await ensureSingletonForm(c.env.DB, vendor, 'booking', 'booking', config.title || 'Booking form', vendor.booking_form ?? JSON.stringify(config))
+    await createFormSubmission(c.env.DB, vendor.id, {
+      form_id: bookingForm.id,
+      data: JSON.stringify(dataById),
+      kind: 'booking',
+      contact_id: invoice.contact_id ?? null,
+      invoice_id: invoice.id,
+      ip_address: ip,
+      user_agent: c.req.header('user-agent') ?? null,
+      wedding_id: invoice.wedding_id ?? null,
+    })
+    await incrementSubmissionCount(c.env.DB, bookingForm.id)
+  } catch (e: any) {
+    console.error('[book] submission row failed', e?.message)
+  }
+
   if (invoice.contact_id) {
     if (Object.keys(contactUpdates).length > 0) {
       try {
         const storage = await getStorageWithSecrets(c.env, vendor)
         await updateContact(storage, c.env.DB, invoice.vendor_id, invoice.contact_id, contactUpdates)
       } catch (err) {
-        // Contact update is non-critical — the booking form submission
-        // and contract signing are the important parts.
+        // Contact update is non-critical — the booking submission + contract are
+        // the important parts (and the submission row above captured the data).
         console.error(`[book] Failed to update contact ${invoice.contact_id}:`, err)
       }
     }
@@ -364,13 +397,13 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
   }
 
   // Booking IS the collaboration: make this vendor a member of the couple's
-  // wedding (match the couple's existing wedding by email, else create one from
-  // the contact) and link their existing contact. Background — never blocks the
-  // booking/payment response.
+  // wedding. Backgrounded so it never blocks the booking/payment response; a
+  // failure is logged (B5) rather than silently lost.
   if (invoice.contact_id) {
     const contactId = invoice.contact_id
     c.executionCtx.waitUntil(
       (async () => {
+        const { getContact } = await import('../storage/contacts')
         const storage = await getStorageWithSecrets(c.env, vendor)
         const res = await getContact(storage, c.env.DB, invoice.vendor_id, contactId)
         if (res) await attachVendorToCoupleWedding(c.env, vendor, res.contact, { createIfMissing: true })
@@ -378,7 +411,7 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
     )
   }
 
-  // Notify all vendors on the wedding that this vendor got booked
+  // Notify all vendors on the wedding that this vendor got booked.
   if (invoice.wedding_id) {
     const contactName = invoice.contact_name ?? 'A couple'
     await c.env.EMAIL_QUEUE.send({
@@ -391,10 +424,7 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
     })
   }
 
-  // Email the couple a booking confirmation + a copy of the contract they
-  // signed. Use whichever address we have: the one typed when signing, a
-  // booking-form email field, then the contact on file. The top-of-handler
-  // booking_form_data guard makes this a once-only send per booking.
+  // Email the couple a booking confirmation + a copy of the contract they signed.
   const coupleEmail = [sigEmail, contactUpdates.email, invoice.contact_email].find(
     (e) => e && isValidEmail(e)
   )
@@ -425,12 +455,12 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
     })
   }
 
-  // Check if vendor has Stripe connected and there's a booking fee
+  // B6: select the booking-fee payment by the explicit flag, falling back to the
+  // legacy label match during the read-both transition.
   const bookingFeePayment = (await listPayments(c.env.DB, invoice.id))
-    .find((p) => p.label.toLowerCase().includes('booking') && p.status === 'pending')
+    .find((p) => (p.is_booking_fee === 1 || p.label.toLowerCase().includes('booking')) && p.status === 'pending')
 
   if (bookingFeePayment && vendor.stripe_account_id && vendor.stripe_onboarding_complete) {
-    // Create Stripe Checkout Session for the booking fee
     try {
       const session = await createStripeCheckoutSession(
         c.env.STRIPE_SECRET_KEY,
@@ -444,7 +474,6 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
         invoice.id,
         bookingFeePayment.id
       )
-
       if (session.url) {
         return c.redirect(session.url)
       }
@@ -456,6 +485,89 @@ book.post('/book/:token', rateLimit(10, 60), async (c) => {
 
   const embed = c.req.query('embed') === '1'
   return c.redirect(`/book/${token}?confirmed=1${embed ? '&embed=1' : ''}`)
+})
+
+// ─── Standalone booking form ───
+//
+// A public booking form a vendor publishes (no invoice required). Like the
+// enquiry form, but submitting brings the couple fully in: it creates/updates a
+// contact AND attaches the vendor to the couple's wedding (the funnel's booking
+// arm). Keyed by the forms row's public_token; kind must be 'booking'.
+
+async function renderStandaloneBooking(
+  c: Context<Env>,
+  form: { vendor_id: string; config: string; public_token: string },
+  opts: { error?: string; values?: Record<string, string> } = {},
+) {
+  const vendor = await getVendorById(c.env.DB, form.vendor_id)
+  if (!vendor) return c.text('Not found', 404)
+  const config = parseFormConfig(form.config)
+  const embed = c.req.query('embed') === '1'
+  const theme = parseBrandTheme(vendor.brand_theme)
+  const logoUrl = formLogoUrl(vendor)
+  const meta: HeadMeta = {
+    title: 'Booking',
+    ogTitle: `${config.title} · ${vendor.business_name}`,
+    ogDescription: config.subtitle ?? `Book ${vendor.business_name}.`,
+    ogUrl: `${c.env.APP_URL}/book-form/${form.public_token}`,
+    ogImageAlt: vendor.business_name,
+    noindex: true,
+    ...formOgImage(vendor, c.env.APP_URL),
+  }
+  return c.html(
+    <FormShell embed={embed} theme={theme} meta={meta}>
+      <BrandLogo logoUrl={logoUrl} />
+      <div class="bg-[var(--form-surface)] rounded-2xl shadow-lg shadow-gray-900/5 p-5 sm:p-8">
+        <div class="mb-6">
+          <h1 class="text-xl font-bold mb-1">{config.title}</h1>
+          <p class="text-sm text-gray-500">{config.subtitle ?? <>Book <strong class="text-gray-900">{vendor.business_name}</strong></>}</p>
+        </div>
+        <PublicFormBody
+          config={config}
+          action={`/book-form/${form.public_token}`}
+          siteKey={c.env.TURNSTILE_SITE_KEY}
+          mapsKey={c.env.GOOGLE_MAPS_API_KEY}
+          error={opts.error}
+          values={opts.values}
+        />
+        <p class="text-xs text-gray-400 text-center mt-4">
+          {t('forms.public.poweredBy')} <a href="/" target="_blank" class="underline hover:text-gray-600">Wedding Computer</a>
+        </p>
+      </div>
+    </FormShell>
+  )
+}
+
+book.get('/book-form/:token', async (c) => {
+  const form = await getFormByToken(c.env.DB, c.req.param('token'))
+  if (!form || form.kind !== 'booking') {
+    return c.html(<FormShell embed={false}><p class="text-gray-600">{t('forms.public.unavailable')}</p></FormShell>, 404)
+  }
+  return renderStandaloneBooking(c, form, {})
+})
+
+book.post('/book-form/:token', rateLimit(10, 60), async (c) => {
+  const form = await getFormByToken(c.env.DB, c.req.param('token'))
+  if (!form || form.kind !== 'booking') return c.text('Not found', 404)
+  const vendor = await getVendorById(c.env.DB, form.vendor_id)
+  if (!vendor) return c.text('Not found', 404)
+
+  const config = parseFormConfig(form.config)
+  const result = await createSubmission(c, {
+    vendor, kind: 'booking', config, slug: form.slug ?? 'booking-form', configJson: form.config, form,
+  })
+
+  if (result.ok) {
+    if (result.redirectUrl) return c.redirect(result.redirectUrl)
+    const embed = c.req.query('embed') === '1'
+    const theme = parseBrandTheme(vendor.brand_theme)
+    return c.html(
+      <FormShell embed={embed} theme={theme}>
+        <ThankYou title={t('forms.public.bookingConfirmed')} message={t('forms.public.bookingConfirmedBody')} vendorName={vendor.business_name} />
+      </FormShell>
+    )
+  }
+  return renderStandaloneBooking(c, form, { error: result.error, values: result.values })
 })
 
 export default book
@@ -523,12 +635,7 @@ function FormShell({ embed, children, theme, meta }: { embed: boolean; children:
 }
 
 function BookingForm({
-  config,
-  token,
-  siteKey,
-  contactName,
-  contract,
-  mapsKey,
+  config, token, siteKey, contactName, contract, mapsKey, error, values,
 }: {
   config: FormConfig | null
   token: string
@@ -536,12 +643,18 @@ function BookingForm({
   contactName: string | null
   contract: { id: string; title: string; body: string } | null
   mapsKey?: string
+  error?: string
+  values?: Record<string, string>
 }) {
   const hasFields = config && config.fields.length > 0
   const inputClass = 'w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent'
 
   return (
     <div class="mt-6 pt-6 border-t border-gray-100">
+      {error && (
+        <div class="bg-grapefruit-50 border border-grapefruit-200 text-grapefruit-700 text-sm font-medium rounded-xl p-3 mb-4">{error}</div>
+      )}
+
       {/* Service contract */}
       {contract && (
         <div class="mb-6">
@@ -575,7 +688,7 @@ function BookingForm({
         {/* Honeypot — hidden from humans, bots fill it and get silently rejected */}
         <input type="text" name="website_url" tabindex={-1} autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden" aria-hidden="true" />
         <div class="space-y-4">
-          {hasFields && <FieldRenderer fields={config!.fields} />}
+          {hasFields && config!.fields.map((f) => <RenderField field={f} value={values?.[f.id]} />)}
 
           {/* Contract signature fields */}
           {contract && (
@@ -588,6 +701,7 @@ function BookingForm({
                   type="text"
                   id="contract_signature"
                   name="contract_signature"
+                  value={values?.contract_signature ?? ''}
                   required
                   class={inputClass}
                   placeholder="Type your full legal name"
@@ -601,6 +715,7 @@ function BookingForm({
                   type="email"
                   id="contract_email"
                   name="contract_email"
+                  value={values?.contract_email ?? ''}
                   class={inputClass}
                   placeholder="your@email.com"
                 />
@@ -637,166 +752,6 @@ function BookingForm({
       </form>
 
       <FormEnhancements mapsKey={config && configHasAddressField(config) ? mapsKey : undefined} />
-    </div>
-  )
-}
-
-function FieldRenderer({ fields }: { fields: FormField[] }) {
-  const elements: any[] = []
-  let halfBuffer: FormField[] = []
-
-  const flushHalves = () => {
-    if (halfBuffer.length === 0) return
-    elements.push(
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {halfBuffer.map((f) => (
-          <RenderField field={f} />
-        ))}
-      </div>
-    )
-    halfBuffer = []
-  }
-
-  for (const field of fields) {
-    if (field.type === 'heading') {
-      flushHalves()
-      elements.push(
-        <h2 class="text-base font-bold text-gray-900 pt-2">{field.label}</h2>
-      )
-      continue
-    }
-
-    if (field.width === 'half') {
-      halfBuffer.push(field)
-      if (halfBuffer.length === 2) flushHalves()
-    } else {
-      flushHalves()
-      elements.push(<RenderField field={field} />)
-    }
-  }
-
-  flushHalves()
-  return <>{elements}</>
-}
-
-function RenderField({ field }: { field: FormField }) {
-  const labelEl = (
-    <label class="block text-sm font-bold text-gray-700 mb-1.5" for={field.id}>
-      {field.label}
-      {field.required && <span class="text-grapefruit-700 ml-0.5">*</span>}
-    </label>
-  )
-
-  const inputClass = 'w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent'
-
-  if (field.type === 'textarea') {
-    return (
-      <div>
-        {labelEl}
-        <textarea
-          id={field.id}
-          name={field.id}
-          rows={4}
-          maxlength={2000}
-          required={field.required}
-          placeholder={field.placeholder}
-          class={inputClass}
-        ></textarea>
-      </div>
-    )
-  }
-
-  if (field.type === 'select') {
-    return (
-      <div>
-        {labelEl}
-        <select
-          id={field.id}
-          name={field.id}
-          required={field.required}
-          class={`${inputClass} bg-white`}
-        >
-          <option value="">{field.placeholder ?? 'Select...'}</option>
-          {field.options?.map((opt) => {
-            const optVal = typeof opt === 'string' ? opt : opt.value
-            const optLabel = typeof opt === 'string' ? opt : opt.label
-            return <option value={optVal}>{optLabel}</option>
-          })}
-        </select>
-      </div>
-    )
-  }
-
-  if (field.type === 'radio') {
-    return (
-      <div>
-        {labelEl}
-        <div class="space-y-2 mt-1">
-          {field.options?.map((opt) => {
-            const optVal = typeof opt === 'string' ? opt : opt.value
-            const optLabel = typeof opt === 'string' ? opt : opt.label
-            return (
-            <label class="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="radio"
-                name={field.id}
-                value={optVal}
-                required={field.required}
-                class="accent-grapefruit-700"
-              />
-              {optLabel}
-            </label>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
-
-  if (field.type === 'checkbox') {
-    return (
-      <label class="flex items-start gap-2 text-sm cursor-pointer">
-        <input
-          type="checkbox"
-          name={field.id}
-          value="yes"
-          required={field.required}
-          class="accent-grapefruit-700 mt-0.5"
-        />
-        <span>{field.label}</span>
-      </label>
-    )
-  }
-
-  if (field.type === 'address') {
-    return (
-      <div>
-        {labelEl}
-        <input
-          type="text"
-          id={field.id}
-          name={field.id}
-          required={field.required}
-          placeholder={field.placeholder || t('forms.address.placeholder')}
-          autocomplete="off"
-          class={`${inputClass} address-autocomplete`}
-        />
-      </div>
-    )
-  }
-
-  return (
-    <div>
-      {labelEl}
-      <input
-        type={field.type}
-        id={field.id}
-        name={field.id}
-        required={field.required}
-        placeholder={field.placeholder}
-        class={inputClass}
-        data-future-date={field.type === 'date' && field.mapTo === 'wedding_date' ? 'true' : undefined}
-      />
     </div>
   )
 }

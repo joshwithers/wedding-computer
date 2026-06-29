@@ -120,6 +120,31 @@ INSERT OR IGNORE INTO vendor_types (slug, label, sort_order, is_system) VALUES
   ('makeup', 'Makeup', 11, 1), ('cake', 'Cake', 12, 1),
   ('stationery', 'Stationery', 13, 1), ('other', 'Other', 14, 1);
 
+-- Editable platform-default AI prompts (migration 075), admin-managed via
+-- /admin/ai-prompts. v1 reads/seeds only the 'default' locale; `locale` is
+-- reserved for future per-language defaults. Per-form overrides live in the
+-- form config JSON (confirmationEmail.aiPrompt) and need no schema. Resolution
+-- order: per-form override → this table → code fallback. Keep the seed
+-- byte-identical to FALLBACK_ENQUIRY_REPLY in src/services/ai-prompts.ts.
+CREATE TABLE IF NOT EXISTS ai_prompts (
+  key        TEXT NOT NULL,
+  locale     TEXT NOT NULL DEFAULT 'default',
+  template   TEXT NOT NULL,
+  updated_by TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (key, locale)
+);
+INSERT OR IGNORE INTO ai_prompts (key, locale, template) VALUES
+  ('enquiry_reply', 'default', 'You are a wedding {vendorCategory} named {vendorName}. A new enquiry just came in from {contactName}.
+
+{requestedDate}
+{location}
+{theirMessage}
+
+{availabilityInfo}
+{instructionsBlock}
+Draft a warm, professional reply acknowledging their enquiry. If available, express enthusiasm. If not available, be gracious and suggest they check back or offer alternative dates. Keep it concise (2-3 paragraphs), friendly, Australian English.{replyNudge} Write just the body — no subject line, no sign-off.');
+
 -- The Wedding entity (central object)
 CREATE TABLE IF NOT EXISTS weddings (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
@@ -406,6 +431,9 @@ CREATE TABLE IF NOT EXISTS invoice_payments (
   stripe_payment_intent_id TEXT,
   paid_at TEXT,
   notes TEXT,
+  -- Marks the booking-fee line whose payment confirms a booking (migration 075).
+  -- Replaces the fragile `label LIKE '%booking%'` match in the checkout path.
+  is_booking_fee INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -507,8 +535,14 @@ CREATE TABLE IF NOT EXISTS forms (
   vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   slug TEXT,
+  -- `type` keeps driving template/PDF behaviour (NOIM). Its CHECK is never
+  -- widened — prod D1 enforces FK during migrations, so rebuilding `forms`
+  -- (3 FK children) to change a CHECK is rejected (migration 074/075 lesson).
   type TEXT NOT NULL DEFAULT 'custom'
     CHECK (type IN ('custom', 'noim', 'contact')),
+  -- The unified intake intent (migration 075), validated at the app layer:
+  -- 'information' | 'enquiry' | 'booking'. No CHECK by design.
+  kind TEXT NOT NULL DEFAULT 'information',
   config TEXT NOT NULL DEFAULT '{}',
   is_active INTEGER NOT NULL DEFAULT 1,
   public_token TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))),
@@ -525,13 +559,21 @@ CREATE TABLE IF NOT EXISTS form_submissions (
   vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id) ON DELETE CASCADE,
   data TEXT NOT NULL DEFAULT '{}',
   contact_id TEXT REFERENCES contacts(id) ON DELETE SET NULL,
+  -- The intake type at submit time (migration 075): 'information'|'enquiry'|'booking'.
+  kind TEXT,
+  -- A booking submission made against an invoice links back to it (migration 075),
+  -- for the unified inbox. No FK by design (prod rejects FK-bearing rebuilds);
+  -- nulled at the app layer when the invoice is deleted.
+  invoice_id TEXT,
   status TEXT NOT NULL DEFAULT 'submitted'
     CHECK (status IN ('submitted', 'reviewed', 'archived')),
+  -- ip_address/user_agent are nulled by the daily cron after 90 days (PII retention).
   ip_address TEXT,
   user_agent TEXT,
   -- A submission made through a "send to a couple" link belongs to a wedding
   -- (migration 056). Default visibility is owning vendor + couple; when
   -- shared_with_team = 1 it's visible to every vendor on the wedding.
+  -- No FK by design (056); nulled at the app layer on wedding delete.
   wedding_id TEXT,
   form_send_id TEXT,
   shared_with_team INTEGER NOT NULL DEFAULT 0,
@@ -565,11 +607,13 @@ CREATE TABLE IF NOT EXISTS form_sends (
 
 CREATE INDEX IF NOT EXISTS idx_forms_vendor ON forms(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_forms_type ON forms(type);
+CREATE INDEX IF NOT EXISTS idx_forms_kind ON forms(kind);
 CREATE INDEX IF NOT EXISTS idx_forms_public_token ON forms(public_token);
 CREATE INDEX IF NOT EXISTS idx_forms_wedding ON forms(wedding_id);
 CREATE INDEX IF NOT EXISTS idx_forms_contact ON forms(contact_id);
 CREATE INDEX IF NOT EXISTS idx_form_submissions_form ON form_submissions(form_id);
 CREATE INDEX IF NOT EXISTS idx_form_submissions_vendor ON form_submissions(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_form_submissions_invoice ON form_submissions(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_form_submissions_contact ON form_submissions(contact_id);
 CREATE INDEX IF NOT EXISTS idx_form_submissions_wedding ON form_submissions(wedding_id);
 CREATE INDEX IF NOT EXISTS idx_form_sends_wedding ON form_sends(wedding_id);

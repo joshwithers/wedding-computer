@@ -413,6 +413,8 @@ export type InvoicePayment = {
   stripe_payment_intent_id: string | null
   paid_at: string | null
   notes: string | null
+  // Set on the line whose payment confirms a booking (migration 075).
+  is_booking_fee: number
   created_at: string
 }
 
@@ -855,12 +857,17 @@ export type QuoteOption = {
   type: 'addon' | 'upgrade' | 'hourly'
 }
 
+// The unified intake intent (migration 075). `type` still discriminates
+// template/PDF behaviour (NOIM); `kind` is what the unified UI lists/filters by.
+export type FormKind = 'information' | 'enquiry' | 'booking'
+
 export type Form = {
   id: string
   vendor_id: string
   title: string
   slug: string | null
   type: 'custom' | 'noim' | 'contact'
+  kind: FormKind
   config: string
   is_active: number
   public_token: string
@@ -877,6 +884,9 @@ export type FormSubmission = {
   vendor_id: string
   data: string
   contact_id: string | null
+  // Intake type + invoice link at submit time (migration 075).
+  kind: string | null
+  invoice_id: string | null
   status: 'submitted' | 'reviewed' | 'archived'
   ip_address: string | null
   user_agent: string | null
@@ -884,6 +894,16 @@ export type FormSubmission = {
   form_send_id: string | null
   shared_with_team: number
   created_at: string
+}
+
+// A row of ai_prompts (migration 075): the admin-editable platform-default
+// AI prompt template for a given key (+ optional locale).
+export type AiPrompt = {
+  key: string
+  locale: string
+  template: string
+  updated_by: string | null
+  updated_at: string
 }
 
 export type FormSend = {

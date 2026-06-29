@@ -24,6 +24,7 @@ import { listVendorTypes, addVendorType, setVendorTypeActive, vendorTypeLabel } 
 import { ensureCoupleContact } from '../services/couple-contact'
 import { sanitizeInstagramHandle } from '../lib/instagram'
 import { normalizeCelebrantTerm, celebrantTermOf, celebrantTermLabel, CELEBRANT_SLUG, OFFICIANT_TERM } from '../lib/celebrant-term'
+import { getSystemPrompt, setSystemPrompt, resetSystemPrompt, interpolatePrompt, PROMPT_KEYS, ENQUIRY_REPLY_PLACEHOLDERS, type PromptKey } from '../services/ai-prompts'
 
 const admin = new Hono<Env>()
 
@@ -52,6 +53,7 @@ const AdminLayout: FC<PropsWithChildren<{ title?: string; user: User; csrfToken:
             <a href="/admin/gifts" class="text-sm text-gray-400 hover:text-white">Gifts</a>
             <a href="/admin/coupons" class="text-sm text-gray-400 hover:text-white">Coupons</a>
             <a href="/admin/vendor-types" class="text-sm text-gray-400 hover:text-white">Vendor types</a>
+            <a href="/admin/ai-prompts" class="text-sm text-gray-400 hover:text-white">AI prompts</a>
             <a href="/admin/businesses" class="text-sm text-gray-400 hover:text-white">Businesses</a>
             <a href="/app" class="text-sm text-gray-400 hover:text-white">Back to app</a>
             <span class="text-sm text-gray-500">{user.email}</span>
@@ -866,6 +868,135 @@ admin.post('/admin/vendor-types/:slug/toggle', async (c) => {
   await setVendorTypeActive(c.env.DB, slug, active)
   await auditLog(c, active ? 'restore_vendor_type' : 'remove_vendor_type', 'vendor_type', slug, {}).catch(() => {})
   return c.redirect('/admin/vendor-types')
+})
+
+// ─── AI prompts: the platform-default templates for auto-replies (migration 075) ───
+//
+// The admin edits the platform default here; vendors can override per-form in the
+// form editor. Resolution at send time is per-form → this default → code fallback.
+
+const AI_PROMPT_MAX = 8000
+
+// Sample context for the deterministic preview — no LLM spend, just shows the
+// admin how their template renders once the {tokens} are filled in.
+const AI_PROMPT_PREVIEW_VARS: Record<string, string> = {
+  vendorName: 'Bluebell Photography',
+  vendorCategory: 'photographer',
+  contactName: 'Sam & Alex',
+  requestedDate: 'Requested date: 2026-11-14',
+  location: 'Location: Byron Bay, NSW',
+  theirMessage: 'Their message: We love your candid style and would love a quote!',
+  availabilityInfo: 'You ARE available on 2026-11-14.',
+  instructionsBlock: '',
+  replyNudge: ' End by warmly inviting them to reply to this email so they know it arrived safely (in case it lands in their spam).',
+}
+
+admin.get('/admin/ai-prompts', async (c) => {
+  const user = c.get('user')
+  const csrfToken = c.get('csrfToken')
+  const saved = c.req.query('saved')
+  const reset = c.req.query('reset')
+  const error = c.req.query('error')
+  const key: PromptKey = 'enquiry_reply'
+
+  const row = await getSystemPrompt(c.env.DB, key)
+  const template = row?.template ?? PROMPT_KEYS[key].fallback
+  // "Customised" means it actually differs from the built-in default — the
+  // migration seeds a row identical to the fallback, which is NOT a customisation.
+  const isDefault = template.trim() === PROMPT_KEYS[key].fallback.trim()
+  const preview = interpolatePrompt(template, AI_PROMPT_PREVIEW_VARS)
+
+  return c.html(
+    <AdminLayout title="AI prompts" user={user} csrfToken={csrfToken}>
+      <div class="space-y-8 max-w-3xl">
+        <div>
+          <h1 class="text-2xl font-bold">AI prompts</h1>
+          <p class="text-sm text-gray-500 mt-1">
+            The platform-default prompt the AI uses to draft auto-replies. Vendors can override it on an
+            individual form. The dynamic parts (availability, the couple's message) are filled in at send
+            time via the <code class="text-xs bg-gray-100 rounded px-1">{'{placeholders}'}</code> below.
+          </p>
+        </div>
+
+        {saved && <div class="bg-green-50 border border-green-200 text-green-800 text-sm rounded-xl p-3">Saved. New replies will use this prompt.</div>}
+        {reset && <div class="bg-green-50 border border-green-200 text-green-800 text-sm rounded-xl p-3">Reset to the built-in default.</div>}
+        {error && <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3">{error}</div>}
+
+        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-gray-200">
+          <div class="flex items-center justify-between mb-1">
+            <h2 class="text-lg font-bold">{PROMPT_KEYS[key].label}</h2>
+            <span class={`text-[10px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 ${isDefault ? 'text-gray-400 bg-gray-100' : 'text-horizon-700 bg-horizon-50'}`}>
+              {isDefault ? 'built-in default' : 'customised'}
+            </span>
+          </div>
+          <p class="text-sm text-gray-500 mb-4">{PROMPT_KEYS[key].description}</p>
+
+          <form method="post" action="/admin/ai-prompts">
+            <input type="hidden" name="_csrf" value={csrfToken} />
+            <input type="hidden" name="key" value={key} />
+            <textarea
+              name="template"
+              rows={16}
+              maxlength={AI_PROMPT_MAX}
+              required
+              class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-gray-900"
+            >{template}</textarea>
+            {row?.updated_by && (
+              <p class="text-xs text-gray-400 mt-2">Last edited {row.updated_at} by {row.updated_by}.</p>
+            )}
+            <div class="flex items-center gap-3 mt-4">
+              <button type="submit" class="bg-gray-900 text-white rounded-xl px-6 py-2.5 text-sm font-bold hover:bg-gray-800 transition-colors">Save prompt</button>
+            </div>
+          </form>
+
+          <form method="post" action="/admin/ai-prompts/reset" class="mt-3">
+            <input type="hidden" name="_csrf" value={csrfToken} />
+            <input type="hidden" name="key" value={key} />
+            <button type="submit" class="text-xs text-gray-400 hover:text-red-600 underline">Reset to built-in default</button>
+          </form>
+        </div>
+
+        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-gray-200">
+          <h2 class="text-lg font-bold mb-3">Placeholders</h2>
+          <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+            {ENQUIRY_REPLY_PLACEHOLDERS.map((p) => (
+              <div class="flex gap-2">
+                <dt class="font-mono text-xs text-horizon-700 shrink-0 pt-0.5">{`{${p.token}}`}</dt>
+                <dd class="text-gray-600">{p.description}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+
+        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-gray-200">
+          <h2 class="text-lg font-bold mb-1">Preview</h2>
+          <p class="text-sm text-gray-500 mb-3">The prompt with sample values filled in — this is the text sent to the model (no AI call is made here).</p>
+          <pre class="text-xs text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-xl p-4 leading-relaxed">{preview}</pre>
+        </div>
+      </div>
+    </AdminLayout>
+  )
+})
+
+admin.post('/admin/ai-prompts', async (c) => {
+  const body = await c.req.parseBody()
+  const key = String(body.key || '')
+  const template = String(body.template || '').trim()
+  if (!(key in PROMPT_KEYS)) return c.redirect('/admin/ai-prompts?error=' + encodeURIComponent('Unknown prompt.'))
+  if (!template) return c.redirect('/admin/ai-prompts?error=' + encodeURIComponent('Prompt cannot be empty.'))
+  if (template.length > AI_PROMPT_MAX) return c.redirect('/admin/ai-prompts?error=' + encodeURIComponent('Prompt is too long.'))
+  await setSystemPrompt(c.env.DB, key, template, c.get('user').email)
+  await auditLog(c, 'update_ai_prompt', 'ai_prompt', key, { length: template.length }).catch(() => {})
+  return c.redirect('/admin/ai-prompts?saved=1')
+})
+
+admin.post('/admin/ai-prompts/reset', async (c) => {
+  const body = await c.req.parseBody()
+  const key = String(body.key || '')
+  if (!(key in PROMPT_KEYS)) return c.redirect('/admin/ai-prompts?error=' + encodeURIComponent('Unknown prompt.'))
+  await resetSystemPrompt(c.env.DB, key as PromptKey, c.get('user').email)
+  await auditLog(c, 'reset_ai_prompt', 'ai_prompt', key, {}).catch(() => {})
+  return c.redirect('/admin/ai-prompts?reset=1')
 })
 
 // ─── Businesses: edit a vendor's brand/business profile (not their account) ───

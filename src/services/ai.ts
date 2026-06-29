@@ -1,3 +1,5 @@
+import { interpolatePrompt, FALLBACK_ENQUIRY_REPLY } from './ai-prompts'
+
 type DraftContext = {
   vendorName: string
   vendorCategory: string
@@ -184,6 +186,10 @@ type EnquiryReplyContext = {
   instructions?: string | null
   // Ask the enquirer to reply so they confirm the email arrived (not in spam).
   inviteReply?: boolean
+  // The resolved prompt template (per-form override → admin default → fallback).
+  // Callers resolve it via resolvePromptTemplate so this module stays DB-free.
+  // Omitted → the built-in fallback.
+  template?: string | null
 }
 
 export async function draftEnquiryReply(
@@ -204,15 +210,19 @@ export async function draftEnquiryReply(
     ? ' End by warmly inviting them to reply to this email so they know it arrived safely (in case it lands in their spam).'
     : ''
 
-  const prompt = `You are a wedding ${context.vendorCategory} named ${context.vendorName}. A new enquiry just came in from ${context.contactName}.
-
-${context.weddingDate ? `Requested date: ${context.weddingDate}` : 'No date specified'}
-${context.weddingLocation ? `Location: ${context.weddingLocation}` : ''}
-${context.notes ? `Their message: ${context.notes}` : ''}
-
-${availabilityInfo}
-${instructionsBlock}
-Draft a warm, professional reply acknowledging their enquiry. If available, express enthusiasm. If not available, be gracious and suggest they check back or offer alternative dates. Keep it concise (2-3 paragraphs), friendly, Australian English.${replyNudge} Write just the body — no subject line, no sign-off.`
+  // The dynamic parts are assembled here as resolved strings; the editable
+  // template only positions them via {token}s (see services/ai-prompts.ts).
+  const prompt = interpolatePrompt(context.template?.trim() || FALLBACK_ENQUIRY_REPLY, {
+    vendorName: context.vendorName,
+    vendorCategory: context.vendorCategory,
+    contactName: context.contactName,
+    requestedDate: context.weddingDate ? `Requested date: ${context.weddingDate}` : 'No date specified',
+    location: context.weddingLocation ? `Location: ${context.weddingLocation}` : '',
+    theirMessage: context.notes ? `Their message: ${context.notes}` : '',
+    availabilityInfo,
+    instructionsBlock,
+    replyNudge,
+  })
 
   return generateWithAI(ai, anthropicKey, prompt)
 }

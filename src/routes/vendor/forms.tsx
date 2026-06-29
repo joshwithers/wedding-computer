@@ -1,11 +1,16 @@
 import { Hono } from 'hono'
-import type { Env } from '../../types'
+import type { Env, VendorProfile } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
 import { createForm, getForm, listForms, updateForm, deleteForm, listFormSubmissions, getFormSubmission, updateFormSubmission, formSubmissionFields } from '../../db/forms'
 import { noimFormConfig } from '../../forms/noim/schema'
 import { hasCategory } from '../../lib/categories'
 import type { FormConfig, FormStep, FormField } from '../../lib/form-schema'
-import { defaultFormConfig, generateFieldId, BUILDER_FIELD_TYPES, CONTACT_MAPPINGS, sanitizeBuilderFields, validateBuilderFields } from '../../lib/form-schema'
+import { defaultFormConfig, defaultBookingFormConfig, parseFormConfig, parseBookingFormConfig, generateFieldId, BUILDER_FIELD_TYPES, CONTACT_MAPPINGS, sanitizeBuilderFields, validateBuilderFields, validateFormForType } from '../../lib/form-schema'
+import { ensureSingletonForm } from '../../services/form-submit'
+import { readEnquiryKeyFlash } from './form'
+import { updateVendor } from '../../db/vendors'
+import { isProVendor } from '../../db/subscriptions'
+import { formatDate, formatDateTime } from '../../lib/date'
 import { requireEmailHandle } from '../../middleware/email-handle'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
@@ -27,9 +32,26 @@ forms.use('/app/forms/*', requireEmailHandle)
 
 // ─── List all forms ───
 
+// Reserved slugs for the per-vendor singleton intake forms, surfaced as pinned
+// "Primary" rows (edited on their own pages) and hidden from the "Other" list so
+// they never double-show.
+// The per-vendor singletons surfaced as pinned "Primary" rows. Standalone
+// booking forms (slug 'booking-form') are regular forms and show under "Other".
+const SINGLETON_SLUGS = new Set(['enquiry', 'booking'])
+
 forms.get('/app/forms', async (c) => {
   const vendor = c.get('vendor')!
   const allForms = await listForms(c.env.DB, vendor.id)
+
+  // The two lead-generating singletons. Their config lives in the legacy vendor
+  // blob (read-both bridge) but their submission count comes from any migrated
+  // forms row.
+  const enquiryRow = allForms.find((f) => f.slug === 'enquiry')
+  const enquiryConfig = parseFormConfig(enquiryRow?.config ?? vendor.enquiry_form)
+  const bookingRow = allForms.find((f) => f.slug === 'booking')
+  const bookingConfig = parseBookingFormConfig(bookingRow?.config ?? vendor.booking_form)
+
+  const otherForms = allForms.filter((f) => !(f.slug && SINGLETON_SLUGS.has(f.slug)))
 
   return c.html(
     <AppLayout title="Forms" user={c.get('user')} vendor={vendor} csrfToken={c.get('csrfToken')}>
@@ -37,55 +59,216 @@ forms.get('/app/forms', async (c) => {
         <div class="flex items-center justify-between mb-6">
           <div>
             <h1 class="text-2xl font-bold text-gray-900">Forms</h1>
-            <p class="text-sm text-gray-600 mt-1">Create forms for enquiries, NOIM collection, and more</p>
+            <p class="text-sm text-gray-600 mt-1">Your enquiry &amp; booking forms, plus any forms you build to collect information</p>
           </div>
           <a href="/app/forms/new" class="bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700 transition-colors">
             New form
           </a>
         </div>
 
-        {allForms.length === 0 ? (
+        {/* Primary, lead-generating forms — always present, pinned to the top. */}
+        <h2 class="text-xs font-bold uppercase tracking-wide text-gray-400 mb-2">Lead-generating</h2>
+        <div class="space-y-3 mb-8">
+          <PrimaryFormRow
+            title={enquiryConfig.title || 'Enquiry form'}
+            badge="Enquiry"
+            badgeClass="bg-horizon-100 text-horizon-700"
+            description="Collects enquiries and creates leads in your CRM"
+            editHref="/app/forms/enquiry"
+            publicHref={`/enquire/${vendor.id}`}
+            count={enquiryRow?.submission_count ?? 0}
+          />
+          <PrimaryFormRow
+            title={bookingConfig.title || 'Booking form'}
+            badge="Booking"
+            badgeClass="bg-green-100 text-green-700"
+            description="Shown when a couple confirms a booking from an invoice"
+            editHref="/app/forms/booking"
+            count={bookingRow?.submission_count ?? 0}
+          />
+        </div>
+
+        <h2 class="text-xs font-bold uppercase tracking-wide text-gray-400 mb-2">Other forms</h2>
+        {otherForms.length === 0 ? (
           <div class="bg-white border border-papaya-300/30 rounded-xl p-8 text-center">
-            <p class="text-gray-600 mb-4">You haven't created any forms yet.</p>
-            <a href="/app/forms/new" class="text-horizon-600 font-bold hover:underline">Create your first form</a>
+            <p class="text-gray-600 mb-4">No information or NOIM forms yet.</p>
+            <a href="/app/forms/new" class="text-horizon-600 font-bold hover:underline">Build a form</a>
           </div>
         ) : (
           <div class="space-y-3">
-            {allForms.map((form) => {
-              const config = JSON.parse(form.config) as FormConfig
-              return (
-                <div class="bg-white border border-papaya-300/30 rounded-xl p-4 flex items-center justify-between">
-                  <div>
-                    <div class="flex items-center gap-2">
-                      <h3 class="font-bold text-gray-900">{form.title}</h3>
-                      <span class={`text-xs px-2 py-0.5 rounded-full ${form.type === 'noim' ? 'bg-purple-100 text-purple-700' : form.type === 'contact' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
-                        {form.type === 'noim' ? 'NOIM' : form.type === 'contact' ? 'Contact' : 'Custom'}
-                      </span>
-                      {!form.is_active && <span class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">Inactive</span>}
-                    </div>
-                    <p class="text-xs text-gray-500 mt-1">
-                      {form.submission_count} submission{form.submission_count !== 1 ? 's' : ''}
-                      {' '}&middot;{' '}
-                      Created {new Date(form.created_at).toLocaleDateString('en-AU')}
-                    </p>
-                  </div>
+            {otherForms.map((form) => (
+              <div class="bg-white border border-papaya-300/30 rounded-xl p-4 flex items-center justify-between">
+                <div>
                   <div class="flex items-center gap-2">
-                    <a href={`/app/forms/${form.id}/submissions`} class="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg">
-                      Submissions
-                    </a>
-                    <a href={`/app/forms/${form.id}`} class="text-xs text-horizon-600 hover:text-horizon-700 px-3 py-1.5 border border-horizon-200 rounded-lg">
-                      Edit
-                    </a>
+                    <h3 class="font-bold text-gray-900">{form.title}</h3>
+                    <TypeBadge type={form.type} kind={form.kind} />
+                    {!form.is_active && <span class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">Inactive</span>}
                   </div>
+                  <p class="text-xs text-gray-500 mt-1">
+                    {form.submission_count} submission{form.submission_count !== 1 ? 's' : ''}
+                    {' '}&middot;{' '}
+                    Created {formatDate(form.created_at)}
+                  </p>
                 </div>
-              )
-            })}
+                <div class="flex items-center gap-2">
+                  <a href={`/app/forms/${form.id}/submissions`} class="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg">
+                    Submissions
+                  </a>
+                  <a href={`/app/forms/${form.id}`} class="text-xs text-horizon-600 hover:text-horizon-700 px-3 py-1.5 border border-horizon-200 rounded-lg">
+                    Edit
+                  </a>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
     </AppLayout>
   )
 })
+
+function PrimaryFormRow({ title, badge, badgeClass, description, editHref, publicHref, count }: {
+  title: string; badge: string; badgeClass: string; description: string; editHref: string; publicHref?: string; count: number
+}) {
+  return (
+    <div class="bg-white border border-papaya-300/30 rounded-xl p-4 flex items-center justify-between">
+      <div>
+        <div class="flex items-center gap-2">
+          <h3 class="font-bold text-gray-900">{title}</h3>
+          <span class={`text-xs px-2 py-0.5 rounded-full ${badgeClass}`}>{badge}</span>
+        </div>
+        <p class="text-xs text-gray-500 mt-1">
+          {description}{count > 0 ? ` · ${count} submission${count !== 1 ? 's' : ''}` : ''}
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        {publicHref && (
+          <a href={publicHref} target="_blank" class="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg">
+            View
+          </a>
+        )}
+        <a href={editHref} class="text-xs text-horizon-600 hover:text-horizon-700 px-3 py-1.5 border border-horizon-200 rounded-lg">
+          Edit
+        </a>
+      </div>
+    </div>
+  )
+}
+
+function TypeBadge({ type, kind }: { type: string; kind?: string }) {
+  if (type === 'noim') return <span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">NOIM</span>
+  if (kind === 'enquiry') return <span class="text-xs px-2 py-0.5 rounded-full bg-horizon-100 text-horizon-700">Enquiry</span>
+  if (kind === 'booking') return <span class="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">Booking</span>
+  return <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">Information</span>
+}
+
+// The unified "on submission" card — one action model for every kind.
+function ActionsCard({ form, config, isPro, csrfToken }: { form: { id: string; kind: string; type: string }; config: FormConfig; isPro: boolean; csrfToken: string }) {
+  const a = config.actions
+  const isLead = form.kind === 'enquiry' || form.kind === 'booking'
+  const createContact = isLead || a.createContact === true || a.actions?.some((x) => x.type === 'create_contact' && x.enabled)
+  return (
+    <div class="bg-white border border-papaya-300/30 rounded-xl p-5 mb-4">
+      <h2 class="font-bold text-gray-900 mb-3">When someone submits this form</h2>
+      <form method="post" action={`/app/forms/${form.id}/actions`}>
+        <input type="hidden" name="_csrf" value={csrfToken} />
+        <div class="space-y-3">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="notifyVendor" value="1" checked={a.notifyVendor !== false} class="rounded" />
+            Email me when someone submits this form
+          </label>
+          {isLead ? (
+            <p class="text-sm text-gray-500 flex items-center gap-2">
+              <span class="text-horizon-700">✓</span> Creates a contact in your CRM{form.kind === 'booking' ? ' and joins the wedding' : ''}
+            </p>
+          ) : (
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="create_contact" value="1" checked={createContact} class="rounded" />
+              Create a contact/lead in my CRM
+            </label>
+          )}
+          <div>
+            <label class="block text-sm text-gray-700 mb-1">Also send each submission to another email (optional)</label>
+            <input type="text" name="email_recipient" value={a.emailRecipient ?? a.actions?.find((x) => x.type === 'email_recipient')?.recipientEmail ?? ''} class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="e.g. assistant@example.com" />
+          </div>
+
+          <ConfirmationEmailFields config={config} isPro={isPro} />
+        </div>
+        <button type="submit" class="mt-4 bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700">Save</button>
+      </form>
+    </div>
+  )
+}
+
+function ConfirmationEmailFields({ config, isPro }: { config: FormConfig; isPro: boolean }) {
+  const conf = config.actions.confirmationEmail ?? { enabled: false, mode: 'ai' as const }
+  return (
+    <div class="border-t border-gray-100 pt-3 mt-1 space-y-3">
+      <label class="flex items-center gap-2 text-sm font-bold text-gray-700">
+        <input type="checkbox" name="confirm_enabled" value="1" checked={conf.enabled} class="rounded" />
+        Send a confirmation email to the submitter
+      </label>
+      <div class="pl-6 space-y-3">
+        <div class="space-y-2">
+          <label class="flex items-start gap-2 cursor-pointer">
+            <input type="radio" name="confirm_mode" value="ai" checked={conf.mode !== 'template'} class="accent-grapefruit-700 mt-0.5" />
+            <span class="text-sm text-gray-700"><span class="font-bold">AI-personalised</span> <span class="text-xs text-gray-400">(Pro)</span><span class="block text-xs text-gray-400">A warm reply tailored to each submission. Free plans send the message below.</span></span>
+          </label>
+          <label class="flex items-start gap-2 cursor-pointer">
+            <input type="radio" name="confirm_mode" value="template" checked={conf.mode === 'template'} class="accent-grapefruit-700 mt-0.5" />
+            <span class="text-sm text-gray-700"><span class="font-bold">Write my own message</span><span class="block text-xs text-gray-400">The same message goes to everyone.</span></span>
+          </label>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-500 mb-1" for="confirm_template">Your message</label>
+          <textarea id="confirm_template" name="confirm_template" rows={3} class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="Thanks for reaching out! We'll be in touch within 24 hours.">{conf.template ?? ''}</textarea>
+        </div>
+        {isPro && (
+          <>
+            <div>
+              <label class="block text-xs font-bold text-gray-500 mb-1" for="confirm_ai_instructions">Guide the AI <span class="text-gray-400 font-normal">(Pro)</span></label>
+              <textarea id="confirm_ai_instructions" name="confirm_ai_instructions" rows={2} class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="e.g. Keep it casual, mention we reply within a day, include our booking link.">{conf.aiInstructions ?? ''}</textarea>
+            </div>
+            <details class="border border-gray-200 rounded-xl px-3 py-2">
+              <summary class="text-xs font-bold text-gray-500 cursor-pointer">Advanced: rewrite the whole AI prompt</summary>
+              <textarea name="confirm_ai_prompt" rows={6} class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono mt-2" placeholder="Leave blank to use the platform default. Placeholders: {contactName} {requestedDate} {availabilityInfo} …">{conf.aiPrompt ?? ''}</textarea>
+            </details>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Enquiry-only: the Pro JSON intake API key (generate/rotate/revoke + one-time
+// reveal). Posts to the relocated key routes in routes/vendor/form.tsx.
+function ApiKeyCard({ vendor, appUrl, isPro, csrfToken, revealedKey }: { vendor: VendorProfile; appUrl: string; isPro: boolean; csrfToken: string; revealedKey: string | null }) {
+  return (
+    <div id="api" class="bg-white border border-papaya-300/30 rounded-xl p-5 mb-4">
+      <h2 class="font-bold text-gray-900 mb-1">Enquiry API <span class="text-xs text-gray-400 font-normal">(Pro)</span></h2>
+      <p class="text-sm text-gray-500 mb-3">Let Zapier, your website, or an agent post enquiries to <code class="text-xs bg-gray-100 rounded px-1">{appUrl}/api/v1/enquiries</code>.</p>
+      {!isPro ? (
+        <p class="text-sm text-gray-600">The enquiry API is a Pro feature. <a href="/app/subscription" class="font-bold text-horizon-700 hover:underline">Upgrade to Pro</a>.</p>
+      ) : revealedKey ? (
+        <div class="bg-horizon-50 border border-horizon-600/20 rounded-xl p-3 mb-3">
+          <p class="text-xs text-gray-600 mb-1">Your new key (copy it now — it won't be shown again):</p>
+          <code class="block text-xs font-mono break-all text-gray-900">{revealedKey}</code>
+        </div>
+      ) : vendor.enquiry_key ? (
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-gray-600">A key is active.</span>
+          <form method="post" action="/app/form/rotate-key"><input type="hidden" name="_csrf" value={csrfToken} /><button class="text-xs text-horizon-700 hover:underline">Rotate</button></form>
+          <form method="post" action="/app/form/revoke-key"><input type="hidden" name="_csrf" value={csrfToken} /><button class="text-xs text-gray-400 hover:text-red-600">Revoke</button></form>
+        </div>
+      ) : (
+        <form method="post" action="/app/form/generate-key">
+          <input type="hidden" name="_csrf" value={csrfToken} />
+          <button type="submit" class="bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700">Generate API key</button>
+        </form>
+      )}
+    </div>
+  )
+}
 
 // ─── New form (choose type) ───
 
@@ -120,6 +303,16 @@ forms.get('/app/forms/new', async (c) => {
           )}
 
           <form method="post" action="/app/forms/new">
+            <input type="hidden" name="type" value="booking" />
+            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+            <button type="submit" class="w-full text-left bg-white border border-green-200 rounded-xl p-5 hover:border-green-400 transition-colors cursor-pointer">
+              <h3 class="font-bold text-gray-900">Booking form</h3>
+              <p class="text-sm text-gray-600 mt-1">A public form that books a couple in — creates a contact and joins their wedding</p>
+              <span class="inline-block mt-2 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">Booking</span>
+            </button>
+          </form>
+
+          <form method="post" action="/app/forms/new">
             <input type="hidden" name="type" value="custom" />
             <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
             <button type="submit" class="w-full text-left bg-white border border-papaya-300/30 rounded-xl p-5 hover:border-horizon-600/30 transition-colors cursor-pointer">
@@ -140,6 +333,10 @@ forms.post('/app/forms/new', async (c) => {
 
   let config: FormConfig
   let title: string
+  // The form row's intent. Booking forms create a contact AND attach the vendor
+  // to the couple's wedding; everything else is information-only here.
+  let kind: 'information' | 'booking' = 'information'
+  let slug: string | undefined
 
   switch (type) {
     case 'noim':
@@ -149,6 +346,30 @@ forms.post('/app/forms/new', async (c) => {
     case 'contact':
       config = defaultFormConfig()
       title = 'Enquiry Form'
+      break
+    case 'booking':
+      kind = 'booking'
+      slug = 'booking-form'
+      title = 'Booking form'
+      config = {
+        version: 1,
+        title: 'Confirm your booking',
+        submitLabel: 'Confirm booking',
+        fields: [
+          { id: generateFieldId(), type: 'heading', label: 'Your details' },
+          { id: 'first_name', type: 'text', label: 'First name', required: true, width: 'half', mapTo: 'first_name' },
+          { id: 'last_name', type: 'text', label: 'Last name', required: true, width: 'half', mapTo: 'last_name' },
+          { id: 'email', type: 'email', label: 'Email', required: true, width: 'half', mapTo: 'email' },
+          { id: 'phone', type: 'tel', label: 'Phone', width: 'half', mapTo: 'phone' },
+          { id: 'wedding_date', type: 'date', label: 'Wedding date', width: 'half', mapTo: 'wedding_date' },
+          { id: 'wedding_location', type: 'address', label: 'Wedding location', width: 'half', mapTo: 'wedding_location' },
+          { id: 'notes', type: 'textarea', label: 'Anything we should know?', mapTo: 'notes' },
+        ],
+        actions: {
+          notifyVendor: true,
+          confirmationEmail: { enabled: false, mode: 'ai' },
+        },
+      }
       break
     default:
       config = {
@@ -172,10 +393,38 @@ forms.post('/app/forms/new', async (c) => {
 
   const form = await createForm(c.env.DB, vendor.id, {
     title,
-    type: type as 'custom' | 'noim' | 'contact',
+    type: (type === 'booking' ? 'custom' : type) as 'custom' | 'noim' | 'contact',
+    kind,
+    slug,
     config: JSON.stringify(config),
   })
 
+  return c.redirect(`/app/forms/${form.id}`)
+})
+
+// ─── Singleton convenience routes ───
+// The enquiry + invoice-booking forms are per-vendor singletons whose config
+// still lives in the legacy vendor blob. These get-or-create the backing forms
+// row (migrating the blob) and open it in the unified editor. Registered before
+// /app/forms/:id so the literal slugs win.
+
+forms.get('/app/forms/enquiry', async (c) => {
+  const vendor = c.get('vendor')!
+  const config = parseFormConfig(vendor.enquiry_form)
+  const form = await ensureSingletonForm(
+    c.env.DB, vendor, 'enquiry', 'enquiry', config.title || 'Enquiry form',
+    vendor.enquiry_form ?? JSON.stringify(defaultFormConfig()),
+  )
+  return c.redirect(`/app/forms/${form.id}`)
+})
+
+forms.get('/app/forms/booking', async (c) => {
+  const vendor = c.get('vendor')!
+  const config = parseBookingFormConfig(vendor.booking_form)
+  const form = await ensureSingletonForm(
+    c.env.DB, vendor, 'booking', 'booking', config.title || 'Booking form',
+    vendor.booking_form ?? JSON.stringify(defaultBookingFormConfig()),
+  )
   return c.redirect(`/app/forms/${form.id}`)
 })
 
@@ -185,9 +434,21 @@ forms.get('/app/forms/:id', async (c) => {
   const vendor = c.get('vendor')!
   const form = await getForm(c.env.DB, vendor.id, c.req.param('id'))
   if (!form) return c.text('Not found', 404)
+  const isPro = await isProVendor(c.env.DB, vendor.id)
+  // The enquiry form is the only one with an API intake key; surface its
+  // one-time key reveal here after a generate/rotate.
+  const revealedKey = form.kind === 'enquiry' ? await readEnquiryKeyFlash(c.env, vendor.id) : null
 
   const config = JSON.parse(form.config) as FormConfig
-  const publicUrl = `${c.env.APP_URL}/form/${form.public_token}`
+  // The public URL depends on the form's role: enquiry has a per-vendor URL,
+  // a standalone booking form has /book-form, the invoice-booking form is only
+  // shown on an invoice's accept page (no standalone URL), everything else /form.
+  const publicPath =
+    form.kind === 'enquiry' ? `/enquire/${vendor.id}`
+      : form.slug === 'booking-form' ? `/book-form/${form.public_token}`
+      : form.slug === 'booking' ? null
+      : `/form/${form.public_token}`
+  const publicUrl = publicPath ? `${c.env.APP_URL}${publicPath}` : null
   const saved = c.req.query('saved')
   const buildError = c.req.query('error')
 
@@ -197,12 +458,17 @@ forms.get('/app/forms/:id', async (c) => {
         <div class="flex items-center justify-between mb-6">
           <div>
             <a href="/app/forms" class="text-sm text-gray-500 hover:text-gray-700">&larr; All forms</a>
-            <h1 class="text-2xl font-bold text-gray-900 mt-1">{form.title}</h1>
+            <div class="flex items-center gap-2 mt-1">
+              <h1 class="text-2xl font-bold text-gray-900">{form.title}</h1>
+              <TypeBadge type={form.type} kind={form.kind} />
+            </div>
           </div>
           <div class="flex items-center gap-2">
-            <a href={`/form/${form.public_token}`} target="_blank" class="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg">
-              Preview
-            </a>
+            {publicPath && (
+              <a href={publicPath} target="_blank" class="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg">
+                Preview
+              </a>
+            )}
             <a href={`/app/forms/${form.id}/submissions`} class="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg">
               Submissions ({form.submission_count})
             </a>
@@ -237,6 +503,11 @@ forms.get('/app/forms/:id', async (c) => {
             <label class="block text-sm font-bold text-gray-700 mb-1">Subtitle (optional)</label>
             <input type="text" name="subtitle" value={config.subtitle ?? ''} class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Shown below the title" />
           </div>
+          <div class="mb-4">
+            <label class="block text-sm font-bold text-gray-700 mb-1">Redirect after submit (optional)</label>
+            <input type="url" name="redirectUrl" value={config.redirectUrl ?? ''} class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="https://yoursite.com/thank-you" />
+            <p class="text-xs text-gray-400 mt-1">Leave blank to show the built-in thank-you page.</p>
+          </div>
           <div class="flex items-center gap-4 mb-4">
             <label class="flex items-center gap-2 text-sm">
               <input type="checkbox" name="is_active" value="1" checked={!!form.is_active} class="rounded" />
@@ -246,57 +517,36 @@ forms.get('/app/forms/:id', async (c) => {
           <button type="submit" class="bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700">Save settings</button>
         </form>
 
-        {/* Actions */}
-        <div class="bg-white border border-papaya-300/30 rounded-xl p-5 mb-4">
-          <h2 class="font-bold text-gray-900 mb-3">Actions on submission</h2>
-          <form method="post" action={`/app/forms/${form.id}/actions`}>
-            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-            <div class="space-y-3">
-              <label class="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="notifyVendor" value="1" checked={config.actions.notifyVendor} class="rounded" />
-                Email me when someone submits this form
-              </label>
-              <label class="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="create_contact" value="1" checked={config.actions.actions?.some(a => a.type === 'create_contact' && a.enabled)} class="rounded" />
-                Create a contact/lead in my CRM
-              </label>
-              <label class="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="ai_email" value="1" checked={config.actions.actions?.some(a => a.type === 'ai_email' && a.enabled)} class="rounded" />
-                Draft an AI reply based on form contents
-              </label>
-              {form.type === 'noim' && (
-                <label class="flex items-center gap-2 text-sm">
-                  <input type="checkbox" name="generate_pdf" value="1" checked={config.actions.actions?.some(a => a.type === 'generate_pdf' && a.enabled)} class="rounded" />
-                  Generate NOIM PDF
-                </label>
-              )}
-              <div>
-                <label class="block text-sm text-gray-700 mb-1">
-                  Send submission to another email (field name or address)
-                </label>
-                <input type="text" name="email_recipient" value={config.actions.actions?.find(a => a.type === 'email_recipient')?.recipientEmail ?? ''} class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="e.g. assistant@example.com" />
-              </div>
-            </div>
-            <button type="submit" class="mt-4 bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700">Save actions</button>
-          </form>
-        </div>
+        {/* What happens on submission (unified action model) */}
+        <ActionsCard form={form} config={config} isPro={isPro} csrfToken={c.get('csrfToken')} />
+
+        {/* Enquiry intake API key (Pro) — only the enquiry form has one. */}
+        {form.kind === 'enquiry' && (
+          <ApiKeyCard vendor={vendor} appUrl={c.env.APP_URL} isPro={isPro} csrfToken={c.get('csrfToken')} revealedKey={revealedKey} />
+        )}
 
         {/* Share / Embed */}
-        <div class="bg-white border border-papaya-300/30 rounded-xl p-5 mb-4">
-          <h2 class="font-bold text-gray-900 mb-3">Share & embed</h2>
-          <div class="space-y-3">
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Direct link</label>
-              <input type="text" readonly value={publicUrl} class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50 font-mono text-xs" />
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-gray-700 mb-1">Embed code</label>
-              <textarea readonly class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-gray-50 font-mono" rows={3}>
-                {`<iframe src="${publicUrl}?embed=1" width="100%" height="800" frameborder="0"></iframe>`}
-              </textarea>
+        {publicUrl ? (
+          <div class="bg-white border border-papaya-300/30 rounded-xl p-5 mb-4">
+            <h2 class="font-bold text-gray-900 mb-3">Share & embed</h2>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">Direct link</label>
+                <input type="text" readonly value={publicUrl} class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50 font-mono text-xs" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">Embed code</label>
+                <textarea readonly class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-gray-50 font-mono" rows={3}>
+                  {`<iframe src="${publicUrl}?embed=1" width="100%" height="800" frameborder="0"></iframe>`}
+                </textarea>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div class="bg-white border border-papaya-300/30 rounded-xl p-5 mb-4 text-sm text-gray-600">
+            This form is shown to couples on your invoice booking pages.
+          </div>
+        )}
 
         {/* Field builder */}
         {form.type !== 'noim' && (
@@ -318,16 +568,19 @@ forms.get('/app/forms/:id', async (c) => {
           </div>
         )}
 
-        {/* Danger zone */}
-        <div class="bg-white border border-red-200 rounded-xl p-5">
-          <h2 class="font-bold text-red-700 mb-3">Danger zone</h2>
-          <form method="post" action={`/app/forms/${form.id}/delete`} onsubmit="return confirm('Delete this form and all submissions?')">
-            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
-            <button type="submit" class="text-sm text-red-600 hover:text-red-800 px-3 py-1.5 border border-red-200 rounded-lg">
-              Delete form
-            </button>
-          </form>
-        </div>
+        {/* Danger zone — the per-vendor singletons (enquiry, invoice-booking)
+            can't be deleted (they're core surfaces, re-created on demand). */}
+        {form.slug !== 'enquiry' && form.slug !== 'booking' && (
+          <div class="bg-white border border-red-200 rounded-xl p-5">
+            <h2 class="font-bold text-red-700 mb-3">Danger zone</h2>
+            <form method="post" action={`/app/forms/${form.id}/delete`} onsubmit="return confirm('Delete this form and all submissions?')">
+              <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+              <button type="submit" class="text-sm text-red-600 hover:text-red-800 px-3 py-1.5 border border-red-200 rounded-lg">
+                Delete form
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </AppLayout>
   )
@@ -345,12 +598,15 @@ forms.post('/app/forms/:id/settings', async (c) => {
   config.title = (body.title as string) || config.title
   config.submitLabel = (body.submitLabel as string) || config.submitLabel
   config.subtitle = (body.subtitle as string) || undefined
+  const redirectUrl = typeof body.redirectUrl === 'string' ? body.redirectUrl.trim() : ''
+  config.redirectUrl = redirectUrl || undefined
 
   await updateForm(c.env.DB, vendor.id, form.id, {
     title: (body.title as string) || form.title,
     config: JSON.stringify(config),
     is_active: body.is_active ? 1 : 0,
   })
+  await mirrorLegacyBlob(c.env.DB, vendor.id, form, config)
 
   return c.redirect(`/app/forms/${form.id}`)
 })
@@ -364,22 +620,35 @@ forms.post('/app/forms/:id/actions', async (c) => {
 
   const body = await c.req.parseBody()
   const config = JSON.parse(form.config) as FormConfig
+  const str = (k: string) => (typeof body[k] === 'string' ? (body[k] as string).trim() : '')
 
-  config.actions.notifyVendor = !!body.notifyVendor
-
-  const actions: FormConfig['actions']['actions'] = []
-  if (body.create_contact) actions.push({ type: 'create_contact', enabled: true })
-  if (body.ai_email) actions.push({ type: 'ai_email', enabled: true })
-  if (body.generate_pdf) actions.push({ type: 'generate_pdf', enabled: true })
-  if (body.email_recipient && (body.email_recipient as string).trim()) {
-    actions.push({ type: 'email_recipient', enabled: true, recipientEmail: (body.email_recipient as string).trim() })
+  // Unified action model (migration 075) — flat fields, no more actions[] array.
+  config.actions = {
+    notifyVendor: !!body.notifyVendor,
+    // enquiry/booking always create a contact; information opts in.
+    createContact: form.kind === 'enquiry' || form.kind === 'booking' ? true : !!body.create_contact,
+    emailRecipient: str('email_recipient') || undefined,
+    confirmationEmail: {
+      enabled: !!body.confirm_enabled,
+      mode: body.confirm_mode === 'template' ? 'template' : 'ai',
+      template: str('confirm_template') || undefined,
+      aiInstructions: str('confirm_ai_instructions') || undefined,
+      aiPrompt: str('confirm_ai_prompt') || undefined,
+    },
   }
 
-  config.actions.actions = actions
   await updateForm(c.env.DB, vendor.id, form.id, { config: JSON.stringify(config) })
-
+  await mirrorLegacyBlob(c.env.DB, vendor.id, form, config)
   return c.redirect(`/app/forms/${form.id}`)
 })
+
+// During the read-both transition the singleton enquiry/booking forms are still
+// read from the vendor blob by some surfaces (e.g. the invoice booking page).
+// Keep the blob in sync whenever the unified editor saves those rows.
+async function mirrorLegacyBlob(db: D1Database, vendorId: string, form: { slug: string | null }, config: FormConfig): Promise<void> {
+  if (form.slug === 'enquiry') await updateVendor(db, vendorId, { enquiry_form: JSON.stringify(config) })
+  else if (form.slug === 'booking') await updateVendor(db, vendorId, { booking_form: JSON.stringify(config) })
+}
 
 // ─── Update fields (modern builder) ───
 
@@ -393,19 +662,21 @@ forms.post('/app/forms/:id/build', async (c) => {
   try { raw = JSON.parse(String(body.fields ?? '[]')) } catch { raw = [] }
 
   const fields = sanitizeBuilderFields(raw)
-  // sanitizeBuilderFields drops fields with a blank label; if the client sent
-  // more field objects than survived, one lost its label — surface that rather
-  // than silently deleting it on a "saved" confirmation.
-  const sentCount = Array.isArray(raw) ? raw.filter((r) => r && typeof r === 'object').length : 0
-  const error = fields.length < sentCount ? 'Every field needs a label.' : validateBuilderFields(fields)
-  if (error) return c.redirect(`/app/forms/${form.id}?error=${encodeURIComponent(error)}#fields`)
-
   const config = JSON.parse(form.config) as FormConfig
   config.fields = fields
   // The builder edits a flat field list; custom forms don't use steps.
   if (form.type !== 'noim') delete config.steps
 
+  // sanitizeBuilderFields drops fields with a blank label; if the client sent
+  // more field objects than survived, one lost its label — surface that rather
+  // than silently deleting it on a "saved" confirmation. Then enforce the
+  // kind's contract (enquiry/booking need email+name mappings so leads land).
+  const sentCount = Array.isArray(raw) ? raw.filter((r) => r && typeof r === 'object').length : 0
+  const error = fields.length < sentCount ? 'Every field needs a label.' : validateFormForType(form.kind, config)
+  if (error) return c.redirect(`/app/forms/${form.id}?error=${encodeURIComponent(error)}#fields`)
+
   await updateForm(c.env.DB, vendor.id, form.id, { config: JSON.stringify(config) })
+  await mirrorLegacyBlob(c.env.DB, vendor.id, form, config)
   return c.redirect(`/app/forms/${form.id}?saved=fields#fields`)
 })
 
@@ -456,7 +727,7 @@ forms.get('/app/forms/:id/submissions', async (c) => {
                       <span class={`text-xs px-2 py-0.5 rounded-full ${sub.status === 'submitted' ? 'bg-blue-100 text-blue-700' : sub.status === 'reviewed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
                         {sub.status}
                       </span>
-                      <span class="text-xs text-gray-400">{new Date(sub.created_at).toLocaleDateString('en-AU')}</span>
+                      <span class="text-xs text-gray-400">{formatDate(sub.created_at)}</span>
                     </div>
                   </div>
                 </a>
@@ -492,7 +763,7 @@ forms.get('/app/forms/:id/submissions/:subId', async (c) => {
           <a href={`/app/forms/${form.id}/submissions`} class="text-sm text-gray-500 hover:text-gray-700">&larr; All submissions</a>
           <h1 class="text-2xl font-bold text-gray-900 mt-1">Submission</h1>
           <p class="text-xs text-gray-500">
-            Submitted {new Date(sub.created_at).toLocaleString('en-AU')}
+            Submitted {formatDateTime(sub.created_at)}
             {sub.ip_address && ` from ${sub.ip_address}`}
           </p>
         </div>

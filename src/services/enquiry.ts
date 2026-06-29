@@ -4,6 +4,7 @@ import { getStorageWithSecrets } from '../storage'
 import { createActivity } from '../db/activities'
 import { track } from '../services/analytics'
 import { draftEnquiryReply } from '../services/ai'
+import { resolvePromptTemplate } from '../services/ai-prompts'
 import { resolveSecret } from '../services/secrets'
 import { getScoreForDate } from '../db/busyness'
 import { SQL_CALENDAR_EVENT_NOT_CANCELLED } from '../db/weddings'
@@ -166,7 +167,7 @@ export async function createEnquiry(
     formData: Record<string, string>
     source: EnquirySource
     // From the enquiry form's "Send confirmation email to enquirer" option.
-    confirmation?: { enabled: boolean; mode: 'ai' | 'template'; template?: string; aiInstructions?: string }
+    confirmation?: { enabled: boolean; mode: 'ai' | 'template'; template?: string; aiInstructions?: string; aiPrompt?: string }
   }
 ): Promise<Contact> {
   const { contactData, formData, source } = input
@@ -268,17 +269,33 @@ export async function createEnquiry(
 // for Pro vendors (mode 'ai'); otherwise (or if AI returns nothing) it falls
 // back to the vendor's template or a sensible default — so a ticked box always
 // sends something rather than silently doing nothing.
-async function sendEnquiryConfirmation(
+// Per-recipient daily cap on the submitter-facing confirmation email. The public
+// submitter chooses this recipient, so bound how much mail any one address can be
+// sent from our domain (stops the receipt being used to spam a chosen victim).
+// Generous for legitimate re-submits. Returns true when over.
+async function confirmationCapReached(kv: KVNamespace, email: string, limit = 5): Promise<boolean> {
+  const key = `rl:formconf:${new Date().toISOString().slice(0, 10)}:${email.toLowerCase()}`
+  const n = parseInt((await kv.get(key)) ?? '0', 10)
+  if (n >= limit) return true
+  await kv.put(key, String(n + 1), { expirationTtl: 60 * 60 * 25 })
+  return false
+}
+
+// Build + queue the confirmation email to the couple. Exported so the unified
+// booking + information funnels reuse the exact same AI/template resolution path.
+export async function sendEnquiryConfirmation(
   env: Bindings,
   vendor: VendorProfile,
   contactData: ContactData,
-  conf: { enabled: boolean; mode: 'ai' | 'template'; template?: string; aiInstructions?: string }
+  conf: { enabled: boolean; mode: 'ai' | 'template'; template?: string; aiInstructions?: string; aiPrompt?: string }
 ): Promise<void> {
+  if (!contactData.email || (await confirmationCapReached(env.KV, contactData.email))) return
   let bodyText = ''
 
   if (conf.mode === 'ai' && (await isProVendor(env.DB, vendor.id))) {
     try {
       const anthropicKey = await resolveSecret(env.KV, vendor.anthropic_api_key)
+      const template = await resolvePromptTemplate(env, 'enquiry_reply', conf.aiPrompt)
       bodyText = await draftEnquiryReply(env.AI, {
         vendorName: vendor.business_name,
         vendorCategory: vendor.category,
@@ -289,6 +306,7 @@ async function sendEnquiryConfirmation(
         busynessScore: null,
         notes: contactData.notes,
         instructions: conf.aiInstructions ?? null,
+        template,
         // Nudge a reply so the enquirer confirms the email arrived (not in spam).
         inviteReply: true,
       }, anthropicKey)
@@ -355,6 +373,7 @@ async function draftAvailabilityReply(
   }
 
   const anthropicKey = await resolveSecret(env.KV, vendor.anthropic_api_key)
+  const template = await resolvePromptTemplate(env, 'enquiry_reply')
   const draft = await draftEnquiryReply(env.AI, {
     vendorName: vendor.business_name,
     vendorCategory: vendor.category,
@@ -364,6 +383,7 @@ async function draftAvailabilityReply(
     isAvailable,
     busynessScore,
     notes: null,
+    template,
   }, anthropicKey)
 
   if (draft) {

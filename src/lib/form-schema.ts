@@ -80,15 +80,56 @@ export type FormAction = {
 
 export type FormActions = {
   notifyVendor: boolean
+  // Create/update a CRM contact from the submission. Optional in the unified
+  // model (forced on for enquiry/booking kinds at resolve time). Information
+  // forms opt in.
+  createContact?: boolean
+  // Forward each submission to another address (a field name or a literal email).
+  emailRecipient?: string
   confirmationEmail: {
     enabled: boolean
     mode: 'ai' | 'template'
     template?: string
-    // Pro: extra guidance fed to the AI when drafting the confirmation
+    // Pro: extra guidance APPENDED to the prompt when drafting the confirmation
     // (tone, things to mention, booking link). Ignored for mode 'template'.
     aiInstructions?: string
+    // Pro: a full replacement for the AI prompt template (migration 075). When
+    // set, it overrides the admin platform default entirely. Uses {token}
+    // placeholders — see src/services/ai-prompts.ts. Ignored for mode 'template'.
+    aiPrompt?: string
   }
+  // Legacy granular action list (pre-migration-075 custom forms). Still READ as
+  // a fallback by resolveFormActions so old configs keep working; the unified
+  // editor writes the flat fields above instead.
   actions?: FormAction[]
+}
+
+export type ResolvedActions = {
+  notifyVendor: boolean
+  createContact: boolean
+  emailRecipient?: string
+  confirmationEmail: FormActions['confirmationEmail']
+  generatePdf: boolean
+}
+
+// Resolve the effective actions for a submission, reading the unified fields
+// with a fallback to the legacy actions[] list, and forcing contact-creation
+// for the lead-generating kinds. One place so every channel behaves identically.
+export function resolveFormActions(
+  config: FormConfig,
+  kind: 'information' | 'enquiry' | 'booking',
+  formType: string,
+): ResolvedActions {
+  const a = config.actions
+  const legacy = a.actions ?? []
+  const hasLegacy = (tp: FormAction['type']) => legacy.some((x) => x.type === tp && x.enabled)
+  return {
+    notifyVendor: a.notifyVendor !== false,
+    createContact: kind === 'enquiry' || kind === 'booking' || a.createContact === true || hasLegacy('create_contact'),
+    emailRecipient: a.emailRecipient?.trim() || legacy.find((x) => x.type === 'email_recipient' && x.enabled)?.recipientEmail,
+    confirmationEmail: a.confirmationEmail,
+    generatePdf: formType === 'noim',
+  }
 }
 
 export type FormConfig = {
@@ -367,6 +408,29 @@ export function validateBuilderFields(fields: FormField[]): string | null {
     if (OPTION_FIELD_TYPES.includes(f.type) && (!f.options || (f.options as unknown[]).length === 0)) {
       return `"${f.label}" needs at least one option`
     }
+  }
+  return null
+}
+
+// Unified-forms validation (migration 075). A form's `kind` decides what its
+// fields MUST capture so the per-kind side effects can actually run:
+//   - enquiry / booking create or update a CRM contact, so they need a field
+//     mapped to email + first name + last name (otherwise the contact silently
+//     never gets created — the B2 bug). 'booking' may run against an existing
+//     invoice contact, but a standalone booking form must be self-sufficient.
+//   - information collects data only, so it needs no mapping.
+// Always runs the structural field checks first.
+export function validateFormForType(
+  kind: 'information' | 'enquiry' | 'booking',
+  config: FormConfig
+): string | null {
+  const fields = config.steps ? config.steps.flatMap((s) => s.fields) : config.fields
+  const structural = validateBuilderFields(fields)
+  if (structural) return structural
+  if (kind === 'enquiry' || kind === 'booking') {
+    if (!fields.some((f) => f.mapTo === 'email')) return 'Add a field mapped to Email so leads are captured'
+    if (!fields.some((f) => f.mapTo === 'first_name')) return 'Add a field mapped to First name'
+    if (!fields.some((f) => f.mapTo === 'last_name')) return 'Add a field mapped to Last name'
   }
   return null
 }

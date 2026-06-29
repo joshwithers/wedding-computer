@@ -47,6 +47,16 @@ const PRUNES: { label: string; sql: string }[] = [
             WHERE (raw_data IS NOT NULL OR preview_data IS NOT NULL)
               AND created_at < datetime('now','-30 days') LIMIT ${BATCH})`,
   },
+  // Form submissions keep the submitter's IP + user-agent only for abuse triage
+  // (migration 075). Scrub that PII after 90 days; the submission itself stays.
+  {
+    label: 'form-submission PII (>90d)',
+    sql: `UPDATE form_submissions SET ip_address = NULL, user_agent = NULL
+          WHERE id IN (
+            SELECT id FROM form_submissions
+            WHERE (ip_address IS NOT NULL OR user_agent IS NOT NULL)
+              AND created_at < datetime('now','-90 days') LIMIT ${BATCH})`,
+  },
 ]
 
 export async function runRetention(db: D1Database): Promise<void> {
