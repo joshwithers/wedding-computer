@@ -9,6 +9,9 @@ import {
   getContact,
   createContact,
   updateContact,
+  updateContactDeferred,
+  updateContactStatusDeferred,
+  flushContactPush,
   deleteContact,
   countContactsByStatus,
 } from '../contacts'
@@ -769,6 +772,116 @@ describe('updateContact', () => {
     )
     // No error thrown, storage unchanged
     expect(storage.files.size).toBe(1)
+  })
+})
+
+describe('updateContactDeferred / flushContactPush (background contact writes)', () => {
+  let storage: MockStorageBackend
+  let db: MockD1Database
+  let seededEtag: string
+
+  beforeEach(async () => {
+    storage = new MockStorageBackend()
+    db = new MockD1Database()
+    const seeded = makeContact()
+    seededEtag = await storage.write('contacts/c.md', serializeMarkdown(contactToMarkdown(seeded)))
+    db.seed('file_index', [
+      {
+        vendor_id: VENDOR_ID,
+        entity_type: 'contact',
+        entity_id: 'c1',
+        file_path: 'contacts/c.md',
+        etag: seededEtag,
+        cached_data: contactCachedData(seeded),
+      },
+    ])
+    db.seed('contacts', [{ id: 'c1', vendor_id: VENDOR_ID }])
+    db.seed('file_conflicts', [])
+    storage.calls.length = 0
+  })
+
+  it('in-place edit updates the D1 index inline and defers the R2 write', async () => {
+    const pending = await updateContactDeferred(storage, db as unknown as D1Database, VENDOR_ID, 'c1', {
+      status: 'contacted',
+      notes: 'Called today',
+    })
+
+    expect(pending).not.toBeNull()
+    expect(pending!.filePath).toBe('contacts/c.md')
+    expect(pending!.expectedEtag).toBe(seededEtag) // last-synced etag = If-Match token
+    expect(pending!.content).toContain('contacted')
+    expect(pending!.content).toContain('Called today')
+
+    // R2 was NOT touched on the request path…
+    expect(storage.calls.some((c) => c.method === 'write' || c.method === 'read')).toBe(false)
+    // …so the R2 file still holds the OLD content until the flush.
+    expect((await storage.read('contacts/c.md'))!.content).not.toContain('Called today')
+
+    // The read cache (file_index) already reflects the edit.
+    const idx = db.getTable('file_index').find((r) => r.entity_id === 'c1')!
+    expect(JSON.parse(idx.cached_data as string).status).toBe('contacted')
+    // etag stays at the last-synced value until the deferred write confirms.
+    expect(idx.etag).toBe(seededEtag)
+  })
+
+  it('treats an unchanged name (re-submitted by the edit form) as an in-place edit', async () => {
+    const pending = await updateContactDeferred(storage, db as unknown as D1Database, VENDOR_ID, 'c1', {
+      first_name: 'Sarah',
+      last_name: 'Smith',
+      partner_first_name: 'James',
+      partner_last_name: 'Wilson',
+      phone: '0411 111 111',
+    })
+    expect(pending).not.toBeNull() // fast path despite name fields being present
+    expect(storage.calls.some((c) => c.method === 'write')).toBe(false)
+  })
+
+  it('flushContactPush writes the deferred content to R2 and advances the etag', async () => {
+    const pending = await updateContactDeferred(storage, db as unknown as D1Database, VENDOR_ID, 'c1', {
+      status: 'contacted',
+      notes: 'Called today',
+    })
+    await flushContactPush(storage, db as unknown as D1Database, pending!)
+
+    const file = await storage.read('contacts/c.md')
+    expect(parseMarkdown(file!.content).frontmatter.status).toBe('contacted')
+    expect(file!.content).toContain('Called today')
+
+    // file_index.etag advanced to the freshly-written content's etag.
+    const idx = db.getTable('file_index').find((r) => r.entity_id === 'c1')!
+    expect(idx.etag).toBe(file!.meta.etag)
+    expect(idx.etag).not.toBe(seededEtag)
+  })
+
+  it('flushContactPush records a conflict (and does NOT throw) when the file changed externally', async () => {
+    const pending = await updateContactDeferred(storage, db as unknown as D1Database, VENDOR_ID, 'c1', {
+      email: 'local@example.com',
+    })
+    // Someone edits the markdown out from under us before the flush runs.
+    await storage.write(
+      'contacts/c.md',
+      serializeMarkdown(contactToMarkdown(makeContact({ email: 'external@example.com', notes: 'Edited in Obsidian.' })))
+    )
+
+    // The flush must NOT throw — a conflict is handled, so the queue acks it.
+    await expect(flushContactPush(storage, db as unknown as D1Database, pending!)).resolves.toBeUndefined()
+
+    const conflicts = db.getTable('file_conflicts')
+    expect(conflicts.length).toBeGreaterThanOrEqual(1)
+    expect(conflicts[0].entity_type).toBe('contact')
+    // External version preserved; local NOT clobbered.
+    const file = await storage.read('contacts/c.md')
+    expect(file!.content).toContain('external@example.com')
+    expect(file!.content).not.toContain('local@example.com')
+  })
+
+  it('updateContactStatusDeferred returns a pending push and updates the cache', async () => {
+    const pending = await updateContactStatusDeferred(storage, db as unknown as D1Database, VENDOR_ID, 'c1', 'booked')
+    expect(pending).not.toBeNull()
+    expect(pending!.content).toContain('booked')
+    expect(storage.calls.some((c) => c.method === 'write')).toBe(false)
+    const idx = db.getTable('file_index').find((r) => r.entity_id === 'c1')!
+    expect(JSON.parse(idx.cached_data as string).status).toBe('booked')
   })
 })
 

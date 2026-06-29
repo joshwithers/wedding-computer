@@ -766,6 +766,135 @@ export async function updateContactStatus(
   })
 }
 
+// ── Deferred (background) contact writes for interactive routes ──
+//
+// A contact save's slow part is the R2 PUT. For the common in-place edit (no
+// name change), we can apply the change to the D1 index INLINE — file_index is
+// the read source of truth, so the page re-render reflects it immediately — and
+// flush the markdown to R2 in the background via the queue (flushContactPush),
+// with retries. The conditional If-Match write is preserved, so a concurrent
+// external (Obsidian/vault) edit is still recorded as a conflict, never
+// clobbered — it's just surfaced from the background flush instead of at save
+// time. Renames (the slug, hence the file path, changes) and un-cached rows
+// still go through the synchronous updateContact, which owns the move().
+
+/** A contact markdown write deferred to the queue (see flushContactPush). */
+export type PendingContactPush = {
+  vendorId: string
+  contactId: string
+  filePath: string
+  content: string
+  /** The last R2-synced etag — the If-Match precondition for the deferred write,
+   *  so a concurrent external edit is detected rather than overwritten. */
+  expectedEtag: string
+}
+
+/**
+ * Interactive-route variant of updateContact: applies the edit to the D1 index
+ * inline and returns the R2 write to be flushed in the background. Returns null
+ * (and writes R2 synchronously via updateContact) for an actual rename or an
+ * un-cached row, which need the storage round-trip on the request path.
+ */
+export async function updateContactDeferred(
+  storage: StorageBackend,
+  db: D1Database,
+  vendorId: string,
+  contactId: string,
+  data: Parameters<typeof updateContact>[4]
+): Promise<PendingContactPush | null> {
+  if (data.instagram !== undefined) data.instagram = sanitizeInstagramHandle(data.instagram)
+
+  const cached = await getContactCached(db, vendorId, contactId)
+  if (cached) {
+    // Only an actual change to a name field renames the file (the slug derives
+    // from the name); the edit form re-submits names unchanged, so compare.
+    const nameChanged =
+      (data.first_name !== undefined && data.first_name !== cached.contact.first_name) ||
+      (data.last_name !== undefined && data.last_name !== cached.contact.last_name) ||
+      (data.partner_first_name !== undefined && data.partner_first_name !== cached.contact.partner_first_name) ||
+      (data.partner_last_name !== undefined && data.partner_last_name !== cached.contact.partner_last_name)
+
+    if (!nameChanged) {
+      const updated: Contact = { ...cached.contact }
+      for (const [key, val] of Object.entries(data)) {
+        if (val !== undefined) (updated as Record<string, unknown>)[key] = val
+      }
+      updated.updated_at = new Date().toISOString()
+      const content = serializeMarkdown(contactToMarkdown(updated))
+      // Advance the read cache now; etag stays at the last-synced value until the
+      // deferred write confirms R2 (flushContactPush advances it then).
+      await upsertIndex(db, vendorId, updated, cached.filePath, cached.indexedEtag)
+      try {
+        await syncToContactsTable(db, updated)
+      } catch (err) {
+        console.error(`[contacts] syncToContactsTable failed for ${updated.id}:`, err)
+      }
+      return { vendorId, contactId, filePath: cached.filePath, content, expectedEtag: cached.indexedEtag }
+    }
+  }
+
+  // Rename or un-cached row — needs the storage round-trip inline.
+  await updateContact(storage, db, vendorId, contactId, data)
+  return null
+}
+
+/** Deferred variant of updateContactStatus (status changes never rename). */
+export async function updateContactStatusDeferred(
+  storage: StorageBackend,
+  db: D1Database,
+  vendorId: string,
+  contactId: string,
+  status: string,
+  opts?: { lost_reason?: string | null; lost_note?: string | null }
+): Promise<PendingContactPush | null> {
+  return updateContactDeferred(storage, db, vendorId, contactId, {
+    status: status as Contact['status'],
+    ...(opts?.lost_reason !== undefined ? { lost_reason: opts.lost_reason } : {}),
+    ...(opts?.lost_note !== undefined ? { lost_note: opts.lost_note } : {}),
+  })
+}
+
+/**
+ * Flush a deferred contact write to R2. Runs in the queue consumer (retried on
+ * transient failure). Mirrors updateContact's conflict handling: a concurrent
+ * external edit is recorded as a conflict (both versions kept), never clobbered.
+ */
+export async function flushContactPush(
+  storage: StorageBackend,
+  db: D1Database,
+  p: PendingContactPush
+): Promise<void> {
+  let newEtag: string
+  try {
+    newEtag = await storage.write(p.filePath, p.content, p.expectedEtag)
+  } catch (e) {
+    if (e instanceof StorageConflictError) {
+      const cur = await storage.read(p.filePath).catch(() => null)
+      try {
+        await recordWriteConflict(
+          db, p.vendorId, 'contact', p.contactId, p.filePath,
+          p.content, cur?.content ?? '', p.expectedEtag, cur?.meta.etag ?? p.expectedEtag
+        )
+      } catch (re) {
+        // recordWriteConflict always rethrows StorageConflictError after
+        // persisting the conflict; it's now handled, so don't let the queue
+        // retry it forever.
+        if (!(re instanceof StorageConflictError)) throw re
+      }
+      return
+    }
+    throw e // transient (R2 down, network) — let the queue retry
+  }
+  // R2 confirmed — advance the synced etag, but only if no later write already
+  // moved it (compare-and-set against the etag we wrote against).
+  await db
+    .prepare(
+      "UPDATE file_index SET etag = ?, last_synced_at = datetime('now') WHERE vendor_id = ? AND entity_type = 'contact' AND entity_id = ? AND etag = ?"
+    )
+    .bind(newEtag, p.vendorId, p.contactId, p.expectedEtag)
+    .run()
+}
+
 /**
  * Delete a contact: remove the markdown file and D1 index row.
  */

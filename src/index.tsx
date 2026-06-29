@@ -53,6 +53,7 @@ import { AuthLayout } from './views/layouts/auth'
 import { getVendorWithEmail, getVendorById } from './db/vendors'
 import { getContact } from './storage/contacts'
 import { getStorageWithSecrets } from './storage'
+import { flushContactPush } from './storage/contacts'
 import { StorageConflictError } from './storage/conflicts'
 import { sendEmailMessage, EmailSendError, broadcastEmail, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail, enquiryConfirmationEmail, bookingContractCopyEmail, referralRewardEmail } from './services/email'
 import { getBroadcast } from './db/broadcast'
@@ -1079,6 +1080,26 @@ export default {
           // One vendor's daily digest + payment reminders, fanned out from
           // the 0 20 cron. runVendorDailyJobs never throws.
           await runVendorDailyJobs(notifyEnv(env), body.vendorId)
+
+        } else if (body.type === 'push_contact_file') {
+          // Deferred R2 write for an interactive contact edit/status change: the
+          // D1 index was already updated inline; this flushes the markdown to R2
+          // with retries. A concurrent external edit is recorded as a conflict
+          // (handled inside flushContactPush), not retried.
+          const vendor = await getVendorById(env.DB, body.vendorId)
+          if (!vendor) {
+            console.error('[QUEUE] push_contact_file: vendor not found', body.vendorId)
+            msg.ack()
+            continue
+          }
+          const storage = await getStorageWithSecrets(env, vendor)
+          await flushContactPush(storage, env.DB, {
+            vendorId: body.vendorId,
+            contactId: body.contactId,
+            filePath: body.filePath,
+            content: body.content,
+            expectedEtag: body.expectedEtag,
+          })
 
         } else {
           console.log('[QUEUE] unknown message type', body.type)

@@ -11,6 +11,8 @@ import {
   createContact,
   updateContact,
   updateContactStatus,
+  updateContactDeferred,
+  updateContactStatusDeferred,
   deleteContact,
   countContactsByStatus,
 } from '../../storage/contacts'
@@ -717,7 +719,16 @@ contacts.post('/app/contacts/:id/edit', async (c) => {
 
     const storage = await getStorageWithSecrets(c.env, vendor)
     await ensureContactsIndexed(c, vendor, storage)
-    await updateContact(storage, c.env.DB, vendor.id, contactId, updateData)
+    // In-place edits flush the markdown to R2 in the background (queue); only an
+    // actual rename / un-cached row writes storage inline (returns null).
+    const pending = await updateContactDeferred(storage, c.env.DB, vendor.id, contactId, updateData)
+    if (pending) {
+      c.executionCtx.waitUntil(
+        c.env.EMAIL_QUEUE.send({ type: 'push_contact_file', ...pending }).catch((err) =>
+          console.error('[contacts] enqueue contact push failed:', err)
+        )
+      )
+    }
 
     c.executionCtx.waitUntil(
       geocodeContactLocation(c.env, contactId).catch((err) => console.error('[contacts] geocode failed:', err))
@@ -810,7 +821,16 @@ contacts.post('/app/contacts/:id/status', async (c) => {
     // Update status
     if (!storage) return c.text('Failed to update status', 500)
     await ensureContactsIndexed(c, vendor, storage)
-    await updateContactStatus(storage, c.env.DB, vendor.id, contactId, status, lostOpts)
+    // Status never renames the file → fast path: D1 inline, R2 flushed in the
+    // background via the queue. The response renders from `status` directly.
+    const pending = await updateContactStatusDeferred(storage, c.env.DB, vendor.id, contactId, status, lostOpts)
+    if (pending) {
+      c.executionCtx.waitUntil(
+        c.env.EMAIL_QUEUE.send({ type: 'push_contact_file', ...pending }).catch((err) =>
+          console.error('[contacts] enqueue contact push failed:', err)
+        )
+      )
+    }
 
     await createActivity(
       c.env.DB,
