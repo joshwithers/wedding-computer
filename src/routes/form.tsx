@@ -110,7 +110,9 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
     let pdfToken: string | undefined
     if (formRecord.type === 'noim' && result.submissionId) {
       pdfToken = await generateToken(18)
-      await c.env.KV.put(`noimpdf:${pdfToken}`, result.submissionId, { expirationTtl: 60 * 60 })
+      // 7-day window so the couple can re-download from the thank-you page for a
+      // while; the celebrant's authenticated inbox download is permanent.
+      await c.env.KV.put(`noimpdf:${pdfToken}`, result.submissionId, { expirationTtl: 60 * 60 * 24 * 7 })
     }
     return c.html(
       <FormShell embed={embed} theme={theme} logoUrl={logoUrl}>
