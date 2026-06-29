@@ -268,13 +268,14 @@ export function RenderField({ field, value }: { field: FormField; value?: string
 
 // Generic thank-you. Booking / NOIM pass extra context; the default copy suits
 // information and custom forms.
-export function ThankYou({ title, vendorName, message, showPdfLink, pdfAction, submissionId }: {
+export function ThankYou({ title, vendorName, message, showPdfLink, pdfAction, pdfToken }: {
   title?: string
   vendorName?: string | null
   message?: string
   showPdfLink?: boolean
   pdfAction?: string
-  submissionId?: string
+  // Short-TTL capability token for the NOIM download (not the raw submission id).
+  pdfToken?: string
 }) {
   return (
     <div class="text-center py-8">
@@ -285,12 +286,12 @@ export function ThankYou({ title, vendorName, message, showPdfLink, pdfAction, s
       </div>
       <h2 class="text-xl font-bold text-[var(--form-ink)] mb-2">{title ?? t('forms.public.submitted')}</h2>
       <p class="text-sm text-gray-600">{message ?? t('forms.public.thankYou')}</p>
-      {showPdfLink && pdfAction && submissionId && (
+      {showPdfLink && pdfAction && pdfToken && (
         <div class="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg text-left">
           <p class="text-sm text-purple-800 mb-2 font-medium">{t('forms.public.noimReady')}</p>
           <p class="text-xs text-purple-600 mb-3">{t('forms.public.noimDesc')}</p>
           <form method="post" action={pdfAction}>
-            <input type="hidden" name="submission_id" value={submissionId} />
+            <input type="hidden" name="dl" value={pdfToken} />
             <button type="submit" class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700">{t('forms.public.downloadNoim')}</button>
           </form>
         </div>

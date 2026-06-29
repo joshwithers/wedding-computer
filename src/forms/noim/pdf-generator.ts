@@ -170,6 +170,25 @@ export async function generateNoimPdf(
   return await doc.save()
 }
 
+// Build the downloadable NOIM PDF Response from a submission's stored data JSON.
+// Shared by the anonymous (token-gated) couple download and the authenticated
+// celebrant download, so the generation + filename logic lives in one place.
+export async function noimPdfResponse(dataJson: string): Promise<Response> {
+  let data: Record<string, unknown>
+  try { data = JSON.parse(dataJson) } catch { return new Response('Invalid data', { status: 400 }) }
+
+  const noimPdfBytes = (await import('./noim-blank.pdf')).default
+  const pdfBytes = await generateNoimPdf(data, noimPdfBytes)
+  const p1Last = String(data.p1_last_name || 'Party1')
+  const p2Last = String(data.p2_last_name || 'Party2')
+  return new Response(pdfBytes, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="NOIM-${p1Last}-${p2Last}.pdf"`,
+    },
+  })
+}
+
 export function buildDocumentChecklist(data: Record<string, unknown>): string[] {
   const docs: string[] = []
   const p1Conjugal = val(data, 'p1_conjugal_status')

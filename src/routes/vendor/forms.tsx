@@ -11,6 +11,7 @@ import { readEnquiryKeyFlash } from './form'
 import { isAustralianVendorCountry } from '../../lib/region'
 import { updateVendor } from '../../db/vendors'
 import { isProVendor } from '../../db/subscriptions'
+import { auditLog } from '../../middleware/audit'
 import { formatDate, formatDateTime } from '../../lib/date'
 import { requireEmailHandle } from '../../middleware/email-handle'
 import { requireAuth } from '../../middleware/auth'
@@ -762,13 +763,20 @@ forms.get('/app/forms/:id/submissions/:subId', async (c) => {
   return c.html(
     <AppLayout title="Submission Detail" user={c.get('user')} vendor={vendor} csrfToken={c.get('csrfToken')}>
       <div class="max-w-3xl mx-auto">
-        <div class="mb-6">
-          <a href={`/app/forms/${form.id}/submissions`} class="text-sm text-gray-500 hover:text-gray-700">&larr; All submissions</a>
-          <h1 class="text-2xl font-bold text-gray-900 mt-1">Submission</h1>
-          <p class="text-xs text-gray-500">
-            Submitted {formatDateTime(sub.created_at)}
-            {sub.ip_address && ` from ${sub.ip_address}`}
-          </p>
+        <div class="mb-6 flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <a href={`/app/forms/${form.id}/submissions`} class="text-sm text-gray-500 hover:text-gray-700">&larr; All submissions</a>
+            <h1 class="text-2xl font-bold text-gray-900 mt-1">Submission</h1>
+            <p class="text-xs text-gray-500">
+              Submitted {formatDateTime(sub.created_at)}
+              {sub.ip_address && ` from ${sub.ip_address}`}
+            </p>
+          </div>
+          {form.type === 'noim' && (
+            <a href={`/app/forms/${form.id}/submissions/${sub.id}/pdf`} class="shrink-0 whitespace-nowrap bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700 transition active:scale-[0.97]">
+              Download NOIM PDF
+            </a>
+          )}
         </div>
 
         <div class="bg-white border border-papaya-300/30 rounded-xl p-5">
@@ -794,6 +802,21 @@ forms.get('/app/forms/:id/submissions/:subId', async (c) => {
       </div>
     </AppLayout>
   )
+})
+
+// Authenticated NOIM PDF download for the OWNING celebrant. Vendor-scoped via
+// getForm/getFormSubmission (vendor.id), so it can never read another vendor's
+// submission. This is the secure celebrant path — the public token-gated route
+// is only for the couple's own post-submit download.
+forms.get('/app/forms/:id/submissions/:subId/pdf', async (c) => {
+  const vendor = c.get('vendor')!
+  const form = await getForm(c.env.DB, vendor.id, c.req.param('id'))
+  if (!form || form.type !== 'noim') return c.text('Not found', 404)
+  const sub = await getFormSubmission(c.env.DB, vendor.id, c.req.param('subId'))
+  if (!sub || sub.form_id !== form.id) return c.text('Not found', 404)
+  await auditLog(c, 'download_noim_pdf', 'form_submission', sub.id, { formId: form.id }).catch(() => {})
+  const { noimPdfResponse } = await import('../../forms/noim/pdf-generator')
+  return noimPdfResponse(sub.data)
 })
 
 // ─── Modern client-side field builder ───

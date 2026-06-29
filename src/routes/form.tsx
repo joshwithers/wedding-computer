@@ -7,6 +7,7 @@ import type { Form, FormSend } from '../types'
 import type { FormConfig } from '../lib/form-schema'
 import { getVendorById } from '../db/vendors'
 import { embedFrameAncestors } from '../lib/csp'
+import { generateToken } from '../lib/crypto'
 import { rateLimit } from '../middleware/rate-limit'
 import { PublicFormBody, ThankYou } from '../lib/form-render'
 import { createSubmission } from '../services/form-submit'
@@ -102,13 +103,22 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
 
   if (result.ok) {
     if (result.redirectUrl) return c.redirect(result.redirectUrl)
+    // NOIM PDF download: mint a short-TTL one-time-ish capability token bound to
+    // this submission instead of exposing the raw DB id. The token (not the
+    // submission_id) is what the thank-you page posts back to /pdf, so the
+    // sensitive PII can't be re-downloaded by anyone who later learns the id.
+    let pdfToken: string | undefined
+    if (formRecord.type === 'noim' && result.submissionId) {
+      pdfToken = await generateToken(18)
+      await c.env.KV.put(`noimpdf:${pdfToken}`, result.submissionId, { expirationTtl: 60 * 60 })
+    }
     return c.html(
       <FormShell embed={embed} theme={theme} logoUrl={logoUrl}>
         <ThankYou
           vendorName={vendor.business_name}
-          showPdfLink={formRecord.type === 'noim'}
+          showPdfLink={!!pdfToken}
           pdfAction={`/form/${formRecord.public_token}/pdf`}
-          submissionId={result.submissionId}
+          pdfToken={pdfToken}
         />
       </FormShell>
     )
@@ -132,47 +142,27 @@ form.post('/form/:token', rateLimit(10, 60), async (c) => {
 
 // ─── NOIM PDF download ───
 
+// Anonymous post-submit NOIM download. The submission is highly sensitive PII,
+// so this requires the short-TTL capability token minted at submit time (held
+// only by the submitting couple's browser) — NOT a raw submission_id. The token
+// resolves to the submission, which is still re-verified against the form's
+// vendor + form id as defence-in-depth. Celebrants download via the
+// authenticated inbox route instead (routes/vendor/forms.tsx).
 form.post('/form/:token/pdf', rateLimit(5, 60), async (c) => {
   const formRecord = await getFormByToken(c.env.DB, c.req.param('token'))
   if (!formRecord || formRecord.type !== 'noim') return c.text('Not found', 404)
 
   const body = await c.req.parseBody()
+  const dl = typeof body.dl === 'string' ? body.dl : ''
+  if (!dl) return c.text('Not found', 404)
+  const submissionId = await c.env.KV.get(`noimpdf:${dl}`)
+  if (!submissionId) return c.text('This download link has expired. Please re-submit the form.', 410)
 
-  // Preferred: regenerate from the stored submission (the thank-you page no
-  // longer has the form in the DOM). Fall back to inline _data if provided.
-  let data: Record<string, unknown>
-  const submissionId = typeof body.submission_id === 'string' ? body.submission_id : ''
-  if (submissionId) {
-    const submission = await getFormSubmission(c.env.DB, formRecord.vendor_id, submissionId)
-    if (!submission || submission.form_id !== formRecord.id) return c.text('Not found', 404)
-    try {
-      data = JSON.parse(submission.data)
-    } catch {
-      return c.text('Invalid data', 400)
-    }
-  } else {
-    const dataStr = body._data as string
-    if (!dataStr) return c.text('Missing data', 400)
-    try {
-      data = JSON.parse(dataStr)
-    } catch {
-      return c.text('Invalid data', 400)
-    }
-  }
+  const submission = await getFormSubmission(c.env.DB, formRecord.vendor_id, submissionId)
+  if (!submission || submission.form_id !== formRecord.id) return c.text('Not found', 404)
 
-  const { generateNoimPdf } = await import('../forms/noim/pdf-generator')
-  const noimPdfBytes = (await import('../forms/noim/noim-blank.pdf')).default
-
-  const pdfBytes = await generateNoimPdf(data, noimPdfBytes)
-  const p1Last = String(data.p1_last_name || 'Party1')
-  const p2Last = String(data.p2_last_name || 'Party2')
-
-  return new Response(pdfBytes, {
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="NOIM-${p1Last}-${p2Last}.pdf"`,
-    },
-  })
+  const { noimPdfResponse } = await import('../forms/noim/pdf-generator')
+  return noimPdfResponse(submission.data)
 })
 
 // ─── Components ───
