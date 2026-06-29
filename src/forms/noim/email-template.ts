@@ -43,7 +43,8 @@ function formatGender(value: string): string {
   switch (value) {
     case 'female': return 'Female'
     case 'male': return 'Male'
-    case 'non-binary': return 'Non-binary'
+    case 'x': return 'X'
+    case 'non-binary': return 'X' // legacy rows saved before the Sex/X label change
     default: return 'Not specified'
   }
 }
@@ -79,7 +80,7 @@ function buildPartyRows(data: Record<string, unknown>, prefix: string): Row[] {
   rows.push({ item: '1', label: 'Description', value: formatDescription(val(data, `${prefix}_description`)) })
   rows.push({ item: '2', label: 'Surname/family name', value: val(data, `${prefix}_last_name`) })
   rows.push({ item: '3', label: 'Given name(s)', value: givenNames(data, prefix) })
-  rows.push({ item: '4', label: 'Sex/Gender', value: formatGender(val(data, `${prefix}_gender`)) })
+  rows.push({ item: '4', label: 'Sex', value: formatGender(val(data, `${prefix}_gender`)) })
   rows.push({ item: '5', label: 'Usual occupation', value: val(data, `${prefix}_occupation`) })
   rows.push({ item: '6', label: 'Usual place of residence', value: val(data, `${prefix}_address`) })
   rows.push({ item: '7', label: 'Conjugal status', value: formatConjugalStatus(conjugal) })

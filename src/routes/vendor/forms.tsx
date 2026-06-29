@@ -8,6 +8,7 @@ import type { FormConfig, FormStep, FormField } from '../../lib/form-schema'
 import { defaultFormConfig, defaultBookingFormConfig, parseFormConfig, parseBookingFormConfig, generateFieldId, BUILDER_FIELD_TYPES, CONTACT_MAPPINGS, sanitizeBuilderFields, validateBuilderFields, validateFormForType } from '../../lib/form-schema'
 import { ensureSingletonForm } from '../../services/form-submit'
 import { readEnquiryKeyFlash } from './form'
+import { isAustralianVendorCountry } from '../../lib/region'
 import { updateVendor } from '../../db/vendors'
 import { isProVendor } from '../../db/subscriptions'
 import { formatDate, formatDateTime } from '../../lib/date'
@@ -290,14 +291,15 @@ forms.get('/app/forms/new', async (c) => {
             </button>
           </form>
 
-          {hasCategory(vendor, 'celebrant') && (
+          {/* NOIM is an Australian-only legal form — celebrants in Australia only. */}
+          {hasCategory(vendor, 'celebrant') && isAustralianVendorCountry(vendor.location_country) && (
             <form method="post" action="/app/forms/new">
               <input type="hidden" name="type" value="noim" />
               <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
               <button type="submit" class="w-full text-left bg-white border border-purple-200 rounded-xl p-5 hover:border-purple-400 transition-colors cursor-pointer">
                 <h3 class="font-bold text-gray-900">Notice of Intended Marriage (NOIM)</h3>
                 <p class="text-sm text-gray-600 mt-1">Collect NOIM details from couples and generate a completed PDF</p>
-                <span class="inline-block mt-2 text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Celebrant</span>
+                <span class="inline-block mt-2 text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Australian celebrants</span>
               </button>
             </form>
           )}
@@ -340,6 +342,11 @@ forms.post('/app/forms/new', async (c) => {
 
   switch (type) {
     case 'noim':
+      // NOIM is an Australian-only legal form — enforce server-side, not just in
+      // the picker UI (the button is presentation-only).
+      if (!hasCategory(vendor, 'celebrant') || !isAustralianVendorCountry(vendor.location_country)) {
+        return c.text('The NOIM form is only available to Australian celebrants.', 403)
+      }
       config = noimFormConfig()
       title = 'Notice of Intended Marriage'
       break

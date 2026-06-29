@@ -17,11 +17,13 @@ const DESCRIPTION_OPTIONS = [
   { value: 'groom', label: 'Groom' },
 ]
 
-const GENDER_OPTIONS = [
+// Item 4 on the NOIM is "Sex" with options Male / Female / X (X = indeterminate,
+// intersex or unspecified) — not "Gender"/"Non-binary", which don't map to the form.
+const SEX_OPTIONS = [
   { value: '', label: 'Prefer not to say' },
   { value: 'female', label: 'Female' },
   { value: 'male', label: 'Male' },
-  { value: 'non-binary', label: 'Non-binary' },
+  { value: 'x', label: 'X' },
 ]
 
 const CONJUGAL_STATUS_OPTIONS = [
@@ -63,12 +65,14 @@ function partyFields(prefix: string, partyLabel: string): FormStep['fields'] {
       helpText: 'Leave blank if no middle name',
     },
     {
+      // id stays `_gender` for back-compat with stored submissions + the PDF/
+      // email mappers; the user-facing label is the NOIM's "Sex".
       id: `${prefix}_gender`,
-      label: 'Gender',
+      label: 'Sex',
       type: 'select',
       required: false,
-      options: GENDER_OPTIONS,
-      helpText: 'Optional — you may leave this blank',
+      options: SEX_OPTIONS,
+      helpText: "As recorded on the NOIM. 'X' means indeterminate, intersex or unspecified.",
     },
     {
       id: `${prefix}_occupation`,
@@ -215,6 +219,8 @@ function singleParentFields(prefix: string, parentPrefix: string, parentLabel: s
       type: 'text',
       required: true,
       titleCase: true,
+      // The NOIM (item 12) specifically requires the mother's MAIDEN name.
+      helpText: parentPrefix === 'mother' ? "This is the mother's maiden (birth) name, which the NOIM requires." : undefined,
       conditions: [{ field: `${prefix}_${parentPrefix}_name_changed`, operator: 'eq', value: 'yes' }],
     },
     {
@@ -236,7 +242,7 @@ export const noimSteps: FormStep[] = [
   {
     id: 'party1-parents',
     title: 'Party 1 — Parent Details',
-    description: 'Items 11–16 from the NOIM (optional but helpful for the marriage register)',
+    description: 'Items 11–14 from the NOIM (optional but helpful for the marriage register)',
     fields: [
       ...singleParentFields('p1', 'father', 'Father / Parent 1'),
       ...singleParentFields('p1', 'mother', 'Mother / Parent 2'),
@@ -251,7 +257,7 @@ export const noimSteps: FormStep[] = [
   {
     id: 'party2-parents',
     title: 'Party 2 — Parent Details',
-    description: 'Items 11–16 from the NOIM (optional but helpful for the marriage register)',
+    description: 'Items 11–14 from the NOIM (optional but helpful for the marriage register)',
     fields: [
       ...singleParentFields('p2', 'father', 'Father / Parent 1'),
       ...singleParentFields('p2', 'mother', 'Mother / Parent 2'),
@@ -260,7 +266,7 @@ export const noimSteps: FormStep[] = [
   {
     id: 'relationship',
     title: 'Relationship & Ceremony Details',
-    description: 'Item 10 and wedding/ceremony information',
+    description: 'Relationship and ceremony information',
     fields: [
       {
         id: 'parties_related',

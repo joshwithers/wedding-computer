@@ -71,10 +71,16 @@ function mapDescription(value: string): string {
   }
 }
 
+// The NOIM's Item 4 is "Sex" with options Male / Female / X. The bundled
+// noim-blank.pdf's third checkbox export value is "Non-binary" (not "X"), so we
+// tick that box for an 'x' selection until the official prescribed PDF (which
+// uses "X") is swapped in. 'non-binary' is kept for back-compat with rows saved
+// before the label change.
 function mapGender(value: string): string {
   switch (value) {
     case 'female': return 'Female'
     case 'male': return 'Male'
+    case 'x': return 'Non-binary'
     case 'non-binary': return 'Non-binary'
     default: return ''
   }

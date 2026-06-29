@@ -261,9 +261,57 @@ export async function createSubmission(c: Context<Env>, ctx: SubmitContext): Pro
     console.error(`[form-submit] ${kind} side effect failed`, e?.message)
   }
 
+  // Legacy field-addressed copies — the NOIM form (and old custom forms) carry
+  // email_recipient/email_submitter actions that name a FORM FIELD holding the
+  // address (e.g. celebrant_email / couple_email), which the unified
+  // emailRecipient field doesn't express. Resolve them from the submitted data.
+  try {
+    await sendFieldAddressedCopies(c, vendor, form, config, dataById)
+  } catch (e: any) {
+    console.error('[form-submit] field-addressed copies failed', e?.message)
+  }
+
   return isValidRedirect(config.redirectUrl)
     ? { ok: true, redirectUrl: config.redirectUrl, submissionId: submission.id }
     : { ok: true, submissionId: submission.id }
+}
+
+// Restore the NOIM "send a copy to your celebrant / to yourselves" behaviour:
+// legacy actions[] entries whose recipient is a form field (emailField) rather
+// than a literal address. The merged resolveFormActions only covers literal
+// recipientEmail, so this fills the emailField gap without double-sending.
+async function sendFieldAddressedCopies(
+  c: Context<Env>,
+  vendor: VendorProfile,
+  form: Form,
+  config: FormConfig,
+  dataById: Record<string, string>,
+): Promise<void> {
+  const legacy = config.actions.actions
+  if (!legacy?.length) return
+  const fields = formSubmissionFields(form.config, JSON.stringify(dataById))
+
+  const recipient = legacy.find((a) => a.type === 'email_recipient' && a.enabled)
+  if (recipient && !recipient.recipientEmail && recipient.emailField) {
+    const to = dataById[recipient.emailField]
+    if (to && isValidEmail(to)) {
+      await c.env.EMAIL_QUEUE.send({
+        type: 'form_notification', to, formTitle: config.title, vendorName: vendor.business_name,
+        submissionId: '', fields,
+      })
+    }
+  }
+
+  const submitterCopy = legacy.find((a) => a.type === 'email_submitter' && a.enabled)
+  if (submitterCopy) {
+    const to = submitterCopy.emailField ? dataById[submitterCopy.emailField] : dataById.email
+    if (to && isValidEmail(to)) {
+      await c.env.EMAIL_QUEUE.send({
+        type: 'form_confirmation', to, formTitle: config.title, vendorName: vendor.business_name,
+        formType: form.type, fields,
+      })
+    }
+  }
 }
 
 // Vendor notification + submitter confirmation + email-forward, shared by the

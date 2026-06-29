@@ -60,6 +60,19 @@ function canonicalCountryName(raw: string): string {
   return COUNTRY_ALIASES[trimmed.toLowerCase()] ?? trimmed
 }
 
+// Is a vendor eligible (by country) for Australia-only features like the NOIM?
+// The NOIM is a Commonwealth legal form (Australia-only), so it must not be
+// offered to confirmed non-Australian vendors. But `location_country` is only
+// set by geocoding and is often null for legitimate AU celebrants, and Australia
+// is the home market — so we DEFAULT-ALLOW on unknown and only block when we
+// have a CONFIRMED non-Australian geocoded country. (timezone is not a usable
+// signal — the column defaults to Australia/Sydney for everyone.)
+export function isAustralianVendorCountry(country: string | null | undefined): boolean {
+  const c = country?.trim()
+  if (!c) return true // unknown → allow (AU is the home market)
+  return slugify(canonicalCountryName(c)) === 'australia'
+}
+
 // Region subtag of a BCP 47 locale → country name, covering the SUPPORTED_LOCALES.
 const LOCALE_COUNTRY: Record<string, string> = {
   AU: 'Australia', NZ: 'New Zealand', GB: 'United Kingdom', US: 'United States',
