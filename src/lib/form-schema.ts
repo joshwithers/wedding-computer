@@ -84,9 +84,13 @@ export type FormActions = {
     enabled: boolean
     mode: 'ai' | 'template'
     template?: string
-    // Pro: extra guidance fed to the AI when drafting the confirmation
+    // Pro: extra guidance APPENDED to the prompt when drafting the confirmation
     // (tone, things to mention, booking link). Ignored for mode 'template'.
     aiInstructions?: string
+    // Pro: a full replacement for the AI prompt template (migration 075). When
+    // set, it overrides the admin platform default entirely. Uses {token}
+    // placeholders — see src/services/ai-prompts.ts. Ignored for mode 'template'.
+    aiPrompt?: string
   }
   actions?: FormAction[]
 }
@@ -367,6 +371,29 @@ export function validateBuilderFields(fields: FormField[]): string | null {
     if (OPTION_FIELD_TYPES.includes(f.type) && (!f.options || (f.options as unknown[]).length === 0)) {
       return `"${f.label}" needs at least one option`
     }
+  }
+  return null
+}
+
+// Unified-forms validation (migration 075). A form's `kind` decides what its
+// fields MUST capture so the per-kind side effects can actually run:
+//   - enquiry / booking create or update a CRM contact, so they need a field
+//     mapped to email + first name + last name (otherwise the contact silently
+//     never gets created — the B2 bug). 'booking' may run against an existing
+//     invoice contact, but a standalone booking form must be self-sufficient.
+//   - information collects data only, so it needs no mapping.
+// Always runs the structural field checks first.
+export function validateFormForType(
+  kind: 'information' | 'enquiry' | 'booking',
+  config: FormConfig
+): string | null {
+  const fields = config.steps ? config.steps.flatMap((s) => s.fields) : config.fields
+  const structural = validateBuilderFields(fields)
+  if (structural) return structural
+  if (kind === 'enquiry' || kind === 'booking') {
+    if (!fields.some((f) => f.mapTo === 'email')) return 'Add a field mapped to Email so leads are captured'
+    if (!fields.some((f) => f.mapTo === 'first_name')) return 'Add a field mapped to First name'
+    if (!fields.some((f) => f.mapTo === 'last_name')) return 'Add a field mapped to Last name'
   }
   return null
 }

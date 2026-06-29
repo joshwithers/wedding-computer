@@ -5,7 +5,8 @@ import { createForm, getForm, listForms, updateForm, deleteForm, listFormSubmiss
 import { noimFormConfig } from '../../forms/noim/schema'
 import { hasCategory } from '../../lib/categories'
 import type { FormConfig, FormStep, FormField } from '../../lib/form-schema'
-import { defaultFormConfig, generateFieldId, BUILDER_FIELD_TYPES, CONTACT_MAPPINGS, sanitizeBuilderFields, validateBuilderFields } from '../../lib/form-schema'
+import { defaultFormConfig, parseFormConfig, parseBookingFormConfig, generateFieldId, BUILDER_FIELD_TYPES, CONTACT_MAPPINGS, sanitizeBuilderFields, validateBuilderFields } from '../../lib/form-schema'
+import { formatDate, formatDateTime } from '../../lib/date'
 import { requireEmailHandle } from '../../middleware/email-handle'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
@@ -27,9 +28,26 @@ forms.use('/app/forms/*', requireEmailHandle)
 
 // ─── List all forms ───
 
+// Reserved slugs for the per-vendor singleton intake forms, surfaced as pinned
+// "Primary" rows (edited on their own pages) and hidden from the "Other" list so
+// they never double-show.
+// The per-vendor singletons surfaced as pinned "Primary" rows. Standalone
+// booking forms (slug 'booking-form') are regular forms and show under "Other".
+const SINGLETON_SLUGS = new Set(['enquiry', 'booking'])
+
 forms.get('/app/forms', async (c) => {
   const vendor = c.get('vendor')!
   const allForms = await listForms(c.env.DB, vendor.id)
+
+  // The two lead-generating singletons. Their config lives in the legacy vendor
+  // blob (read-both bridge) but their submission count comes from any migrated
+  // forms row.
+  const enquiryRow = allForms.find((f) => f.slug === 'enquiry')
+  const enquiryConfig = parseFormConfig(enquiryRow?.config ?? vendor.enquiry_form)
+  const bookingRow = allForms.find((f) => f.slug === 'booking')
+  const bookingConfig = parseBookingFormConfig(bookingRow?.config ?? vendor.booking_form)
+
+  const otherForms = allForms.filter((f) => !(f.slug && SINGLETON_SLUGS.has(f.slug)))
 
   return c.html(
     <AppLayout title="Forms" user={c.get('user')} vendor={vendor} csrfToken={c.get('csrfToken')}>
@@ -37,55 +55,108 @@ forms.get('/app/forms', async (c) => {
         <div class="flex items-center justify-between mb-6">
           <div>
             <h1 class="text-2xl font-bold text-gray-900">Forms</h1>
-            <p class="text-sm text-gray-600 mt-1">Create forms for enquiries, NOIM collection, and more</p>
+            <p class="text-sm text-gray-600 mt-1">Your enquiry &amp; booking forms, plus any forms you build to collect information</p>
           </div>
           <a href="/app/forms/new" class="bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700 transition-colors">
             New form
           </a>
         </div>
 
-        {allForms.length === 0 ? (
+        {/* Primary, lead-generating forms — always present, pinned to the top. */}
+        <h2 class="text-xs font-bold uppercase tracking-wide text-gray-400 mb-2">Lead-generating</h2>
+        <div class="space-y-3 mb-8">
+          <PrimaryFormRow
+            title={enquiryConfig.title || 'Enquiry form'}
+            badge="Enquiry"
+            badgeClass="bg-horizon-100 text-horizon-700"
+            description="Collects enquiries and creates leads in your CRM"
+            editHref="/app/form"
+            publicHref={`/enquire/${vendor.id}`}
+            count={enquiryRow?.submission_count ?? 0}
+          />
+          <PrimaryFormRow
+            title={bookingConfig.title || 'Booking form'}
+            badge="Booking"
+            badgeClass="bg-green-100 text-green-700"
+            description="Shown when a couple confirms a booking from an invoice"
+            editHref="/app/booking-form"
+            count={bookingRow?.submission_count ?? 0}
+          />
+        </div>
+
+        <h2 class="text-xs font-bold uppercase tracking-wide text-gray-400 mb-2">Other forms</h2>
+        {otherForms.length === 0 ? (
           <div class="bg-white border border-papaya-300/30 rounded-xl p-8 text-center">
-            <p class="text-gray-600 mb-4">You haven't created any forms yet.</p>
-            <a href="/app/forms/new" class="text-horizon-600 font-bold hover:underline">Create your first form</a>
+            <p class="text-gray-600 mb-4">No information or NOIM forms yet.</p>
+            <a href="/app/forms/new" class="text-horizon-600 font-bold hover:underline">Build a form</a>
           </div>
         ) : (
           <div class="space-y-3">
-            {allForms.map((form) => {
-              const config = JSON.parse(form.config) as FormConfig
-              return (
-                <div class="bg-white border border-papaya-300/30 rounded-xl p-4 flex items-center justify-between">
-                  <div>
-                    <div class="flex items-center gap-2">
-                      <h3 class="font-bold text-gray-900">{form.title}</h3>
-                      <span class={`text-xs px-2 py-0.5 rounded-full ${form.type === 'noim' ? 'bg-purple-100 text-purple-700' : form.type === 'contact' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
-                        {form.type === 'noim' ? 'NOIM' : form.type === 'contact' ? 'Contact' : 'Custom'}
-                      </span>
-                      {!form.is_active && <span class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">Inactive</span>}
-                    </div>
-                    <p class="text-xs text-gray-500 mt-1">
-                      {form.submission_count} submission{form.submission_count !== 1 ? 's' : ''}
-                      {' '}&middot;{' '}
-                      Created {new Date(form.created_at).toLocaleDateString('en-AU')}
-                    </p>
-                  </div>
+            {otherForms.map((form) => (
+              <div class="bg-white border border-papaya-300/30 rounded-xl p-4 flex items-center justify-between">
+                <div>
                   <div class="flex items-center gap-2">
-                    <a href={`/app/forms/${form.id}/submissions`} class="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg">
-                      Submissions
-                    </a>
-                    <a href={`/app/forms/${form.id}`} class="text-xs text-horizon-600 hover:text-horizon-700 px-3 py-1.5 border border-horizon-200 rounded-lg">
-                      Edit
-                    </a>
+                    <h3 class="font-bold text-gray-900">{form.title}</h3>
+                    <TypeBadge type={form.type} kind={form.kind} />
+                    {!form.is_active && <span class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">Inactive</span>}
                   </div>
+                  <p class="text-xs text-gray-500 mt-1">
+                    {form.submission_count} submission{form.submission_count !== 1 ? 's' : ''}
+                    {' '}&middot;{' '}
+                    Created {formatDate(form.created_at)}
+                  </p>
                 </div>
-              )
-            })}
+                <div class="flex items-center gap-2">
+                  <a href={`/app/forms/${form.id}/submissions`} class="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg">
+                    Submissions
+                  </a>
+                  <a href={`/app/forms/${form.id}`} class="text-xs text-horizon-600 hover:text-horizon-700 px-3 py-1.5 border border-horizon-200 rounded-lg">
+                    Edit
+                  </a>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
     </AppLayout>
   )
 })
+
+function PrimaryFormRow({ title, badge, badgeClass, description, editHref, publicHref, count }: {
+  title: string; badge: string; badgeClass: string; description: string; editHref: string; publicHref?: string; count: number
+}) {
+  return (
+    <div class="bg-white border border-papaya-300/30 rounded-xl p-4 flex items-center justify-between">
+      <div>
+        <div class="flex items-center gap-2">
+          <h3 class="font-bold text-gray-900">{title}</h3>
+          <span class={`text-xs px-2 py-0.5 rounded-full ${badgeClass}`}>{badge}</span>
+        </div>
+        <p class="text-xs text-gray-500 mt-1">
+          {description}{count > 0 ? ` · ${count} submission${count !== 1 ? 's' : ''}` : ''}
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        {publicHref && (
+          <a href={publicHref} target="_blank" class="text-xs text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-200 rounded-lg">
+            View
+          </a>
+        )}
+        <a href={editHref} class="text-xs text-horizon-600 hover:text-horizon-700 px-3 py-1.5 border border-horizon-200 rounded-lg">
+          Edit
+        </a>
+      </div>
+    </div>
+  )
+}
+
+function TypeBadge({ type, kind }: { type: string; kind?: string }) {
+  if (type === 'noim') return <span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">NOIM</span>
+  if (kind === 'enquiry') return <span class="text-xs px-2 py-0.5 rounded-full bg-horizon-100 text-horizon-700">Enquiry</span>
+  if (kind === 'booking') return <span class="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">Booking</span>
+  return <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">Information</span>
+}
 
 // ─── New form (choose type) ───
 
@@ -120,6 +191,16 @@ forms.get('/app/forms/new', async (c) => {
           )}
 
           <form method="post" action="/app/forms/new">
+            <input type="hidden" name="type" value="booking" />
+            <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+            <button type="submit" class="w-full text-left bg-white border border-green-200 rounded-xl p-5 hover:border-green-400 transition-colors cursor-pointer">
+              <h3 class="font-bold text-gray-900">Booking form</h3>
+              <p class="text-sm text-gray-600 mt-1">A public form that books a couple in — creates a contact and joins their wedding</p>
+              <span class="inline-block mt-2 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">Booking</span>
+            </button>
+          </form>
+
+          <form method="post" action="/app/forms/new">
             <input type="hidden" name="type" value="custom" />
             <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
             <button type="submit" class="w-full text-left bg-white border border-papaya-300/30 rounded-xl p-5 hover:border-horizon-600/30 transition-colors cursor-pointer">
@@ -140,6 +221,10 @@ forms.post('/app/forms/new', async (c) => {
 
   let config: FormConfig
   let title: string
+  // The form row's intent. Booking forms create a contact AND attach the vendor
+  // to the couple's wedding; everything else is information-only here.
+  let kind: 'information' | 'booking' = 'information'
+  let slug: string | undefined
 
   switch (type) {
     case 'noim':
@@ -149,6 +234,30 @@ forms.post('/app/forms/new', async (c) => {
     case 'contact':
       config = defaultFormConfig()
       title = 'Enquiry Form'
+      break
+    case 'booking':
+      kind = 'booking'
+      slug = 'booking-form'
+      title = 'Booking form'
+      config = {
+        version: 1,
+        title: 'Confirm your booking',
+        submitLabel: 'Confirm booking',
+        fields: [
+          { id: generateFieldId(), type: 'heading', label: 'Your details' },
+          { id: 'first_name', type: 'text', label: 'First name', required: true, width: 'half', mapTo: 'first_name' },
+          { id: 'last_name', type: 'text', label: 'Last name', required: true, width: 'half', mapTo: 'last_name' },
+          { id: 'email', type: 'email', label: 'Email', required: true, width: 'half', mapTo: 'email' },
+          { id: 'phone', type: 'tel', label: 'Phone', width: 'half', mapTo: 'phone' },
+          { id: 'wedding_date', type: 'date', label: 'Wedding date', width: 'half', mapTo: 'wedding_date' },
+          { id: 'wedding_location', type: 'address', label: 'Wedding location', width: 'half', mapTo: 'wedding_location' },
+          { id: 'notes', type: 'textarea', label: 'Anything we should know?', mapTo: 'notes' },
+        ],
+        actions: {
+          notifyVendor: true,
+          confirmationEmail: { enabled: false, mode: 'ai' },
+        },
+      }
       break
     default:
       config = {
@@ -172,7 +281,9 @@ forms.post('/app/forms/new', async (c) => {
 
   const form = await createForm(c.env.DB, vendor.id, {
     title,
-    type: type as 'custom' | 'noim' | 'contact',
+    type: (type === 'booking' ? 'custom' : type) as 'custom' | 'noim' | 'contact',
+    kind,
+    slug,
     config: JSON.stringify(config),
   })
 
@@ -456,7 +567,7 @@ forms.get('/app/forms/:id/submissions', async (c) => {
                       <span class={`text-xs px-2 py-0.5 rounded-full ${sub.status === 'submitted' ? 'bg-blue-100 text-blue-700' : sub.status === 'reviewed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
                         {sub.status}
                       </span>
-                      <span class="text-xs text-gray-400">{new Date(sub.created_at).toLocaleDateString('en-AU')}</span>
+                      <span class="text-xs text-gray-400">{formatDate(sub.created_at)}</span>
                     </div>
                   </div>
                 </a>
@@ -492,7 +603,7 @@ forms.get('/app/forms/:id/submissions/:subId', async (c) => {
           <a href={`/app/forms/${form.id}/submissions`} class="text-sm text-gray-500 hover:text-gray-700">&larr; All submissions</a>
           <h1 class="text-2xl font-bold text-gray-900 mt-1">Submission</h1>
           <p class="text-xs text-gray-500">
-            Submitted {new Date(sub.created_at).toLocaleString('en-AU')}
+            Submitted {formatDateTime(sub.created_at)}
             {sub.ip_address && ` from ${sub.ip_address}`}
           </p>
         </div>

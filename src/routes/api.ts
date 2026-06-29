@@ -13,8 +13,8 @@ import { Hono } from 'hono'
 import type { Env, VendorProfile } from '../types'
 import { getVendorByEnquiryKey } from '../db/vendors'
 import { isProVendor } from '../db/subscriptions'
-import { parseFormConfig } from '../lib/form-schema'
 import { processJsonSubmission, createEnquiry, type EnquiryJson } from '../services/enquiry'
+import { resolveEnquiryFormConfig } from '../services/form-submit'
 import { safeErrorMessage } from '../lib/redaction'
 
 const api = new Hono<Env>()
@@ -111,7 +111,9 @@ api.get('/api/v1/form', async (c) => {
   if (auth instanceof Response) return auth
   const vendor = auth
 
-  const config = parseFormConfig(vendor.enquiry_form)
+  // Read-both: resolve the same enquiry config the public form + funnel use, so
+  // the API's advertised schema never drifts from what /enquire renders.
+  const { config } = await resolveEnquiryFormConfig(c.env.DB, vendor)
   const contactFields: Array<{ key: string; required: boolean; type: string }> = []
   const customFields: Array<{ label: string; type: string; options?: string[] }> = []
   const seen = new Set<string>()

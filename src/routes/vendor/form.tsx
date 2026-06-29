@@ -311,6 +311,7 @@ function buildConfigFromBody(body: Record<string, string>): FormConfig {
         mode: (body.action_confirm_mode ?? 'ai') as 'ai' | 'template',
         template: body.action_confirm_template?.trim() || undefined,
         aiInstructions: body.action_confirm_ai_instructions?.trim() || undefined,
+        aiPrompt: body.action_confirm_ai_prompt?.trim() || undefined,
       },
     },
   }
@@ -663,6 +664,25 @@ function FormEditor({
                 >{config.actions.confirmationEmail.aiInstructions ?? ''}</textarea>
                 <p class="text-xs text-gray-400 mt-1">Optional. Tone, what to mention, links — applied when “AI-personalised” is on.</p>
               </div>
+            )}
+
+            {isPro && (
+              <details class="border border-gray-200 rounded-xl px-3 py-2">
+                <summary class="text-xs font-bold text-gray-500 cursor-pointer">Advanced: rewrite the whole AI prompt</summary>
+                <div class="mt-2">
+                  <textarea
+                    id="action_confirm_ai_prompt"
+                    name="action_confirm_ai_prompt"
+                    rows={6}
+                    placeholder="Leave blank to use the platform default. Use {placeholders} like {contactName}, {requestedDate}, {availabilityInfo}."
+                    class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono leading-relaxed"
+                  >{config.actions.confirmationEmail.aiPrompt ?? ''}</textarea>
+                  <p class="text-xs text-gray-400 mt-1">
+                    Replaces the platform-default prompt for this form only. Placeholders:
+                    {' '}<code class="text-[10px]">{'{vendorName} {contactName} {requestedDate} {location} {theirMessage} {availabilityInfo} {instructionsBlock} {replyNudge}'}</code>
+                  </p>
+                </div>
+              </details>
             )}
           </div>
         </div>

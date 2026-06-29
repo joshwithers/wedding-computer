@@ -2,11 +2,45 @@ import { describe, it, expect } from 'vitest'
 import {
   sanitizeBuilderFields,
   validateBuilderFields,
+  validateFormForType,
   configHasAddressField,
   configHasFileField,
   BUILDER_FIELD_TYPES,
   type FormConfig,
 } from './form-schema'
+
+describe('validateFormForType', () => {
+  const cfg = (fields: any[]): FormConfig => ({
+    version: 1, title: 'T', submitLabel: 'Go', fields,
+    actions: { notifyVendor: true, confirmationEmail: { enabled: false, mode: 'ai' } },
+  })
+  const leadFields = [
+    { id: 'e', type: 'email', label: 'Email', mapTo: 'email' },
+    { id: 'f', type: 'text', label: 'First', mapTo: 'first_name' },
+    { id: 'l', type: 'text', label: 'Last', mapTo: 'last_name' },
+  ]
+
+  it('requires email + first + last mapping for enquiry forms', () => {
+    expect(validateFormForType('enquiry', cfg([{ id: 'x', type: 'text', label: 'Name' }])))
+      .toMatch(/Email/)
+    expect(validateFormForType('enquiry', cfg(leadFields))).toBeNull()
+  })
+
+  it('requires the same mapping for booking forms', () => {
+    expect(validateFormForType('booking', cfg([{ id: 'e', type: 'email', label: 'Email', mapTo: 'email' }])))
+      .toMatch(/First name/)
+    expect(validateFormForType('booking', cfg(leadFields))).toBeNull()
+  })
+
+  it('requires no contact mapping for information forms', () => {
+    expect(validateFormForType('information', cfg([{ id: 'x', type: 'text', label: 'Favourite colour' }])))
+      .toBeNull()
+  })
+
+  it('still enforces the structural field checks', () => {
+    expect(validateFormForType('information', cfg([]))).toMatch(/at least one field/)
+  })
+})
 
 describe('sanitizeBuilderFields', () => {
   it('whitelists props, defaults width, and keeps known types', () => {

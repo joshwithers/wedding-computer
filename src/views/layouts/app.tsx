@@ -30,8 +30,6 @@ const NAV_SECTIONS: { heading?: MessageKey; items: Array<{ href: string; label: 
     heading: 'nav.setup',
     items: [
       { href: '/app/forms', label: 'nav.forms' },
-      { href: '/app/form', label: 'nav.enquiryForm' },
-      { href: '/app/booking-form', label: 'nav.bookingForm' },
       { href: '/app/contract', label: 'nav.contract' },
       { href: '/app/checklists', label: 'nav.checklists' },
       { href: '/app/quotes', label: 'nav.quoteCalculator' },
