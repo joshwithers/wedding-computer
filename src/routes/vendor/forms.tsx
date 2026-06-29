@@ -2,6 +2,8 @@ import { Hono } from 'hono'
 import type { Env, VendorProfile } from '../../types'
 import { AppLayout } from '../../views/layouts/app'
 import { createForm, getForm, listForms, updateForm, deleteForm, listFormSubmissions, getFormSubmission, updateFormSubmission, formSubmissionFields } from '../../db/forms'
+import { getMembership } from '../../db/weddings'
+import { startSigningSessionFromBytes } from '../signing'
 import { noimFormConfig } from '../../forms/noim/schema'
 import { hasCategory } from '../../lib/categories'
 import type { FormConfig, FormStep, FormField } from '../../lib/form-schema'
@@ -17,7 +19,7 @@ import { requireEmailHandle } from '../../middleware/email-handle'
 import { requireAuth } from '../../middleware/auth'
 import { requireVendor } from '../../middleware/tenant'
 import { csrf } from '../../middleware/csrf'
-import { getCspNonce } from '../../i18n'
+import { getCspNonce, t } from '../../i18n'
 
 const forms = new Hono<Env>()
 
@@ -773,9 +775,21 @@ forms.get('/app/forms/:id/submissions/:subId', async (c) => {
             </p>
           </div>
           {form.type === 'noim' && (
-            <a href={`/app/forms/${form.id}/submissions/${sub.id}/pdf`} class="shrink-0 whitespace-nowrap bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700 transition active:scale-[0.97]">
-              Download NOIM PDF
-            </a>
+            <div class="shrink-0 flex flex-col items-end gap-2">
+              <a href={`/app/forms/${form.id}/submissions/${sub.id}/pdf`} class="whitespace-nowrap bg-horizon-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-horizon-700 transition active:scale-[0.97]">
+                {t('signing.forms.download')}
+              </a>
+              {sub.wedding_id ? (
+                <form method="post" action={`/app/forms/${form.id}/submissions/${sub.id}/send-for-signing`}>
+                  <input type="hidden" name="_csrf" value={c.get('csrfToken')} />
+                  <button type="submit" class="whitespace-nowrap bg-grapefruit-700 text-papaya-100 px-4 py-2 rounded-lg text-sm font-bold hover:bg-grapefruit-800 transition active:scale-[0.97]">
+                    {t('signing.forms.send')}
+                  </button>
+                </form>
+              ) : (
+                <span class="text-xs text-gray-400 text-right max-w-[12rem]">{t('signing.forms.hint')}</span>
+              )}
+            </div>
           )}
         </div>
 
@@ -817,6 +831,36 @@ forms.get('/app/forms/:id/submissions/:subId/pdf', async (c) => {
   await auditLog(c, 'download_noim_pdf', 'form_submission', sub.id, { formId: form.id }).catch(() => {})
   const { noimPdfResponse } = await import('../../forms/noim/pdf-generator')
   return noimPdfResponse(sub.data)
+})
+
+// Start a collaborative signing session from a NOIM submission. Requires the
+// submission to be linked to a wedding the celebrant is on, so the couple can
+// log in and sign. Generates the NOIM PDF as the source document.
+forms.post('/app/forms/:id/submissions/:subId/send-for-signing', async (c) => {
+  const user = c.get('user')
+  const vendor = c.get('vendor')!
+  if (!hasCategory(vendor, 'celebrant')) return c.text('Not found', 404)
+  const form = await getForm(c.env.DB, vendor.id, c.req.param('id'))
+  if (!form || form.type !== 'noim') return c.text('Not found', 404)
+  const sub = await getFormSubmission(c.env.DB, vendor.id, c.req.param('subId'))
+  if (!sub || sub.form_id !== form.id) return c.text('Not found', 404)
+  if (!sub.wedding_id) return c.text('Add this NOIM to a wedding before sending it for signing.', 400)
+
+  const membership = await getMembership(c.env.DB, sub.wedding_id, user.id)
+  if (!membership || membership.vendor_profile_id !== vendor.id) return c.text('Not allowed', 403)
+
+  const { noimPdfResponse } = await import('../../forms/noim/pdf-generator')
+  const bytes = await (await noimPdfResponse(sub.data)).arrayBuffer()
+  const session = await startSigningSessionFromBytes(c, {
+    weddingId: sub.wedding_id,
+    vendor,
+    userId: user.id,
+    bytes,
+    title: 'Notice of Intended Marriage',
+    sourceKind: 'noim',
+    sourceRef: sub.id,
+  })
+  return c.redirect(`/app/weddings/${sub.wedding_id}/sign/${session.id}`)
 })
 
 // ─── Modern client-side field builder ───

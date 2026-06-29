@@ -47,7 +47,9 @@ import {
   getTimelineControllers,
   createTimelineRequest,
 } from '../../db/timeline-requests'
-import { isManagerVendor, categoriesLabel } from '../../lib/categories'
+import { isManagerVendor, categoriesLabel, hasCategory } from '../../lib/categories'
+import { listSigningSessionsForWedding } from '../../db/signing'
+import type { DocumentSigningSession } from '../../types'
 import { weddingDisplayTitle } from '../../lib/wedding-display'
 import { sendVendorWelcomeInvite } from '../../services/auth'
 import { ensureCoupleContact } from '../../services/couple-contact'
@@ -1005,6 +1007,7 @@ weddings.get('/app/weddings/:id', async (c) => {
     timelineSection,
     coupleVendors,
     log,
+    signingSessions,
   ] = await Promise.all([
     listDocumentsForWedding(c.env.DB, weddingId, user.id),
     listInvoicesForWedding(c.env.DB, vendor.id, weddingId),
@@ -1029,6 +1032,9 @@ weddings.get('/app/weddings/:id', async (c) => {
     renderTimelineSection(c, weddingId, membership, user, basePath, { wedding, lead }),
     listCoupleVendors(c.env.DB, weddingId).catch(() => [] as Awaited<ReturnType<typeof listCoupleVendors>>),
     listWeddingLog(c.env.DB, weddingId, 20).catch(() => [] as Awaited<ReturnType<typeof listWeddingLog>>),
+    hasCategory(vendor, 'celebrant')
+      ? listSigningSessionsForWedding(c.env.DB, weddingId).catch(() => [] as DocumentSigningSession[])
+      : Promise.resolve([] as DocumentSigningSession[]),
   ])
 
   const sendableForms = sendableFormsAll.filter((f) => f.type === 'custom' && f.is_active)
@@ -1246,6 +1252,8 @@ weddings.get('/app/weddings/:id', async (c) => {
           csrfToken={c.get('csrfToken')}
           uploaded={!!uploaded}
           deleted={!!deleted}
+          signingSessions={signingSessions}
+          isCelebrant={hasCategory(vendor, 'celebrant')}
         />
 
         {/* Vendor Credits */}
@@ -2492,6 +2500,64 @@ function fileIcon(mimeType: string): string {
   return 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'
 }
 
+function signingStatusLabel(status: string): { text: string; cls: string } {
+  switch (status) {
+    case 'awaiting_couple': return { text: t('signing.block.status.awaitingCouple'), cls: 'bg-amber-100 text-amber-700' }
+    case 'awaiting_celebrant': return { text: t('signing.block.status.awaitingCelebrant'), cls: 'bg-grapefruit-100 text-grapefruit-700' }
+    case 'complete': return { text: t('signing.block.status.complete'), cls: 'bg-horizon-100 text-horizon-700' }
+    default: return { text: status, cls: 'bg-gray-100 text-gray-600' }
+  }
+}
+
+function WeddingSigning({ weddingId, sessions, csrfToken }: { weddingId: string; sessions: DocumentSigningSession[]; csrfToken: string }) {
+  return (
+    <div class="mt-6">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-bold text-gray-500">{t('signing.block.title')}</h3>
+        <span class="text-xs text-gray-400">{tp('signing.block.docCount', sessions.length)}</span>
+      </div>
+
+      {sessions.length > 0 && (
+        <div class="bg-white border border-papaya-300/30 rounded-2xl divide-y divide-gray-100 mb-4">
+          {sessions.map((s) => {
+            const badge = signingStatusLabel(s.status)
+            return (
+              <a href={`/app/weddings/${weddingId}/sign/${s.id}`} class="p-3 flex items-center gap-3 hover:bg-gray-50/60 transition-colors">
+                <div class="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                  <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <span class="text-sm font-medium text-gray-900 truncate block">{s.title}</span>
+                  <span class="text-xs text-gray-400">{s.source_kind === 'noim' ? t('signing.block.kind.noim') : t('signing.block.kind.pdf')}</span>
+                </div>
+                <span class={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}>{badge.text}</span>
+              </a>
+            )
+          })}
+        </div>
+      )}
+
+      <details class="group" open={sessions.length === 0 ? true : undefined}>
+        <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 transition-colors select-none flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+          {t('signing.block.uploadSummary')}
+        </summary>
+        <form method="post" action={`/app/weddings/${weddingId}/sign/new`} enctype="multipart/form-data" class="mt-3 border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3">
+          <input type="hidden" name="_csrf" value={csrfToken} />
+          <div>
+            <input type="file" name="file" accept="application/pdf" required class="block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-grapefruit-700 file:text-papaya-100 hover:file:bg-grapefruit-800 file:cursor-pointer" />
+            <p class="text-xs text-gray-400 mt-1">{t('signing.block.uploadHint')}</p>
+          </div>
+          <div>
+            <input type="text" name="title" placeholder={t('signing.block.docName')} class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-grapefruit-700 focus:border-transparent" />
+          </div>
+          <button type="submit" class="bg-grapefruit-700 text-papaya-100 px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-grapefruit-800 transition active:scale-[0.97]">{t('signing.block.start')}</button>
+        </form>
+      </details>
+    </div>
+  )
+}
+
 function WeddingFiles({
   weddingId,
   documents,
@@ -2500,6 +2566,8 @@ function WeddingFiles({
   csrfToken,
   uploaded,
   deleted,
+  signingSessions,
+  isCelebrant,
 }: {
   weddingId: string
   documents: DocumentWithUploader[]
@@ -2508,11 +2576,15 @@ function WeddingFiles({
   csrfToken: string
   uploaded: boolean
   deleted: boolean
+  signingSessions: DocumentSigningSession[]
+  isCelebrant: boolean
 }) {
   const otherMembers = members.filter((m) => m.user_id !== userId)
 
   return (
     <div class="mt-6">
+      {isCelebrant && <WeddingSigning weddingId={weddingId} sessions={signingSessions} csrfToken={csrfToken} />}
+
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-bold text-gray-500">{t('weddings.files.title')}</h3>
         <span class="text-xs text-gray-400">{tp('weddings.files.fileCount', documents.length)}</span>

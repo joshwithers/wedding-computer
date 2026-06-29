@@ -55,6 +55,7 @@ import { isValidEmail } from '../lib/validation'
 import { consumeRateLimit } from '../middleware/rate-limit'
 import { auditLog } from '../middleware/audit'
 import { listDocumentsForWedding, type DocumentWithUploader } from '../db/documents'
+import { listSigningSessionsForWedding } from '../db/signing'
 import { formatDate, formatDateTime, daysUntil } from '../lib/date'
 import { effectiveWeddingStatus } from '../services/wedding-lifecycle'
 
@@ -223,6 +224,10 @@ couple.get('/wedding/:id', async (c) => {
   const fileUploaded = c.req.query('uploaded')
   const fileDeleted = c.req.query('deleted')
 
+  // Documents awaiting the couple's signature (celebrant signing flow)
+  const signingSessions = (await listSigningSessionsForWedding(c.env.DB, weddingId).catch(() => []))
+    .filter((s) => s.status === 'awaiting_couple')
+
   return c.html(
     <CoupleLayout title={weddingDisplayTitle(wedding)} user={user} wedding={wedding} csrfToken={c.get('csrfToken')}>
       <div class="max-w-3xl mx-auto space-y-6">
@@ -239,6 +244,19 @@ couple.get('/wedding/:id', async (c) => {
             {wedding.date ? t('lifecycle.couple.postponedNewDate', { date: formatDate(wedding.date) }) : t('lifecycle.couple.postponedTbd')}
           </div>
         )}
+        {/* Signature requests — prominent, the couple should act on these */}
+        {signingSessions.map((s) => (
+          <div class="rounded-xl bg-grapefruit-50 border border-grapefruit-200 px-4 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-bold text-grapefruit-800">{t('signing.card.title')}</p>
+              <p class="text-sm font-medium text-grapefruit-800 mt-0.5 truncate">{s.title}</p>
+              <p class="text-sm text-grapefruit-700 mt-0.5">{t('signing.card.body')}</p>
+            </div>
+            <a href={`/wedding/${weddingId}/sign/${s.id}`} class="shrink-0 inline-flex items-center justify-center rounded-lg bg-grapefruit-700 text-papaya-100 text-sm font-semibold px-5 h-11 hover:bg-grapefruit-800 active:scale-[0.97] transition" style="transition-property:transform,background-color">
+              {t('signing.card.open')}
+            </a>
+          </div>
+        ))}
         {/* Hero */}
         <div class="text-center">
           <h1 class="text-2xl sm:text-3xl font-bold">{weddingDisplayTitle(wedding)}</h1>

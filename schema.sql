@@ -495,6 +495,38 @@ CREATE TABLE IF NOT EXISTS document_shares (
   UNIQUE(document_id, user_id)
 );
 
+-- Collaborative PDF signing (migration 077). Celebrant → couple signs → celebrant
+-- signs → final private (celebrant-only) document. Captures evidentiary metadata
+-- (the digital wet signature is legally valid).
+CREATE TABLE IF NOT EXISTS document_signing_sessions (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),
+  wedding_id TEXT NOT NULL REFERENCES weddings(id) ON DELETE CASCADE,
+  vendor_id TEXT NOT NULL REFERENCES vendor_profiles(id),
+  created_by_user_id TEXT NOT NULL REFERENCES users(id),
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('upload', 'noim')),
+  source_ref TEXT,
+  title TEXT NOT NULL,
+  source_r2_key TEXT NOT NULL,
+  current_r2_key TEXT NOT NULL,
+  couple_signed_r2_key TEXT,
+  final_document_id TEXT REFERENCES documents(id),
+  status TEXT NOT NULL DEFAULT 'awaiting_couple'
+    CHECK (status IN ('awaiting_couple', 'awaiting_celebrant', 'complete', 'cancelled')),
+  couple_signed_at TEXT,
+  couple_signed_by_user_id TEXT REFERENCES users(id),
+  couple_signed_in_person INTEGER NOT NULL DEFAULT 0,
+  couple_signed_ip TEXT,
+  celebrant_signed_at TEXT,
+  celebrant_signed_ip TEXT,
+  -- Live release gate (migration 078): the couple can only sign while couple_released=1,
+  -- set by the celebrant who witnesses them; re-locks once they sign.
+  couple_released INTEGER NOT NULL DEFAULT 0,
+  couple_released_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_signing_sessions_wedding ON document_signing_sessions(wedding_id);
+CREATE INDEX IF NOT EXISTS idx_signing_sessions_vendor ON document_signing_sessions(vendor_id);
+
 -- Couple vendor planning entries
 CREATE TABLE IF NOT EXISTS couple_vendors (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(12)))),

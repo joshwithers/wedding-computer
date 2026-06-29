@@ -33,6 +33,7 @@ import quotesRoute from './routes/vendor/quotes'
 import accountRoute from './routes/account'
 import adminRoute from './routes/admin'
 import filesRoute from './routes/files'
+import signingRoute from './routes/signing'
 import feed from './routes/feed'
 import carddav from './routes/carddav'
 import caldav from './routes/caldav'
@@ -56,7 +57,7 @@ import { StorageConflictError } from './storage/conflicts'
 import { sendEmailMessage, EmailSendError, broadcastEmail, newLeadEmail, formSubmissionEmail, formNotificationEmail, formConfirmationEmail, enquiryConfirmationEmail, bookingContractCopyEmail, referralRewardEmail } from './services/email'
 import { getBroadcast } from './db/broadcast'
 import { handleInboundEmail } from './services/inbound-email'
-import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyBookingConfirmed, notifyWeddingCancelled, notifyWeddingPostponed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, notifyTimelineChangeRequested, notifyTimelineChangeDecided, notifyWeddingFormSubmission, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
+import { notifyInvoiceSent, notifyVendorAdded, notifyCoupleJoined, notifyBookingConfirmed, notifyWeddingCancelled, notifyWeddingPostponed, notifyVendorRemoved, notifyVendorBooked, notifyWeddingDetailsUpdated, notifyPaymentReceived, notifyAdminSignup, notifyTimelineChangeRequested, notifyTimelineChangeDecided, notifyWeddingFormSubmission, notifyDocumentReady, runVendorDailyJobs, deliver, type NotifyEnv } from './services/notifications'
 import { aggregateBusynessScores, aggregateDemandHistory } from './db/busyness'
 import { geocodePendingLocations } from './services/geocode'
 import { runWithI18n, resolveLocale, getCspNonce } from './i18n'
@@ -527,6 +528,7 @@ app.route('/', formsRoute)
 app.route('/', referRoute)
 app.route('/', accountRoute)
 app.route('/', filesRoute)
+app.route('/', signingRoute)
 app.route('/', communityRoute)
 app.route('/', coupleRoute)
 app.route('/', adminRoute)
@@ -824,6 +826,13 @@ export default {
             JSON.parse(body.payload)
           )
           console.log('[QUEUE] notify_couple_joined processed')
+
+        } else if (body.type === 'notify_document_ready') {
+          await notifyDocumentReady(
+            notifyEnv(env),
+            JSON.parse(body.payload)
+          )
+          console.log('[QUEUE] notify_document_ready processed')
 
         } else if (body.type === 'notify_booking_confirmed') {
           await notifyBookingConfirmed(

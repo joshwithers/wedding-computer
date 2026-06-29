@@ -22,9 +22,12 @@ import {
   timelineChangeRequestedEmail,
   timelineChangeDecidedEmail,
   weddingFormResponseEmail,
+  documentAwaitingCelebrantEmail,
+  documentSignedEmail,
 } from './email'
 import { getWedding, getWeddingMembers, SQL_WEDDING_ACTIVE, SQL_CALENDAR_EVENT_NOT_CANCELLED } from '../db/weddings'
 import { getVendorWithEmail } from '../db/vendors'
+import { getSigningSessionById } from '../db/signing'
 import { formSubmissionFields } from '../db/forms'
 import { formatDate } from '../lib/date'
 import {
@@ -469,6 +472,63 @@ export async function notifyVendorAdded(env: NotifyEnv, data: {
         addedByName: data.addedBy,
         loginUrl: `${env.appUrl}/wedding/${data.weddingId}`,
       }),
+    })
+  }
+}
+
+/**
+ * Collaborative PDF signing turn notifications. Signing is witnessed live (the celebrant
+ * releases each turn), so these are backups/records, not the primary nudge. `event`:
+ *  - awaiting_celebrant: the owning celebrant (vendor_collaboration) — link to /app/weddings/:id/sign/:sid
+ *  - completed:          each couple member  (wedding_updates)       — NO CTA link, by design
+ * 'completed' deliberately sends no link: the couple does not receive a copy; the signed PDF
+ * is the celebrant-private final document. Loads the session unscoped (getSigningSessionById)
+ * because the queue consumer has already established trust.
+ */
+export async function notifyDocumentReady(
+  env: NotifyEnv,
+  data: { sessionId: string; event: 'awaiting_celebrant' | 'completed' }
+): Promise<void> {
+  const session = await getSigningSessionById(env.db, data.sessionId)
+  if (!session) return
+  const wedding = await getWedding(env.db, session.wedding_id)
+  if (!wedding) return
+  const vendor = await getVendorWithEmail(env.db, session.vendor_id)
+  if (!vendor) return
+
+  if (data.event === 'awaiting_celebrant') {
+    await deliver(env, {
+      key: 'vendor_collaboration',
+      recipient: {
+        id: vendor.user_id,
+        email: vendor.user_email,
+        name: vendor.user_name,
+        notification_prefs: vendor.user_notification_prefs,
+      },
+      subject: `The couple signed ${session.title}`,
+      html: documentAwaitingCelebrantEmail({
+        vendorName: vendor.user_name || vendor.business_name,
+        documentTitle: session.title,
+        signUrl: `${env.appUrl}/app/weddings/${session.wedding_id}/sign/${session.id}`,
+      }),
+      vendorId: session.vendor_id,
+    })
+    return
+  }
+
+  // completed → couple confirmation (no link; they don't receive a copy)
+  const members = await getWeddingMembers(env.db, session.wedding_id)
+  for (const m of members.filter((m) => m.role === 'couple')) {
+    await deliver(env, {
+      key: 'wedding_updates',
+      recipient: { id: m.user_id, email: m.user_email, name: m.user_name, notification_prefs: m.user_notification_prefs },
+      subject: `${session.title} is signed`,
+      html: documentSignedEmail({
+        coupleName: m.user_name,
+        vendorName: vendor.business_name,
+        documentTitle: session.title,
+      }),
+      vendorId: session.vendor_id,
     })
   }
 }

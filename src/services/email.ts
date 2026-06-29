@@ -484,6 +484,37 @@ export function vendorAddedEmail(data: {
   `, { preheader: `${esc(data.addedByName)} added you to ${esc(data.weddingTitle)}` })
 }
 
+// ─── Collaborative PDF signing ───
+// Signing is witnessed live (the celebrant releases each turn), so there is no
+// "couple, please sign" email — the celebrant starts it while they're together.
+
+export function documentAwaitingCelebrantEmail(data: {
+  vendorName: string
+  documentTitle: string
+  signUrl: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">The couple has signed — your turn</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">
+      Hi ${esc(data.vendorName)}, the couple has signed <strong>${esc(data.documentTitle)}</strong>. Add your signature to finalise it — the signed PDF will be saved to the wedding for you.
+    </p>
+    <a href="${data.signUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">Add your signature</a>
+  `, { preheader: `The couple signed ${esc(data.documentTitle)} — add your signature` })
+}
+
+export function documentSignedEmail(data: {
+  coupleName: string
+  vendorName: string
+  documentTitle: string
+}): string {
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">${esc(data.documentTitle)} is signed</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 8px;">
+      Hi ${esc(data.coupleName)}, ${esc(data.vendorName)} has finalised <strong>${esc(data.documentTitle)}</strong>. It's now fully signed and on file with your celebrant.
+    </p>
+  `, { preheader: `${esc(data.documentTitle)} is fully signed` })
+}
+
 export function coupleJoinedEmail(data: {
   vendorName: string
   coupleName: string

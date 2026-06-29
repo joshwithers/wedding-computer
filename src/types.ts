@@ -524,6 +524,32 @@ export type DocumentShare = {
   created_at: string
 }
 
+export type SigningStatus = 'awaiting_couple' | 'awaiting_celebrant' | 'complete' | 'cancelled'
+
+export type DocumentSigningSession = {
+  id: string
+  wedding_id: string
+  vendor_id: string
+  created_by_user_id: string
+  source_kind: 'upload' | 'noim'
+  source_ref: string | null
+  title: string
+  source_r2_key: string
+  current_r2_key: string
+  couple_signed_r2_key: string | null
+  final_document_id: string | null
+  status: SigningStatus
+  couple_signed_at: string | null
+  couple_signed_by_user_id: string | null
+  couple_signed_in_person: number
+  couple_signed_ip: string | null
+  celebrant_signed_at: string | null
+  celebrant_signed_ip: string | null
+  couple_released: number
+  couple_released_at: string | null
+  created_at: string
+}
+
 export type WebLink = {
   id: string
   wedding_id: string

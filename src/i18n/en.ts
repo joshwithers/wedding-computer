@@ -29,6 +29,7 @@ import { comms } from './en/comms'
 import { marketing } from './en/marketing'
 import { legal } from './en/legal'
 import { community } from './en/community'
+import { signing } from './en/signing'
 
 export const en = {
   ...common,
@@ -52,4 +53,5 @@ export const en = {
   ...marketing,
   ...legal,
   ...community,
+  ...signing,
 } as const
