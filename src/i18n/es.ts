@@ -1248,6 +1248,8 @@ export const es: Dictionary = {
   'weddings.places.gettingReady1': 'Preparativos (1)',
   'weddings.places.gettingReady2': 'Preparativos (2)',
   'weddings.places.ceremony': 'Ceremonia',
+  'timeline.feed.weddingDay': 'Día de la boda',
+  'timeline.feed.ceremony': 'Ceremonia',
   'weddings.places.portraits': 'Retratos',
   'weddings.places.reception': 'Recepción',
   'weddings.places.map': 'Mapa',

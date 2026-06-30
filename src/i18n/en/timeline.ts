@@ -136,4 +136,7 @@ export const timeline = {
   'timeline.feed.heading': 'Your wedding calendar',
   'timeline.feed.desc': 'Subscribe to this link in Apple Calendar, Google Calendar or Outlook. The sections you add to your calendar show up here automatically.',
   'timeline.feed.label': 'Calendar feed link',
+  // The all-day wedding marker that rides in subscribed calendars (iCal/CalDAV).
+  'timeline.feed.weddingDay': 'Wedding day',
+  'timeline.feed.ceremony': 'Ceremony',
 } as const

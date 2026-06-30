@@ -1249,6 +1249,8 @@ export const fr: Dictionary = {
   'weddings.places.gettingReady1': 'Préparation (1)',
   'weddings.places.gettingReady2': 'Préparation (2)',
   'weddings.places.ceremony': 'Cérémonie',
+  'timeline.feed.weddingDay': 'Jour du mariage',
+  'timeline.feed.ceremony': 'Cérémonie',
   'weddings.places.portraits': 'Portraits',
   'weddings.places.reception': 'Réception',
   'weddings.places.map': 'Carte',

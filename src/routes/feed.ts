@@ -7,8 +7,9 @@ import { isProVendor } from '../db/subscriptions'
 import { listEnrichedEventsByRange } from '../db/calendar'
 import { listUserCalendarRows, listVendorCalendarRows } from '../db/timeline'
 import { listUserWeddingDays, listVendorWeddingDays } from '../db/weddings'
+import { getUserById } from '../db/users'
 import { buildIcalFeed, buildTimelineFeed } from '../services/ical'
-import { DEFAULT_TIMEZONE } from '../i18n'
+import { DEFAULT_TIMEZONE, runWithI18n } from '../i18n'
 
 const feed = new Hono<Env>()
 
@@ -32,7 +33,13 @@ feed.get('/cal/u/:token', async (c) => {
   const rows = await listUserCalendarRows(c.env.DB, user.id)
   const weddingDays = await listUserWeddingDays(c.env.DB, user.id)
   const calName = `${user.name} — wedding day`
-  const ical = buildTimelineFeed(rows, calName, user.timezone ?? DEFAULT_TIMEZONE, weddingDays)
+  // Render the feed text (e.g. the all-day "Wedding day" marker) in the
+  // subscriber's own language — this token route bypasses requireAuth, so the
+  // i18n context isn't seeded otherwise.
+  const ical = runWithI18n(
+    { locale: user.locale ?? undefined, timezone: user.timezone ?? undefined },
+    () => buildTimelineFeed(rows, calName, user.timezone ?? DEFAULT_TIMEZONE, weddingDays)
+  )
 
   return c.body(ical, 200, {
     'Content-Type': 'text/calendar; charset=utf-8',
@@ -82,7 +89,14 @@ feed.get('/cal/:token', async (c) => {
     (w) => w.date >= startDate && w.date <= endDate
   )
 
-  const ical = buildIcalFeed(events, vendor.business_name, vendor.timezone, timelineRows, weddingDays)
+  // Localise the feed text to the vendor owner's language (vendor profiles carry
+  // a timezone but not a locale; the owning user does). Token route, so the i18n
+  // context isn't seeded by middleware.
+  const owner = await getUserById(c.env.DB, vendor.user_id)
+  const ical = runWithI18n(
+    { locale: owner?.locale ?? undefined, timezone: vendor.timezone },
+    () => buildIcalFeed(events, vendor.business_name, vendor.timezone, timelineRows, weddingDays)
+  )
 
   return c.body(ical, 200, {
     'Content-Type': 'text/calendar; charset=utf-8',

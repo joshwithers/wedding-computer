@@ -1224,6 +1224,8 @@ export const el: Dictionary = {
   "weddings.places.gettingReady1": "Προετοιμασία (1)",
   "weddings.places.gettingReady2": "Προετοιμασία (2)",
   "weddings.places.ceremony": "Τελετή",
+  "timeline.feed.weddingDay": "Ημέρα γάμου",
+  "timeline.feed.ceremony": "Τελετή",
   "weddings.places.portraits": "Φωτογράφιση",
   "weddings.places.reception": "Δεξίωση",
   "weddings.places.map": "Χάρτης",

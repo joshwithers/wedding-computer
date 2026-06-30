@@ -1247,6 +1247,8 @@ export const zh: Dictionary = {
   "weddings.places.gettingReady1": "准备中（1）",
   "weddings.places.gettingReady2": "准备中（2）",
   "weddings.places.ceremony": "仪式",
+  "timeline.feed.weddingDay": "婚礼当天",
+  "timeline.feed.ceremony": "仪式",
   "weddings.places.portraits": "肖像拍摄",
   "weddings.places.reception": "宴会",
   "weddings.places.map": "地图",

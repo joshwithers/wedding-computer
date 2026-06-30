@@ -1247,6 +1247,8 @@ export const nl: Dictionary = {
   'weddings.places.gettingReady1': 'Klaarmaken (1)',
   'weddings.places.gettingReady2': 'Klaarmaken (2)',
   'weddings.places.ceremony': 'Ceremonie',
+  'timeline.feed.weddingDay': 'Trouwdag',
+  'timeline.feed.ceremony': 'Ceremonie',
   'weddings.places.portraits': 'Portretten',
   'weddings.places.reception': 'Receptie',
   'weddings.places.map': 'Kaart',

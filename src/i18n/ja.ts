@@ -1220,6 +1220,8 @@ export const ja: Dictionary = {
   'weddings.places.gettingReady1': '支度（1）',
   'weddings.places.gettingReady2': '支度（2）',
   'weddings.places.ceremony': '挙式',
+  'timeline.feed.weddingDay': '結婚式当日',
+  'timeline.feed.ceremony': '挙式',
   'weddings.places.portraits': 'ポートレート撮影',
   'weddings.places.reception': '披露宴',
   'weddings.places.map': '地図',

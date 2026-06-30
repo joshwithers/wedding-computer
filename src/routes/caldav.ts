@@ -13,6 +13,8 @@ import {
   listVendorWeddingDays, getVendorWeddingDay, getVendorWeddingDaysByIds,
   SQL_WEDDING_NOT_CANCELLED, type WeddingDayRow,
 } from '../db/weddings'
+import { getUserById } from '../db/users'
+import { runWithI18n } from '../i18n'
 import { buildVevent, buildTimelineVevent, buildWeddingDayVevent } from '../services/ical'
 
 const caldav = new Hono<Env>()
@@ -97,6 +99,21 @@ async function windowedWeddingDays(db: D1Database, vendorId: string): Promise<We
   const { start, end } = caldavWindow()
   const rows = await listVendorWeddingDays(db, vendorId)
   return rows.filter((w) => w.date >= start && w.date <= end)
+}
+
+/**
+ * i18n context for rendering feed text (e.g. the all-day "Wedding day" marker)
+ * in the vendor owner's language. Vendor profiles carry a timezone but not a
+ * locale, so the locale comes from the owning user. This token-auth route never
+ * goes through requireAuth, so the context isn't seeded otherwise.
+ */
+async function vendorI18nCtx(
+  db: D1Database,
+  vendorUserId: string,
+  timezone: string
+): Promise<{ locale?: string; timezone?: string }> {
+  const owner = await getUserById(db, vendorUserId)
+  return { locale: owner?.locale ?? undefined, timezone }
 }
 
 /**
@@ -392,6 +409,7 @@ caldav.on('REPORT', '/calendars/:token/bookings/', async (c) => {
   const base = `/caldav`
   const body = await c.req.text()
   const tz = vendor.timezone || 'Australia/Sydney'
+  const i18nCtx = await vendorI18nCtx(c.env.DB, vendor.user_id, tz)
 
   if (isMultiget(body)) {
     const hrefs = parseHrefsFromBody(body)
@@ -429,7 +447,7 @@ caldav.on('REPORT', '/calendars/:token/bookings/', async (c) => {
     const tlResponses = tlRows.map(r => timelineDataResponse(base, token, r, tz))
 
     const wdRows = wdIds.length ? await getVendorWeddingDaysByIds(c.env.DB, vendor.id, wdIds) : []
-    const wdResponses = wdRows.map(w => weddingDayDataResponse(base, token, w, tz))
+    const wdResponses = runWithI18n(i18nCtx, () => wdRows.map(w => weddingDayDataResponse(base, token, w, tz)))
 
     return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
@@ -462,7 +480,7 @@ caldav.on('REPORT', '/calendars/:token/bookings/', async (c) => {
   const tlResponses = tlRows.map(r => timelineDataResponse(base, token, r, tz))
 
   const wdRows = await windowedWeddingDays(c.env.DB, vendor.id)
-  const wdResponses = wdRows.map(w => weddingDayDataResponse(base, token, w, tz))
+  const wdResponses = runWithI18n(i18nCtx, () => wdRows.map(w => weddingDayDataResponse(base, token, w, tz)))
 
   return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
@@ -497,7 +515,8 @@ caldav.get('/calendars/:token/bookings/:uid', async (c) => {
   if (uid.startsWith(WD_PREFIX)) {
     const w = await getVendorWeddingDay(c.env.DB, vendor.id, uid.slice(WD_PREFIX.length))
     if (!w) return c.text('Not found', 404)
-    const wdIcal = wrapVCalendar(buildWeddingDayVevent(w, tz), tz)
+    const i18nCtx = await vendorI18nCtx(c.env.DB, vendor.user_id, tz)
+    const wdIcal = runWithI18n(i18nCtx, () => wrapVCalendar(buildWeddingDayVevent(w, tz), tz))
     return new Response(wdIcal, {
       status: 200,
       headers: {

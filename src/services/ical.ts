@@ -3,6 +3,7 @@ import type { UserCalendarRow } from '../db/timeline'
 import type { WeddingDayRow } from '../db/weddings'
 import { addHoursToTime } from '../lib/date'
 import { resolveLocationTimezone } from '../lib/sun'
+import { t } from '../i18n'
 
 // Human label for a wc:<slot> booking event when no real run-sheet item is
 // matched (the synthetic ceremony-prep block + legacy rows).
@@ -103,7 +104,7 @@ export function buildWeddingDayVevent(w: WeddingDayRow, timezone: string): strin
   const emoji = w.emoji || '💍'
   const lines: string[] = ['BEGIN:VEVENT']
   lines.push(`UID:wd-${w.id}@weddingcomputer.com`)
-  lines.push(`SUMMARY:${escapeIcalText(`${emoji} ${couple} — Wedding day`)}`)
+  lines.push(`SUMMARY:${escapeIcalText(`${emoji} ${couple} — ${t('timeline.feed.weddingDay')}`)}`)
   lines.push(`DTSTAMP:${formatUtcTimestamp(w.created_at)}`)
   lines.push(`DTSTART;VALUE=DATE:${w.date.replace(/-/g, '')}`)
   lines.push(`DTEND;VALUE=DATE:${nextDay(w.date)}`)
@@ -111,7 +112,7 @@ export function buildWeddingDayVevent(w: WeddingDayRow, timezone: string): strin
   if (loc) lines.push(`LOCATION:${escapeIcalText(loc)}`)
   const descLines: string[] = [`💒 ${couple}`]
   if (w.couple_email) descLines.push(`📧 ${w.couple_email}`)
-  if (w.time) descLines.push(`⛪ Ceremony: ${w.time}`)
+  if (w.time) descLines.push(`⛪ ${t('timeline.feed.ceremony')}: ${w.time}`)
   if (loc) descLines.push(`📍 ${loc}`)
   lines.push(`DESCRIPTION:${escapeIcalText(descLines.join('\n'))}`)
   lines.push('TRANSP:TRANSPARENT', 'CATEGORIES:Wedding')
