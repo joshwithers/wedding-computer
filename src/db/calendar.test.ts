@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { syncWeddingBookingEvent } from './calendar'
+import { syncWeddingBookingEvent, removeVendorWeddingEvents } from './calendar'
 import { MockD1Database } from '../storage/__tests__/mock-d1'
 
 const WED = 'wwwwwwwwwwwwwwwwwwwwwwww'
@@ -73,5 +73,20 @@ describe('syncWeddingBookingEvent', () => {
     expect(rows[0].all_day).toBe(0)
     expect(rows[0].start_time).toBe('14:00')
     expect(rows[0].end_time).toBe('17:00')
+  })
+})
+
+describe('removeVendorWeddingEvents', () => {
+  it("deletes the removed vendor's wedding rows but keeps other vendors + unrelated events", async () => {
+    const db = new MockD1Database()
+    db.seed('calendar_events', [
+      { id: 'b1', vendor_id: VENDOR, wedding_id: WED, type: 'booking', notes: null },
+      { id: 'wc1', vendor_id: VENDOR, wedding_id: WED, type: 'booking', notes: 'wc:ceremony' },
+      { id: 'b2', vendor_id: VENDOR2, wedding_id: WED, type: 'booking', notes: null }, // another vendor — keep
+      { id: 'p1', vendor_id: VENDOR, wedding_id: null, type: 'personal', notes: null }, // unrelated — keep
+    ])
+    await removeVendorWeddingEvents(db as any, WED, VENDOR)
+    const ids = db.getTable('calendar_events').map((e) => e.id).sort()
+    expect(ids).toEqual(['b2', 'p1'])
   })
 })

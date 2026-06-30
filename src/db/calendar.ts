@@ -222,6 +222,23 @@ export async function syncWeddingBookingEvent(
   }
 }
 
+/**
+ * Drop a vendor's wedding-tagged calendar events when they're removed from a
+ * wedding — the booking marker (which drives their in-app grid + public
+ * availability) plus any legacy `wc:` slot rows. Without this their availability
+ * would keep showing them booked on the wedding's date after they've left it.
+ */
+export async function removeVendorWeddingEvents(
+  db: D1Database,
+  weddingId: string,
+  vendorProfileId: string
+): Promise<void> {
+  await db
+    .prepare("DELETE FROM calendar_events WHERE wedding_id = ? AND vendor_id = ? AND (type = 'booking' OR notes LIKE 'wc:%')")
+    .bind(weddingId, vendorProfileId)
+    .run()
+}
+
 export async function updateEvent(
   db: D1Database,
   vendorId: string,

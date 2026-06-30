@@ -30,7 +30,7 @@ import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { getUserByEmail } from '../../db/users'
 import { requireString, trimOrNull, validDateOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, formatDateTime, formatTime, daysUntil, addHoursToTime } from '../../lib/date'
-import { createEvent, syncWeddingBookingEvent } from '../../db/calendar'
+import { createEvent, syncWeddingBookingEvent, removeVendorWeddingEvents } from '../../db/calendar'
 import { track } from '../../services/analytics'
 import { listVendorTypes, vendorTypeLabel, type VendorType } from '../../db/vendor-types'
 import { searchVendorsForWedding, getVendorWithEmail, getVendorByUserId } from '../../db/vendors'
@@ -923,17 +923,14 @@ weddings.post('/app/weddings/:id/members/:userId/remove', rateLimit(30, 60), asy
 
   if (target.vendor_profile_id) {
     // Mirror the removal into the couple's tracked vendors + drop the vendor's
-    // tagged calendar events for this wedding so it leaves their feed.
+    // tagged calendar events for this wedding (booking marker + legacy wc: rows)
+    // so it leaves their feed/grid and frees their availability on that date.
     await c.env.DB
       .prepare("UPDATE couple_vendors SET status = 'removed' WHERE wedding_id = ? AND vendor_profile_id = ?")
       .bind(weddingId, target.vendor_profile_id)
       .run()
     c.executionCtx.waitUntil(
-      c.env.DB
-        .prepare("DELETE FROM calendar_events WHERE wedding_id = ? AND vendor_id = ? AND notes LIKE 'wc:%'")
-        .bind(weddingId, target.vendor_profile_id)
-        .run()
-        .then(() => {})
+      removeVendorWeddingEvents(c.env.DB, weddingId, target.vendor_profile_id)
         .catch((e) => console.error('[weddings] remove vendor: calendar cleanup failed', e)),
     )
   }

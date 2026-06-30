@@ -19,7 +19,7 @@ import { celebrantTermsDiffer } from '../lib/celebrant-term'
 import { weddingDisplayTitle } from '../lib/wedding-display'
 import { createTimelineRequest, getTimelineControllers } from '../db/timeline-requests'
 import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes, touchTimelineItemsForWedding } from '../db/timeline'
-import { syncWeddingBookingEvent } from '../db/calendar'
+import { syncWeddingBookingEvent, removeVendorWeddingEvents } from '../db/calendar'
 import { t, type MessageKey } from '../i18n'
 import { shouldShowWeather } from '../views/weather'
 import { renderWeatherCard, setWeatherUnit } from './weather-handlers'
@@ -1402,6 +1402,12 @@ couple.post('/wedding/:id/vendor/:vendorProfileId/remove', async (c) => {
     )
     .bind(weddingId, vendorProfileId)
     .run()
+
+  // Drop the removed vendor's wedding calendar events (booking marker + legacy
+  // wc: rows) so the date leaves their feed/grid and frees their availability.
+  await removeVendorWeddingEvents(c.env.DB, weddingId, vendorProfileId).catch((e: any) =>
+    console.error('[couple] remove vendor: calendar cleanup failed', e?.message)
+  )
 
   // Mark couple_vendor as removed too
   const coupleVendor = await getCoupleVendorByProfileId(c.env.DB, weddingId, vendorProfileId)
