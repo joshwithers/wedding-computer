@@ -1478,8 +1478,18 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     // refresh the derived columns — no direct column write the projection clobbers.
     await applyWeddingUpdate(c.env.DB, weddingId, updateData as Record<string, string | number | null>, user.id, oldWedding as any)
     console.log('[weddings] edit', weddingId, 'updateWedding succeeded')
-    // Headline-time change applied directly — notify the run-sheet team (debounced).
-    if (touchesTimeline) await markTimelineDirty(c.env.KV, weddingId, user.id).catch(() => {})
+    // Headline-time change applied directly — notify the run-sheet team
+    // (debounced). The DATE has its own dedicated notification below, so a pure
+    // date change must not ALSO trigger the "run sheet updated" email (run-sheet
+    // vendors would get two emails for one change). Only mark dirty for non-date
+    // timeline edits.
+    const touchesRunSheet = TIMELINE_FIELDS.some(
+      (f) =>
+        f !== 'date' &&
+        f in updateData &&
+        ((updateData[f] ?? null) !== ((oldWedding as any)?.[f] ?? null))
+    )
+    if (touchesRunSheet) await markTimelineDirty(c.env.KV, weddingId, user.id).catch(() => {})
 
     // A date assigned, moved or cleared on an existing wedding is a headline
     // event (a booking can be accepted with no date; this is how the team learns
@@ -1496,8 +1506,7 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
       await syncWeddingBookingEvent(
         c.env.DB,
         weddingId,
-        { date: newDate, title, startTime: oldWedding.time, durationHours: (updateData.duration_hours as number | null) ?? oldWedding.duration_hours },
-        c.get('vendor')!.id
+        { date: newDate, title, startTime: oldWedding.time, durationHours: (updateData.duration_hours as number | null) ?? oldWedding.duration_hours }
       ).catch((e: any) => console.error('[weddings] booking-event sync failed', e?.message))
       c.executionCtx.waitUntil(touchTimelineItemsForWedding(c.env.DB, weddingId).catch(() => {}))
       c.executionCtx.waitUntil(

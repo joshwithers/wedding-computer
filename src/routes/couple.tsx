@@ -1314,7 +1314,9 @@ couple.post('/wedding/:id/edit', async (c) => {
     // instead of writing the derived columns the projection would clobber.
     await applyWeddingUpdate(c.env.DB, weddingId, weddingUpdates, user.id, currentWedding as any)
     // Timeline times changed directly — notify the run-sheet team (debounced).
-    if (changedTimelineFields.length > 0) await markTimelineDirty(c.env.KV, weddingId, user.id).catch(() => {})
+    // The date has its own dedicated notification, so only mark the run sheet
+    // dirty for a non-date timeline edit (avoids two emails for one date change).
+    if (changedTimelineFields.some((f) => f !== 'date')) await markTimelineDirty(c.env.KV, weddingId, user.id).catch(() => {})
   }
   // A date change moves the sun — re-solve sun-anchored sections (cheap + a
   // no-op when nothing changed).
@@ -1342,20 +1344,14 @@ couple.post('/wedding/:id/edit', async (c) => {
 
   // Notify vendors
   if (!timelineDiverted) {
-    await c.env.EMAIL_QUEUE.send({
-      type: 'notify_wedding_details_updated',
-      payload: JSON.stringify({ weddingId, coupleName: user.name }),
-    })
-
-    // A date set/moved by the couple is a headline event too — tell everyone
-    // else booked on the wedding, and shift the timeline rows so CalDAV devices
-    // re-pull at the new date (matches the vendor edit path).
-    const oldDate = (currentWedding as Wedding | null)?.date ?? null
+    const oldDate = currentWedding?.date ?? null
     const newDate = (weddingUpdates.date as string | null) ?? null
     if (currentWedding && oldDate !== newDate) {
-      // Resync vendors' booking rows (in-app grid + availability) to the new
-      // date. No ensureVendorId — a couple has no booking row of its own; this
-      // just moves/clears the vendors' existing rows.
+      // A date set/moved/cleared by the couple is the headline change for this
+      // save — announce it (this covers the vendors), resync their booking rows
+      // (in-app grid + availability), and shift the timeline rows so CalDAV
+      // devices re-pull. The generic "details updated" email is SKIPPED here so
+      // vendors get one email for the save, not two.
       await syncWeddingBookingEvent(
         c.env.DB,
         weddingId,
@@ -1368,6 +1364,12 @@ couple.post('/wedding/:id/edit', async (c) => {
           payload: JSON.stringify({ weddingId, oldDate, newDate, editorUserId: user.id }),
         }).catch((e: any) => console.error('[couple] date-change notify enqueue failed', e?.message))
       )
+    } else {
+      // No date change — the generic "couple updated details" email to vendors.
+      await c.env.EMAIL_QUEUE.send({
+        type: 'notify_wedding_details_updated',
+        payload: JSON.stringify({ weddingId, coupleName: user.name }),
+      })
     }
   }
 

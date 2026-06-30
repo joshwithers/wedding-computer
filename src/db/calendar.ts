@@ -156,25 +156,24 @@ export async function createEvent(
 }
 
 /**
- * Keep a wedding's `type='booking'` calendar_event(s) in step with the wedding's
- * own date. These rows drive the in-app calendar grid and the public
+ * Keep a wedding's `type='booking'` calendar_event rows in step with the
+ * wedding's own date. These rows drive the in-app calendar grid and the public
  * availability "booked" flag — and since a date can now be set long after a
  * wedding is created (undated bookings), changed, or cleared, the rows must
  * follow:
  *
  *   - date cleared   → delete the wedding's booking rows (frees availability)
- *   - date set/moved → move every existing booking row to the new date, and
- *                      create one for `ensureVendorId` if it has none yet
+ *   - date set/moved → move every existing booking row to the new date, AND
+ *                      ensure EVERY active vendor member has one
  *
- * Booking rows are vendor-scoped (each vendor's own availability). `ensureVendorId`
- * is the acting vendor, so the vendor who sets a date is marked booked even for a
- * wedding created undated — which never got a booking row at creation time.
+ * Booking rows are vendor-scoped (each vendor's own availability). One row is
+ * ensured per active vendor member — so when a date lands on an undated wedding,
+ * EVERY vendor booked on it is marked busy that day, not just whoever set it.
  */
 export async function syncWeddingBookingEvent(
   db: D1Database,
   weddingId: string,
-  opts: { date: string | null; title: string; startTime: string | null; durationHours: number | null },
-  ensureVendorId?: string | null
+  opts: { date: string | null; title: string; startTime: string | null; durationHours: number | null }
 ): Promise<void> {
   if (!opts.date) {
     await db
@@ -194,24 +193,32 @@ export async function syncWeddingBookingEvent(
     )
     .bind(opts.date, opts.startTime, endTime, allDay, weddingId)
     .run()
-  // Ensure the acting vendor has a booking row (the undated→dated case, where
-  // none was created at wedding creation).
-  if (ensureVendorId) {
-    const existing = await db
-      .prepare("SELECT id FROM calendar_events WHERE wedding_id = ? AND vendor_id = ? AND type = 'booking' LIMIT 1")
-      .bind(weddingId, ensureVendorId)
-      .first<{ id: string }>()
-    if (!existing) {
-      await createEvent(db, ensureVendorId, {
-        title: opts.title,
-        date: opts.date,
-        start_time: opts.startTime,
-        end_time: endTime,
-        all_day: !opts.startTime,
-        type: 'booking',
-        wedding_id: weddingId,
-      })
-    }
+  // Ensure every active vendor member has a booking row (the undated→dated case,
+  // where the wedding never got rows at creation, plus any vendor added while it
+  // was undated).
+  const members = await db
+    .prepare(
+      "SELECT DISTINCT vendor_profile_id FROM wedding_members WHERE wedding_id = ? AND role = 'vendor' AND status = 'active' AND vendor_profile_id IS NOT NULL"
+    )
+    .bind(weddingId)
+    .all<{ vendor_profile_id: string }>()
+  if (members.results.length === 0) return
+  const existing = await db
+    .prepare("SELECT DISTINCT vendor_id FROM calendar_events WHERE wedding_id = ? AND type = 'booking'")
+    .bind(weddingId)
+    .all<{ vendor_id: string }>()
+  const have = new Set(existing.results.map((r) => r.vendor_id))
+  for (const m of members.results) {
+    if (have.has(m.vendor_profile_id)) continue
+    await createEvent(db, m.vendor_profile_id, {
+      title: opts.title,
+      date: opts.date,
+      start_time: opts.startTime,
+      end_time: endTime,
+      all_day: !opts.startTime,
+      type: 'booking',
+      wedding_id: weddingId,
+    })
   }
 }
 
