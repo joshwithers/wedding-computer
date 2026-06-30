@@ -54,7 +54,7 @@ import { weddingDisplayTitle } from '../../lib/wedding-display'
 import { sendVendorWelcomeInvite } from '../../services/auth'
 import { ensureCoupleContact } from '../../services/couple-contact'
 import { TIMELINE_FIELDS } from '../../services/timeline-edit'
-import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes } from '../../db/timeline'
+import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes, touchTimelineItemsForWedding } from '../../db/timeline'
 import { lifecycleColumnsForTransition, syncVendorContactToWeddingStatus, CANCELLATION_REASONS, effectiveWeddingStatus, type WeddingStatusChoice } from '../../services/wedding-lifecycle'
 import { t, tp, getCspNonce } from '../../i18n'
 import { safeErrorMessage } from '../../lib/redaction'
@@ -286,7 +286,12 @@ weddings.get('/app/weddings', async (c) => {
   const items = await listWeddingsForVendor(c.env.DB, user.id)
   const cap = await weddingCapStatus(c.env.DB, vendor, user.id)
 
-  const upcoming = items.filter((w) => w.status !== 'completed' && w.status !== 'cancelled')
+  const active = items.filter((w) => w.status !== 'completed' && w.status !== 'cancelled')
+  // Undated active weddings get their own group — they're real bookings still
+  // awaiting a date, not lapsed ones, and shouldn't hide at the end of the
+  // dated list (which sorts NULLS-last).
+  const upcoming = active.filter((w) => w.date)
+  const undated = active.filter((w) => !w.date)
   const past = items.filter((w) => w.status === 'completed' || w.status === 'cancelled')
 
   return c.html(
@@ -333,6 +338,12 @@ weddings.get('/app/weddings', async (c) => {
               <div>
                 <h2 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.list.upcoming')}</h2>
                 <WeddingGrid weddings={upcoming} />
+              </div>
+            )}
+            {undated.length > 0 && (
+              <div>
+                <h2 class="text-sm font-bold text-gray-500 mb-3">{t('weddings.list.awaitingDate')}</h2>
+                <WeddingGrid weddings={undated} />
               </div>
             )}
             {past.length > 0 && (
@@ -1469,6 +1480,23 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     console.log('[weddings] edit', weddingId, 'updateWedding succeeded')
     // Headline-time change applied directly — notify the run-sheet team (debounced).
     if (touchesTimeline) await markTimelineDirty(c.env.KV, weddingId, user.id).catch(() => {})
+
+    // A date assigned, moved or cleared on an existing wedding is a headline
+    // event (a booking can be accepted with no date; this is how the team learns
+    // it later). Notify everyone else booked on it immediately, and bump the
+    // wedding's timeline rows so CalDAV devices re-pull them at the new date —
+    // the all-day marker's own ctag term already moves via weddings.updated_at.
+    const oldDate = oldWedding?.date ?? null
+    const newDate = (updateData.date as string | null) ?? null
+    if (oldWedding && oldDate !== newDate) {
+      c.executionCtx.waitUntil(touchTimelineItemsForWedding(c.env.DB, weddingId).catch(() => {}))
+      c.executionCtx.waitUntil(
+        c.env.EMAIL_QUEUE.send({
+          type: 'notify_wedding_date_changed',
+          payload: JSON.stringify({ weddingId, oldDate, newDate, editorUserId: user.id }),
+        }).catch((e: any) => console.error('[weddings] date-change notify enqueue failed', e?.message))
+      )
+    }
     c.executionCtx.waitUntil(
       geocodeWeddingLocation(c.env, weddingId)
         .catch((err) => console.error('[weddings] geocode failed:', err))
@@ -1899,8 +1927,10 @@ function WeddingGrid({ weddings }: { weddings: WeddingWithRole[] }) {
               </div>
               <WeddingStatusBadge status={w.status} />
             </div>
-            {w.date && (
+            {w.date ? (
               <p class="text-sm text-gray-600">{formatDate(w.date)}</p>
+            ) : (
+              <p class="text-sm text-gray-400 italic">{t('weddings.list.dateTbd')}</p>
             )}
             {w.location && (
               <p class="text-sm text-gray-500">{w.location}</p>
@@ -2835,6 +2865,7 @@ function WeddingForm({
           value={wedding?.date ?? defaults?.date ?? ''}
           class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-horizon-600 focus:border-transparent"
         />
+        <p class="text-xs text-gray-400 mt-1.5">{t('weddings.form.dateHint')}</p>
       </div>
 
       <div>

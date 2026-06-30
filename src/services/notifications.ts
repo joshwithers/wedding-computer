@@ -9,6 +9,7 @@ import {
   bookingConfirmedEmail,
   weddingCancelledEmail,
   weddingPostponedEmail,
+  weddingDateSetEmail,
   paymentReceivedEmail,
   paymentReceiptEmail,
   paymentDueSoonEmail,
@@ -635,6 +636,50 @@ export async function notifyWeddingPostponed(env: NotifyEnv, data: { weddingId: 
       html: weddingPostponedEmail({
         weddingTitle: wedding.title,
         newDate: wedding.date ? formatDate(wedding.date) : null,
+        loginUrl,
+      }),
+      vendorId: member.vendor_profile_id,
+    })
+  }
+}
+
+// Sent when an existing wedding's date is first set, moved, or cleared — fans
+// out to everyone else booked on it (couple + vendors), skipping the person who
+// made the change. The booking accepts a wedding with no date; this is how the
+// team finds out when the date lands later.
+export async function notifyWeddingDateChanged(env: NotifyEnv, data: {
+  weddingId: string
+  oldDate: string | null
+  newDate: string | null
+  editorUserId: string
+}): Promise<void> {
+  const wedding = await getWedding(env.db, data.weddingId)
+  if (!wedding) return
+  const oldFmt = data.oldDate ? formatDate(data.oldDate) : null
+  const newFmt = data.newDate ? formatDate(data.newDate) : null
+  const subject =
+    data.newDate && !data.oldDate
+      ? `${wedding.title} now has a date: ${newFmt}`
+      : data.newDate
+        ? `${wedding.title} has a new date: ${newFmt}`
+        : `${wedding.title}: date to be confirmed`
+
+  const members = await getWeddingMembers(env.db, data.weddingId)
+  for (const member of members) {
+    // The editor already knows — they just made the change.
+    if (member.user_id === data.editorUserId) continue
+    const loginUrl =
+      member.role === 'couple'
+        ? `${env.appUrl}/wedding/${data.weddingId}`
+        : `${env.appUrl}/app/weddings/${data.weddingId}`
+    await deliver(env, {
+      key: 'wedding_updates',
+      recipient: { id: member.user_id, email: member.user_email, name: member.user_name, notification_prefs: member.user_notification_prefs },
+      subject,
+      html: weddingDateSetEmail({
+        weddingTitle: wedding.title,
+        oldDate: oldFmt,
+        newDate: newFmt,
         loginUrl,
       }),
       vendorId: member.vendor_profile_id,

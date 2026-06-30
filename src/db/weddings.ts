@@ -30,6 +30,97 @@ export const SQL_WEDDING_NOT_CANCELLED = (a = 'w') =>
 export const SQL_CALENDAR_EVENT_NOT_CANCELLED = (ce = 'calendar_events') =>
   `NOT EXISTS (SELECT 1 FROM weddings w WHERE w.id = ${ce}.wedding_id AND w.status = 'cancelled')`
 
+// ── Wedding-day calendar rows ──
+// The wedding itself rides on every member's calendar as an ALL-DAY event
+// (DTSTART;VALUE=DATE), alongside the timed run-sheet items. One row per dated,
+// non-cancelled wedding the viewer is an active member of. Undated weddings have
+// no `date`, so they naturally produce no event until a date is assigned — at
+// which point the all-day marker (and the run sheet) appear on the next poll.
+
+export type WeddingDayRow = {
+  id: string
+  wedding_title: string
+  date: string
+  time: string | null
+  emoji: string | null
+  ceremony_type: string | null
+  ceremony_location: string | null
+  location: string | null
+  location_state: string | null
+  location_country: string | null
+  couple_names: string | null
+  couple_email: string | null
+  created_at: string
+  updated_at: string
+}
+
+// `{scopeCol}` is substituted with the scoping membership column (user_id for a
+// personal feed, vendor_profile_id for a vendor's business feed). GROUP BY w.id
+// dedupes when a vendor profile has more than one membership row on a wedding
+// (e.g. team members sharing the profile). Static SQL — no user input.
+const WEDDING_DAY_SELECT = (scopeCol: string) =>
+  `SELECT w.id, w.title AS wedding_title, w.date, w.time, w.emoji, w.ceremony_type,
+          w.ceremony_location, w.location, w.location_state, w.location_country,
+          w.created_at, w.updated_at,
+          (SELECT GROUP_CONCAT(cu.name, ' & ') FROM wedding_members cwm JOIN users cu ON cu.id = cwm.user_id
+             WHERE cwm.wedding_id = w.id AND cwm.role = 'couple' AND cwm.status = 'active') AS couple_names,
+          (SELECT cu.email FROM wedding_members cwm JOIN users cu ON cu.id = cwm.user_id
+             WHERE cwm.wedding_id = w.id AND cwm.role = 'couple' AND cwm.status = 'active'
+             ORDER BY cwm.created_at LIMIT 1) AS couple_email
+   FROM wedding_members wm
+   JOIN weddings w ON w.id = wm.wedding_id
+   WHERE wm.${scopeCol} = ? AND wm.status = 'active' AND w.date IS NOT NULL
+     AND ${SQL_WEDDING_NOT_CANCELLED('w')}
+   GROUP BY w.id`
+
+const USER_WEDDING_DAY_SELECT = WEDDING_DAY_SELECT('user_id')
+const VENDOR_WEDDING_DAY_SELECT = WEDDING_DAY_SELECT('vendor_profile_id')
+
+/** Every dated, non-cancelled wedding this user is an active member of. */
+export async function listUserWeddingDays(db: D1Database, userId: string): Promise<WeddingDayRow[]> {
+  return db
+    .prepare(`${USER_WEDDING_DAY_SELECT} ORDER BY w.date ASC`)
+    .bind(userId)
+    .all<WeddingDayRow>()
+    .then((r) => r.results)
+}
+
+/** Every dated, non-cancelled wedding this vendor profile is an active member of. */
+export async function listVendorWeddingDays(db: D1Database, vendorId: string): Promise<WeddingDayRow[]> {
+  return db
+    .prepare(`${VENDOR_WEDDING_DAY_SELECT} ORDER BY w.date ASC`)
+    .bind(vendorId)
+    .all<WeddingDayRow>()
+    .then((r) => r.results)
+}
+
+/** A single wedding-day row scoped to the vendor (CalDAV single-event GET). */
+export async function getVendorWeddingDay(
+  db: D1Database,
+  vendorId: string,
+  weddingId: string
+): Promise<WeddingDayRow | null> {
+  return db
+    .prepare(`${VENDOR_WEDDING_DAY_SELECT.replace('GROUP BY w.id', 'AND w.id = ? GROUP BY w.id')} LIMIT 1`)
+    .bind(vendorId, weddingId)
+    .first<WeddingDayRow>()
+}
+
+/** Wedding-day rows for a set of wedding ids, scoped to the vendor (CalDAV multiget). */
+export async function getVendorWeddingDaysByIds(
+  db: D1Database,
+  vendorId: string,
+  weddingIds: string[]
+): Promise<WeddingDayRow[]> {
+  if (weddingIds.length === 0) return []
+  const placeholders = weddingIds.map(() => '?').join(',')
+  return db
+    .prepare(`${VENDOR_WEDDING_DAY_SELECT.replace('GROUP BY w.id', `AND w.id IN (${placeholders}) GROUP BY w.id`)}`)
+    .bind(vendorId, ...weddingIds)
+    .all<WeddingDayRow>()
+    .then((r) => r.results)
+}
+
 export async function listWeddingsForVendor(
   db: D1Database,
   userId: string
@@ -40,7 +131,7 @@ export async function listWeddingsForVendor(
        FROM weddings w
        JOIN wedding_members wm ON wm.wedding_id = w.id
        WHERE wm.user_id = ? AND wm.status = 'active'
-       ORDER BY w.date ASC`
+       ORDER BY w.date ASC NULLS LAST`
     )
     .bind(userId)
     .all<WeddingWithRole>()

@@ -1,5 +1,6 @@
 import type { EnrichedCalendarEvent } from '../types'
 import type { UserCalendarRow } from '../db/timeline'
+import type { WeddingDayRow } from '../db/weddings'
 import { addHoursToTime } from '../lib/date'
 import { resolveLocationTimezone } from '../lib/sun'
 
@@ -32,7 +33,12 @@ function coupleDisplayName(e: EnrichedCalendarEvent): string | null {
  * in-place updates, never delete+re-add. Reuses the same time/escape helpers
  * as the vendor feed.
  */
-export function buildTimelineFeed(rows: UserCalendarRow[], calName: string, timezone: string): string {
+export function buildTimelineFeed(
+  rows: UserCalendarRow[],
+  calName: string,
+  timezone: string,
+  weddingDays: WeddingDayRow[] = []
+): string {
   const lines: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -43,6 +49,7 @@ export function buildTimelineFeed(rows: UserCalendarRow[], calName: string, time
     'METHOD:PUBLISH',
   ]
   for (const r of rows) lines.push(...buildTimelineVevent(r, timezone))
+  for (const w of weddingDays) lines.push(...buildWeddingDayVevent(w, timezone))
   lines.push('END:VCALENDAR')
   return lines.join('\r\n') + '\r\n'
 }
@@ -81,11 +88,44 @@ export function buildTimelineVevent(r: UserCalendarRow, timezone: string): strin
   return lines
 }
 
+/**
+ * The wedding itself as an ALL-DAY event (DTSTART;VALUE=DATE) for a dated
+ * wedding — a day-marker that rides alongside the timed run-sheet items. Stable
+ * UID `wd-<wedding_id>` so subscribers see in-place date moves, never
+ * delete+re-add. TRANSP:TRANSPARENT keeps it a non-blocking banner so it doesn't
+ * double-count busy time with the timeline items.
+ */
+export function buildWeddingDayVevent(w: WeddingDayRow, timezone: string): string[] {
+  // Resolve venue tz for consistency with the other builders (unused for an
+  // all-day DATE value, but keeps the signature uniform if we ever add times).
+  void resolveLocationTimezone(w.location_country, w.location_state, timezone)
+  const couple = w.couple_names || w.wedding_title
+  const emoji = w.emoji || '💍'
+  const lines: string[] = ['BEGIN:VEVENT']
+  lines.push(`UID:wd-${w.id}@weddingcomputer.com`)
+  lines.push(`SUMMARY:${escapeIcalText(`${emoji} ${couple} — Wedding day`)}`)
+  lines.push(`DTSTAMP:${formatUtcTimestamp(w.created_at)}`)
+  lines.push(`DTSTART;VALUE=DATE:${w.date.replace(/-/g, '')}`)
+  lines.push(`DTEND;VALUE=DATE:${nextDay(w.date)}`)
+  const loc = w.ceremony_location ?? w.location
+  if (loc) lines.push(`LOCATION:${escapeIcalText(loc)}`)
+  const descLines: string[] = [`💒 ${couple}`]
+  if (w.couple_email) descLines.push(`📧 ${w.couple_email}`)
+  if (w.time) descLines.push(`⛪ Ceremony: ${w.time}`)
+  if (loc) descLines.push(`📍 ${loc}`)
+  lines.push(`DESCRIPTION:${escapeIcalText(descLines.join('\n'))}`)
+  lines.push('TRANSP:TRANSPARENT', 'CATEGORIES:Wedding')
+  if (w.updated_at) lines.push(`LAST-MODIFIED:${formatUtcTimestamp(w.updated_at)}`)
+  lines.push('END:VEVENT')
+  return lines
+}
+
 export function buildIcalFeed(
   events: EnrichedCalendarEvent[],
   vendorName: string,
   timezone: string,
-  timelineRows: UserCalendarRow[] = []
+  timelineRows: UserCalendarRow[] = [],
+  weddingDays: WeddingDayRow[] = []
 ): string {
   const lines: string[] = [
     'BEGIN:VCALENDAR',
@@ -109,6 +149,11 @@ export function buildIcalFeed(
   // their manual events. Distinct `ts-` UIDs — never collide with bookings.
   for (const r of timelineRows) {
     lines.push(...buildTimelineVevent(r, timezone))
+  }
+
+  // The wedding itself as an all-day marker. Distinct `wd-` UIDs.
+  for (const w of weddingDays) {
+    lines.push(...buildWeddingDayVevent(w, timezone))
   }
 
   lines.push('END:VCALENDAR')

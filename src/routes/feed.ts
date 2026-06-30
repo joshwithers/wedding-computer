@@ -6,6 +6,7 @@ import { clientIp, isAuthThrottled, recordAuthFailure } from '../middleware/rate
 import { isProVendor } from '../db/subscriptions'
 import { listEnrichedEventsByRange } from '../db/calendar'
 import { listUserCalendarRows, listVendorCalendarRows } from '../db/timeline'
+import { listUserWeddingDays, listVendorWeddingDays } from '../db/weddings'
 import { buildIcalFeed, buildTimelineFeed } from '../services/ical'
 import { DEFAULT_TIMEZONE } from '../i18n'
 
@@ -29,8 +30,9 @@ feed.get('/cal/u/:token', async (c) => {
   }
 
   const rows = await listUserCalendarRows(c.env.DB, user.id)
+  const weddingDays = await listUserWeddingDays(c.env.DB, user.id)
   const calName = `${user.name} — wedding day`
-  const ical = buildTimelineFeed(rows, calName, user.timezone ?? DEFAULT_TIMEZONE)
+  const ical = buildTimelineFeed(rows, calName, user.timezone ?? DEFAULT_TIMEZONE, weddingDays)
 
   return c.body(ical, 200, {
     'Content-Type': 'text/calendar; charset=utf-8',
@@ -75,7 +77,12 @@ feed.get('/cal/:token', async (c) => {
     (r) => r.wedding_date >= startDate && r.wedding_date <= endDate
   )
 
-  const ical = buildIcalFeed(events, vendor.business_name, vendor.timezone, timelineRows)
+  // The all-day wedding-day markers for the vendor's dated weddings, same window.
+  const weddingDays = (await listVendorWeddingDays(c.env.DB, vendor.id)).filter(
+    (w) => w.date >= startDate && w.date <= endDate
+  )
+
+  const ical = buildIcalFeed(events, vendor.business_name, vendor.timezone, timelineRows, weddingDays)
 
   return c.body(ical, 200, {
     'Content-Type': 'text/calendar; charset=utf-8',

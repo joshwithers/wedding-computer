@@ -40,8 +40,10 @@ export const weddings = {
   'weddings.list.emptyTitle': 'No weddings yet',
   'weddings.list.emptyBody': 'Create one directly, or promote a contact to booked status.',
   'weddings.list.upcoming': 'Upcoming',
+  'weddings.list.awaitingDate': 'Awaiting a date',
   'weddings.list.past': 'Past',
   'weddings.list.daysAway': '{days} days away',
+  'weddings.list.dateTbd': 'Date TBD',
 
   // Page titles
   'weddings.title.weddings': 'Weddings',
@@ -216,6 +218,7 @@ export const weddings = {
   'weddings.form.titlePlaceholder': 'e.g. Sarah & James',
   'weddings.form.type': 'Type',
   'weddings.form.date': 'Date',
+  'weddings.form.dateHint': "Leave blank if the date isn't set yet — you can add it later and everyone booked on the wedding will be notified.",
   'weddings.form.cityRegion': 'City / Region',
   'weddings.form.cityRegionPlaceholder': 'e.g. Melbourne, Byron Bay',
   'weddings.form.cityRegionHint': 'For reporting and analytics',

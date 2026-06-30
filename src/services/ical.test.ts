@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { buildIcalFeed, buildVevent, buildTimelineVevent } from './ical'
+import { buildIcalFeed, buildTimelineFeed, buildVevent, buildTimelineVevent, buildWeddingDayVevent } from './ical'
 import type { EnrichedCalendarEvent } from '../types'
 import type { UserCalendarRow } from '../db/timeline'
+import type { WeddingDayRow } from '../db/weddings'
 
 function booking(over: Partial<EnrichedCalendarEvent> = {}): EnrichedCalendarEvent {
   return {
@@ -44,6 +45,26 @@ function row(over: Partial<UserCalendarRow> = {}): UserCalendarRow {
     wedding_location: null,
     wedding_location_state: null,
     wedding_location_country: null,
+    ...over,
+  }
+}
+
+function weddingDay(over: Partial<WeddingDayRow> = {}): WeddingDayRow {
+  return {
+    id: 'eeee7777ffff8888aaaa9999',
+    wedding_title: 'Smith Wedding',
+    date: '2026-09-12',
+    time: '14:00',
+    emoji: null,
+    ceremony_type: 'wedding',
+    ceremony_location: null,
+    location: 'Byron Bay',
+    location_state: null,
+    location_country: null,
+    couple_names: null,
+    couple_email: null,
+    created_at: '2026-06-01 00:00:00',
+    updated_at: '2026-06-02 00:00:00',
     ...over,
   }
 }
@@ -160,5 +181,56 @@ describe('buildIcalFeed timeline union', () => {
     expect(ical.match(/BEGIN:VCALENDAR/g)).toHaveLength(1)
     expect(ical.match(/END:VCALENDAR/g)).toHaveLength(1)
     expect(ical).not.toContain('BEGIN:VEVENT')
+  })
+})
+
+describe('buildWeddingDayVevent (all-day wedding marker)', () => {
+  it('emits an all-day VALUE=DATE event spanning one day with a wd- UID — never timed', () => {
+    const lines = buildWeddingDayVevent(weddingDay({ couple_names: 'Olivia & Ethan' }), 'Australia/Sydney')
+    expect(lines).toContain('UID:wd-eeee7777ffff8888aaaa9999@weddingcomputer.com')
+    expect(lines).toContain('DTSTART;VALUE=DATE:20260912')
+    expect(lines).toContain('DTEND;VALUE=DATE:20260913')
+    expect(lines.some((l) => l.startsWith('DTSTART;TZID='))).toBe(false)
+    // A non-blocking banner so it doesn't double-count busy time with the run sheet.
+    expect(lines).toContain('TRANSP:TRANSPARENT')
+  })
+
+  it('titles with the couple names + default ring emoji, falling back to the wedding title + its own emoji', () => {
+    expect(buildWeddingDayVevent(weddingDay({ couple_names: 'Olivia & Ethan' }), 'Australia/Sydney'))
+      .toContain('SUMMARY:💍 Olivia & Ethan — Wedding day')
+    expect(buildWeddingDayVevent(weddingDay({ couple_names: null, emoji: '🌸' }), 'Australia/Sydney'))
+      .toContain('SUMMARY:🌸 Smith Wedding — Wedding day')
+  })
+
+  it('surfaces the couple, email and ceremony time in the description', () => {
+    const desc = buildWeddingDayVevent(
+      weddingDay({ couple_names: 'Olivia & Ethan', couple_email: 'olivia@example.com', time: '14:30' }),
+      'Australia/Sydney'
+    ).find((l) => l.startsWith('DESCRIPTION:'))!
+    expect(desc).toContain('Olivia & Ethan')
+    expect(desc).toContain('olivia@example.com')
+    expect(desc).toContain('14:30')
+  })
+})
+
+describe('feed wedding-day union', () => {
+  it('buildIcalFeed appends the all-day marker alongside bookings + timeline rows', () => {
+    const ical = buildIcalFeed([booking()], 'Acme Flowers', 'Australia/Sydney', [row()], [weddingDay()])
+    expect(ical).toContain('UID:wd-eeee7777ffff8888aaaa9999@weddingcomputer.com')
+    expect(ical).toContain('DTSTART;VALUE=DATE:20260912')
+    expect(ical.match(/BEGIN:VCALENDAR/g)).toHaveLength(1)
+  })
+
+  it('buildTimelineFeed (personal/couple feed) includes wedding-day markers', () => {
+    const ical = buildTimelineFeed([row()], 'Olivia — wedding day', 'Australia/Sydney', [weddingDay()])
+    expect(ical).toContain('UID:wd-eeee7777ffff8888aaaa9999@weddingcomputer.com')
+    expect(ical).toContain('SUMMARY:💍 Smith Wedding — Wedding day')
+  })
+
+  it('is identical to the no-wedding-days form when none are passed', () => {
+    const withEmpty = buildIcalFeed([booking()], 'Acme', 'Australia/Sydney', [row()], [])
+    const without = buildIcalFeed([booking()], 'Acme', 'Australia/Sydney', [row()])
+    expect(withEmpty).toBe(without)
+    expect(without).not.toContain('wd-')
   })
 })

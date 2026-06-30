@@ -18,7 +18,7 @@ import { isManagerVendor, categoriesLabel } from '../lib/categories'
 import { celebrantTermsDiffer } from '../lib/celebrant-term'
 import { weddingDisplayTitle } from '../lib/wedding-display'
 import { createTimelineRequest, getTimelineControllers } from '../db/timeline-requests'
-import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes } from '../db/timeline'
+import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes, touchTimelineItemsForWedding } from '../db/timeline'
 import { t, type MessageKey } from '../i18n'
 import { shouldShowWeather } from '../views/weather'
 import { renderWeatherCard, setWeatherUnit } from './weather-handlers'
@@ -1345,6 +1345,21 @@ couple.post('/wedding/:id/edit', async (c) => {
       type: 'notify_wedding_details_updated',
       payload: JSON.stringify({ weddingId, coupleName: user.name }),
     })
+
+    // A date set/moved by the couple is a headline event too — tell everyone
+    // else booked on the wedding, and shift the timeline rows so CalDAV devices
+    // re-pull at the new date (matches the vendor edit path).
+    const oldDate = (currentWedding as Wedding | null)?.date ?? null
+    const newDate = (weddingUpdates.date as string | null) ?? null
+    if (currentWedding && oldDate !== newDate) {
+      c.executionCtx.waitUntil(touchTimelineItemsForWedding(c.env.DB, weddingId).catch(() => {}))
+      c.executionCtx.waitUntil(
+        c.env.EMAIL_QUEUE.send({
+          type: 'notify_wedding_date_changed',
+          payload: JSON.stringify({ weddingId, oldDate, newDate, editorUserId: user.id }),
+        }).catch((e: any) => console.error('[couple] date-change notify enqueue failed', e?.message))
+      )
+    }
   }
 
   return c.redirect(

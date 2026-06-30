@@ -9,7 +9,11 @@ import { listAllEnrichedEvents, listEnrichedEventsByIds, getEnrichedEvent } from
 import {
   listVendorCalendarRows, getVendorCalendarRow, getVendorCalendarRowsByIds, type UserCalendarRow,
 } from '../db/timeline'
-import { buildVevent, buildTimelineVevent } from '../services/ical'
+import {
+  listVendorWeddingDays, getVendorWeddingDay, getVendorWeddingDaysByIds,
+  SQL_WEDDING_NOT_CANCELLED, type WeddingDayRow,
+} from '../db/weddings'
+import { buildVevent, buildTimelineVevent, buildWeddingDayVevent } from '../services/ical'
 
 const caldav = new Hono<Env>()
 
@@ -67,6 +71,9 @@ function wrapVCalendar(veventLines: string[], timezone: string): string {
 // the vendor's bookings. Their hrefs carry a `ts-` prefix so the id space never
 // collides with calendar_events ids, and GET/multiget can route by it.
 const TS_PREFIX = 'ts-'
+// The all-day wedding-day marker rides alongside too, under a `wd-` prefix
+// (keyed on the wedding id). Distinct from `ts-`/booking ids.
+const WD_PREFIX = 'wd-'
 
 /** The same -6mo..+2y window as CALENDAR_WINDOW, as date strings for JS filtering. */
 function caldavWindow(): { start: string; end: string } {
@@ -83,6 +90,13 @@ async function windowedTimelineRows(db: D1Database, vendorId: string): Promise<U
   const { start, end } = caldavWindow()
   const rows = await listVendorCalendarRows(db, vendorId)
   return rows.filter((r) => r.wedding_date >= start && r.wedding_date <= end)
+}
+
+/** Vendor's dated wedding-day markers within the sync window. */
+async function windowedWeddingDays(db: D1Database, vendorId: string): Promise<WeddingDayRow[]> {
+  const { start, end } = caldavWindow()
+  const rows = await listVendorWeddingDays(db, vendorId)
+  return rows.filter((w) => w.date >= start && w.date <= end)
 }
 
 /**
@@ -112,7 +126,25 @@ async function combinedCTag(db: D1Database, vendorId: string): Promise<string> {
     )
     .bind(vendorId)
     .first<{ sig: string | null }>()
-  const raw = `${ev?.cnt ?? 0}:${ev?.ts ?? ''}:${tl?.sig ?? ''}`
+  // Wedding-day all-day markers: include date + updated_at so a date being set,
+  // moved or cleared (and a wedding being cancelled, which drops it from the set)
+  // all invalidate the client's cache. Without this, the all-day event's date
+  // could move silently and devices would never re-pull it.
+  const wd = await db
+    .prepare(
+      `SELECT group_concat(sig, '|') as sig FROM (
+         SELECT w.id || ':' || w.date || ':' || w.updated_at AS sig
+         FROM wedding_members wm
+         JOIN weddings w ON w.id = wm.wedding_id
+         WHERE wm.vendor_profile_id = ? AND wm.status = 'active' AND w.date IS NOT NULL
+           AND ${SQL_WEDDING_NOT_CANCELLED('w')}
+         GROUP BY w.id
+         ORDER BY w.id
+       )`
+    )
+    .bind(vendorId)
+    .first<{ sig: string | null }>()
+  const raw = `${ev?.cnt ?? 0}:${ev?.ts ?? ''}:${tl?.sig ?? ''}:${wd?.sig ?? ''}`
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw))
   return Array.from(new Uint8Array(hash)).slice(0, 8)
     .map((b) => b.toString(16).padStart(2, '0')).join('')
@@ -124,6 +156,22 @@ function timelineDataResponse(base: string, token: string, r: UserCalendarRow, t
   const etag = makeETag(TS_PREFIX + r.id, r.updated_at)
   return `<D:response>
     <D:href>${base}/calendars/${escXml(token)}/bookings/${TS_PREFIX}${r.id}.ics</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:getetag>${escXml(etag)}</D:getetag>
+        <C:calendar-data>${escXml(ical)}</C:calendar-data>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>`
+}
+
+/** A REPORT <D:response> carrying a wedding-day all-day marker (wd- href). */
+function weddingDayDataResponse(base: string, token: string, w: WeddingDayRow, tz: string): string {
+  const ical = wrapVCalendar(buildWeddingDayVevent(w, tz), tz)
+  const etag = makeETag(WD_PREFIX + w.id, w.updated_at)
+  return `<D:response>
+    <D:href>${base}/calendars/${escXml(token)}/bookings/${WD_PREFIX}${w.id}.ics</D:href>
     <D:propstat>
       <D:prop>
         <D:getetag>${escXml(etag)}</D:getetag>
@@ -311,11 +359,28 @@ caldav.on('PROPFIND', '/calendars/:token/bookings/', async (c) => {
   </D:response>`
   })
 
+  // Plus the all-day wedding-day markers (wd- prefixed hrefs).
+  const wdRows = await windowedWeddingDays(c.env.DB, vendor.id)
+  const weddingDayResponses = wdRows.map(w => {
+    const etag = makeETag(WD_PREFIX + w.id, w.updated_at)
+    return `<D:response>
+    <D:href>${base}/calendars/${escXml(token)}/bookings/${WD_PREFIX}${w.id}.ics</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:getetag>${escXml(etag)}</D:getetag>
+        <D:getcontenttype>text/calendar; charset=utf-8</D:getcontenttype>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>`
+  })
+
   return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/">
   ${collectionResponse}
   ${eventResponses.join('\n  ')}
   ${timelineResponses.join('\n  ')}
+  ${weddingDayResponses.join('\n  ')}
 </D:multistatus>`, 207, CALDAV_HEADERS)
 })
 
@@ -335,9 +400,11 @@ caldav.on('REPORT', '/calendars/:token/bookings/', async (c) => {
       return match ? match[1] : null
     }).filter((id): id is string => id !== null)
 
-    // Bookings vs timeline sections (ts- prefixed) live in one id space here.
+    // Bookings, timeline sections (ts-) and wedding-day markers (wd-) share one
+    // id space here — route each href to its source by prefix.
     const tsIds = ids.filter(id => id.startsWith(TS_PREFIX)).map(id => id.slice(TS_PREFIX.length))
-    const eventIds = ids.filter(id => !id.startsWith(TS_PREFIX))
+    const wdIds = ids.filter(id => id.startsWith(WD_PREFIX)).map(id => id.slice(WD_PREFIX.length))
+    const eventIds = ids.filter(id => !id.startsWith(TS_PREFIX) && !id.startsWith(WD_PREFIX))
 
     const rows = eventIds.length
       ? (await listEnrichedEventsByIds(c.env.DB, vendor.id, eventIds)).filter((r) => !(r.notes ?? '').startsWith('wc:'))
@@ -361,9 +428,12 @@ caldav.on('REPORT', '/calendars/:token/bookings/', async (c) => {
     const tlRows = tsIds.length ? await getVendorCalendarRowsByIds(c.env.DB, vendor.id, tsIds) : []
     const tlResponses = tlRows.map(r => timelineDataResponse(base, token, r, tz))
 
+    const wdRows = wdIds.length ? await getVendorWeddingDaysByIds(c.env.DB, vendor.id, wdIds) : []
+    const wdResponses = wdRows.map(w => weddingDayDataResponse(base, token, w, tz))
+
     return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
-  ${[...responses, ...tlResponses].join('\n  ')}
+  ${[...responses, ...tlResponses, ...wdResponses].join('\n  ')}
 </D:multistatus>`, 207, CALDAV_HEADERS)
   }
 
@@ -391,9 +461,12 @@ caldav.on('REPORT', '/calendars/:token/bookings/', async (c) => {
   const tlRows = await windowedTimelineRows(c.env.DB, vendor.id)
   const tlResponses = tlRows.map(r => timelineDataResponse(base, token, r, tz))
 
+  const wdRows = await windowedWeddingDays(c.env.DB, vendor.id)
+  const wdResponses = wdRows.map(w => weddingDayDataResponse(base, token, w, tz))
+
   return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?>
 <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
-  ${[...responses, ...tlResponses].join('\n  ')}
+  ${[...responses, ...tlResponses, ...wdResponses].join('\n  ')}
 </D:multistatus>`, 207, CALDAV_HEADERS)
 })
 
@@ -415,6 +488,21 @@ caldav.get('/calendars/:token/bookings/:uid', async (c) => {
       headers: {
         'Content-Type': 'text/calendar; charset=utf-8',
         ETag: makeETag(TS_PREFIX + r.id, r.updated_at),
+        ...CALDAV_HEADERS,
+      },
+    })
+  }
+
+  // The all-day wedding-day marker rather than a booking.
+  if (uid.startsWith(WD_PREFIX)) {
+    const w = await getVendorWeddingDay(c.env.DB, vendor.id, uid.slice(WD_PREFIX.length))
+    if (!w) return c.text('Not found', 404)
+    const wdIcal = wrapVCalendar(buildWeddingDayVevent(w, tz), tz)
+    return new Response(wdIcal, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/calendar; charset=utf-8',
+        ETag: makeETag(WD_PREFIX + w.id, w.updated_at),
         ...CALDAV_HEADERS,
       },
     })

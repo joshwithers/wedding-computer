@@ -206,7 +206,7 @@ export async function getTeamMemberSchedule(
        JOIN weddings w ON w.id = wta.wedding_id
        JOIN team_members tm ON tm.id = wta.team_member_id
        WHERE tm.vendor_id = ? AND wta.team_member_id = ?
-       ORDER BY w.date ASC`
+       ORDER BY w.date ASC NULLS LAST`
     )
     .bind(vendorId, teamMemberId)
     .all<{ wedding_id: string; wedding_title: string; wedding_date: string | null; role: string | null }>()

@@ -363,6 +363,20 @@ export async function removeAssignee(db: D1Database, itemId: string, assigneeId:
     .run()
 }
 
+/**
+ * Bump updated_at on every timeline item for a wedding. Called when the wedding
+ * DATE moves: each item's calendar date derives from the wedding, so they all
+ * effectively shift — touching them moves their CalDAV etags so devices re-pull
+ * the new date instead of keeping the stale one (their etag is keyed on
+ * updated_at, which a pure wedding-date change would otherwise leave untouched).
+ */
+export async function touchTimelineItemsForWedding(db: D1Database, weddingId: string): Promise<void> {
+  await db
+    .prepare("UPDATE timeline_items SET updated_at = datetime('now') WHERE wedding_id = ?")
+    .bind(weddingId)
+    .run()
+}
+
 export type UserCalendarRow = {
   id: string
   title: string

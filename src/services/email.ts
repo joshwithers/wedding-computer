@@ -585,6 +585,35 @@ export function weddingPostponedEmail(data: {
   `, { preheader: `${esc(data.weddingTitle)} has been postponed` })
 }
 
+// Sent to everyone else on the wedding when its date is first set, moved, or
+// cleared. One template, three shapes (set / changed / cleared) keyed on whether
+// an old and/or new date is present.
+export function weddingDateSetEmail(data: {
+  weddingTitle: string
+  oldDate: string | null
+  newDate: string | null
+  loginUrl: string
+}): string {
+  const { weddingTitle, oldDate, newDate } = data
+  let heading: string
+  let body: string
+  if (newDate && !oldDate) {
+    heading = 'A date has been set'
+    body = `<strong>${esc(weddingTitle)}</strong> now has a date: <strong>${esc(newDate)}</strong>. It's been added to your calendar.`
+  } else if (newDate && oldDate) {
+    heading = 'The wedding date has changed'
+    body = `<strong>${esc(weddingTitle)}</strong> has moved from <strong>${esc(oldDate)}</strong> to <strong>${esc(newDate)}</strong>. Your calendar has been updated.`
+  } else {
+    heading = 'The date is to be confirmed'
+    body = `The date for <strong>${esc(weddingTitle)}</strong> has been cleared and is now to be confirmed.`
+  }
+  return emailWrapper(`
+    <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#1a1a1a;">${heading}</h1>
+    <p style="font-size:14px;color:#666;line-height:1.6;margin:0 0 20px;">${body}</p>
+    <a href="${data.loginUrl}" style="display:inline-block;background:#be2f2f;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">View details</a>
+  `, { preheader: `${esc(weddingTitle)} — ${newDate ? esc(newDate) : 'date to be confirmed'}` })
+}
+
 // Sent to the couple when they complete a public booking form. Confirms the
 // booking and, when they signed a contract, includes the full signed text plus
 // signature proof so they keep a copy of exactly what they agreed to.

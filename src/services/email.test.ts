@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { enquiryConfirmationEmail, vendorWelcomeInviteEmail, vendorInviteReminderEmail, timelineUpdatedEmail } from './email'
+import { enquiryConfirmationEmail, vendorWelcomeInviteEmail, vendorInviteReminderEmail, timelineUpdatedEmail, weddingDateSetEmail } from './email'
 import { runWithI18n } from '../i18n'
 
 describe('enquiryConfirmationEmail', () => {
@@ -119,6 +119,35 @@ describe('timelineUpdatedEmail localisation', () => {
 
   it('escapes the wedding title in the interpolated heading', () => {
     const html = runWithI18n({ locale: 'de-DE' }, () => timelineUpdatedEmail({ ...data, weddingTitle: '<b>x</b>' }))
+    expect(html).not.toContain('<b>x</b>')
+    expect(html).toContain('&lt;b&gt;x&lt;/b&gt;')
+  })
+})
+
+describe('weddingDateSetEmail', () => {
+  const base = { weddingTitle: 'Sam & Alex', loginUrl: 'https://wedding.computer/wedding/w1' }
+
+  it('reads as "a date has been set" when there was no previous date', () => {
+    const html = weddingDateSetEmail({ ...base, oldDate: null, newDate: '12 Sep 2026' })
+    expect(html).toContain('A date has been set')
+    expect(html).toContain('12 Sep 2026')
+    expect(html).toContain('added to your calendar')
+  })
+
+  it('reads as a move from old to new when both dates are present', () => {
+    const html = weddingDateSetEmail({ ...base, oldDate: '12 Sep 2026', newDate: '3 Oct 2026' })
+    expect(html).toContain('The wedding date has changed')
+    expect(html).toContain('12 Sep 2026')
+    expect(html).toContain('3 Oct 2026')
+  })
+
+  it('reads as "to be confirmed" when the date is cleared', () => {
+    const html = weddingDateSetEmail({ ...base, oldDate: '12 Sep 2026', newDate: null })
+    expect(html).toContain('to be confirmed')
+  })
+
+  it('escapes the wedding title', () => {
+    const html = weddingDateSetEmail({ ...base, weddingTitle: '<b>x</b>', oldDate: null, newDate: '12 Sep 2026' })
     expect(html).not.toContain('<b>x</b>')
     expect(html).toContain('&lt;b&gt;x&lt;/b&gt;')
   })
