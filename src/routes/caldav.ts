@@ -108,7 +108,7 @@ async function windowedWeddingDays(db: D1Database, vendorId: string): Promise<We
  */
 async function combinedCTag(db: D1Database, vendorId: string): Promise<string> {
   const ev = await db
-    .prepare(`SELECT COUNT(*) as cnt, MAX(updated_at) as ts FROM calendar_events WHERE vendor_id = ? AND ${CALENDAR_WINDOW} AND (notes IS NULL OR notes NOT LIKE 'wc:%')`)
+    .prepare(`SELECT COUNT(*) as cnt, MAX(updated_at) as ts FROM calendar_events WHERE vendor_id = ? AND ${CALENDAR_WINDOW} AND (notes IS NULL OR notes NOT LIKE 'wc:%') AND NOT (type = 'booking' AND wedding_id IS NOT NULL)`)
     .bind(vendorId)
     .first<{ cnt: number; ts: string | null }>()
   const tl = await db
@@ -324,7 +324,7 @@ caldav.on('PROPFIND', '/calendars/:token/bookings/', async (c) => {
 
   // Depth 1: list events (only need etags, no enrichment needed)
   const rows = await c.env.DB
-    .prepare(`SELECT * FROM calendar_events WHERE vendor_id = ? AND ${CALENDAR_WINDOW} AND (notes IS NULL OR notes NOT LIKE 'wc:%')`)
+    .prepare(`SELECT * FROM calendar_events WHERE vendor_id = ? AND ${CALENDAR_WINDOW} AND (notes IS NULL OR notes NOT LIKE 'wc:%') AND NOT (type = 'booking' AND wedding_id IS NOT NULL)`)
     .bind(vendor.id)
     .all<CalendarEvent>()
     .then(r => r.results)

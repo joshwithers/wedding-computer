@@ -19,6 +19,7 @@ import { celebrantTermsDiffer } from '../lib/celebrant-term'
 import { weddingDisplayTitle } from '../lib/wedding-display'
 import { createTimelineRequest, getTimelineControllers } from '../db/timeline-requests'
 import { applyWeddingUpdate, resolveAndMaterialize, weddingSunMinutes, touchTimelineItemsForWedding } from '../db/timeline'
+import { syncWeddingBookingEvent } from '../db/calendar'
 import { t, type MessageKey } from '../i18n'
 import { shouldShowWeather } from '../views/weather'
 import { renderWeatherCard, setWeatherUnit } from './weather-handlers'
@@ -1352,6 +1353,14 @@ couple.post('/wedding/:id/edit', async (c) => {
     const oldDate = (currentWedding as Wedding | null)?.date ?? null
     const newDate = (weddingUpdates.date as string | null) ?? null
     if (currentWedding && oldDate !== newDate) {
+      // Resync vendors' booking rows (in-app grid + availability) to the new
+      // date. No ensureVendorId — a couple has no booking row of its own; this
+      // just moves/clears the vendors' existing rows.
+      await syncWeddingBookingEvent(
+        c.env.DB,
+        weddingId,
+        { date: newDate, title: currentWedding.title, startTime: currentWedding.time, durationHours: currentWedding.duration_hours }
+      ).catch((e: any) => console.error('[couple] booking-event sync failed', e?.message))
       c.executionCtx.waitUntil(touchTimelineItemsForWedding(c.env.DB, weddingId).catch(() => {}))
       c.executionCtx.waitUntil(
         c.env.EMAIL_QUEUE.send({

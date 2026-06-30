@@ -30,7 +30,7 @@ import { findOrCreateUser, sendCoupleInvite } from '../../services/auth'
 import { getUserByEmail } from '../../db/users'
 import { requireString, trimOrNull, validDateOrNull, isValidEmail } from '../../lib/validation'
 import { formatDate, formatDateTime, formatTime, daysUntil, addHoursToTime } from '../../lib/date'
-import { createEvent } from '../../db/calendar'
+import { createEvent, syncWeddingBookingEvent } from '../../db/calendar'
 import { track } from '../../services/analytics'
 import { listVendorTypes, vendorTypeLabel, type VendorType } from '../../db/vendor-types'
 import { searchVendorsForWedding, getVendorWithEmail, getVendorByUserId } from '../../db/vendors'
@@ -1489,6 +1489,16 @@ weddings.post('/app/weddings/:id/edit', async (c) => {
     const oldDate = oldWedding?.date ?? null
     const newDate = (updateData.date as string | null) ?? null
     if (oldWedding && oldDate !== newDate) {
+      // Keep the booking calendar_event (in-app grid + public availability) in
+      // step with the date — create it for this vendor on first dating, move it
+      // on a change, delete it on a clear. Awaited so availability is correct by
+      // the redirect.
+      await syncWeddingBookingEvent(
+        c.env.DB,
+        weddingId,
+        { date: newDate, title, startTime: oldWedding.time, durationHours: (updateData.duration_hours as number | null) ?? oldWedding.duration_hours },
+        c.get('vendor')!.id
+      ).catch((e: any) => console.error('[weddings] booking-event sync failed', e?.message))
       c.executionCtx.waitUntil(touchTimelineItemsForWedding(c.env.DB, weddingId).catch(() => {}))
       c.executionCtx.waitUntil(
         c.env.EMAIL_QUEUE.send({

@@ -46,6 +46,7 @@ import { appendWeddingLog } from '../db/wedding-log'
 import { listPendingTimelineRequests, getTimelineRequest, decideTimelineRequest } from '../db/timeline-requests'
 import { proposeChange, applyRequest, diffRows, parsePayload, type RowFields } from '../services/timeline-approval'
 import { getWedding } from '../db/weddings'
+import { syncWeddingBookingEvent } from '../db/calendar'
 import { daylightStrip, sunMinutesFor, resolveLocationTimezone } from '../lib/sun'
 import { solveTimeline, minToHhmm, hhmmToMin } from '../lib/timeline-solver'
 import { nowTimeString, formatDate } from '../lib/date'
@@ -673,9 +674,18 @@ async function decide(c: Ctx, weddingId: string, member: WeddingMember, user: Us
     wedding = await afterWrite(c, weddingId, { action: 'Timeline change approved', detail: req.summary })
 
     if (dateChange) {
-      // Shift the wedding's timeline rows so CalDAV devices re-pull at the new
-      // date, then announce. Skip BOTH the approver (acting now) and the
-      // requester (who gets the separate "change approved" email below).
+      // Resync vendors' booking rows (in-app grid + availability) to the approved
+      // date, shift the timeline rows so CalDAV devices re-pull, then announce.
+      // Skip BOTH the approver (acting now) and the requester (who gets the
+      // separate "change approved" email below).
+      const w = await getWedding(c.env.DB, weddingId)
+      if (w) {
+        await syncWeddingBookingEvent(
+          c.env.DB,
+          weddingId,
+          { date: dateChange.newDate, title: w.title, startTime: w.time, durationHours: w.duration_hours }
+        ).catch((e: any) => console.error('[timeline] booking-event sync failed', e?.message))
+      }
       c.executionCtx.waitUntil(touchTimelineItemsForWedding(c.env.DB, weddingId).catch(() => {}))
       c.executionCtx.waitUntil(
         c.env.EMAIL_QUEUE.send({

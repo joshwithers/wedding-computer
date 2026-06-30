@@ -1,5 +1,6 @@
 import type { CalendarEvent, EnrichedCalendarEvent } from '../types'
 import { SQL_CALENDAR_EVENT_NOT_CANCELLED } from './weddings'
+import { addHoursToTime } from '../lib/date'
 
 const ENRICHED_SELECT = `
   SELECT
@@ -154,6 +155,66 @@ export async function createEvent(
   return result!
 }
 
+/**
+ * Keep a wedding's `type='booking'` calendar_event(s) in step with the wedding's
+ * own date. These rows drive the in-app calendar grid and the public
+ * availability "booked" flag — and since a date can now be set long after a
+ * wedding is created (undated bookings), changed, or cleared, the rows must
+ * follow:
+ *
+ *   - date cleared   → delete the wedding's booking rows (frees availability)
+ *   - date set/moved → move every existing booking row to the new date, and
+ *                      create one for `ensureVendorId` if it has none yet
+ *
+ * Booking rows are vendor-scoped (each vendor's own availability). `ensureVendorId`
+ * is the acting vendor, so the vendor who sets a date is marked booked even for a
+ * wedding created undated — which never got a booking row at creation time.
+ */
+export async function syncWeddingBookingEvent(
+  db: D1Database,
+  weddingId: string,
+  opts: { date: string | null; title: string; startTime: string | null; durationHours: number | null },
+  ensureVendorId?: string | null
+): Promise<void> {
+  if (!opts.date) {
+    await db
+      .prepare("DELETE FROM calendar_events WHERE wedding_id = ? AND type = 'booking'")
+      .bind(weddingId)
+      .run()
+    return
+  }
+  const endTime =
+    opts.startTime && opts.durationHours ? addHoursToTime(opts.startTime, opts.durationHours) : null
+  const allDay = opts.startTime ? 0 : 1
+  // Move every existing booking row for this wedding onto the current date/time.
+  await db
+    .prepare(
+      `UPDATE calendar_events SET date = ?, start_time = ?, end_time = ?, all_day = ?, updated_at = datetime('now')
+       WHERE wedding_id = ? AND type = 'booking'`
+    )
+    .bind(opts.date, opts.startTime, endTime, allDay, weddingId)
+    .run()
+  // Ensure the acting vendor has a booking row (the undated→dated case, where
+  // none was created at wedding creation).
+  if (ensureVendorId) {
+    const existing = await db
+      .prepare("SELECT id FROM calendar_events WHERE wedding_id = ? AND vendor_id = ? AND type = 'booking' LIMIT 1")
+      .bind(weddingId, ensureVendorId)
+      .first<{ id: string }>()
+    if (!existing) {
+      await createEvent(db, ensureVendorId, {
+        title: opts.title,
+        date: opts.date,
+        start_time: opts.startTime,
+        end_time: endTime,
+        all_day: !opts.startTime,
+        type: 'booking',
+        wedding_id: weddingId,
+      })
+    }
+  }
+}
+
 export async function updateEvent(
   db: D1Database,
   vendorId: string,
@@ -190,6 +251,14 @@ export async function deleteEvent(
 
 // ─── Enriched queries (with wedding + contact details) ───
 
+// The subscribed feed (iCal/CalDAV) represents each wedding with the single
+// all-day "wedding day" marker (the wedding-day rows in db/weddings.ts), so the
+// legacy per-wedding booking row is filtered out of these enriched queries to
+// avoid a duplicate all-day entry. Only the feed + CalDAV use these queries.
+// Manual bookings (no wedding_id) and the in-app calendar grid (which reads
+// listEventsByMonth, not these) are unaffected, so availability is preserved.
+const SQL_FEED_NOT_WEDDING_BOOKING = "NOT (ce.type = 'booking' AND ce.wedding_id IS NOT NULL)"
+
 export async function listEnrichedEventsByRange(
   db: D1Database,
   vendorId: string,
@@ -200,6 +269,7 @@ export async function listEnrichedEventsByRange(
     .prepare(
       `${ENRICHED_SELECT}
        WHERE ce.vendor_id = ? AND ce.date >= ? AND ce.date <= ?
+         AND ${SQL_FEED_NOT_WEDDING_BOOKING}
        ORDER BY ce.date, ce.start_time`
     )
     .bind(vendorId, startDate, endDate)
@@ -216,6 +286,7 @@ export async function listAllEnrichedEvents(
     .prepare(
       `${ENRICHED_SELECT}
        WHERE ce.vendor_id = ?${whereExtra ? ` AND ${whereExtra}` : ''}
+         AND ${SQL_FEED_NOT_WEDDING_BOOKING}
        ORDER BY ce.date, ce.start_time`
     )
     .bind(vendorId)
@@ -237,6 +308,7 @@ export async function listEnrichedEventsByIds(
       .prepare(
         `${ENRICHED_SELECT}
          WHERE ce.vendor_id = ? AND ce.id IN (${placeholders})
+           AND ${SQL_FEED_NOT_WEDDING_BOOKING}
          ORDER BY ce.date, ce.start_time`
       )
       .bind(vendorId, ...batch)
@@ -254,7 +326,8 @@ export async function getEnrichedEvent(
   return db
     .prepare(
       `${ENRICHED_SELECT}
-       WHERE ce.id = ? AND ce.vendor_id = ?`
+       WHERE ce.id = ? AND ce.vendor_id = ?
+         AND ${SQL_FEED_NOT_WEDDING_BOOKING}`
     )
     .bind(eventId, vendorId)
     .first<EnrichedCalendarEvent>()
