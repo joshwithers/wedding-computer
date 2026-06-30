@@ -652,6 +652,9 @@ export async function notifyWeddingDateChanged(env: NotifyEnv, data: {
   oldDate: string | null
   newDate: string | null
   editorUserId: string
+  // A second user to skip — e.g. on the approval path, the requester (who gets
+  // the separate "change approved" email) in addition to the approving editor.
+  skipUserId?: string
 }): Promise<void> {
   const wedding = await getWedding(env.db, data.weddingId)
   if (!wedding) return
@@ -666,8 +669,9 @@ export async function notifyWeddingDateChanged(env: NotifyEnv, data: {
 
   const members = await getWeddingMembers(env.db, data.weddingId)
   for (const member of members) {
-    // The editor already knows — they just made the change.
-    if (member.user_id === data.editorUserId) continue
+    // The editor already knows — they just made the change (and on the approval
+    // path, so does the requester, who's told separately).
+    if (member.user_id === data.editorUserId || member.user_id === data.skipUserId) continue
     const loginUrl =
       member.role === 'couple'
         ? `${env.appUrl}/wedding/${data.weddingId}`

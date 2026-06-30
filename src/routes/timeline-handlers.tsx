@@ -27,6 +27,7 @@ import {
   sunMinutesForWedding,
   setActualStart,
   clearAllActuals,
+  touchTimelineItemsForWedding,
   type RosterEntry,
 } from '../db/timeline'
 import {
@@ -653,8 +654,42 @@ async function decide(c: Ctx, weddingId: string, member: WeddingMember, user: Us
         edited = fieldsFrom(f, ['couple', 'vendors', 'private'])
       }
     }
+    // Capture a wedding-date change BEFORE applying, so an approved request to
+    // set/move/clear the date announces it just like the direct-edit path does.
+    let dateChange: { oldDate: string | null; newDate: string | null } | null = null
+    if (req.target === 'wedding') {
+      try {
+        const fields = JSON.parse(req.payload) as Record<string, unknown>
+        if ('date' in fields) {
+          const before = await getWedding(c.env.DB, weddingId)
+          const oldDate = before?.date ?? null
+          const newDate = (fields.date as string | null) ?? null
+          if (oldDate !== newDate) dateChange = { oldDate, newDate }
+        }
+      } catch { /* unparseable payload — applyRequest will no-op too */ }
+    }
+
     await applyRequest(c.env.DB, req, edited)
     wedding = await afterWrite(c, weddingId, { action: 'Timeline change approved', detail: req.summary })
+
+    if (dateChange) {
+      // Shift the wedding's timeline rows so CalDAV devices re-pull at the new
+      // date, then announce. Skip BOTH the approver (acting now) and the
+      // requester (who gets the separate "change approved" email below).
+      c.executionCtx.waitUntil(touchTimelineItemsForWedding(c.env.DB, weddingId).catch(() => {}))
+      c.executionCtx.waitUntil(
+        c.env.EMAIL_QUEUE.send({
+          type: 'notify_wedding_date_changed',
+          payload: JSON.stringify({
+            weddingId,
+            oldDate: dateChange.oldDate,
+            newDate: dateChange.newDate,
+            editorUserId: user.id,
+            skipUserId: req.requested_by_user_id,
+          }),
+        }).catch((e: any) => console.error('[timeline] date-change notify enqueue failed', e?.message))
+      )
+    }
   }
   await decideTimelineRequest(c.env.DB, requestId, user.id, approve ? 'approved' : 'declined')
   // Approvals are logged via afterWrite above; declines apply no write, so log here.
